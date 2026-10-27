@@ -29,9 +29,9 @@ python -m http.server 8124
 #           http://localhost:8124/screen.html (TV)
 #           http://localhost:8124/admin.html (운영자)
 ```
-테스트 계정 (스테이징 전용, `CONFIG.DEV_LOGIN = true`일 때만 로그인 폼이 보임):
-학생 `022001@test.local` ~ `022006@test.local`, `023004@…`, `024005@…` / 부스 `booth1@staff.test` / 운영자 `admin@staff.test`.
-비밀번호는 `tests/.env`의 `TEST_PASSWORD` (git에 안 올라감 — 팀장에게 받기).
+개발용 테스트 로그인 (테스트 서버 전용 — `CONFIG.DEV_LOGIN = true`이고 서버 설정 `dev_login = true`일 때만):
+로그인 화면 맨 아래 "▸ 개발용 테스트 로그인"을 펼치고 **아무 이메일**(예: `test1`)을 넣으면 계정이 만들어진다. 비밀번호는 **`1234abcd!` 고정**.
+미리 있는 계정: 학생 `022001@test.local` ~, 부스 `booth1@staff.test`, 운영자 `admin@staff.test` (비밀번호 같음). 서버 테스트는 `tests/.env`의 `TEST_PASSWORD=1234abcd!`.
 
 ## 서버 테스트
 ```bash
@@ -50,7 +50,7 @@ python tools/build_atlas.py                                                   # 
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
 1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0007 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음)
-2. `settings` 수정: `email_domains`(학교 도메인), `email_regex`(학번 추출), `admin_emails`, `booth_emails`
+2. `settings` 수정: `admin_emails`, `booth_emails` (운영자·부스 구글 계정), **`dev_login`은 false 그대로** (0008 기본값). 모든 구글 계정이 로그인 가능하므로 도메인 설정은 필요 없음
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
 4. Authentication → Rate Limits 올리기 (학교 와이파이 = IP 하나). JWT 만료 시간 늘리기
 5. `web/js/config.js`: `SUPABASE_URL/KEY`를 실전 값으로, `GOOGLE_CLIENT_ID` 입력, **`DEV_LOGIN: false`**

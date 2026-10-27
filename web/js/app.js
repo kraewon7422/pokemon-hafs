@@ -58,7 +58,8 @@ async function boot() {
   window.addEventListener('online', () => { S.online = true; renderStatus(); sync(); });
   window.addEventListener('offline', () => { S.online = false; renderStatus(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
-  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.installEvt = e; });
+  window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); S.installEvt = e; refreshInstallButtons(); });
+  window.addEventListener('appinstalled', () => { S.installEvt = null; refreshInstallButtons(); toast('앱으로 설치했어요! 홈 화면의 아이콘으로 열어 주세요.'); });
   window.addEventListener('popstate', onPop);
 
   if ('serviceWorker' in navigator) {
@@ -116,6 +117,7 @@ function afterLogin() {
 async function doAfterLogin() {
   try {
     const profile = await rpc('ensure_profile');
+    if (profile.needs_register) return renderRegister(profile);
     if (profile.role !== 'student') toast(`${profile.role === 'admin' ? '운영자' : '부스'} 계정으로 로그인했어요.`);
     if (!S.snap) S.celebrated = new Set(['__init__']);   // first sync on this device: don't replay old celebrations
     await loadCatalog();
@@ -320,6 +322,7 @@ function viewHome() {
 
   return [
     S.updateReady && h('button.btn.big.gold', { onclick: () => S.updateReady() }, '⬆ 새 버전 적용하기 (2초)'),
+    installBanner(),
     !S.updateReady && Number(R.min_client_version) > CONFIG.VERSION && h('div.box.warn-box', '⬆ 새 버전이 있어요! 앱(브라우저 탭)을 완전히 닫았다가 다시 열어 주세요.'),
     R.notice && h('div.box.notice-box', pix('mega'), String(R.notice)),
     R.festival_ended && h('div.box.ended-box',
@@ -336,7 +339,7 @@ function viewHome() {
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
 
     h('section.trainer', { 'aria-label': '트레이너 카드' },
-      h('div.idno', h('span', 'TRAINER CARD'), h('span', `ID No. ${p.student_id.replace(/^g:/, '').toUpperCase()}`)),
+      h('div.idno', h('span', 'TRAINER CARD'), h('span', p.student_id.startsWith('g:') ? 'GUEST' : `ID No. ${p.student_id}`)),
       h('div', h('div.name', p.name || '트레이너'), h('div', { style: { fontSize: '13px' } }, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너')),
       h('div.partner', partner ? spriteCanvas(dexOf(partner.line_id, partner.stage), 88) : spriteCanvas(1, 88, 'silhouette')),
       h('div.stats',
@@ -351,7 +354,7 @@ function viewHome() {
       h('div.banner', h('b', `가방 ${items.length}/${R.bag_max}`),
         h('span', { style: { fontSize: '13px' } }, items.length ? '메인 부스에서 몬스터로 바꿔요' : 'QR을 찍으면 티켓이 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name))) : null,
-      h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '부스에서 보여주기 (가방 QR)'),
+      h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '가방 QR 보여주기'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
         pix('gift'), '지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
 
@@ -359,6 +362,19 @@ function viewHome() {
 
     hint && h('section.box.hint', h('b', pix('bulb'), '힌트  '), hint.hint),
   ];
+}
+
+// install banner on home: until installed or closed (closing only hides it on this device)
+function installBanner() {
+  let closed = false;
+  try { closed = localStorage.getItem('installClosed') === '1'; } catch { /* ignore */ }
+  if (closed || isStandalone()) return null;
+  const box = h('section.box.install-box', { hidden: !canOfferInstall() },
+    h('div', h('b', pix('phone'), '앱으로 설치하기'), h('br'), h('small', '주소창 없이 전체 화면으로 열리고, 홈 화면 아이콘이 생겨요.')),
+    h('div.row', h('button.btn.small.ghost', { onclick: () => { try { localStorage.setItem('installClosed', '1'); } catch { /* ignore */ } box.remove(); } }, '닫기'),
+      h('button.btn.small.primary', { onclick: showInstall }, '설치')));
+  box.classList.add('install-btn');   // shown/hidden together with the other install buttons
+  return box;
 }
 
 // ───────── 진화권 룰렛: every N minutes, the server picks 0/1/3/5 tickets ─────────
@@ -445,7 +461,7 @@ function openSettings() {
       h('button.btn', { onclick: (e) => { setMuted(!isMuted()); e.currentTarget.replaceChildren(...soundLabel()); } },
         ...soundLabel()),
       h('button.btn', { onclick: () => showOnboarding(true) }, pix('book'), '게임 방법 다시 보기'),
-      h('button.btn', { onclick: showInstall }, pix('phone'), '홈 화면에 추가'),
+      !isStandalone() && h('button.btn', { onclick: showInstall }, pix('phone'), '앱으로 설치하기'),
       h('button.btn', { onclick: confirmLogout }, pix('door'), '로그아웃')),
     h('small', { style: { textAlign: 'center' } }, `${p.student_id.replace(/^g:/, '')} · 버전 ${CONFIG.VERSION}`),
   ]);
@@ -470,8 +486,25 @@ async function selfRedeem() {
   } catch (e) { sfx.error(); toast(errorText(e.message)); }
 }
 
-function showInstall() {
-  if (S.installEvt) { S.installEvt.prompt(); S.installEvt = null; return; }
+// installed app = no browser address bar. Chrome/Android: real install prompt; iPhone: instructions.
+const isStandalone = () => matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+const canOfferInstall = () => !isStandalone() && (!!S.installEvt || isIOS());
+function installButton(cls = '') {
+  return h(`button.btn.install-btn${cls}`, { hidden: !canOfferInstall(), onclick: showInstall }, pix('phone'), '앱으로 설치하기');
+}
+function refreshInstallButtons() {
+  document.querySelectorAll('.install-btn').forEach((b) => { b.hidden = !canOfferInstall(); });
+}
+
+async function showInstall() {
+  if (S.installEvt) {
+    const evt = S.installEvt;
+    evt.prompt();
+    const { outcome } = await evt.userChoice.catch(() => ({}));
+    if (outcome === 'accepted') S.installEvt = null;
+    refreshInstallButtons();
+    return;
+  }
   sheet(h('div.box',
     h('b', '홈 화면에 추가 (선택)'),
     h('p', isIOS()
@@ -958,7 +991,10 @@ function renderConsent() {
     }, '동의하고 시작하기'),
     h('button.btn.small.ghost', { onclick: async () => { await signOut(); await kv.clear(); S.snap = null; renderLogin(); } }, '동의하지 않음 (로그아웃)')));
 }
-const maskName = (n = '') => n.length >= 3 ? n[0] + '○'.repeat(n.length - 2) + n.at(-1) : n.length === 2 ? n[0] + '○' : '트레이너';
+const maskName = (raw = '') => {
+  const n = String(raw || '').trim();
+  return n.length >= 3 ? n[0] + '*'.repeat(n.length - 2) + n.at(-1) : n.length === 2 ? n[0] + '*' : n || '트레이너';
+};
 
 function maybeOnboard() {
   let seen = false;
@@ -1036,48 +1072,137 @@ function tapToContinue(ov) {
 function renderLogin(error = '') {
   closeOverlay();
   const err = h('div.err', { role: 'alert' }, error);
-  const gbox = h('div');
+  const gbox = h('div.gbox');
   const mons = h('div.mons', [1, 13, 25, 37].map((d) => spriteCanvas(d, 56)));
   const pending = sessionStorage.getItem('pendingScan');
   const content = [
     mons,
     h('div.logo', CONFIG.GAME_TITLE),
     h('div.logo-sub', '학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!'),
-    pending && h('div.box', { style: { maxWidth: '340px', textAlign: 'left', fontSize: '14px' } },
+    pending && h('div.box.login-note',
       h('b', pix('camera'), 'QR을 찍었는데 이 브라우저는 로그인이 안 돼 있어요'), h('br'),
       '게임을 하던 앱(브라우저)을 열고 가운데 볼 버튼으로 다시 찍거나, QR 아래 5자리 코드를 입력하세요. 처음이라면 여기서 로그인해도 돼요.'),
     h('div.press.blink', 'PRESS START'),
     gbox,
     err,
+    codeLogin(err),
   ];
-  // backup login: printed code from homeroom (forgot Google password / teachers / guests)
-  const cid = h('input', { placeholder: '학번 또는 아이디 (예: 022001)', autocomplete: 'username', autocapitalize: 'off' });
-  const ccode = h('input', { placeholder: '코드 (예: ABCD-EFGH)', autocomplete: 'current-password', autocapitalize: 'characters' });
-  content.push(h('details.code-login', h('summary', '구글 로그인이 안 되면: 학번·코드로 로그인'),
-    h('form', {
-      onsubmit: async (e) => {
-        e.preventDefault();
-        err.textContent = '';
-        let id = cid.value.trim().toLowerCase();
-        if (/^[0-9]{5}$/.test(id)) id = id.padStart(6, '0');
-        try { await devLogin(`${id}@code.local`, ccode.value.replace(/[\s-]/g, '').toUpperCase()); }
-        catch { err.textContent = '학번/아이디나 코드가 맞지 않아요. 조례 때 받은 쪽지를 확인해 주세요.'; }
-      },
-    }, cid, ccode, h('button.btn', { type: 'submit' }, '코드로 로그인'))));
-  if (CONFIG.DEV_LOGIN) {
-    const email = h('input', { type: 'email', placeholder: '테스트 이메일 (022001@test.local)', autocomplete: 'username' });
-    const pw = h('input', { type: 'password', placeholder: '테스트 비밀번호', autocomplete: 'current-password' });
-    content.push(h('details.dev-login', h('summary', '개발용 테스트 로그인'), h('form', {
-      onsubmit: async (e) => {
-        e.preventDefault();
-        err.textContent = '';
-        try { await devLogin(email.value.trim(), pw.value); } catch (x) { err.textContent = x.message; }
-      },
-    }, email, pw, h('button.btn.small', { type: 'submit' }, '테스트 로그인'))));
-  }
-  content.push(h('p.foot-note', '학교 구글 계정으로 로그인하면 학번이 자동으로 연결돼요. 저장하는 정보: 학번, 이름, 게임 기록 (축제 종료 2주 후 삭제). ', h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')));
+  if (CONFIG.DEV_LOGIN) content.push(devLoginBox(err));
+  content.push(installButton('.small'),
+    h('p.foot-note', '구글 계정 아무거나 로그인할 수 있어요. 처음 한 번만 학생/외부인을 고르고 이름을 적어요. ',
+      h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')));
   app().replaceChildren(h('div.login', content));
   renderGoogleButton(gbox, (m) => { err.textContent = m; }).catch((e) => { err.textContent = e.message; });
+}
+
+// 학번 로그인: 처음이면 서버가 코드를 만들어 한 번만 보여 주고, 이미 있으면 코드를 입력받는다
+function codeLogin(err) {
+  const cid = h('input', { placeholder: '학번 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, autocomplete: 'username' });
+  const ccode = h('input', { placeholder: '코드 (예: ABCD-EFGH)', autocomplete: 'current-password', autocapitalize: 'characters' });
+  const codeRow = h('div.stack', { hidden: true }, ccode, h('small', '처음 학번을 넣었을 때 받은 코드를 입력하세요. 잊었다면 메인 부스에 문의하세요.'));
+  const shown = h('div');
+  const go = h('button.btn', { type: 'submit' }, '다음');
+  const sid = () => cid.value.replace(/\D/g, '').padStart(6, '0');
+  const loginWith = async (code) => {
+    try { await devLogin(`${sid()}@code.local`, code.replace(/[\s-]/g, '').toUpperCase()); }
+    catch { err.textContent = '코드가 맞지 않아요. 대문자·숫자 8자리를 다시 확인해 주세요.'; }
+  };
+  const form = h('form.stack', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      if (!/^[0-9]{5,6}$/.test(cid.value.trim())) { err.textContent = '학번 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
+      if (!codeRow.hidden) return loginWith(ccode.value);
+      go.disabled = true;
+      try {
+        const res = await rpc('create_code_account', { p_student_id: sid() }, { retries: 0 });
+        cid.disabled = true;
+        go.hidden = true;
+        shown.replaceChildren(h('div.box.code-once',
+          h('div', '내 로그인 코드'),
+          h('div.code-big', res.code),
+          h('small', '이 코드는 지금 한 번만 보여 줘요. 다른 폰에서 로그인할 때 필요하니 꼭 적어 두거나 캡처해 두세요.'),
+          h('button.btn.primary', { type: 'button', onclick: () => loginWith(res.code) }, '이 코드로 시작하기')));
+      } catch (x) {
+        if (x.message === 'CODE_ACCOUNT_EXISTS') { codeRow.hidden = false; go.textContent = '코드로 로그인'; ccode.focus(); }
+        else err.textContent = errorText(x.message);
+      } finally { go.disabled = false; }
+    },
+  }, cid, codeRow, go, shown);
+  return h('details.code-login', h('summary', '구글 로그인이 안 되면: 학번으로 로그인'), form);
+}
+
+// 개발용: 아무 이메일 → 없으면 계정을 만들고, 비밀번호는 1234abcd! 고정 (테스트 서버의 dev_login 설정이 켜져 있을 때만)
+function devLoginBox(err) {
+  const email = h('input', { placeholder: '아무 이메일 (예: test1)', autocomplete: 'username', autocapitalize: 'off' });
+  return h('details.dev-login', h('summary', '개발용 테스트 로그인'), h('form', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      try {
+        const res = await rpc('dev_create_account', { p_email: email.value }, { retries: 0 });
+        await devLogin(res.email, '1234abcd!');
+      } catch (x) { err.textContent = errorText(x.message); }
+    },
+  }, email, h('small', '비밀번호는 1234abcd! 로 고정, 처음 쓰는 이메일이면 계정이 만들어져요.'), h('button.btn.small', { type: 'submit' }, '테스트 로그인')));
+}
+
+// 첫 로그인: 학생(고유번호 + 이름) / 외부인(이름만) + 동의
+function renderRegister(info) {
+  closeOverlay();
+  const fixedId = info.code_id || '';
+  let kind = 'student';
+  const err = h('div.err', { role: 'alert' });
+  const sidIn = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, value: fixedId, disabled: !!fixedId });
+  const nameIn = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, value: info.name || '', autocomplete: 'name' });
+  const show = h('input', { type: 'checkbox', checked: true });
+  const preview = h('b');
+  const sidRow = h('label.field', h('span', '고유번호 (학번)'), sidIn, h('small', '22기 1번 → 022001'));
+  const seg = h('div.seg', { role: 'group', 'aria-label': '학생인가요' });
+  const update = () => {
+    seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === kind)));
+    sidRow.hidden = kind !== 'student' || !!fixedId;
+    const id = sidIn.value.replace(/\D/g, '');
+    const gen = kind === 'student' && id.length >= 5 ? Number(id.padStart(6, '0').slice(0, 3)) : null;
+    preview.textContent = `${gen ? gen + '기 ' : ''}${maskName(nameIn.value)}`;
+  };
+  if (!fixedId) {
+    seg.append(
+      h('button', { type: 'button', 'data-k': 'student', onclick: () => { kind = 'student'; update(); } }, '학생'),
+      h('button', { type: 'button', 'data-k': 'guest', onclick: () => { kind = 'guest'; update(); } }, '외부인'));
+  }
+  sidIn.oninput = update; nameIn.oninput = update;
+  const start = h('button.btn.big.primary', { type: 'submit' }, '시작하기');
+  const form = h('form.register', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      const nm = nameIn.value.trim();
+      if (!nm) { err.textContent = '이름을 입력해 주세요.'; return; }
+      if (kind === 'student' && !/^[0-9]{5,6}$/.test(sidIn.value.trim())) { err.textContent = '고유번호 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
+      start.disabled = true;
+      try {
+        await rpc('register_profile', { p_kind: kind, p_student_id: sidIn.value.trim(), p_name: nm, p_show: show.checked }, { retries: 0 });
+        await afterLogin();
+      } catch (x) { err.textContent = errorText(x.message); start.disabled = false; }
+    },
+  },
+    h('div.box.stack',
+      h('b', '처음 왔구나! 누구인지 알려줘'),
+      fixedId ? h('p', `학번 ${fixedId}(으)로 로그인했어요. 이름만 적어 주세요.`) : [seg, h('small', '외부인 = 선생님·학부모·다른 학교 손님')],
+      sidRow,
+      h('label.field', h('span', '이름'), nameIn),
+      h('label.check', show, h('span', '랭킹·대형 화면에 이렇게 보여요: ', preview, h('br'), h('small', '(체크를 풀면 "익명 트레이너". 나중에 설정에서 바꿀 수 있어요)')))),
+    h('div.box.stack.small-print',
+      h('b', '저장하는 정보'),
+      h('span', '고유번호, 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요. 축제가 끝나고 2주 안에 모두 삭제해요. '),
+      h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침'),
+      h('span', '외부인은 랭킹(상품)에서 빠지고, 나머지는 똑같이 즐길 수 있어요.')),
+    err,
+    start,
+    h('button.btn.small.ghost', { type: 'button', onclick: async () => { await signOut(); await kv.clear(); S.snap = null; renderLogin(); } }, '다른 계정으로 로그인'));
+  app().replaceChildren(h('div.login.register-screen', h('div.logo.logo-small', CONFIG.GAME_TITLE), form));
+  update();
 }
 
 function renderInApp() {

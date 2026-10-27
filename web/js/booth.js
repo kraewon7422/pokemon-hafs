@@ -8,6 +8,8 @@ import { spriteCanvas } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, sleep, pixelFontScale } from './ui.js';
 import { devLogin, renderGoogleButton, signOut } from './auth.js';
+// names are shown masked everywhere outside the admin page (강래원 → 강*원)
+const maskName = (n = '') => { n = String(n || '').trim(); return n.length >= 3 ? n[0] + '*'.repeat(n.length - 2) + n.at(-1) : n.length === 2 ? n[0] + '*' : n || '트레이너'; };
 
 const root = $('#root');
 let species = [];
@@ -134,7 +136,7 @@ async function onPayload(text) {
 
 function card(look, extra) {
   return h('div.box',
-    h('div.student-big', `${look.name} `, h('small', `${look.gen}기 · ${look.student_id}`)),
+    h('div.student-big', `${maskName(look.name)} `, h('small', `${look.gen}기 · ${look.student_id}`)),
     h('ul.ticket-list', look.items.map((i) => {
       const [label, cls] = STATUS[i.status] || [i.status, 'st-bad'];
       return h('li', h('span', i.qr_name || '알 수 없는 장소'), h(`span.${cls}`, label));
@@ -164,7 +166,7 @@ async function redeem(text, look) {
   if (got.length) sfx.catch();
   anim.replaceChildren(h('div', { style: { display: 'grid', justifyItems: 'center', gap: '10px' } },
     h('div.congrats', title),
-    h('div', { style: { color: '#fff' } }, `${look.name} (${res.student_id})`),
+    h('div', { style: { color: '#fff' } }, `${maskName(look.name)} (${res.student_id})`),
     h('div.cards',
       got.map((r, i) => h(`div.mcard${r.is_new ? '.new' : ''}`, { style: { animationDelay: `${i * 0.35}s` } },
         spriteCanvas(r.species_id, 128), h('b', name(r.species_id)),
