@@ -3,13 +3,13 @@
 규칙 (docs/DESIGN.md §6, CLAUDE.md): 64x64, 최대 15색 + 투명, 1px 외곽선(몸색보다 어두운 색).
 
 사용법:
-  python tools/pixelize.py 원본.png art/sprites/001.png            # 1단계 (작게)
-  python tools/pixelize.py 원본.png art/sprites/003.png --stage 3  # 3단계 (캔버스를 더 채움)
+  python tools/pixelize.py 원본.png art/sprites/1-1.png            # 1번 쌤 1단계 (작게)
+  python tools/pixelize.py 원본.png art/sprites/1-3.png --stage 3  # 1번 쌤 3단계 (캔버스를 더 채움)
   옵션: --colors 15  --bg auto|none  --preview (8배 확대 미리보기 _preview.png 도 저장)
 
 배경: 원본이 투명 PNG면 그대로 쓰고, 아니면 네 모서리 색과 비슷한 영역을 배경으로 지운다(--bg auto).
 그 뒤 결과를 Piskel(https://www.piskelapp.com)에서 열어 얼굴/눈만 손으로 다듬으면 된다.
-완성본을 art/sprites/<도감번호 3자리>.png 로 두고 `python tools/build_atlas.py` 를 실행하면 앱에 들어간다.
+완성본을 art/sprites/<라인번호>-<단계>.png (운영자 페이지 몬스터 카드에 적힌 '그림 파일' 이름) 로 두고 `python tools/build_atlas.py` 를 실행하면 앱에 들어간다.
 """
 import argparse
 from collections import deque

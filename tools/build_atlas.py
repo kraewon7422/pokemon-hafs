@@ -1,6 +1,7 @@
 """스프라이트 아틀라스(web/sprites/atlas.png) 만들기.
 
-- art/sprites/NNN.png (64x64, NNN = 도감번호 = (라인-1)*3+단계) 가 있으면 그걸 쓰고,
+- art/sprites/<라인>-<단계>.png (64x64, 예: 12-1.png = 12번 쌤 1단계, 36-1.png = 교감몽) 가 있으면 그걸 쓰고,
+  (운영자 페이지 몬스터 카드에 '그림 파일: 12-1.png' 로 표시됨. 앱 도감 번호 No.xxx 와는 다르니 주의)
 - 없으면 임시 몬스터를 그린다 (라인=과목마다 손으로 조정한 그리기 함수, 단계가 오를수록 커짐).
 - 칸 배치: 12열, 칸 하나 64x64, 칸 번호 = 도감번호-1.  (web/js/sprites.js 가 같은 규칙으로 읽는다)
 - 전설(16 교장몽, 17 교감몽)은 1단계만 있음 → 도감 46, 49. 나머지 빈 칸은 투명.
@@ -1879,7 +1880,8 @@ def main():
     atlas = Image.new('RGBA', (COLS * 64, rows * 64), (0, 0, 0, 0))
     real = drawn = 0
     for dex in range(1, a.count + 1):
-        p = os.path.join(ROOT, 'art', 'sprites', f'{dex:03d}.png')
+        line_, stage_ = (dex - 1) // 3 + 1, (dex - 1) % 3 + 1
+        p = os.path.join(ROOT, 'art', 'sprites', f'{line_}-{stage_}.png')        # e.g. 36-1.png = 교감몽
         if os.path.exists(p):
             spr = Image.open(p).convert('RGBA')
             assert spr.size == (64, 64), f'{p} must be 64x64 (got {spr.size})'

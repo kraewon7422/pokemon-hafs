@@ -843,7 +843,8 @@ async function lineEditor(lineId, redraw) {
   });
   const cards = sp.map((s) => h('div.sp-card',
     h('div.pic', sprite(s.id, 64)),
-    h('b', `${s.stage}단계 · 도감 ${s.id}번`),
+    h('b', `${s.stage}단계 · 앱 도감 No.${String(S.species.findIndex((x) => x.id === s.id) + 1).padStart(3, '0')}`),
+    h('span.small-txt', '그림 파일: ', h('code', `art/sprites/${lineId}-${s.stage}.png`)),
     field('이름', s.name), field('분류', s.category), field('설명', s.flavor),
     h('div.row', field('키', s.height), field('몸무게', s.weight))));
   const grid = h('div.sp-grid');

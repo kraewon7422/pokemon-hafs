@@ -40,11 +40,11 @@ node tests/rpc_test.mjs        # → "63 passed, 0 failed" 이어야 함
 
 ## 몬스터 그림 넣기
 ```bash
-python tools/pixelize.py 원본.png art/sprites/001.png --stage 1 --preview   # 도감번호 3자리
+python tools/pixelize.py 원본.png art/sprites/12-1.png --stage 1 --preview   # 파일 이름 = 라인번호-단계
 # Piskel(https://www.piskelapp.com)에서 얼굴만 다듬기
 python tools/build_atlas.py                                                   # web/sprites/atlas.png 갱신
 ```
-도감번호 = (라인번호-1)×3 + 단계. 선생님 원본 사진은 `art-src/`에 (git 제외).
+**그림 파일 이름 = `라인번호-단계.png`** (예: 12번 쌤 1단계 = `12-1.png`, 교감몽 = `36-1.png`). 운영자 페이지 → 몬스터·퀴즈의 각 카드에 '그림 파일' 이름이 적혀 있어요. 앱에 보이는 도감 번호(No.001~)와는 다르니 그 번호로 저장하지 마세요. 선생님 원본 사진은 `art-src/`에 (git 제외).
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
