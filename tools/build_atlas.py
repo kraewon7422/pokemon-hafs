@@ -944,9 +944,10 @@ def body_shape(plan, g):
     base = ellb(32, F - 1, g['brx'], g['bry'])
     if plan == 'square':
         return U(sell(32, cy + 1, rx * .95, ry + .5, 3.2), base)
-    if plan == 'drop':
+    if plan == 'drop':          # 먹물 방울 + 한쪽으로 휜 붓끝 머리 (양파처럼 보이지 않게 비대칭)
         return U(ell(32, cy + 1, rx, ry - 1), base,
-                 poly([(32 - rx * .7, cy - ry * .45), (34, cy - ry - ry * .55), (32 + rx * .7, cy - ry * .45)]))
+                 ell(32 + rx * .18, cy - ry * .72, rx * .46, ry * .42, -18),
+                 ell(32 + rx * .42, cy - ry * 1.05, rx * .2, ry * .3, -38))
     if plan == 'pear':
         return U(ell(32, cy + ry * .2, rx, ry * .8), ell(32, cy - ry * .3, rx * .8, ry * .7), base)
     if plan == 'tri':          # 'A' 모양
@@ -1074,10 +1075,10 @@ def book(s, x0, y0, x1, y1, cover, page, open_=False):
 def m_quote(s, st, g, T, ph):           # 문장: “ ” 따옴표 귀 + 원고지 배
     k = g['k']
     if ph == 'back':
-        for sg in (-1, 1):
-            x = 32 + sg * g['rx'] * .5 - 1
-            s.part(cap(x, g['top'] + 2, x + 3 * k + 1, g['top'] - 6 * k, 1.5 * k + .3, 1 * k + .3), T['acc'])
-            s.part(ell(x, g['top'] + 2, 3 * k + .6, 3 * k + .6), T['acc'], shine=True)
+        for sg in (-1, 1):          # “ ” : round head on top, tail curling down-outward
+            x, y = 32 + sg * g['rx'] * .62, g['top'] - 1 - 2 * k
+            s.part(ell(x, y, 2.6 * k + .7, 2.6 * k + .7), T['acc'], shine=True)
+            s.part(cap(x + sg * 1.2 * k, y + 1.5 * k, x - sg * 1.0 * k, y + 5.5 * k, 1.3 * k + .3, .7 * k + .3), T['acc'])
     elif ph == 'mid' and st >= 2:
         x0, y0 = 32 - int(g['rx'] * .5), int(g['cy'] + g['ry'] * .32)
         w, h = int(g['rx']), int(g['ry'] * .5)
@@ -1231,14 +1232,14 @@ def die(s, cx, cy, r, rp, pip, n):
 def m_dice(s, st, g, T, ph):            # 확률: 주사위
     t = int(g['top'])
     if ph == 'back' and st >= 2:
-        die(s, 32 - g['rx'] * .55, t + 1, 3.6, T['m2'], T['acc'][1], 3)
-        die(s, 32 + g['rx'] * .55, t + 1, 3.6, T['m2'], T['acc'][1], 5)
+        die(s, 32 - g['rx'] * .58, t + 1, 4.8, T['m2'], T['acc'][1], 3)
+        die(s, 32 + g['rx'] * .58, t + 1, 4.8, T['m2'], T['acc'][1], 5)
     elif ph == 'front':
         if st == 1:
-            die(s, 32, t - 1, 4.4, T['m2'], T['acc'][1], 1)
+            die(s, 32, t - 2, 5.6, T['m2'], T['acc'][1], 1)
         else:
             hx, hy = g['hands'][1]
-            die(s, hx + 1, hy - 5, 4 if st == 2 else 5, T['m2'], T['acc'][1], 6 if st == 2 else 4)
+            die(s, hx + 2, hy - 6, 5.6 if st == 2 else 6.6, T['m2'], T['acc'][1], 6 if st == 2 else 4)
             g['hand'](1)
         if st == 3:
             die(s, 32, t - 4, 5.4, T['m2'], T['acc'][1], 1)
@@ -1397,9 +1398,9 @@ def m_german(s, st, g, T, ph):          # 독일어: 'Ä' 몸 + 프레첼 + 성�
             s.part(ell(x, t - 4 - 1.5 * st, 2.2 + st * .3, 2.2 + st * .3), T['acc'], shine=True)
     elif ph == 'front' and st >= 2:
         hx, hy = g['hands'][1]
-        r = 3.2 if st == 2 else 4
+        r = 5.2 if st == 2 else 6.4
         for dx in (-1.6, 1.6):
-            s.part(minus(ell(hx + dx * r / 2, hy - 3, r * .65, r * .7), ell(hx + dx * r / 2, hy - 3, r * .25, r * .3)), T['m2'])
+            s.part(minus(ell(hx + dx * r / 2, hy - 4, r * .62, r * .62), ell(hx + dx * r / 2, hy - 4, r * .26, r * .26)), T['m2'], edge=False, tone=1)
         g['hand'](1)
         if st == 3:
             tt = int(t)
@@ -1429,13 +1430,14 @@ def m_spanish(s, st, g, T, ph):         # 스페인어: 태양 갈기 + 기타
     if ph == 'back':
         cx, cy = 32, g['top'] + g['ry'] * .7
         R = g['rx'] + 2 + st * .5
+        s.part(ell(cx, cy, R - 4.5, R - 4.5), T['acc'], shine=True)          # sun disk the rays grow from
         for i in range(12):
             a = math.radians(i * 30 + 15)
             if math.sin(a) < -0.2:
                 continue
             x1, y1 = cx + math.cos(a) * R, cy - math.sin(a) * R
-            s.part(poly([(cx + math.cos(a - .22) * (R - 6), cy - math.sin(a - .22) * (R - 6)), (x1, y1),
-                         (cx + math.cos(a + .22) * (R - 6), cy - math.sin(a + .22) * (R - 6))]), T['acc'])
+            s.part(poly([(cx + math.cos(a - .26) * (R - 6), cy - math.sin(a - .26) * (R - 6)), (x1, y1),
+                         (cx + math.cos(a + .26) * (R - 6), cy - math.sin(a + .26) * (R - 6))]), T['acc'], edge=False, tone=1)
     elif ph == 'front' and st >= 2:
         hx, hy = g['hands'][0]
         x, y = hx + 6, hy + 2
@@ -1448,6 +1450,12 @@ def m_spanish(s, st, g, T, ph):         # 스페인어: 태양 갈기 + 기타
 
 # ---- 한국사 (황토 서양배 몸)
 def m_timeline(s, st, g, T, ph):        # 연표: 두루마리 연표
+    if ph == 'back' and st == 2:
+        s.part(rect(12, 22, 51, 29), T['m2'])
+        s.part(sell(12, 25.5, 2, 5, 3), T['acc']); s.part(sell(51.5, 25.5, 2, 5, 3), T['acc'])
+        s.pxs([(x, 25) for x in range(15, 49)], T['acc'][1])
+        for x in (20, 32, 44):
+            s.part(ell(x, 25, 1.4, 1.4), T['acc'], edge=False, tone=0)
     if ph == 'back' and st == 3:
         s.part(rect(4, 14, 59, 24), T['m2'])
         s.part(sell(4, 19, 2.4, 7, 3), T['acc'])
@@ -1548,7 +1556,7 @@ def m_rope(s, st, g, T, ph):            # 줄넘기
         for t in range(81):
             x = hx0 + (hx1 - hx0) * t / 80
             y = hy0 - (hy0 - top) * math.sin(math.pi * t / 80) ** .7
-            s.px(round(x), round(y), T['acc'][1])
+            s.px(round(x), round(y), T['acc'][1]); s.px(round(x), round(y) + 1, T['acc'][0])
     elif ph == 'front':
         sneakers(s, st, g, T)
         for (x, y) in ((hx0, hy0), (hx1, hy1)):

@@ -425,74 +425,77 @@ d.polygon([(138, 276), (150, 276), (152, 284), (140, 284)], fill=(30, 26, 36), o
 rect(139, 274, 151, 275, B1, OUT)
 KEEP['parking entrance'] = (138, 273, 153, 285)
 
-# ═════════════════════ FOREST: planted tree by tree, never touching roads / buildings / courts ═════════════════════
+# ═════════════════════ FOREST: calm dark-green pixel texture (no repeated round trees — easy on the eyes) ═════════════════════
+# Forest = everywhere outside the campus clearings that is still plain grass. Colour comes from a smooth noise field
+# (big soft patches of 5 close dark greens) plus a little per-pixel scatter; the edge to the lawn is dithered.
+from PIL import ImageFilter
 GRASSY = {G0, G1, G2, G3, GS}
-free = Image.new('L', (W, H), 0)                    # 255 = plain grass (may hold a tree)
-fp = free.load()
+grass_m = Image.new('L', (W, H), 0)
+gm = grass_m.load()
 for y in range(H):
     for x in range(W):
         if pix[x, y] in GRASSY:
-            fp[x, y] = 255
-from PIL import ImageFilter
-free = free.filter(ImageFilter.MinFilter(5))         # keep trees ≥ 2 px away from anything built
+            gm[x, y] = 255
+free = grass_m.filter(ImageFilter.MinFilter(3))                 # keep 1 px of lawn around anything built
+# organic clearing edge: blur the hand-drawn clearing polygons and wobble the threshold with smooth noise
+_nz = Image.new('L', (W // 10 + 2, H // 10 + 2)); _nz.putdata([rnd.randrange(256) for _ in range(_nz.width * _nz.height)])
+_nz = _nz.resize((_nz.width * 10, _nz.height * 10), Image.Resampling.BILINEAR).filter(ImageFilter.GaussianBlur(2)).load()
+_soft = clear_mask.filter(ImageFilter.GaussianBlur(5)).load()
+clear_org = Image.new('L', (W, H), 0)
+_co = clear_org.load()
+for y in range(H):
+    for x in range(W):
+        _co[x, y] = 255 if _soft[x, y] + (_nz[x, y] - 128) * .9 > 128 else 0
+clear_mask = clear_org
+forest = Image.composite(free, Image.new('L', (W, H), 0), clear_mask.point(lambda v: 255 - v))
+dist = [forest.load()]                                          # dist[k] = pixel is ≥ k px inside the forest
+cur = forest
+for _ in range(4):
+    cur = cur.filter(ImageFilter.MinFilter(3))
+    dist.append(cur.load())
+# smooth value noise: random 12 px grid, bilinear upscaled
+noise_small = Image.new('L', (W // 12 + 2, H // 12 + 2))
+noise_small.putdata([rnd.randrange(256) for _ in range(noise_small.width * noise_small.height)])
+noise = noise_small.resize((noise_small.width * 12, noise_small.height * 12), Image.Resampling.BILINEAR)                    .filter(ImageFilter.GaussianBlur(3)).load()
+DG = [(30, 70, 54), (36, 82, 60), (42, 94, 64), (50, 106, 68), (60, 118, 72)]   # deep → light forest greens
+fp0 = dist[0]
+for y in range(H):
+    for x in range(W):
+        if not fp0[x, y]:
+            continue
+        depth = next((k for k in range(4, 0, -1) if dist[k][x, y]), 0)
+        if depth < 3 and rnd.random() > (depth + 1) / 4:           # dithered, soft edge towards the lawn
+            continue
+        v = noise[x, y] / 255 * .8 + rnd.random() * .2
+        pix[x, y] = DG[min(4, int(v * 5))]
+        if rnd.random() < .012:                                   # sparse light specks (sunlit leaves)
+            pix[x, y] = (88, 148, 84)
+# soft shadow just inside the lawn, below/right of the forest edge (light from the top-left)
+for y in range(H - 1, 0, -1):
+    for x in range(W - 1, 0, -1):
+        if pix[x, y] in (G0, G1, G2, G3) and pix[x - 1, y - 1] in DG and (x + y) % 2 == 0:
+            pix[x, y] = GS
 fp = free.load()
 cm = clear_mask.load()
-forest_core = clear_mask.point(lambda v: 255 - v).filter(ImageFilter.MinFilter(9)).load()   # deep forest, 4 px inside
 
 
-def tree(x, y, r, maple=False):
-    """round canopy, lit from the top-left, with a soft shadow down-right on the grass"""
-    for yy in range(y - r + 2, y + r + 4):            # shadow on grass only
-        for xx in range(x - r + 2, x + r + 4):
-            if (xx - x - 2) ** 2 + (yy - y - 2) ** 2 <= r * r and 0 <= xx < W and 0 <= yy < H and pix[xx, yy] in GRASSY:
-                pix[xx, yy] = GS
-    body, mid, lit = ((178, 82, 52), (214, 116, 62), (238, 168, 92)) if maple else (F1, F2, F3)   # autumn maple vs pine-green
+def tree(x, y, r):
+    """a single lawn tree (only a handful, never clustered)"""
+    d.ellipse((x - r + 2, y - r + 2, x + r + 2, y + r + 2), fill=GS)
     d.ellipse((x - r, y - r, x + r, y + r), fill=F0)
-    d.ellipse((x - r + 1, y - r + 1, x + r - 1, y + r - 1), fill=body)
-    d.ellipse((x - r + 1, y - r + 1, x + r // 3, y + r // 3), fill=mid)
-    d.ellipse((x - r + 2, y - r + 2, x - r // 3, y - r // 3), fill=lit)
-    if r >= 4 and not maple:
-        pt(x - r + 3, y - r + 3, F4)
+    d.ellipse((x - r + 1, y - r + 1, x + r - 1, y + r - 1), fill=F2)
+    d.ellipse((x - r + 1, y - r + 1, x + r // 3, y + r // 3), fill=F3)
 
 
 def fits(x, y, r):
-    for yy in range(y - r, y + r + 1):
-        for xx in range(x - r, x + r + 1):
-            if (xx - x) ** 2 + (yy - y) ** 2 <= r * r:
-                if not (0 <= xx < W and 0 <= yy < H):
-                    continue                          # canopies may leave the map edge
-                if fp[xx, yy] == 0:
-                    return False
-    return True
+    return all(0 <= xx < W and 0 <= yy < H and fp[xx, yy]
+               for yy in range(y - r - 1, y + r + 3) for xx in range(x - r - 1, x + r + 3))
 
 
-# deep-forest floor (only where no tree will ever be visible as a gap)
-for y in range(H):
-    for x in range(W):
-        if forest_core[x, y] and fp[x, y]:
-            pix[x, y] = F0 if (x * 7 + y * 3) % 11 else F1
-cands = []
-for _ in range(9000):
-    x, y = rnd.randrange(-3, W + 3), rnd.randrange(-3, H + 3)
-    inside = 0 <= x < W and 0 <= y < H
-    if inside and cm[x, y]:                           # trunk must stand in the forest (canopy may lean out)
-        continue
-    cands.append((y, x, rnd.choice((3, 4, 4, 5, 5, 6))))
-cands.sort()                                          # back to front
-planted = []
-for y, x, r in cands:
-    if any((x - px_) ** 2 + (y - py_) ** 2 < (r + pr - 3) ** 2 for (px_, py_, pr) in planted[-160:]):
-        continue
-    if fits(x, y, r):
-        tree(x, y, r, maple=rnd.random() < .012)
-        planted.append((x, y, r))
-
-# campus trees in clearings (also only where they fit)
-for (x, y) in ((92, 140), (150, 320), (264, 268), (270, 300), (252, 330), (100, 268), (196, 168),
-               (120, 100), (136, 112), (6, 30), (100, 40)):
+for (x, y) in ((150, 320), (264, 268), (252, 330), (100, 268), (196, 168), (120, 100)):
     if fits(x, y, 4):
         tree(x, y, 4)
-        KEEP[f'tree@{x},{y}'] = (x - 4, y - 4, x + 8, y + 8)
+        KEEP[f'tree@{x},{y}'] = (x - 4, y - 4, x + 7, y + 7)
 
 # a few flowers in the lawns
 for _ in range(160):
