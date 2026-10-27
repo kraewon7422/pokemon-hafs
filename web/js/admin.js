@@ -304,7 +304,7 @@ async function showApp() {
     h('div#festival-banner', { role: 'alert' }, '⚠ 게임 정지 중 — festival_open이 꺼져 있어요 (설정 탭에서 켤 수 있어요)'),
     h('div#self-banner', { role: 'status' }, '셀프 지급 모드 켜짐 — 학생이 앱에서 직접 몬스터를 받고 있어요 (설정 탭에서 끌 수 있어요)'),
     nav,
-    h('main#main'));
+    h('main#main', h('p.loading', '불러오는 중…')));
   try { await loadCatalog(); } catch (e) { fail(e); }
   const want = location.hash.slice(1);
   go(TABS.some(([id]) => id === want) ? want : 'dash');
@@ -1200,7 +1200,7 @@ async function studentDetail(sid, reload) {
   const dangerBox = h('div.box.stack',
     h('h3', '기록까지 삭제'),
     h('p.small-txt.muted', '다른 사람이 이 학번을 잘못 가져갔을 때만. 폰 분실은 위의 [다른 로그인으로 옮기기]를 쓰세요.'),
-    h('div.row', h('button.btn.small.primary', { onclick: unlink }, '계정 연결 해제 (기록까지 삭제)…')));
+    h('div.row', h('button.btn.small.danger', { onclick: unlink }, '계정 연결 해제 (기록까지 삭제)…')));
 
   const tBox = h('div.box',
     h('h3', `티켓 (최근 ${tickets.length})`),

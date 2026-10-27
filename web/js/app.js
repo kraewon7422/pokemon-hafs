@@ -149,6 +149,13 @@ async function loadCatalog() {
   await kv.set('catalog', S.catalog);
 }
 
+// QR names/positions and monster texts can change during the festival (admin page) → refresh every 5 min
+function refreshCatalogIfOld() {
+  if (!S.catalog?.at || Date.now() - new Date(S.catalog.at).getTime() < 5 * 60_000) return;
+  S.catalog.at = new Date().toISOString();          // don't start twice
+  loadCatalog().then(() => { if (!S.overlay) renderTab(); }).catch(() => {});
+}
+
 // ───────────────────────── sync ─────────────────────────
 
 const FINAL = new Set(['ok', 'invalid_token', 'already_pending', 'daily_cap', 'bag_full', 'nonce_conflict', 'bad_format', 'locked']);
@@ -175,11 +182,13 @@ function sync(opts = {}) {
 
       if (res.same) {                               // nothing changed on the server: tiny response
         S.snap.synced_at = new Date().toISOString();
+        refreshCatalogIfOld();
         await kv.set('snap', S.snap);
         return;
       }
       const prevLines = new Set(collection().map((c) => c.line_id));
       S.snap = { ...res.state, ver: res.ver, synced_at: new Date().toISOString() };
+      refreshCatalogIfOld();
       await kv.set('snap', S.snap);
 
       // new redemptions → celebrate
@@ -431,9 +440,24 @@ function viewMap() {
       },
     }, h('span', q.id.replace(/^A0?/, '')));
   });
+  const zoom = S.mapZoom || 1;
+  const setZoom = (z) => {
+    const box = $('.map-scroll');
+    const cx = box ? (box.scrollLeft + box.clientWidth / 2) / box.scrollWidth : 0.5;   // keep the centre in view
+    const cy = box ? (box.scrollTop + box.clientHeight / 2) / box.scrollHeight : 0.5;
+    S.mapZoom = z; sfx.blip(); renderTab();
+    const nb = $('.map-scroll');
+    if (nb) { nb.scrollLeft = cx * nb.scrollWidth - nb.clientWidth / 2; nb.scrollTop = cy * nb.scrollHeight - nb.clientHeight / 2; }
+  };
   return [
-    h('h2.section-title', '학교 지도'),
-    h('div.map-wrap', { style: { width: `${mapWidth()}px` } }, h('img', { src: 'img/map.png', alt: '학교 지도', draggable: 'false' }), pins),
+    h('div.banner', h('h2.section-title', '학교 지도'),
+      h('div.zoom', { role: 'group', 'aria-label': '지도 확대' },
+        h('button.btn.small', { disabled: zoom <= 1, onclick: () => setZoom(zoom - 1), 'aria-label': '축소' }, '－'),
+        h('span', `×${zoom}`),
+        h('button.btn.small', { disabled: zoom >= 3, onclick: () => setZoom(zoom + 1), 'aria-label': '확대' }, '＋'))),
+    h(`div.map-scroll${zoom > 1 ? '.zoomed' : ''}`,
+      h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.png', alt: '학교 지도', draggable: 'false' }), pins)),
+    zoom > 1 && h('small', { style: { textAlign: 'center' } }, '손가락으로 끌어서 지도를 움직여요'),
     h('div.legend',
       h('span', h('i', { style: { background: 'var(--red)' } }), '아직 안 찍음'),
       h('span', h('i', { style: { background: 'var(--gold)' } }), '가방에 있음'),
@@ -446,10 +470,10 @@ function viewMap() {
 
 // largest CSS width ≤ the screen at which every map pixel is a whole number of device pixels
 const MAP_W = 288;
-function mapWidth() {
+function mapWidth(zoom = 1) {
   const dpr = window.devicePixelRatio || 1;
   const avail = Math.min(536, (document.querySelector('main')?.clientWidth || window.innerWidth) - 24 - 8);
-  const k = Math.max(1, Math.floor((avail * dpr) / MAP_W));
+  const k = Math.max(1, Math.floor((avail * dpr) / MAP_W)) * zoom;   // zoom stays an integer multiple → crisp
   return (MAP_W * k) / dpr + 8;   // + border
 }
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });

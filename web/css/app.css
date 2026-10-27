@@ -207,3 +207,9 @@ details.code-login form { margin-top: 8px; }
 .icon { width: 1.2em; height: 1.2em; vertical-align: -0.2em; }
 .dex-cell.withdrawn { opacity: .5; }
 input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: var(--red); }
+
+/* map zoom: integer multiples of the native map, scroll/drag to pan */
+.zoom { display: flex; align-items: center; gap: 6px; }
+.zoom .btn.small { min-width: 44px; padding: 0; font-size: var(--fs-l); }
+.map-scroll.zoomed { max-height: 64dvh; overflow: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; overscroll-behavior: contain; touch-action: pan-x pan-y; }
+.map-scroll.zoomed .map-wrap { margin: 0; }
