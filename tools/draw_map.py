@@ -169,7 +169,7 @@ for i, y in enumerate(range(278, 288, 2)):
 rect(123, 277, 123, 288, S0); rect(139, 277, 139, 288, S0)
 
 # ── 운동장: 흙 운동장 (no track, no turf) ──
-FX0, FY0, FX1, FY1 = 14, 368, 262, 472
+FX0, FY0, FX1, FY1 = 30, 368, 262, 472
 rect(FX0 - 2, FY0 - 2, FX1 + 2, FY1 + 2, S1)             # low fence base
 rect(FX0, FY0, FX1, FY1, DIRT1)
 for _ in range(1500):
@@ -213,12 +213,16 @@ for x in range(FX0 - 2, FX1 + 3, 6):
 for y in range(FY0 - 2, FY1 + 3, 6):
     pt(FX0 - 3, y, S0); pt(FX1 + 3, y, S0)
 # benches / stands on the north edge of the field + drinking fountain (식수대)
-for bx in (34, 62, 196, 224):
+for bx in (40, 68, 196, 224):
     rect(bx, 362, bx + 14, 364, WOOD, OUT); rect(bx + 1, 362, bx + 13, 362, WOOD_L)
 rect(166, 361, 171, 366, S1, OUT); pt(168, 362, W1); pt(169, 362, W2)
 # vegetable plots (밭) around the field
-for (x0, y0) in ((2, 376), (2, 404), (2, 432), (266, 380), (266, 406)):
-    pass
+for (x0, y0) in ((3, 368), (3, 402), (3, 436)):             # vegetable plots (밭) beside the field
+    rect(x0, y0, x0 + 20, y0 + 30, DIRT0, WOOD)
+    for y in range(y0 + 2, y0 + 29, 4):
+        rect(x0 + 2, y, x0 + 18, y + 1, (150, 116, 80))
+        for x in range(x0 + 3, x0 + 18, 3):
+            pt(x, y - 1, T2); pt(x, y, T1)
 
 # ── 생태연못 (along LUX / dorm side, by the gate) ──
 d.rounded_rectangle((235, 226, 268, 318), radius=10, fill=W1, outline=W0)
@@ -421,9 +425,13 @@ rect(0, 0, VX1 - VX0, 16 + 5 * 7 + 3, None, OUT); rect(0, 16, VX1 - VX0, 16, OUT
 ac(10, 5); ac(96, 5); solar(20, 4, 14, 5); solar(78, 4, 14, 5)
 img, d, pix = _img, _d, _pix
 VW = VX1 - VX0
+V_LEFT = (VW + 1 - ((VW + 1 - 5) // 7 * 7 - 1)) // 2     # same first-window x as facade()
+
+
 def vbend(i):
-    seg = min(i // 14, (VW - i) // 14)    # bend in whole 2-bay chunks → clean steps, rows stay readable
-    return min(seg, 3)                    # centre pushed down → gently curved bar
+    # bend only at the gaps between window pairs → every window stays whole
+    seg = max(0, min(7, (i - V_LEFT + 1) // 14))
+    return min(seg, 7 - seg, 3)           # 0,1,2,3,3,2,1,0 → centre pushed forward: gently curved bar
 for i in range(VW + 1):
     oy = VY0 - 3 + vbend(i)
     shade(VX0 + i + 3, oy + layer.height, VX0 + i + 3, oy + layer.height + 2)
@@ -553,7 +561,7 @@ TREES = [
     (200, 150, 0), (264, 150, 0),
     (70, 126, 0), (72, 170, 0), (10, 176, 0), (24, 170, 1), (40, 172, 0),
     (14, 272, 1),                                          # 잔디광장's single tree
-    (196, 222, 0), (224, 336, 0), (6, 334, 0), (172, 338, 0), (200, 336, 1), (6, 380, 0), (6, 410, 1), (6, 444, 0),
+    (224, 336, 0), (6, 334, 0), (172, 338, 0), (200, 336, 1),
 ]
 for (x, y, big) in sorted(TREES, key=lambda t: t[1]):
     tree(x, y, bool(big))
@@ -611,7 +619,7 @@ label(14, 220, '잔디광장', vertical=True)
 label(252, 270, '생태연못', vertical=True)
 label(246, 328, '정문')
 label(80, 338, '야외공연장')
-label(138, 404, '운동장')
+label(146, 404, '운동장')
 
 KEEP.update({
     '야외학습장 seats': (212, 146, 253, 169), '야외공연장 seats': (8, 330, 45, 351),
