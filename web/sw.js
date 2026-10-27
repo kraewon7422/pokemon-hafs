@@ -1,9 +1,9 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v10';
+const VERSION = 'hafsmon-v11';
 const SHELL = [
-  './', 'index.html', 's/', 's/index.html', 'manifest.webmanifest',
+  './', 's/', 'manifest.webmanifest',   // not index.html: Cloudflare Pages redirects it, and a redirected response can't answer a navigation
   'css/pixel.css', 'css/types.css', 'css/app.css',
   'js/app.js', 'js/config.js', 'js/sb.js', 'js/db.js', 'js/qrfmt.js', 'js/scanner.js', 'js/sprites.js',
   'js/sfx.js', 'js/ui.js', 'js/auth.js',
@@ -29,13 +29,13 @@ self.addEventListener('fetch', (e) => {
   const url = new URL(req.url);
   if (req.method !== 'GET' || url.origin !== location.origin) return;   // Supabase etc. → network only
   // staff pages are online-only tools; don't cache them
-  if (/\/(admin|booth|screen)\.html$/.test(url.pathname) || url.pathname.includes('/js/admin') || url.pathname.includes('/js/booth') || url.pathname.includes('/js/screen')) return;
+  if (/\/(admin|booth|screen)(\.html)?$/.test(url.pathname) || url.pathname.includes('/js/admin') || url.pathname.includes('/js/booth') || url.pathname.includes('/js/screen')) return;
   e.respondWith((async () => {
     const cache = await caches.open(VERSION);
     const hit = await cache.match(req, { ignoreSearch: req.mode === 'navigate' });
     if (hit) return hit;
     if (req.mode === 'navigate') {
-      try { return await fetch(req); } catch { return (await cache.match(url.pathname.endsWith('/s/') ? 's/index.html' : 'index.html')) || Response.error(); }
+      try { return await fetch(req); } catch { return (await cache.match(/\/s(\/|\/index\.html)?$/.test(url.pathname) ? 's/' : './')) || Response.error(); }
     }
     try {
       const res = await fetch(req);
