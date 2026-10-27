@@ -1,0 +1,15 @@
+/* Subject (type) colours — shared by the student app and the admin page.
+   Light backgrounds get dark text so every chip passes 4.5:1 contrast. */
+.t-국어 { background: #d84a78; color: #fff; }
+.t-수학 { background: #4a5cc8; color: #fff; }
+.t-영어 { background: #7fd8e6; color: #1e2433; }
+.t-과학 { background: #3a74c8; color: #fff; }
+.t-사회 { background: #7a58c8; color: #fff; }
+.t-외국어 { background: #f0c040; color: #1e2433; }
+.t-정보 { background: #2a8070; color: #fff; }
+.t-한국사 { background: #8a6420; color: #fff; }
+.t-음악 { background: #f4b8c8; color: #1e2433; }
+.t-체육 { background: #b82a22; color: #fff; }
+.t-미술 { background: #f8c030; color: #1e2433; }
+.t-전설 { background: linear-gradient(90deg, #f8d048, #f0a040, #c8a0f0); color: #1e2433; }
+.type[class*='t-'] { text-shadow: none; }
