@@ -13,6 +13,7 @@
   --red: #d93b3b;
   --red-dark: #a82828;
   --gray: #9aa4b0;
+  --sky: #4aa8e0;
   --radius: 10px;
   --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif;
 }
@@ -126,6 +127,8 @@ table.tbl tr.click:hover td { background: #f5f8ff; }
 table.tbl tr.sel td { background: #eef3ff; }
 table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .scroll-y { max-height: 520px; overflow-y: auto; }
+/* long unbroken strings (error messages, JSON) must not stretch the table */
+table.tbl td.small-txt { word-break: break-all; overflow-wrap: anywhere; min-width: 160px; }
 
 /* status chips */
 .chip.warn { background: #fff6dc; border-color: #f0c64a; color: #7a5a00; }
@@ -170,6 +173,10 @@ table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: ta
 .line-item:hover { border-color: #b9cdfa; }
 .line-item[aria-pressed='true'] { border-color: var(--brand); background: #f3f7ff; }
 .line-item .meta { display: grid; gap: 2px; font-size: 13px; }
+.line-group { display: grid; gap: 6px; }
+.line-group + .line-group { margin-top: 8px; }
+.line-group-h { position: sticky; top: 0; z-index: 1; background: var(--card); padding: 4px 0 2px; font-size: 13px; color: var(--sub); font-weight: 600; border-bottom: 1px solid var(--line); }
+select.inp optgroup { font-weight: 700; color: var(--sub); }
 .sp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 700px) { .sp-grid { grid-template-columns: minmax(0, 1fr); } }
 .sp-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; display: grid; gap: 8px; }
@@ -189,6 +196,7 @@ table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: ta
 dl.kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 4px 14px; margin: 0; }
 dl.kv dt { font-weight: 600; color: var(--sub); }
 dl.kv dd { margin: 0; }
+ol.steps { margin: 4px 0; padding-left: 20px; display: grid; gap: 4px; }
 
 /* ── settings ── */
 .kill { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }

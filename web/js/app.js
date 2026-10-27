@@ -7,7 +7,7 @@ import { parsePlace, isBag, makeNonce, bagPayload, drawQR } from './qrfmt.js';
 import { Scanner } from './scanner.js';
 import { spriteCanvas, paint } from './sprites.js';
 import { sfx, unlockAudio, isMuted, setMuted } from './sfx.js';
-import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion } from './ui.js';
+import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON } from './ui.js';
 import { inAppBrowser, escapeInApp, isIOS, renderGoogleButton, devLogin, signOut } from './auth.js';
 
 const S = {
@@ -42,12 +42,14 @@ const bag = () => [
   ...S.outbox.filter((o) => !serverPending().some((t) => t.nonce === o.n))
     .map((o) => ({ nonce: o.n, qr_id: o.q, token: o.t, name: o.q === '_' ? '수동 코드' : qrName(o.q) || '확인 중인 장소', synced: false })),
 ];
-const evolvable = () => collection().filter((c) => c.stage < maxStage(c.line_id));
+const evolvable = () => collection().filter((c) => c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id));
+const isWithdrawn = (line) => (S.snap?.rules?.withdrawn || []).includes(line) || !!lineOf(line)?.withdrawn;
 const vibrate = (p) => { try { navigator.vibrate?.(p); } catch { /* iOS: none */ } };
 
 // ───────────────────────── boot ─────────────────────────
 
 async function boot() {
+  pixelFontScale();
   window.addEventListener('error', (e) => reportError(`${e.message} @${e.filename}:${e.lineno}`));
   window.addEventListener('unhandledrejection', (e) => reportError(`unhandled: ${e.reason?.message || e.reason}`));
   document.addEventListener('pointerdown', unlockAudio, { passive: true });
@@ -58,13 +60,22 @@ async function boot() {
   window.addEventListener('popstate', onPop);
 
   if ('serviceWorker' in navigator) {
+    // New versions: apply right away at start-up; while playing, show a "새 버전 적용" button (never during the bag QR).
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloading) { reloading = true; location.reload(); } });
     navigator.serviceWorker.register('./sw.js').then((reg) => {
+      const offer = (w) => {
+        if (!w || !navigator.serviceWorker.controller) return;
+        if (!$('nav.tabs')) { w.postMessage('skipWaiting'); return; }           // still on the loading/login screen
+        S.updateReady = () => { if (!S.bagOpen) w.postMessage('skipWaiting'); };
+        renderTab();
+      };
+      if (reg.waiting) offer(reg.waiting);
       reg.addEventListener('updatefound', () => {
         const w = reg.installing;
-        w?.addEventListener('statechange', () => {
-          if (w.state === 'installed' && navigator.serviceWorker.controller) toast('새 버전이 준비됐어요. 앱을 완전히 닫았다 열면 적용돼요.', 5000);
-        });
+        w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
       });
+      setInterval(() => reg.update().catch(() => {}), 10 * 60_000);
     }).catch(() => {});
   }
 
@@ -117,7 +128,8 @@ async function doAfterLogin() {
       if (S.snap && S.catalog) { if (!$('nav.tabs')) renderShell(); return; }
       return renderLogin('인터넷에 연결된 곳에서 처음 로그인해 주세요.');
     }
-    const msg = errorText(e.message);
+    // session lost (logged out in another tab, expired) → PostgREST answers 'permission denied' for anon
+    const msg = /permission denied|JWT|NOT_AUTHENTICATED/i.test(e.message) ? '로그인이 풀렸어요. 다시 로그인해 주세요.' : errorText(e.message);
     await signOut();
     renderLogin(msg);
   }
@@ -125,7 +137,7 @@ async function doAfterLogin() {
 
 async function loadCatalog() {
   const [lines, species, qrs] = await Promise.all([
-    sb.from('lines').select('id,teacher,subject,rarity,active,max_stage').order('id'),
+    sb.from('lines').select('id,teacher,subject,rarity,active,max_stage,withdrawn').order('id'),
     sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight').order('id'),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
   ]);
@@ -215,7 +227,7 @@ function renderShell() {
     h('header.topbar', h('h1', CONFIG.GAME_TITLE),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         h('div.status#status', { role: 'status' }),
-        h('button.gear', { 'aria-label': '설정', onclick: openSettings }, '⚙'))),
+        h('button.gear', { 'aria-label': '설정', onclick: openSettings, html: ICON.gear }))),
     h('main#main', { tabindex: -1 }),
     h('nav.tabs', { 'aria-label': '메뉴' }, TABS.map(([id, label]) => id === 'scan'
       ? h('button.scan-tab', { 'aria-label': 'QR 찍기', onclick: openScanner }, h('span.capsule', { html: CAPSULE }), label)
@@ -276,7 +288,7 @@ function nextAction() {
   if (items.length) return ['🎫', `가방에 티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
   const ev = evolvable();
   if (p.evo_tickets > 0 && ev.length) {
-    return ['✨', `진화권 ${p.evo_tickets}장 — 몬스터를 진화시켜요`, 'gold',
+    return ['✨', `진화권 ${p.evo_tickets}장 - 몬스터를 진화시켜요`, 'gold',
       () => openDetail(speciesOf(dexOf(ev[0].line_id, ev[0].stage)))];
   }
   return ['📷', 'QR을 찾아서 찍어 보세요', 'go', openScanner];
@@ -296,8 +308,18 @@ function viewHome() {
   const minsLeft = closeAt ? Math.round((closeAt - Date.now()) / 60000) : null;
 
   return [
-    Number(R.min_client_version) > CONFIG.VERSION && h('div.box.warn-box', '⬆ 새 버전이 있어요! 앱(브라우저 탭)을 완전히 닫았다가 다시 열어 주세요.'),
-    !S.snap.festival_open && h('div.box', '⏸ 지금은 게임 운영 시간이 아니에요. 찍은 QR은 저장해 두었다가 시작되면 보내요.'),
+    S.updateReady && h('button.btn.big.gold', { onclick: () => S.updateReady() }, '⬆ 새 버전 적용하기 (2초)'),
+    !S.updateReady && Number(R.min_client_version) > CONFIG.VERSION && h('div.box.warn-box', '⬆ 새 버전이 있어요! 앱(브라우저 탭)을 완전히 닫았다가 다시 열어 주세요.'),
+    R.notice && h('div.box.notice-box', '📢 ', String(R.notice)),
+    R.festival_ended && h('div.box.ended-box',
+      h('div.big', '🎉 축제 끝! 수고했어요'),
+      h('div', p.in_ranking === false ? '선생님·손님 계정은 랭킹에서 제외돼요.' : `최종 순위 ${p.rank ? '#' + p.rank : '-'} · 점수 ${p.score} · 도감 ${p.dex_count}/${total}`),
+      R.prize_note && h('div', String(R.prize_note))),
+    !S.snap.festival_open && !R.festival_ended && h('div.box', '⏸ 지금은 게임 운영 시간이 아니에요. 찍은 QR은 저장해 두었다가 다시 열리면 보내요.'),
+    (R.legend_schedule || []).length > 0 && !R.festival_ended && h('div.box.legend-box', h('span', { style: { fontSize: 'var(--fs-xl)' } }, '⚡'),
+      h('div', h('b', '전설의 몬스터 출현'), h('br'),
+        R.legend_schedule.map((l) => (l.from ? `${fmtTime(l.from)}${l.until ? '~' + fmtTime(l.until) : ''}` : '지금')).join(' · '),
+        ' · 메인 부스 대형 화면')),
     minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', `⏰ 마감까지 ${minsLeft}분! 가방 티켓은 마감 전에 부스에서 써 주세요.`),
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
@@ -308,7 +330,7 @@ function viewHome() {
       h('div.partner', partner ? spriteCanvas(dexOf(partner.line_id, partner.stage), 88) : spriteCanvas(1, 88, 'silhouette')),
       h('div.stats',
         h('span', '도감', h('b', `${p.dex_count}/${total}`)), h('span', '점수', h('b', p.score)),
-        h('span', '순위', h('b', p.rank ? `#${p.rank}` : '-')), h('span', '진화권', h('b', p.evo_tickets))),
+        h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화권', h('b', p.evo_tickets))),
       h('div.badges', { title: '최종 진화시킨 쌤' }, S.catalog.lines.map((l) => {
         const done = (owned(l.id)?.stage || 0) >= (l.max_stage ?? 3);
         return h(`i${done ? '.on.t-' + l.subject : ''}`, { title: done ? `${l.subject} 완성` : '?' });
@@ -400,16 +422,18 @@ function viewMap() {
     const cls = inBag.has(q.id) ? 'bag' : n >= capOf(q) ? 'done' : n > 0 ? 'today' : '';
     return h(`button.pin${cls ? '.' + cls : ''}`, {
       style: { left: `${q.map_x * 100}%`, top: `${q.map_y * 100}%` }, 'aria-label': q.name,
-      onclick: () => {
+      onclick: (e) => {
         sfx.blip();
+        document.querySelectorAll('.pin.sel').forEach((x) => x.classList.remove('sel'));
+        e.currentTarget.classList.add('sel');
         info.replaceChildren(h('b', q.name), h('br'), q.hint || '', h('br'),
-          h('small', inBag.has(q.id) ? '🎫 가방에 티켓 있음 — 부스에서 쓰면 다시 찍을 수 있어요' : `오늘 ${n}/${capOf(q)}번 찍음`));
+          h('small', inBag.has(q.id) ? '🎫 가방에 티켓 있음 - 부스에서 쓰면 다시 찍을 수 있어요' : `오늘 ${n}/${capOf(q)}번 찍음`));
       },
     }, h('span', q.id.replace(/^A0?/, '')));
   });
   return [
     h('h2.section-title', '학교 지도'),
-    h('div.map-wrap', h('img', { src: 'img/map.png', alt: '학교 지도', draggable: 'false' }), pins),
+    h('div.map-wrap', { style: { width: `${mapWidth()}px` } }, h('img', { src: 'img/map.png', alt: '학교 지도', draggable: 'false' }), pins),
     h('div.legend',
       h('span', h('i', { style: { background: 'var(--red)' } }), '아직 안 찍음'),
       h('span', h('i', { style: { background: 'var(--gold)' } }), '가방에 있음'),
@@ -419,6 +443,16 @@ function viewMap() {
     h('p', { style: { fontSize: '13px', margin: 0 } }, '지도에 없는 숨은 장소도 있어요… 👀'),
   ];
 }
+
+// largest CSS width ≤ the screen at which every map pixel is a whole number of device pixels
+const MAP_W = 288;
+function mapWidth() {
+  const dpr = window.devicePixelRatio || 1;
+  const avail = Math.min(536, (document.querySelector('main')?.clientWidth || window.innerWidth) - 24 - 8);
+  const k = Math.max(1, Math.floor((avail * dpr) / MAP_W));
+  return (MAP_W * k) / dpr + 8;   // + border
+}
+const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 // ───────────────────────── 도감 (+ 진화) ─────────────────────────
 
@@ -441,6 +475,7 @@ function viewDex() {
         onclick: () => { S.dexFilter = s; renderTab(); },
       }, s === 'all' ? '전체' : s))),
     h('div.dex-grid', list.map((sp) => {
+      if (isWithdrawn(sp.line_id)) return h('div.dex-cell.unknown.withdrawn', h('span.no', `No.${String(sp.id).padStart(3, '0')}`), spriteCanvas(sp.id, 72, 'silhouette'), h('span.nm', '비공개'));
       const ok = reached(sp);
       const c = owned(sp.line_id);
       const canEvo = ok && c.stage === sp.stage && sp.stage < maxStage(sp.line_id) && p.evo_tickets > 0;
@@ -532,16 +567,16 @@ async function evolutionScene(fromDex, toDex, success, col) {
   if (reducedMotion()) {
     paint(canvas, success ? toDex : fromDex, 192);
   } else {
-    // alternate white silhouettes, speeding up (400 → 80 ms) — never a full-screen strobe
-    let t = 400;
+    // alternate white silhouettes, speeding up (600 → 340 ms) - never faster than 3 per second
+    let t = 600;
     let flip = false;
-    const end = Date.now() + 3200;
+    const end = Date.now() + 3600;
     while (Date.now() < end) {
       flip = !flip;
       paint(canvas, flip ? toDex : fromDex, 192, 'white');
       sfx.evoTick();
       await sleep(t);
-      t = Math.max(80, t * 0.82);
+      t = Math.max(340, t * 0.85);              // ≤ 3 changes per second (photosensitivity)
     }
     if (success) scene.classList.add('flash');
     paint(canvas, success ? toDex : fromDex, 192);
@@ -608,7 +643,7 @@ function openScanner() {
   const tip = h('div.scan-tip', '장소에 붙은 QR을 네모 안에 맞춰 주세요');
   const ov = overlay(h('div', { style: { display: 'flex', flexDirection: 'column', width: '100%' } },
     h('div.scanner', video, h('div.reticle'), tip,
-      h('button.btn.small.close-x', { onclick: () => closeOverlay(), 'aria-label': '닫기' }, '✕'),
+      h('button.btn.small.close-x', { onclick: () => closeOverlay(), 'aria-label': '닫기', html: ICON.close }),
       h('div.scan-bar',
         h('div', { style: { display: 'flex', gap: '8px', justifyContent: 'center' } },
           torchBtn,
@@ -661,7 +696,7 @@ async function handleScan({ q, t }) {
   renderTab();
   const offlineNote = S.online ? '' : (known ? '\n(오프라인이라 나중에 자동으로 보내요)'
     : '\n⚠ 숨은·전설 장소는 바로 인터넷에 연결해야 인정돼요!');
-  say(`${name}에서 티켓을 얻었다! 🎫\n가방 ${items.length + 1}/${R.bag_max} — 메인 부스에서 몬스터로 바꿔요.${offlineNote}`);
+  say(`${name}에서 티켓을 얻었다! 🎫\n가방 ${items.length + 1}/${R.bag_max} - 메인 부스에서 몬스터로 바꿔요.${offlineNote}`);
   sync();
 }
 
@@ -721,7 +756,7 @@ async function celebrate(tickets, prevLines) {
     prevLines.add(sp.line_id);
     const rare = lineOf(sp.line_id)?.rarity !== 'common';
     const canvas = spriteCanvas(sp.id, 200, 'white');
-    const scene = h('div.scene', h('div.rays'), canvas, isNew && h('span.new-badge', 'NEW!'));
+    const scene = h('div.scene', h('div.rays'), h('span.spr', canvas, isNew && h('span.new-badge', 'NEW!')));
     const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
     const ov = overlay(h('div.stage', scene, text), 'full');
     await sleep(reducedMotion() ? 0 : 500);
@@ -807,7 +842,7 @@ function renderConsent() {
         h('li', '목적: 축제 게임 운영과 랭킹·상품 지급.'),
         h('li', '축제가 끝나고 2주 뒤 모두 삭제해요.')),
       h('label', { for: 'show', style: { display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' } }, show,
-        h('span', `랭킹·대형 화면에 내 이름을 "${S.snap?.profile?.gen ? S.snap.profile.gen + '기 ' : ''}${maskName(S.snap?.profile?.name)}"처럼 가려서 보여 주기. (체크를 풀면 "익명 트레이너" — 나중에 오른쪽 위 ⚙에서도 바꿀 수 있어요)`))),
+        h('span', `랭킹·대형 화면에 내 이름을 "${S.snap?.profile?.gen ? S.snap.profile.gen + '기 ' : ''}${maskName(S.snap?.profile?.name)}"처럼 가려서 보여 주기. (체크를 풀면 "익명 트레이너" - 나중에 오른쪽 위 ⚙에서도 바꿀 수 있어요)`))),
     err,
     h('button.btn.big.primary', {
       style: { maxWidth: '420px' },
@@ -939,7 +974,7 @@ function renderLogin(error = '') {
         err.textContent = '';
         try { await devLogin(email.value.trim(), pw.value); } catch (x) { err.textContent = x.message; }
       },
-    }, h('small', '— 개발용 테스트 로그인 —'), email, pw, h('button.btn', { type: 'submit' }, '테스트 로그인')));
+    }, h('small', '- 개발용 테스트 로그인 -'), email, pw, h('button.btn', { type: 'submit' }, '테스트 로그인')));
   }
   content.push(h('p.foot-note', '학교 구글 계정으로 로그인하면 학번이 자동으로 연결돼요. 저장하는 정보: 학번, 이름, 게임 기록 (축제 종료 2주 후 삭제).'));
   app().replaceChildren(h('div.login', content));

@@ -72,3 +72,25 @@ export function timeAgo(iso) {
 }
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Galmuri11 is drawn on a 12px grid. A CSS size is crisp only when size × devicePixelRatio is a multiple of 12,
+// so on hi-dpi phones snap each size tier (--fs-s/m/l/xl/xxl in pixel.css) to the nearest 12-device-px multiple.
+export function pixelFontScale() {
+  const apply = () => {
+    const dpr = window.devicePixelRatio || 1;
+    if (dpr < 1.75) return;                       // desktop / low-dpi: keep the CSS defaults
+    const tiers = { s: 12, m: 16, l: 20, xl: 24, xxl: 36 };
+    for (const [k, target] of Object.entries(tiers)) {
+      const units = Math.max(1, Math.round((target * dpr) / 12));
+      document.documentElement.style.setProperty(`--fs-${k}`, `${(units * 12) / dpr}px`);
+    }
+  };
+  apply();
+  matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`).addEventListener?.('change', apply);
+}
+
+// small pixel icons drawn as SVG (the pixel font has no ✕ / ⚙ glyphs)
+export const ICON = {
+  close: '<svg class="icon" viewBox="0 0 8 8" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M1 1h1v1H1zM2 2h1v1H2zM3 3h2v2H3zM5 2h1v1H5zM6 1h1v1H6zM2 5h1v1H2zM1 6h1v1H1zM5 5h1v1H5zM6 6h1v1H6z"/></svg>',
+  gear: '<svg class="icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M4 0h1v1h1v1h1V1h1v1h-1v1h1v1h1v1H8v1H7v1h1v1H7V7H6v1H5v1H4V8H3V7H2v1H1V7h1V6H1V5H0V4h1V3h1V2H1V1h1v1h1V1h1zM4 3v1H3v1h1v1h1V5h1V4H5V3z"/></svg>',
+};

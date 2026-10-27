@@ -44,7 +44,9 @@ const nonce = () => Array.from({ length: 12 }, () => '0123456789abcdefghijklmnop
 const bag = (sid, items) => ['PH1', sid, ...items.map(i => `${i.n}.${i.q === '_' ? '-' : i.q}.${i.t}`)].join('/').toUpperCase();
 const bagV1 = (sid, items) => ['PH1', sid, ...items.map(i => `${i.n}.${i.q}.${i.t}`)].join('|');
 
-const admin = client(await login('admin@staff.test'));
+const ADMIN_TOK = await login('admin@staff.test');
+const admin = client(ADMIN_TOK);
+const patchSetting = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOK}` }, body: JSON.stringify({ value: v }) });
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 for (const e of ['022001', '022002', '022003', '023004']) S.push(client(await login(`${e}@test.local`)));
@@ -75,6 +77,10 @@ ok(an.status >= 400 || (Array.isArray(an.data) && an.data.length === 0), 'anon c
 ok((await S[0].rpc('booth_redeem', { p_payload: '022001' })).error === 'NOT_STAFF', 'student cannot call booth_redeem');
 ok((await S[0].rpc('admin_stats')).error === 'NOT_ADMIN', 'student cannot call admin_stats');
 ok((await anon.rpc('sync', { p_scans: [] })).error, 'anon cannot call sync');
+for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed'])
+  ok((await anon.rpc(fn, {})).error, `anon cannot call ${fn}`);
+for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret'])
+  ok((await S[0].rpc(fn, {})).error, `student cannot call internal ${fn}`);
 
 console.log('\n[2] scan / sync / lock');
 const n1 = nonce();
@@ -165,12 +171,12 @@ ok(spent.length === 1 && evs.filter(e => e.error === 'NO_TICKET').length === 4, 
 console.log('\n[9] pity: guaranteed after 1 fail at stage 1');
 await admin.rpc('admin_adjust_tickets', { p_student_id: '022002', p_delta: 2 });
 const settings = (await admin.select('settings?key=eq.evo_prob')).data[0].value;
-await fetch(`${URL_}/rest/v1/settings?key=eq.evo_prob`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${await login('admin@staff.test')}` }, body: JSON.stringify({ value: [0, 0, 0] }) });
+await patchSetting('evo_prob', [0, 0, 0]);
 const line2 = (await S[1].rpc('sync')).data.state.collection.find(c => c.stage === 1).line_id;
 const e1 = await S[1].rpc('evolve', { p_line: line2 });
 const e2 = await S[1].rpc('evolve', { p_line: line2 });
 ok(e1.data?.success === false && e2.data?.success === true && e2.data.stage === 2, 'fail at 0% then guaranteed success', [e1.data?.success, e2.data?.success]);
-await fetch(`${URL_}/rest/v1/settings?key=eq.evo_prob`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${await login('admin@staff.test')}` }, body: JSON.stringify({ value: settings }) });
+await patchSetting('evo_prob', [0, 0.7, 0.35]);
 ok((await S[1].rpc('evolve', { p_line: line2 })).error === 'NO_TICKET', 'no tickets left → NO_TICKET');
 
 console.log('\n[10] rotating legendary QR');
@@ -186,7 +192,7 @@ await booth.rpc('booth_redeem', { p_payload: '023004' });
 const rt2 = await booth.rpc('screen_rotating_token', { p_qr: 'L01' });
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: rt2.data.token }] });
 ok(r.data?.acks?.[0]?.status === 'daily_cap', 'legendary QR: once per day', r.data?.acks);
-const leg = (await S[3].rpc('sync')).data.state.collection.find(c => c.line_id >= 16);
+const leg = (await S[3].rpc('sync')).data.state.collection.find(c => c.line_id >= 35);
 await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: 1 });
 ok(leg && (await S[3].rpc('evolve', { p_line: leg.line_id })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
 await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: -1 });
@@ -205,7 +211,7 @@ r = await S[1].rpc('sync', { p_scans: [{ n: nonce(), q: 'A14', t: T.A14.token, a
 ok(r.data?.acks?.[0]?.status === 'bad_format' && r.data.acks[1].status === 'ok', 'one malformed item does not block the rest', r.data?.acks);
 r = await S[1].rpc('sync', { p_scans: [], p_ver: r.data.ver });
 ok(r.data?.same === true && !r.data.state, 'unchanged state → tiny response', Object.keys(r.data || {}));
-const adminTok0 = await login('admin@staff.test');
+const adminTok0 = ADMIN_TOK;
 const H0 = { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${adminTok0}` };
 const pool17 = (await admin.select('qr_rewards?qr_id=eq.A17&select=line_id,weight')).data;
 await fetch(`${URL_}/rest/v1/qr_rewards?qr_id=eq.A17`, { method: 'DELETE', headers: H0 });
@@ -241,14 +247,57 @@ r = await S[0].rpc('get_ranking');
 ok(r.data?.me?.rank >= 1 && r.data.top.some(t => t.me), 'ranking includes me', r.data?.me);
 ok(!JSON.stringify(r.data).includes('김민준'), 'ranking never shows full names');
 const kill = (v) => fetch(`${URL_}/rest/v1/settings?key=eq.festival_open`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${adminTok}` }, body: JSON.stringify({ value: v }) });
-const adminTok = await login('admin@staff.test');
+const adminTok = ADMIN_TOK;
 await kill(false);
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }] });
 ok(r.data?.acks?.[0]?.status === 'closed', 'festival closed → scans held (closed)');
 ok((await booth.rpc('booth_redeem', { p_payload: '023004' })).error === 'FESTIVAL_CLOSED', 'festival closed → booth stops');
 await kill(true);
 const stats = await admin.rpc('admin_stats');
-ok(stats.data?.students >= 4 && stats.data.qrs.length === 25, 'admin stats work', { students: stats.data?.students });
+ok(stats.data?.students >= 4 && stats.data.qrs.length >= 25, 'admin stats work', { students: stats.data?.students });
+
+console.log('\n[15] festival ops: guests out of ranking, export, grant, dup bonus, relink, auto-close');
+r = await S[0].rpc('get_ranking');
+ok(!r.data.top.some(t => t.display === '테스트쌤'), 'teacher/guest code accounts are not ranked');
+const exp = (await admin.rpc('admin_export_ranking')).data;
+const ex1 = exp?.find(x => x.student_id === '022001');
+ok(ex1?.name === '김민준' && ex1.rank >= 1 && exp.some(x => x.student_id === 'g:t01' && x.rank === null), 'export has real names, guests unranked', ex1);
+ok((await S[0].rpc('admin_export_ranking')).error === 'NOT_ADMIN', 'students cannot export');
+await admin.rpc('admin_grant_monster', { p_student_id: '022003', p_line: 5, p_stage: 2 });
+st = (await S[2].rpc('sync')).data.state;
+ok(st.collection.find(c => c.line_id === 5)?.stage === 2, 'admin can grant a monster (dispute fix)');
+// dup bonus: 3rd catch of the same line → +1 ticket
+await booth.rpc('booth_redeem', { p_payload: '022003' });             // empty the bag first
+let c7 = (await S[2].rpc('sync')).data.state.collection.find(c => c.line_id === 7)?.catch_count || 0;
+while (c7 % 3 !== 2) { await admin.rpc('admin_grant_monster', { p_student_id: '022003', p_line: 7, p_stage: 1 }); c7++; }
+st = (await S[2].rpc('sync')).data.state;
+const pool18 = (await admin.select('qr_rewards?qr_id=eq.A18&select=line_id,weight')).data;
+await fetch(`${URL_}/rest/v1/qr_rewards?qr_id=eq.A18`, { method: 'DELETE', headers: H0 });
+await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: JSON.stringify([{ qr_id: 'A18', line_id: 7, weight: 1 }]) });
+const tBefore = st.profile.evo_tickets;
+await S[2].rpc('sync', { p_scans: [{ n: nonce(), q: 'A18', t: T.A18.token }] });
+r = await booth.rpc('booth_redeem', { p_payload: '022003' });
+await fetch(`${URL_}/rest/v1/qr_rewards?qr_id=eq.A18`, { method: 'DELETE', headers: H0 });
+await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: JSON.stringify(pool18.map(p => ({ qr_id: 'A18', ...p }))) });
+const dup = r.data?.results?.find(x => x.line_id === 7);
+st = (await S[2].rpc('sync')).data.state;
+ok(dup?.bonus_ticket === true && st.profile.evo_tickets === tBefore + 1, 'every 3rd duplicate gives +1 evolution ticket', dup);
+// relink 022999 (code account) data onto the t01 login is refused (t01 has its own data? no) → use a fresh code account
+const c2 = (await admin.rpc('admin_make_login_codes', { p_ids: ['RL1'], p_names: ['재연결'] })).data;
+const rl = await (await fetch(`${URL_}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'rl1@code.local', password: c2[0].code.replace('-', '') }) })).json();
+r = await admin.rpc('admin_relink', { p_student_id: '022003', p_email: 'rl1@code.local' });
+ok(r.data?.ok === true, 'relink moved 022003 to another login', r);
+const moved = (await client(rl.access_token).rpc('sync')).data?.state;
+ok(moved?.profile?.student_id === '022003' && moved.collection.length > 0, 'new login sees the same game data', moved?.profile?.student_id);
+r = await admin.rpc('admin_relink', { p_student_id: '022003', p_email: '022003@test.local' });
+ok(r.data?.ok === true, 'relink back to the original login');
+S[2] = client(await login('022003@test.local'));
+// auto-close via festival_close_at
+await setS('festival_close_at', new Date(Date.now() - 60000).toISOString());
+r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }] });
+ok(r.data?.acks?.[0]?.status === 'closed' && r.data.state.rules.festival_ended === true, 'past festival_close_at → closed + ended flag', r.data?.acks);
+ok((await booth.rpc('booth_redeem', { p_payload: '023004' })).error === 'FESTIVAL_CLOSED', 'booth stops after close time');
+await setS('festival_close_at', null);
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

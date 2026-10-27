@@ -7,7 +7,7 @@ import { devLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
 import { spriteCanvas } from './sprites.js';
 
-const SUBJECTS = ['물리', '화학', '생명', '지구', '수학', '국어', '영어', '역사', '사회', '체육', '음악', '미술', '정보', '일본어', '중국어', '전설'];
+const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '외국어', '정보', '한국사', '음악', '체육', '전설'];
 const RARITY = { common: '일반', rare: '희귀', legendary: '전설' };
 const ROLE = { student: '학생', booth: '부스 스태프', admin: '운영자' };
 const TSTATUS = { pending: ['대기', 'warn'], redeemed: ['사용', 'ok'], expired: ['만료', 'off'], cancelled: ['취소', 'off'] };
@@ -26,7 +26,8 @@ const SETTING_HELP = {
   bag_max: '가방에 들어가는 티켓 최대 수',
   ticket_ttl_hours: '안 쓴 티켓이 만료되는 시간(시간)',
   token_grace_minutes: '토큰 교체 후 옛 토큰이 유효한 시간(분)',
-  quiz_ticket_daily_cap: '하루에 퀴즈로 받을 수 있는 진화권 최대 수',
+  quiz_ticket_daily_cap: '하루에 퀴즈로 받을 수 있는 진화권 최대 수 (기본 30)',
+  battle_stage_mult: '배틀용 단계별 능력치 배율 (아직 안 씀)',
   rotating_window_sec: '대형 화면 QR이 바뀌는 간격(초)',
   rotating_accept_sec: '대형 화면 QR을 찍은 뒤 인정되는 시간(초). 짧을수록 사진 공유가 어려워요',
   self_redeem: '셀프 지급 모드 (위 스위치로 바꾸세요)',
@@ -84,7 +85,14 @@ const msgOf = (e) => {
   const m = e?.message || String(e);
   if (/duplicate key/i.test(m)) return PG['23505'];
   if (/check constraint|violates/i.test(m)) return PG['23514'];
-  return errorText(m);
+  return ADMIN_ERR[m] || errorText(m);
+};
+// admin-only server error codes (0003/0005) not in sb.js
+const ADMIN_ERR = {
+  NO_ACCOUNT: '그 이메일로 로그인한 적이 없어요. 학생이 새 로그인으로 한 번 로그인을 시도하게 하거나, [로그인 코드] 탭에서 코드를 먼저 만드세요.',
+  ACCOUNT_IN_USE: '그 로그인에는 이미 게임 기록(도감·티켓)이 있어요. 옮길 수 없어요.',
+  NO_LINE: '없는 몬스터 계열이에요.',
+  TOO_MANY: '한 번에 너무 많이 보냈어요.',
 };
 function fail(e) { console.warn('[admin]', e); toast(msgOf(e), 4000); }
 
@@ -115,6 +123,22 @@ const lineName = (id) => {
   const l = S.lineById.get(id);
   return l ? `#${id} ${l.teacher} (${l.subject})` : `#${id}`;
 };
+// [[subject, lines[]], …] in SUBJECTS order (unknown subjects last, alphabetical)
+function bySubject(lines) {
+  const groups = new Map();
+  for (const l of lines) {
+    if (!groups.has(l.subject)) groups.set(l.subject, []);
+    groups.get(l.subject).push(l);
+  }
+  const order = (s) => { const i = SUBJECTS.indexOf(s); return i < 0 ? 99 : i; };
+  return [...groups].sort((a, b) => order(a[0]) - order(b[0]) || String(a[0]).localeCompare(String(b[0]), 'ko'));
+}
+// line <select> grouped by subject (optgroups) — the roster is 30+ lines
+function lineSelect(lines, selected = null) {
+  return h('select.inp', bySubject(lines).map(([subject, ls]) => h('optgroup', { label: subject },
+    ls.map((l) => h('option', { value: l.id, selected: l.id === selected },
+      lineName(l.id) + (l.active ? '' : ' [비활성]') + (l.withdrawn ? ' [동의 철회]' : ''))))));
+}
 function sprite(dex, size = 64) {
   if (dex > ATLAS_CAP) return h('div.nopic', '그림 없음', h('br'), '(아틀라스 재생성 필요)');
   return spriteCanvas(dex, size);
@@ -454,7 +478,7 @@ function chartSVG(series) {
     const w = Math.max(2, bw * 0.38);
     const sc = Number(d.scans) || 0, rd = Number(d.redeems) || 0;
     const t = hhmm(d.t);
-    out += `<rect x="${x + bw * 0.1}" y="${y(sc)}" width="${w}" height="${y(0) - y(sc)}" fill="#78c8f0" stroke="#303848" stroke-width="1"><title>${t} 스캔 ${sc}</title></rect>`;
+    out += `<rect x="${x + bw * 0.1}" y="${y(sc)}" width="${w}" height="${y(0) - y(sc)}" fill="#4aa8e0" stroke="#303848" stroke-width="1"><title>${t} 스캔 ${sc}</title></rect>`;
     out += `<rect x="${x + bw * 0.1 + w}" y="${y(rd)}" width="${w}" height="${y(0) - y(rd)}" fill="#48b048" stroke="#303848" stroke-width="1"><title>${t} 사용 ${rd}</title></rect>`;
     if (i % 3 === 0) out += `<text x="${x + bw / 2}" y="${H - 8}" text-anchor="middle">${t}</text>`;
   });
@@ -506,7 +530,7 @@ function qrList(onSelect) {
   const poolCount = (id) => S.rewards.filter((r) => r.qr_id === id).length;
   return h('div.box',
     h('h2', `QR 목록 (${S.qrs.length}개)`),
-    h('p.small-txt.muted', '줄을 누르면 오른쪽에서 고칠 수 있어요.'),
+    h('p.small-txt.muted', '줄을 누르면 옆(또는 아래)에서 고칠 수 있어요.'),
     h('div.tbl-wrap.scroll-y', h('table.tbl',
       h('thead', h('tr', h('th', 'ID'), h('th', '이름'), h('th', '상태'), h('th', '수동 코드'), h('th.num', '풀'), h('th.num', { title: '한 학생이 하루에 찍을 수 있는 횟수' }, '하루'), h('th', '지도'))),
       h('tbody', S.qrs.map((q) => {
@@ -616,7 +640,7 @@ function poolEditor(q, refresh) {
   const draw = () => {
     pctCells.length = 0;
     const avail = S.lines.filter((l) => !rows.some((r) => r.line_id === l.id));
-    const sel = h('select.inp', avail.map((l) => h('option', { value: l.id }, lineName(l.id) + (l.active ? '' : ' [비활성]'))));
+    const sel = lineSelect(avail);
     const w = h('input.inp.w-num', { type: 'number', min: 1, step: 1, value: 10 });
     const tbody = h('tbody', rows.map((r, i) => {
       const l = S.lineById.get(r.line_id);
@@ -764,17 +788,31 @@ async function tabMon() {
   if (!S.selLine || !S.lineById.has(S.selLine)) S.selLine = S.lines[0]?.id ?? null;
   const listBox = h('div.box.stack');
   const editBox = h('div');
+  const filter = h('input.inp', { type: 'search', placeholder: '이름·선생님·과목으로 찾기', 'aria-label': '계열 찾기' });
+  const listEl = h('div.line-list');
+  const drawItems = () => {
+    const f = filter.value.trim().toLowerCase();
+    const shown = S.lines.filter((l) => !f || [l.teacher, l.subject, S.spById.get((l.id - 1) * 3 + 1)?.name, '#' + l.id]
+      .some((x) => String(x || '').toLowerCase().includes(f)));
+    listEl.replaceChildren(...bySubject(shown).map(([subject, ls]) => h('div.line-group',
+      h('div.line-group-h', typeChip(subject), ` ${ls.length}`),
+      ls.map((l) => h('button.line-item', {
+        type: 'button', 'aria-pressed': String(l.id === S.selLine),
+        onclick: () => { S.selLine = l.id; drawItems(); drawEdit(); },
+      }, sprite((l.id - 1) * 3 + 1, 48), h('div.meta',
+        h('b', `#${l.id} ${S.spById.get((l.id - 1) * 3 + 1)?.name || '?'}`),
+        h('span', l.teacher),
+        h('span', RARITY[l.rarity] || l.rarity, maxStage(l) < 3 ? ` · ${maxStage(l)}단계` : '', l.active ? '' : ' · 비활성',
+          l.withdrawn ? ' ' : '', l.withdrawn ? chip('동의 철회', 'hot') : null)))))));
+    if (!shown.length) listEl.replaceChildren(h('p.muted', '찾는 계열이 없어요.'));
+  };
+  filter.addEventListener('input', drawItems);
   const drawList = () => {
     listBox.replaceChildren(
       h('div.row', h('h2', `몬스터 계열 (${S.lines.length})`), h('span', { style: { flex: 1 } }),
         h('button.btn.small.go', { onclick: () => addLine(redraw) }, '+ 새 계열')),
-      h('div.line-list', S.lines.map((l) => h('button.line-item', {
-        type: 'button', 'aria-pressed': String(l.id === S.selLine),
-        onclick: () => { S.selLine = l.id; drawList(); drawEdit(); },
-      }, sprite((l.id - 1) * 3 + 1, 64), h('div.meta',
-        h('b', `#${l.id} ${S.spById.get((l.id - 1) * 3 + 1)?.name || '?'}`),
-        h('span', l.teacher),
-        h('span', typeChip(l.subject), ' ', RARITY[l.rarity] || l.rarity, maxStage(l) < 3 ? ` · ${maxStage(l)}단계` : '', l.active ? '' : ' · 비활성'))))));
+      filter, listEl);
+    drawItems();
   };
   const drawEdit = () => {
     editBox.replaceChildren(h('p.loading', '불러오는 중…'));
@@ -792,6 +830,7 @@ async function lineEditor(lineId, redraw) {
   const subject = h('input.inp', { value: l.subject, list: 'subjects' });
   const rarity = h('select.inp', Object.entries(RARITY).map(([k, v]) => h('option', { value: k, selected: l.rarity === k }, v)));
   const act = checkbox('활성 (끄면 뽑기에서 안 나옴)', l.active);
+  const wd = checkbox('선생님 동의 철회(숨김)', l.withdrawn);
   const stageSel = stageSelect(maxStage(l));
   const sp = [1, 2, 3].map((stage) => {
     const id = (l.id - 1) * 3 + stage;
@@ -825,7 +864,7 @@ async function lineEditor(lineId, redraw) {
     const used = sp.slice(0, m);
     if (!teacher.value.trim() || !subject.value.trim()) throw Object.assign(new Error('선생님과 과목을 입력하세요.'), { ready: true });
     if (used.some((s) => !s.name.value.trim())) throw Object.assign(new Error(`몬스터 이름 ${m}개를 모두 입력하세요.`), { ready: true });
-    await tq(sb.from('lines').update({ teacher: teacher.value.trim(), subject: subject.value.trim(), rarity: rarity.value, active: act.input.checked, max_stage: m }).eq('id', l.id));
+    await tq(sb.from('lines').update({ teacher: teacher.value.trim(), subject: subject.value.trim(), rarity: rarity.value, active: act.input.checked, max_stage: m, withdrawn: wd.input.checked }).eq('id', l.id));
     await tq(sb.from('species').upsert(used.map((s) => ({
       id: s.id, line_id: l.id, stage: s.stage, name: s.name.value.trim(), category: s.category.value.trim(),
       flavor: s.flavor.value.trim(), height: s.height.value.trim(), weight: s.weight.value.trim(),
@@ -842,6 +881,9 @@ async function lineEditor(lineId, redraw) {
     h('div.fields', field('선생님 (잡은 뒤에만 보임)', teacher), field('과목 (타입)', subject), field('희귀도', rarity),
       field('진화 단계 수', stageSel), h('div.fld', h('span', '\u00a0'), act.el)),
     stageNote,
+    h('div.stack', wd.el,
+      h('p.small-txt.muted', '켜면: 이 계열은 더 이상 뽑기에서 나오지 않고, 학생 앱과 대형 화면에서 선생님 이름과 그림이 가려져요.')),
+    l.withdrawn ? h('p.notice.red', '이 계열은 선생님 동의 철회로 숨겨져 있어요.') : null,
     grid,
     h('div.row.end', save));
   return [editor, await quizSection(l)];
@@ -1024,15 +1066,16 @@ async function tabStu() {
     h('div', { style: { flex: '1 1 240px' } }, input), h('button.btn.go', { type: 'submit' }, '검색'),
     h('button.btn', { type: 'button', onclick: () => { input.value = 'g:'; search(); } }, '손님·선생님만'));
   search().then(() => { if (S.stuSel) open(S.stuSel); });
-  return [form, h('div.cols', results, detail)];
+  return [form, rankingSection(), h('div.cols', results, detail)];
 }
 
 async function studentDetail(sid, reload) {
   const p = await tq(sb.from('profiles').select('*').eq('student_id', sid).maybeSingle());
   if (!p) return [h('div.box', h('p.muted', '이 학생을 찾지 못했어요 (연결 해제됐을 수 있어요).'))];
-  const [tickets, coll] = await Promise.all([
+  const [tickets, coll, events] = await Promise.all([
     tq(sb.from('tickets').select('id,nonce,qr_id,status,created_at,redeemed_at,result_species').eq('user_id', p.user_id).order('created_at', { ascending: false }).limit(100)),
     tq(sb.from('collection').select('line_id,stage,catch_count,evo_fails,first_caught_at').eq('user_id', p.user_id).order('line_id')),
+    tq(sb.from('events').select('at,kind,data').eq('user_id', p.user_id).order('at', { ascending: false }).limit(30)),
   ]);
 
   const act = async (fn, args, okMsg) => {
@@ -1052,13 +1095,22 @@ async function studentDetail(sid, reload) {
       roleSel.value === 'admin' ? h('p.warn-txt', '운영자는 모든 데이터를 고칠 수 있어요. 믿을 수 있는 사람만!') : null].filter(Boolean), { ok: '변경' });
     if (ok) act('admin_set_role', { p_student_id: sid, p_role: roleSel.value }, '역할을 바꿨어요.');
   };
+  const toggleRanking = async () => {
+    const to = !p.in_ranking;
+    const ok = await confirmBox(to ? '랭킹에 넣기' : '랭킹에서 빼기', [
+      to ? `${sid}을(를) 랭킹(순위·상품)에 다시 넣을까요?` : `${sid}을(를) 랭킹에서 뺄까요? 게임은 그대로 할 수 있고, 순위·기수 점수·상품 대상에서만 빠져요.`,
+      isGuest(sid) && to ? h('p.warn-txt', '선생님·손님 계정이에요. 보통은 랭킹에서 빼 둬요.') : null,
+    ].filter(Boolean), { ok: to ? '넣기' : '빼기' });
+    if (ok) act('admin_set_in_ranking', { p_student_id: sid, p_in: to }, to ? '랭킹에 넣었어요.' : '랭킹에서 뺐어요.');
+  };
   const unlink = async () => {
-    const ok = await confirmBox('계정 연결 해제', [
+    const ok = await confirmBox('기록까지 삭제', [
       h('p.warn-txt', `${sid} 계정을 지워요. 이 학번의 도감·티켓·진화권·점수가 모두 사라지고 되돌릴 수 없어요.`),
-      '다른 사람이 이 학번을 잘못 가져갔을 때만 쓰세요. 해제 후 진짜 학생이 다시 로그인하면 새로 시작해요.',
-    ], { ok: '연결 해제', danger: true, typeToConfirm: sid });
+      '폰을 잃어버린 경우에는 이걸 쓰지 말고 위의 [다른 로그인으로 옮기기]를 쓰세요.',
+      '다른 사람이 이 학번을 잘못 가져갔을 때만 쓰세요. 삭제 후 진짜 학생이 다시 로그인하면 처음부터 시작해요.',
+    ], { ok: '기록까지 삭제', danger: true, typeToConfirm: sid });
     if (ok) {
-      try { await rpc('admin_unlink', { p_student_id: sid }); toast(`${sid} 연결을 해제했어요.`); S.stuSel = null; await reload(); } catch (e) { fail(e); }
+      try { await rpc('admin_unlink', { p_student_id: sid }); toast(`${sid} 기록을 삭제했어요.`); S.stuSel = null; await reload(); } catch (e) { fail(e); }
     }
   };
   const cancel = (t) => async () => {
@@ -1074,12 +1126,81 @@ async function studentDetail(sid, reload) {
       h('dt', '역할'), h('dd', ROLE[p.role] || p.role),
       h('dt', '점수'), h('dd', `${p.score}점 · 도감 ${p.dex_count}`),
       h('dt', '진화권'), h('dd', h('b', p.evo_tickets)),
+      h('dt', '랭킹 포함'), h('dd', p.in_ranking === false ? chip('랭킹 제외', 'off') : chip('랭킹 포함', 'ok')),
       h('dt', '랭킹 공개'), h('dd', p.show_on_board ? '공개' : '익명'),
       h('dt', '마지막 접속'), h('dd', p.last_seen ? `${fmtTime(p.last_seen)} (${timeAgo(p.last_seen)})` : '–'),
       h('dt', '가입'), h('dd', fmtTime(p.created_at))),
     h('div.row', h('b', '진화권'), delta, h('button.btn.small', { onclick: adj(-1) }, '빼기 −'), h('button.btn.small.go', { onclick: adj(1) }, '더하기 +')),
     h('div.row', h('b', '역할'), roleSel, h('button.btn.small', { onclick: setRole }, '변경')),
-    h('div.row', h('button.btn.small.primary', { onclick: unlink }, '계정 연결 해제…')));
+    h('div.row', h('b', '랭킹'), h('button.btn.small', { onclick: toggleRanking }, p.in_ranking === false ? '랭킹에 넣기' : '랭킹에서 빼기'),
+      h('span.small-txt.muted', '선생님·손님(g:) 계정은 처음부터 빠져 있어요.')));
+
+  // move all game data to another login (lost phone, new Google login → STUDENT_ID_TAKEN, backup code …)
+  const codeEmail = `${isGuest(sid) ? sid.slice(2) : sid}@code.local`;
+  const email = h('input.inp', { type: 'email', placeholder: `예: ${codeEmail} 또는 학생 구글 이메일`, autocomplete: 'off', 'aria-label': '옮길 로그인 이메일' });
+  const relinkBtn = h('button.btn.go', '옮기기');
+  relinkBtn.onclick = async () => {
+    const em = email.value.trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+$/.test(em)) { toast('이메일을 정확히 넣어 주세요.'); email.classList.add('bad'); return; }
+    email.classList.remove('bad');
+    const ok = await confirmBox('다른 로그인으로 옮기기', [
+      `${sid}의 도감·티켓·진화권·점수를 모두 ${em} 로그인으로 옮겨요.`,
+      '옮긴 뒤에는 예전 로그인(잃어버린 폰 등)으로는 이 기록을 볼 수 없어요.',
+      '학생은 새 로그인으로 앱을 다시 열면 기록이 그대로 보여요.',
+    ], { ok: '옮기기' });
+    if (!ok) return;
+    busy(relinkBtn, async () => {
+      const r = await rpc('admin_relink', { p_student_id: sid, p_email: em });
+      toast(r?.note === 'already linked' ? '이미 그 로그인에 연결돼 있어요.' : `${sid} 기록을 ${em}(으)로 옮겼어요.`, 5000);
+      await reload();
+    });
+  };
+  const relinkBox = h('div.box.stack',
+    h('h3', '다른 로그인으로 옮기기 (폰 분실·새 폰)'),
+    h('ol.small-txt.steps',
+      h('li', '새 로그인 계정을 준비해요: ',
+        h('b', '구글'), ' — 학생이 새 폰에서 구글 로그인을 한 번 시도하게 하세요 ("이미 다른 계정에 연결돼 있어요"가 떠도 괜찮아요). ',
+        h('b', '또는 코드'), ` — [로그인 코드] 탭에서 이 학번 코드를 만들면 ${codeEmail} 계정이 생겨요.`),
+      h('li', '그 이메일을 아래에 넣고 [옮기기]. 모든 게임 기록이 새 로그인으로 옮겨져요.'),
+      h('li', '학생이 새 로그인으로 앱을 열면 끝! 예전 로그인은 이 학번과 끊겨요.')),
+    h('div.row', h('div', { style: { flex: '1 1 220px' } }, email),
+      h('button.btn.small', { type: 'button', onclick: () => { email.value = codeEmail; } }, '코드 계정 넣기'), relinkBtn),
+    h('p.small-txt.muted', '오류 안내: "로그인한 적이 없어요" = 그 이메일 계정이 아직 없음 · "이미 게임 기록이 있어요" = 그 로그인으로 이미 따로 게임을 했음 (옮길 수 없어요).'));
+
+  // dispute fix: give a monster directly
+  const lineSel = lineSelect(S.lines.filter((l) => !l.withdrawn));
+  const stageSel = h('select.inp', { style: { width: 'auto' }, 'aria-label': '단계' });
+  const fillStages = () => {
+    const l = S.lineById.get(Number(lineSel.value));
+    stageSel.replaceChildren(...Array.from({ length: maxStage(l) }, (_, i) => h('option', { value: i + 1 }, `${i + 1}단계 · ${S.spById.get((Number(lineSel.value) - 1) * 3 + i + 1)?.name || '?'}`)));
+  };
+  lineSel.addEventListener('change', fillStages);
+  fillStages();
+  const grantBtn = h('button.btn.go', '지급');
+  grantBtn.onclick = async () => {
+    const line = Number(lineSel.value), stage = Number(stageSel.value);
+    if (!line) return;
+    const dex = (line - 1) * 3 + stage;
+    const ok = await confirmBox('몬스터 직접 지급', [
+      `${sid}에게 ${S.spById.get(dex)?.name || `#${dex}`} (${lineName(line)}, ${stage}단계)을(를) 줄까요?`,
+      '이미 가진 계열이면 잡은 횟수가 +1 되고, 단계는 더 높은 쪽으로 맞춰져요. 기록에 남아요.',
+    ], { ok: '지급' });
+    if (!ok) return;
+    busy(grantBtn, async () => {
+      await rpc('admin_grant_monster', { p_student_id: sid, p_line: line, p_stage: stage });
+      toast('몬스터를 지급했어요.');
+      await reload();
+    });
+  };
+  const grantBox = h('div.box.stack',
+    h('h3', '몬스터 직접 지급 (분쟁 해결용)'),
+    h('p.small-txt.muted', '부스 오류 등으로 몬스터를 못 받았을 때만 쓰세요.'),
+    h('div.row', h('div', { style: { flex: '1 1 220px' } }, lineSel), stageSel, grantBtn));
+
+  const dangerBox = h('div.box.stack',
+    h('h3', '기록까지 삭제'),
+    h('p.small-txt.muted', '다른 사람이 이 학번을 잘못 가져갔을 때만. 폰 분실은 위의 [다른 로그인으로 옮기기]를 쓰세요.'),
+    h('div.row', h('button.btn.small.primary', { onclick: unlink }, '계정 연결 해제 (기록까지 삭제)…')));
 
   const tBox = h('div.box',
     h('h3', `티켓 (최근 ${tickets.length})`),
@@ -1103,7 +1224,77 @@ async function studentDetail(sid, reload) {
         h('div', `${c.stage}단계 · ${c.catch_count}회`), c.evo_fails ? h('div.muted', `진화 실패 ${c.evo_fails}`) : null);
     })) : h('p.muted', '아직 잡은 몬스터가 없어요.'));
 
-  return [info, tBox, cBox];
+  const eBox = h('div.box',
+    h('h3', `최근 기록 (${events.length})`),
+    events.length ? h('div.tbl-wrap.scroll-y', h('table.tbl.events',
+      h('thead', h('tr', h('th', '시각'), h('th', '종류'), h('th', '내용'))),
+      h('tbody', events.map((e) => h('tr',
+        h('td', { style: { whiteSpace: 'nowrap' } }, fmtTime(e.at)),
+        h('td', chip(EVENT_KIND[e.kind] || e.kind, e.kind === 'admin' ? 'warn' : '')),
+        h('td.small-txt', eventText(e))))))) : h('p.muted', '기록이 없어요.'));
+
+  return [info, relinkBox, grantBox, tBox, cBox, eBox, dangerBox];
+}
+
+const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자' };
+function eventText(e) {
+  const d = e.data || {};
+  if (e.kind === 'quiz') return d.correct ? '정답' : '오답';
+  if (e.kind === 'evolve') return `${lineName(d.line)} 진화 ${d.success ? '성공' : '실패'} (지금 ${d.stage}단계)`;
+  if (e.kind === 'redeem') return `몬스터 ${d.n ?? '?'}건 처리`;
+  return JSON.stringify(d);
+}
+
+// ───────────────────────── 최종 랭킹 (상품용 · 실명) ─────────────────────────
+
+function rankingSection() {
+  const body = h('div.stack');
+  const det = h('details.box.create',
+    h('summary', '최종 랭킹 (상품용 · 실명) — 열면 불러와요'),
+    body);
+  const load = async () => {
+    body.replaceChildren(h('p.loading', '불러오는 중…'));
+    try {
+      const rows = (await rpc('admin_export_ranking')) || [];
+      const ranked = rows.filter((r) => r.rank != null);
+      const cut = ranked[Math.min(29, ranked.length - 1)]?.rank;
+      const top = ranked.filter((r) => r.rank <= cut);               // top 30 (+ anyone tied with 30th)
+      body.replaceChildren(
+        h('div.row',
+          h('span', `랭킹 대상 ${ranked.length}명 · 전체 학생 ${rows.length}명`),
+          h('span', { style: { flex: 1 } }),
+          h('button.btn.small', { onclick: load }, '새로 고침'),
+          h('button.btn.small.go', { onclick: () => downloadRankingCsv(rows) }, 'CSV 다운로드')),
+        h('p.notice', '동점은 먼저 도달한 사람이 위(score_at). ', h('b', '실명이 보여요'), ' — 화면 공유·대형 화면에 띄우지 마세요. CSV에는 랭킹 제외(선생님·손님 등)와 0점 학생도 들어 있어요.'),
+        top.length ? h('div.tbl-wrap.scroll-y', h('table.tbl',
+          h('thead', h('tr', h('th.num', '순위'), h('th', '학번'), h('th', '이름'), h('th.num', '기수'), h('th.num', '점수'),
+            h('th.num', '도감'), h('th.num', '최종 진화'), h('th.num', '희귀'), h('th.num', '포획'), h('th', '점수 도달'))),
+          h('tbody', top.map((r) => h('tr',
+            h('td.num', h('b', r.rank)), h('td.mono', r.student_id), h('td', r.name || '–'), h('td.num', r.gen ?? '–'),
+            h('td.num', h('b', r.score)), h('td.num', r.dex), h('td.num', r.final_lines), h('td.num', r.rare), h('td.num', r.catches),
+            h('td', { style: { whiteSpace: 'nowrap' } }, r.score_at ? fmtSec(r.score_at) : '–')))))) : h('p.muted', '아직 점수가 있는 학생이 없어요.'));
+    } catch (e) { body.replaceChildren(h('p.warn-txt', msgOf(e)), h('button.btn.small', { onclick: load }, '다시 시도')); }
+  };
+  det.addEventListener('toggle', () => { if (det.open) load(); });
+  return det;
+}
+const fmtSec = (iso) => new Date(iso).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+
+function downloadRankingCsv(rows) {
+  const yes = (v) => (v ? 'O' : 'X');
+  downloadCsv(`final_ranking_${toLocalInput(new Date().toISOString()).replace(/[-:]/g, '').replace('T', '_')}.csv`,
+    [['순위', '학번', '이름', '기수', '점수', '점수 도달 시각', '도감 수', '최종 진화 계열', '희귀·전설 계열', '총 포획', '랭킹 포함', '랭킹 공개'],
+      ...rows.map((r) => [r.rank ?? '', r.student_id, r.name || '', r.gen ?? '', r.score, r.score_at ? fmtSec(r.score_at) : '',
+        r.dex, r.final_lines, r.rare, r.catches, yes(r.in_ranking), yes(r.show_on_board)])]);
+}
+
+// UTF-8 BOM CSV so Excel (Korean Windows) opens it correctly
+function downloadCsv(filename, table) {
+  const q = (v) => (/[",\r\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
+  const csv = '﻿' + table.map((r) => r.map(q).join(',')).join('\r\n') + '\r\n';
+  const a = h('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: filename });
+  document.body.append(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
 // ───────────────────────── 6. 로그인 코드 ─────────────────────────
@@ -1270,13 +1461,8 @@ function codeResult(drawResult) {
 }
 
 function downloadCodesCsv(rows, at) {
-  const q = (v) => (/[",\r\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : String(v));
-  const csv = '﻿' + [['아이디', '이름', '코드', '프로필'], ...rows.map((r) => [r.id, r.name || '', r.code, codeProfileId(r.id)])]
-    .map((r) => r.map(q).join(',')).join('\r\n') + '\r\n';
-  const stamp = toLocalInput(at).replace(/[-:]/g, '').replace('T', '_');
-  const a = h('a', { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: `login_codes_${stamp}.csv` });
-  document.body.append(a); a.click(); a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+  downloadCsv(`login_codes_${toLocalInput(at).replace(/[-:]/g, '').replace('T', '_')}.csv`,
+    [['아이디', '이름', '코드', '프로필'], ...rows.map((r) => [r.id, r.name || '', r.code, codeProfileId(r.id)])]);
 }
 
 window.addEventListener('beforeunload', (e) => {
@@ -1338,7 +1524,7 @@ async function tabSet() {
     h('p.small-txt.muted', 'festival_close_at = 축제 끝나는 시각 · min_client_version = 올리면 옛 버전 폰에 "업데이트" 배너 · rotating_accept_sec = 대형 화면 QR 인정 시간(초)'),
     h('div.tbl-wrap', h('table.tbl',
       h('thead', h('tr', h('th', '키'), h('th', '값'), h('th', ''))),
-      h('tbody', rows.filter((r) => r.key !== 'festival_open' && r.key !== 'self_redeem').map((r) => {
+      h('tbody', rows.filter((r) => !CARD_KEYS.includes(r.key)).map((r) => {
         const ta = h('textarea.inp.json', { rows: 1, spellcheck: 'false', 'aria-label': r.key }, JSON.stringify(r.value));
         const msg = h('div.small-txt');
         const valid = () => {
@@ -1370,7 +1556,89 @@ async function tabSet() {
           h('td', { style: { minWidth: '180px', width: '50%' } }, ta, when, msg),
           h('td', save));
       })))));
-  return [h('div.cols', kill, selfCard), table];
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
+  return [h('div.cols', kill, selfCard),
+    h('div.cols',
+      h('div', textSettingCard(byKey.notice, 'notice', '공지 (notice)', '모든 폰 상단에 1분 안에 표시돼요. 예: "13:00 본관 앞 전설 출현!" 비우면 공지가 사라져요.', 2),
+        textSettingCard(byKey.prize_note, 'prize_note', '상품 안내 (prize_note)', '축제가 끝난 뒤 학생 폰의 "축제 종료" 화면에 보여요. 예: 상품 받는 곳·시간.', 3)),
+      h('div', closeAtCard(byKey.festival_close_at), dupBonusCard(byKey.dup_bonus_every))),
+    table];
+}
+
+const CARD_KEYS = ['festival_open', 'self_redeem', 'notice', 'prize_note', 'festival_close_at', 'dup_bonus_every'];
+
+// save one setting; value null = clear (settings.value is nullable since 0005)
+async function saveSetting(key, value) {
+  await tq(sb.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', key));
+}
+const missingCard = (key, title) => h('div.box.stack', h('h2', title), h('p.warn-txt', `${key} 설정이 없어요 (마이그레이션 0005 필요).`));
+const changedTxt = (r) => h('p.small-txt.muted', `마지막 변경: ${fmtTime(r.updated_at)}`);
+
+function textSettingCard(r, key, title, help, rows) {
+  if (!r) return missingCard(key, title);
+  const cur = typeof r.value === 'string' ? r.value : '';
+  const ta = h('textarea.inp', { rows, maxlength: 200, 'aria-label': title }, cur);
+  const state = h('p.small-txt', cur ? chip('표시 중', 'ok') : chip('비어 있음', 'off'));
+  const save = h('button.btn.go', '저장');
+  const clear = h('button.btn', '비우기');
+  save.onclick = () => busy(save, async () => {
+    const v = ta.value.trim();
+    await saveSetting(key, v || null);
+    toast(v ? `${key} 저장했어요.` : `${key}를 비웠어요.`);
+    rerender();
+  });
+  clear.onclick = () => busy(clear, async () => {
+    await saveSetting(key, null);
+    toast(`${key}를 비웠어요.`);
+    rerender();
+  });
+  return h('div.box.stack', h('h2', title), h('p.small-txt', help), state, ta, h('div.row.end', clear, save), changedTxt(r));
+}
+
+// festival_close_at: datetime-local (KST) ↔ "YYYY-MM-DDTHH:MM:00+09:00"
+const KST = 9 * 3600_000;
+const isoToKstInput = (iso) => (iso && !Number.isNaN(Date.parse(iso)) ? new Date(Date.parse(iso) + KST).toISOString().slice(0, 16) : '');
+const kstInputToIso = (v) => (v ? `${v}:00+09:00` : null);
+
+function closeAtCard(r) {
+  if (!r) return missingCard('festival_close_at', '축제 종료 시각');
+  const iso = typeof r.value === 'string' ? r.value : null;
+  const ended = iso && Date.parse(iso) < Date.now();
+  const inp = h('input.inp', { type: 'datetime-local', value: isoToKstInput(iso), 'aria-label': '축제 종료 시각 (한국 시간)' });
+  const save = h('button.btn.go', '저장');
+  const clear = h('button.btn', '비우기');
+  save.onclick = async () => {
+    if (!inp.value) { toast('시각을 고르세요. 종료 시각을 없애려면 [비우기].'); return; }
+    const v = kstInputToIso(inp.value);
+    if (Date.parse(v) < Date.now() && !(await confirmBox('이미 지난 시각이에요', [`${inp.value.replace('T', ' ')}(한국 시간)는 이미 지났어요.`, h('p.warn-txt', '저장하면 지금 바로 스캔·부스·퀴즈·진화가 멈추고 모든 폰에 종료 화면이 떠요.')], { ok: '그래도 저장', danger: true }))) return;
+    busy(save, async () => { await saveSetting(r.key, v); toast('축제 종료 시각을 저장했어요.'); rerender(); });
+  };
+  clear.onclick = async () => {
+    if (!(await confirmBox('종료 시각 비우기', ['자동 종료가 없어져요. 게임은 festival_open 스위치로만 멈춰요.'], { ok: '비우기' }))) return;
+    busy(clear, async () => { await saveSetting(r.key, null); toast('종료 시각을 비웠어요.'); rerender(); });
+  };
+  return h('div.box.stack',
+    h('h2', '축제 종료 시각 (festival_close_at)'),
+    h('p.small-txt', '이 시각이 지나면 스캔·부스 지급·퀴즈·진화가 자동으로 멈추고, 학생 폰에는 "축제 종료" 화면(상품 안내)이 떠요.'),
+    h('p.small-txt', iso ? h('span', ended ? chip('종료됨', 'hot') : chip('예정', 'blue'), ` ${new Date(iso).toLocaleString('ko-KR')}`) : chip('설정 안 됨 (자동 종료 없음)', 'off')),
+    field('종료 시각 (한국 시간)', inp),
+    h('div.row.end', clear, save), changedTxt(r));
+}
+
+function dupBonusCard(r) {
+  if (!r) return missingCard('dup_bonus_every', '중복 보너스');
+  const inp = h('input.inp.w-num', { type: 'number', min: 0, step: 1, value: Number(r.value) || 0, 'aria-label': 'N' });
+  const save = h('button.btn.go', '저장');
+  save.onclick = () => {
+    const n = Number(inp.value);
+    if (!(Number.isInteger(n) && n >= 0)) { toast('0 이상의 정수를 넣으세요 (0 = 끔).'); inp.classList.add('bad'); return; }
+    busy(save, async () => { await saveSetting(r.key, n); toast(n ? `같은 쌤 ${n}번째마다 진화권 +1` : '중복 보너스를 껐어요.'); rerender(); });
+  };
+  return h('div.box.stack',
+    h('h2', '중복 보너스 (dup_bonus_every)'),
+    h('p.small-txt', '같은 쌤 몬스터를 N번째로 또 잡을 때마다 진화권 +1. 0 = 끔.'),
+    h('div.row', '같은 쌤', inp, '번째 중복마다 진화권 +1', h('span', { style: { flex: 1 } }), save),
+    changedTxt(r));
 }
 
 // ───────────────────────── start ─────────────────────────

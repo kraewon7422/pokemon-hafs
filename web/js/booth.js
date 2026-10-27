@@ -6,7 +6,7 @@ import { isBag, fixKoreanIME } from './qrfmt.js';
 import { Scanner } from './scanner.js';
 import { spriteCanvas } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
-import { h, $, josa, toast, sleep } from './ui.js';
+import { h, $, josa, toast, sleep, pixelFontScale } from './ui.js';
 import { devLogin, renderGoogleButton, signOut } from './auth.js';
 
 const root = $('#root');
@@ -14,7 +14,7 @@ let species = [];
 let busy = false;
 let scanner = null;
 let autoConfirm = (() => { try { return localStorage.getItem('booth-auto') === '1'; } catch { return false; } })();
-const GIF = 'img/booth-ball.gif';     // optional reveal GIF (gitignored — never commit downloaded art); falls back to a CSS ball
+const GIF = 'img/booth-ball.gif';     // optional reveal GIF (gitignored - never commit downloaded art); falls back to a CSS ball
 let gifOk = false;
 
 const STATUS = {
@@ -24,7 +24,10 @@ const STATUS = {
   bag_full: ['가방 초과', 'st-bad'], empty_pool: ['QR에 몬스터 미설정(운영자 확인)', 'st-bad'], bad_format: ['형식 오류', 'st-bad'],
 };
 
+let pendingConfirm = null;   // the student card waiting for 확인 (Enter/Space also confirms → one-key booth)
+
 async function boot() {
+  pixelFontScale();
   document.addEventListener('pointerdown', unlockAudio);
   const img = new Image();
   img.onload = () => { gifOk = true; };
@@ -42,7 +45,7 @@ async function start() {
     species = data || [];
     renderBooth(p);
     rpc('sync').catch(() => {});
-    setInterval(() => rpc('sync').catch(() => toast('⚠ 서버 연결 끊김 — 핫스팟을 확인하세요', 4000)), 60_000);  // heartbeat for the dashboard
+    setInterval(() => rpc('sync').catch(() => toast('⚠ 서버 연결 끊김 - 핫스팟을 확인하세요', 4000)), 60_000);  // heartbeat for the dashboard
   } catch (e) { renderLogin(errorText(e.message)); }
 }
 
@@ -65,7 +68,12 @@ function renderLogin(msg = '') {
 function renderBooth(p) {
   const input = h('input.booth-input', {
     placeholder: '바코드 스캐너로 찍거나 학번 입력 후 Enter', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
-    onkeydown: (e) => { if (e.key === 'Enter') { const v = input.value; input.value = ''; onPayload(v); } },
+    onkeydown: (e) => {
+      if (e.key !== 'Enter') return;
+      const v = input.value; input.value = '';
+      if (!v.trim() && pendingConfirm) { pendingConfirm(); return; }
+      onPayload(v);
+    },
   });
   const camBox = h('div.cam', h('div.off', '📷 카메라 시작을 누르세요 (태블릿 후면 카메라 권장)\nUSB 바코드 스캐너가 있으면 그냥 찍으면 돼요.'));
   const camBtn = h('button.btn', { onclick: () => toggleCam(camBox, camBtn) }, '📷 카메라 시작');
@@ -80,7 +88,8 @@ function renderBooth(p) {
       h('div', { style: { display: 'grid', gap: '10px' } }, camBox, camBtn, input, h('div.box.tight', auto)),
       h('div.result-area#result', idle()))));
   input.focus();
-  document.addEventListener('click', (e) => { if (!e.target.closest('input,button,label') && !busy) input.focus(); });
+  document.addEventListener('click', (e) => { if (!e.target.closest('input,button,label')) input.focus(); });
+  document.addEventListener('keydown', (e) => { if (e.key === ' ' && pendingConfirm && document.activeElement !== input) { e.preventDefault(); pendingConfirm(); } });
 }
 
 const idle = () => h('div.box', h('b', '다음 학생을 기다리는 중…'), h('p', '학생 폰의 "가방 QR"을 찍어 주세요. 폰이 오프라인이어도 괜찮아요.'));
@@ -110,10 +119,11 @@ async function onPayload(text) {
       return;
     }
     if (autoConfirm) return redeem(text, look);
+    pendingConfirm = () => { pendingConfirm = null; redeem(text, look); };
     area.replaceChildren(
       card(look, h('p', h('b', '이 학생이 맞나요? '), '얼굴/명찰을 확인해 주세요.')),
       h('div', { style: { display: 'flex', gap: '10px' } },
-        h('button.btn.big.go', { onclick: () => redeem(text, look) }, `✔ 확인 — 몬스터 ${usable.length}마리 받기`),
+        h('button.btn.big.go', { onclick: () => pendingConfirm?.() }, `✔ 확인 (Enter) - 몬스터 ${usable.length}마리 받기`),
         h('button.btn', { onclick: reset }, '취소')));
   } catch (e) {
     sfx.error();
@@ -136,7 +146,7 @@ async function redeem(text, look) {
   const anim = reveal();
   let res;
   try {
-    [res] = await Promise.all([rpc('booth_redeem', { p_payload: text }, { retries: 3 }), sleep(gifOk ? 2600 : 2700)]);
+    [res] = await Promise.all([rpc('booth_redeem', { p_payload: text }, { retries: 3 }), sleep(gifOk ? 2000 : 1600)]);
   } catch (e) {
     anim.remove();
     sfx.error();
@@ -158,10 +168,10 @@ async function redeem(text, look) {
     h('div.cards',
       got.map((r, i) => h(`div.mcard${r.is_new ? '.new' : ''}`, { style: { animationDelay: `${i * 0.35}s` } },
         spriteCanvas(r.species_id, 128), h('b', name(r.species_id)),
-        h('small', r.qr_name || ''), r.is_new && h('span.chip', 'NEW!'), r.replay && h('span.chip', '이미 받은 결과'))),
+        h('small', r.qr_name || ''), r.is_new && h('span.chip', 'NEW!'), r.bonus_ticket && h('span.chip', '중복 보너스: 진화권 +1'), r.replay && h('span.chip', '이미 받은 결과'))),
       bad.map((r) => h('div.mcard.err', h('b', '✕'), h('small', (STATUS[r.error] || [r.error])[0])))),
-    h('button.btn.big.gold', { style: { maxWidth: '320px' }, onclick: () => { anim.remove(); reset(); } }, '다음 학생 (자동 10초)')));
-  setTimeout(() => { if (anim.isConnected) { anim.remove(); reset(); } }, 10_000);
+    h('button.btn.big.gold', { style: { maxWidth: '320px' }, onclick: () => { anim.remove(); reset(); } }, '다음 학생 (자동 6초)')));
+  setTimeout(() => { if (anim.isConnected) { anim.remove(); reset(); } }, 6_000);
 }
 
 function reveal() {
@@ -174,6 +184,7 @@ function reveal() {
 
 function reset() {
   busy = false;
+  pendingConfirm = null;
   $('#result')?.replaceChildren(idle());
   $('.booth-input')?.focus();
 }
