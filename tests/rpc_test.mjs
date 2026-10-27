@@ -77,9 +77,9 @@ ok(an.status >= 400 || (Array.isArray(an.data) && an.data.length === 0), 'anon c
 ok((await S[0].rpc('booth_redeem', { p_payload: '022001' })).error === 'NOT_STAFF', 'student cannot call booth_redeem');
 ok((await S[0].rpc('admin_stats')).error === 'NOT_ADMIN', 'student cannot call admin_stats');
 ok((await anon.rpc('sync', { p_scans: [] })).error, 'anon cannot call sync');
-for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed'])
+for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette'])
   ok((await anon.rpc(fn, {})).error, `anon cannot call ${fn}`);
-for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret'])
+for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base'])
   ok((await S[0].rpc(fn, {})).error, `student cannot call internal ${fn}`);
 
 console.log('\n[2] scan / sync / lock');
@@ -292,6 +292,29 @@ ok(moved?.profile?.student_id === '022003' && moved.collection.length > 0, 'new 
 r = await admin.rpc('admin_relink', { p_student_id: '022003', p_email: '022003@test.local' });
 ok(r.data?.ok === true, 'relink back to the original login');
 S[2] = client(await login('022003@test.local'));
+// evolution-ticket roulette (0007): server decides, cooldown + daily max
+{
+  const st0 = (await S[3].rpc('sync')).data.state;
+  ok(st0.roulette && typeof st0.roulette.used_today === 'number', 'state carries the roulette block', st0.roulette);
+  await setS('roulette_every_min', 0);
+  await setS('roulette_daily_max', st0.roulette.used_today + 2);
+  await setS('roulette_odds', [[5, 100]]);
+  const a = await S[3].rpc('spin_roulette');
+  const b = await S[3].rpc('spin_roulette');
+  ok(a.data?.prize === 5 && b.data?.evo_tickets === st0.profile.evo_tickets + 10, 'roulette pays the prize into evo_tickets', [a, b]);
+  ok((await S[3].rpc('spin_roulette')).error === 'ROULETTE_DAILY_MAX', 'roulette stops at the daily max');
+  await setS('roulette_daily_max', 999);
+  await setS('roulette_every_min', 5);
+  ok((await S[3].rpc('spin_roulette')).error === 'ROULETTE_WAIT', 'roulette waits N minutes between spins');
+  await setS('roulette_enabled', false);
+  ok((await S[3].rpc('spin_roulette')).error === 'ROULETTE_OFF', 'operator can switch the roulette off');
+  await setS('roulette_enabled', true);
+  await setS('roulette_every_min', 0);
+  await setS('festival_open', false);
+  ok((await S[3].rpc('spin_roulette')).error === 'FESTIVAL_CLOSED', 'no roulette while the festival is closed');
+  await setS('festival_open', true);
+  await setS('roulette_every_min', 5); await setS('roulette_daily_max', 12); await setS('roulette_odds', [[0, 60], [1, 30], [3, 8], [5, 2]]);
+}
 // auto-close via festival_close_at
 await setS('festival_close_at', new Date(Date.now() - 60000).toISOString());
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }] });

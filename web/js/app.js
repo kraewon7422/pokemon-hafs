@@ -355,8 +355,74 @@ function viewHome() {
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
         '🎁 지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
 
+    rouletteBox(),
+
     hint && h('section.box.hint', h('b', '💡 힌트  '), hint.hint),
   ];
+}
+
+// ───────── 진화권 룰렛: every N minutes, the server picks 0/1/3/5 tickets ─────────
+const rouletteWait = (r) => Math.max(0, (r.next_at ? new Date(r.next_at) - Date.now() : 0));
+const fmtWait = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+
+function rouletteBox() {
+  const r = S.snap.roulette;
+  if (!r || !r.enabled || !S.snap.festival_open) return null;
+  const left = Number(r.daily_max) - Number(r.used_today);
+  const btn = h('button.btn.big.roulette-btn', { onclick: spinRoulette });
+  const tick = () => {
+    const ms = rouletteWait(r);
+    btn.disabled = left <= 0 || ms > 0 || !S.online;
+    btn.textContent = left <= 0 ? '오늘은 다 돌렸어요' : !S.online ? '인터넷이 필요해요'
+      : ms > 0 ? `다음 룰렛까지 ${fmtWait(ms)}` : '룰렛 돌리기!';
+    btn.classList.toggle('gold', !btn.disabled);
+  };
+  tick();
+  clearInterval(S.rouletteTimer);
+  S.rouletteTimer = setInterval(() => (btn.isConnected ? tick() : clearInterval(S.rouletteTimer)), 1000);
+  return h('section.box.roulette', { 'aria-label': '진화권 룰렛' },
+    h('div.banner', h('b', '진화권 룰렛'), h('span', { style: { fontSize: '13px' } }, `오늘 ${Math.max(0, left)}/${r.daily_max}번 남음`)),
+    h('div.reel-row', (r.odds || []).map(([n]) => h('span.reel-cell', n ? `${n}장` : '꽝'))),
+    btn,
+    h('small', `${r.every_min}분마다 한 번! 꽝이 나와도 다음 기회가 있어요.`));
+}
+
+async function spinRoulette() {
+  unlockAudio();
+  if (S.spinning) return;
+  S.spinning = true;
+  let res;
+  try {
+    res = await rpc('spin_roulette', {}, { retries: 0 });
+  } catch (e) { S.spinning = false; sfx.error(); toast(errorText(e.message)); sync({ force: true }); return; }
+  S.snap.roulette = res.roulette;
+  S.snap.profile = { ...S.snap.profile, evo_tickets: res.evo_tickets };
+  await kv.set('snap', S.snap);
+  // the prize is already decided; the reel runs a fixed time so the wait never hints at the result
+  const vals = (res.roulette.odds || []).map(([n]) => n);
+  const cells = vals.map((n) => h('span.reel-cell', n ? `${n}장` : '꽝'));
+  const text = h('div.box.textbox');
+  overlay(h('div.stage', h('div.scene', h('div.reel-row.big', cells)), text), 'full');
+  text.textContent = '룰렛이 돌아간다…!';
+  S.overlay.dataset.locked = '1';
+  const target = Math.max(0, vals.indexOf(res.prize));
+  let i = 0;
+  if (!reducedMotion()) {
+    const steps = vals.length * 4 + ((target - (vals.length * 4) % vals.length) + vals.length) % vals.length;
+    for (let k = 0; k <= steps; k++) {
+      i = k % vals.length;
+      cells.forEach((c, j) => c.classList.toggle('on', j === i));
+      sfx.evoTick();
+      await sleep(70 + Math.pow(k / steps, 3) * 380);     // slows down towards the end
+    }
+  }
+  cells.forEach((c, j) => c.classList.toggle('on', j === target));
+  if (res.prize > 0) { sfx.correct(); vibrate([40, 30, 80]); } else sfx.fail();
+  await typeText(text, res.prize > 0 ? `진화권 ${res.prize}장을 받았다! (지금 ${res.evo_tickets}장)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
+  S.overlay.dataset.locked = '0';
+  text.append(h('button.btn.big.primary', { style: { marginTop: '10px' }, onclick: () => closeOverlay() }, '확인'));
+  S.spinning = false;
+  renderTab();
 }
 
 // ⚙ settings (top-right). Name visibility comes first so students can find it immediately.
@@ -562,7 +628,7 @@ function openDetail(sp) {
       h('div.banner', h('span', h('i.ticket-icon'), ` 진화권 × ${p.evo_tickets}`),
         h('b.prob', chance >= 1 ? '✨ 다음 진화 확정!' : `성공 확률 ${Math.round(chance * 100)}%`)),
       h('button.btn.big.gold', { disabled: !p.evo_tickets || !S.online || !S.snap.festival_open, onclick: () => doEvolve(c) },
-        !p.evo_tickets ? '진화권이 없어요 (퀴즈를 맞혀요)' : !S.online ? '📡 진화는 인터넷이 필요해요' : '진화시키기!'),
+        !p.evo_tickets ? '진화권이 없어요 (퀴즈·룰렛으로 받아요)' : !S.online ? '📡 진화는 인터넷이 필요해요' : '진화시키기!'),
       h('small', '실패해도 다음 확률이 올라가고, 몇 번 실패하면 다음엔 반드시 성공해요.')),
     top === 1 && h('div.box', '★ 전설의 몬스터는 진화하지 않아요.'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기'),

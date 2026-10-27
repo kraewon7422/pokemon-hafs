@@ -214,3 +214,12 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .zoom .btn.small { min-width: 44px; padding: 0; font-size: var(--fs-l); }
 .map-scroll.zoomed { max-height: 64dvh; overflow: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; overscroll-behavior: contain; touch-action: pan-x pan-y; }
 .map-scroll.zoomed .map-wrap { margin: 0; }
+
+/* 진화권 룰렛 */
+.roulette { display: grid; gap: 8px; }
+.reel-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; }
+.reel-cell { text-align: center; padding: 6px 0; border: 3px solid var(--ink); border-radius: 6px; background: #fff; font-size: var(--fs-m); }
+.reel-cell.on { background: var(--gold); transform: scale(1.08); }
+.reel-row.big { width: min(100%, 340px); padding: 0 6px; }
+.reel-row.big .reel-cell { padding: 18px 0; font-size: var(--fs-l); }
+.roulette-btn:disabled { opacity: .75; }

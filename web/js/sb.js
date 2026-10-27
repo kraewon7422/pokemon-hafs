@@ -16,7 +16,7 @@ const MESSAGES = {
   NO_QUIZ: '이미 푼 퀴즈예요.',
   NOT_OWNED: '아직 가지고 있지 않은 몬스터예요.',
   MAX_STAGE: '이미 최종 진화했어요!',
-  NO_TICKET: '진화권이 없어요. 퀴즈를 맞히면 받을 수 있어요.',
+  NO_TICKET: '진화권이 없어요. 퀴즈를 맞히거나 홈의 룰렛을 돌려 보세요.',
   NOT_STAFF: '부스 스태프 계정이 아니에요.',
   NOT_ADMIN: '운영자 계정이 아니에요.',
   NO_STUDENT: '등록되지 않은 학번이에요.',
@@ -24,6 +24,9 @@ const MESSAGES = {
   OFFLINE: '인터넷 연결이 필요해요.',
   SELF_REDEEM_OFF: '지금은 부스에서만 받을 수 있어요.',
   TOO_MANY: '한 번에 700개까지만 만들 수 있어요.',
+  ROULETTE_WAIT: '룰렛은 조금 더 기다려야 돌릴 수 있어요.',
+  ROULETTE_DAILY_MAX: '오늘 룰렛은 다 돌렸어요. 내일 또 만나요!',
+  ROULETTE_OFF: '지금은 룰렛을 쉬고 있어요.',
 };
 export const errorText = (code) => MESSAGES[code] || `오류가 났어요 (${code})`;
 
