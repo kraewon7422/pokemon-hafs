@@ -29,3 +29,6 @@ venv/
 
 # raw art sources (teacher photos etc.) — share via team drive, not git
 art-src/
+
+# downloaded reveal GIF (copyright) — keep local only
+web/img/booth-ball.gif

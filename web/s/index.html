@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>HAFS 몬스터</title>
+  <script>
+    // Place QR printed as /s#<QR_ID>.<TOKEN> (docs/DESIGN.md §4) → hand it to the app, which saves the ticket.
+    location.replace('../?q=' + encodeURIComponent(location.hash.slice(1)));
+  </script>
+</head>
+<body>HAFS 몬스터로 이동 중… <a href="../">열리지 않으면 여기를 누르세요</a></body>
+</html>

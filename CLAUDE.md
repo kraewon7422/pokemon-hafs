@@ -2,7 +2,13 @@
 
 ## 프로젝트 한 줄 요약
 학교 축제용 QR 수집 게임 PWA. 에메랄드(GBA) 느낌 픽셀아트, 오프라인 우선, 서버는 Supabase.
-※ 구조는 아직 설계 중. 확정되면 아래 "폴더 구조"를 갱신한다.
+**먼저 읽기: `docs/DESIGN.md` (설계) → `RUN.md` (실행·테스트·배포).**
+
+## 폴더 구조
+- `web/` 배포되는 정적 사이트 (빌드 없음, vanilla JS 모듈): `index.html` 학생 · `booth.html` 부스 · `screen.html` TV · `admin.html` 운영자 · `js/` `css/` `vendor/` `fonts/` `sprites/` `img/` `sw.js`
+- `supabase/migrations/` DB 변경 (번호순, 이미 적용된 파일은 고치지 말고 새 번호로 추가) · `supabase/seed.sql` 데모 데이터
+- `tests/rpc_test.mjs` 서버 규칙 테스트 — **DB를 바꾸면 반드시 실행해서 전부 통과**시킬 것
+- `tools/` 그림 도구 (pixelize, build_atlas, draw_map) · `docs/DESIGN.md` 설계
 
 ## 작업 방식 (가장 중요)
 1. **`main`에 직접 push 금지.** 항상 브랜치에서 작업 → Pull Request → 다른 팀원 1명 확인 후 merge.

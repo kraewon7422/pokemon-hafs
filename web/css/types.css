@@ -1,0 +1,7 @@
+/* Subject (type) colours — shared by the student app and the admin page. */
+.t-물리 { background: #6890f0; } .t-화학 { background: #f08030; } .t-생명 { background: #78c850; }
+.t-지구 { background: #e0c068; } .t-수학 { background: #6878e8; } .t-국어 { background: #f85888; }
+.t-영어 { background: #50c8d8; } .t-역사 { background: #b8a038; } .t-사회 { background: #a890f0; }
+.t-체육 { background: #c03028; } .t-음악 { background: #ee99ac; } .t-미술 { background: #f8b010; }
+.t-정보 { background: #58a090; } .t-일본어 { background: #d070a8; } .t-중국어 { background: #e05040; }
+.t-전설 { background: linear-gradient(90deg, #f8d048, #f08030, #a890f0); }

@@ -1,0 +1,17 @@
+{
+  "name": "HAFS 몬스터",
+  "short_name": "HAFS 몬스터",
+  "description": "학교 곳곳의 QR을 찾아 선생님 몬스터를 모으는 축제 게임",
+  "lang": "ko",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#88d070",
+  "theme_color": "#283048",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
