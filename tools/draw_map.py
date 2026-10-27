@@ -1,18 +1,24 @@
-"""학교 지도 픽셀아트 v2 (3/4 탑다운 RPG 마을 스타일, 붉은 벽돌) → web/img/map.png
+"""학교 지도 픽셀아트 v4 (3/4 탑다운 RPG 마을 스타일) → web/img/map.png (288x480 원본 해상도)
 
-배치 출처: 나무위키 '용인한국외국어대학교부설고등학교/시설' 문서의 상대 위치 설명
-  - 운동장에서 보면 정면에 П자 교사동: 왼쪽 P홀(4층) · 가운데 D홀(5층) · 오른쪽 C홀(4층), 가운데는 World Plaza
-  - 구름다리: C–D 2~4층, D–P 3~4층, P–C 3층(광장 가로지름, 유리), V–D 3~4층 (C·D 2층, V·D 3층은 지붕 없는 노출형)
-  - D홀 뒤 V홀(5층: 식당·도서관, 살짝 휘어진 건물, 3층 개방 복도) → 기숙사 Ace Hall(A동 높음/좌, B동 낮음/우, C동 A동 측면 증축)
-  - LUX홀은 D홀과 연결(옥상정원), 정문 들어서면 생태연못(LUX홀·기숙사 앞, 잉어·목재 다리·목재 테이블), 농구장은 B동 옆
-  - P홀 뒤 잔디광장(나무 한 그루), D–C 구름다리 뒤 야외학습장(반원, 비막이 있음), 반대쪽 아래 야외공연장(반원)
-  - 운동장은 흙 운동장(인조잔디·트랙 없음), 앞쪽 식수대, 주변 밭과 펜스. 소각장은 운동장 차량 진입로 뒤(낮은 담)
-  - 정문 경비실에 'INFORMATION' 양각
-방위는 문서에 없어서 '운동장이 아래, 교사동이 위'로 그렸다. 실제와 다르면 좌표만 고치면 된다.
-v1(단순 블록 그림)은 git 기록에 있다.
+배치: 네이버 지도 항공사진 2장(2026-10-28, 북쪽 위)을 반시계 90° 돌려 따라 그림
+      (사진 동쪽 = 지도 위, 운동장 = 오른쪽 아래, 기숙사 = 왼쪽 위, 정문 = 왼쪽 가운데).
+  - 교사동: 회색 지붕 4개 날개가 큰 타일 광장(월드플라자)을 둘러쌈. 위쪽 날개 = D홀(뒤에 초록 지붕 체육관),
+    왼쪽 = P홀, 오른쪽 = C홀. 광장은 아래쪽(운동장 쪽)으로 열려 붉은 벽돌 테라스·반원 잔디 둔덕·계단으로 이어짐
+  - V홀: 휘어진(부채꼴) 긴 건물, 구름다리로 D홀 뒤-왼쪽 끝과 연결
+  - LUX홀: 동심원 돔 건물 + D/P 모서리로 이어지는 1층 직사각형
+  - 야외극장: C–D 뒤(오른쪽)의 큰 원형 극장 + 흰 반원 차양 / 야외공연장: 숲속 작은 원형 극장(파란 좌석, 붉은 바닥)
+  - 정문: 왼쪽 가운데로 좁은 길이 들어옴. 정문 → 붉은 벽돌 보행로가 교사동까지 곧게, 차도는 운동장 쪽으로 휘어 내려감,
+    또 다른 길은 기숙사(위)로
+  - 생태연못: 벽돌 보행로와 V홀 사이 정원(물·붉은 단풍·굽은 길)
+  - 기숙사: A동·B동 긴 평행 두 동(사이 연결 통로), A동 옆 테니스장, B동 옆 회색 농구장
+  - 운동장: 흙, 왼쪽 가장자리 흰 천막 스탠드, 옆에 밭
+  - 색: 주황 벽돌 + 청록 유리 + 회색 지붕 (사진/나무위키)
+v1(블록), v2(동쪽 도로), v3(학생 설명만 반영)은 git 기록에 있다.
 
-사용법:  python tools/draw_map.py      (기본 288x480 픽셀을 3배로 키워 864x1440 저장, 라벨 겹침 검사 출력)
+사용법:  python tools/draw_map.py      (288x480 원본 크기로 저장. 라벨·핀 겹침 검사 출력)
+         PIN_PREVIEW=out.png python tools/draw_map.py   (핀을 찍은 3배 미리보기도 저장)
 """
+import math
 import os
 import random
 
@@ -20,39 +26,46 @@ from PIL import Image, ImageDraw, ImageFont
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
-W, H, SCALE = 288, 480, 3
-rnd = random.Random(11)
+W, H = 288, 480
+rnd = random.Random(5)
 
 img = Image.new('RGB', (W, H))
 d = ImageDraw.Draw(img)
-d.fontmode = '1'   # no anti-aliasing → crisp pixel text
+d.fontmode = '1'
 FONT = ImageFont.truetype(os.path.join(HERE, 'Galmuri11.ttf'), 12)
+pix = img.load()
 
 # ── palette ──
 OUT = (40, 32, 48)
 G0 = (78, 148, 72); G1 = (104, 176, 84); G2 = (136, 198, 96); G3 = (180, 222, 120); GS = (62, 118, 70)
-T0 = (34, 92, 62); T1 = (52, 128, 72); T2 = (88, 164, 80)
+F0 = (26, 70, 50); F1 = (38, 98, 60); F2 = (60, 130, 70); F3 = (96, 160, 84)       # forest canopy
 TRUNK = (110, 70, 46)
 P0 = (226, 206, 160); P1 = (200, 176, 130); PS = (168, 146, 110)
 K0 = (218, 210, 196); K1 = (190, 180, 168)
-B0 = (132, 56, 44); B1 = (178, 86, 56); B2 = (206, 116, 74)
+B0 = (150, 84, 56); B1 = (198, 124, 80); B2 = (222, 156, 106)
+TB0 = (150, 68, 52); TB1 = (184, 92, 66); TB2 = (206, 120, 86)
 CR = (244, 234, 208)
 GL0 = (64, 100, 150); GL1 = (116, 166, 212); GL2 = (206, 234, 250)
-R0 = (74, 82, 86); R1 = (104, 114, 110); R2 = (146, 154, 144)
-W0 = (48, 98, 168); W1 = (78, 146, 212); W2 = (170, 218, 248)
-DIRT0 = (176, 140, 96); DIRT1 = (202, 168, 120); DIRT2 = (222, 194, 148)
+CG0 = (40, 98, 108); CG1 = (70, 142, 146); CG2 = (150, 206, 198)
+DC0 = (150, 140, 130); DC1 = (200, 190, 176); DC2 = (226, 218, 204); PK = (206, 150, 138)
+R0 = (84, 92, 98); R1 = (134, 142, 148); R2 = (176, 182, 186); R3 = (206, 210, 212)   # grey roofs (photo)
+RT0 = (44, 84, 92); RT1 = (62, 112, 118)                                            # dorm teal roofs (photo)
+GY0 = (40, 96, 80); GY1 = (58, 126, 102); GY2 = (90, 156, 128)                     # gym green roof
+W0 = (40, 84, 120); W1 = (62, 120, 150); W2 = (150, 200, 220)
+DIRT0 = (176, 140, 96); DIRT1 = (206, 176, 128); DIRT2 = (226, 202, 158)
 WOOD = (150, 98, 58); WOOD_L = (186, 132, 80)
 S0 = (112, 112, 124); S1 = (168, 168, 176); S2 = (210, 210, 214)
 ROAD0 = (96, 96, 106); ROAD1 = (124, 124, 134)
 WHITE = (248, 248, 240)
-RED = (226, 70, 70); YEL = (248, 214, 72); PINK = (240, 156, 196); ORANGE = (240, 140, 60)
-COURT0 = (60, 120, 128); COURT1 = (80, 148, 150)
+RED = (214, 64, 56); RED2 = (170, 44, 48); YEL = (248, 214, 72); PINK = (240, 156, 196)
+SEAT = (70, 110, 170); SEAT2 = (100, 140, 196)
 SIGN_BG = (252, 246, 228); BLD_BG = (64, 48, 72)
+DOME0 = (120, 150, 160); DOME1 = (170, 200, 206); DOME2 = (220, 238, 240)
 
-SHADE = {G0: GS, G1: GS, G2: G0, G3: G1, GS: GS, T2: T1, T1: T0,
+SHADE = {G0: GS, G1: GS, G2: G0, G3: G1, GS: GS, F3: F2, F2: F1, F1: F0,
          P0: P1, P1: PS, K0: K1, K1: (164, 154, 144), DIRT1: DIRT0, DIRT2: DIRT1, DIRT0: (150, 116, 80),
-         ROAD0: (76, 76, 86), ROAD1: ROAD0, W1: W0, W2: W1, W0: (36, 76, 140), S1: S0, S2: S1}
-pix = img.load()
+         ROAD0: (76, 76, 86), ROAD1: ROAD0, W1: W0, W2: W1, S1: S0, S2: S1,
+         TB2: TB1, TB1: TB0, TB0: (122, 56, 44)}
 
 
 def rect(x0, y0, x1, y1, fill=None, outline=None):
@@ -64,593 +77,468 @@ def pt(x, y, c):
         pix[x, y] = c
 
 
+def shade_px(x, y):
+    if 0 <= x < W and 0 <= y < H:
+        c = pix[x, y]
+        pix[x, y] = SHADE.get(c, tuple(int(v * .74) for v in c))
+
+
 def shade(x0, y0, x1, y1):
-    """darken the ground inside a box (cast shadow)"""
-    for y in range(max(0, y0), min(H, y1 + 1)):
-        for x in range(max(0, x0), min(W, x1 + 1)):
-            c = pix[x, y]
-            pix[x, y] = SHADE.get(c, tuple(int(v * .74) for v in c))
-
-
-def shade_ellipse(x0, y0, x1, y1):
-    cx, cy, rx, ry = (x0 + x1) / 2, (y0 + y1) / 2, (x1 - x0) / 2 + .01, (y1 - y0) / 2 + .01
-    for y in range(int(y0), int(y1) + 1):
-        for x in range(int(x0), int(x1) + 1):
-            if ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1 and 0 <= x < W and 0 <= y < H:
-                c = pix[x, y]
-                pix[x, y] = SHADE.get(c, tuple(int(v * .74) for v in c))
-
-
-# ═════════════════════ GROUND ═════════════════════
-rect(0, 0, W, H, G1)
-for _ in range(900):                                   # soft mottling
-    x, y = rnd.randrange(W), rnd.randrange(H)
-    rect(x, y, x + rnd.randrange(1, 4), y, G0 if rnd.random() < .55 else G2)
-for _ in range(260):                                   # grass tufts
-    x, y = rnd.randrange(W), rnd.randrange(H)
-    pt(x, y, G0); pt(x + 2, y, G0); pt(x + 1, y - 1, G0); pt(x + 1, y - 2, G3)
-# hill behind the dorms: darker diagonal band texture
-for y in range(0, 104):
-    for x in range(0, W):
-        if (x + y * 2) % 11 == 0 and rnd.random() < .6 - y / 260:
-            pt(x, y, G0)
-
-# ── campus road (east edge, one-way with parallel parking) ──
-rect(272, 0, 287, H - 1, ROAD0)
-rect(271, 0, 271, H - 1, S1); rect(270, 0, 270, H - 1, S2)
-for y in range(3, H, 12):
-    rect(281, y, 281, y + 5, YEL)
-for y in range(140, 320, 13):                          # parallel parking bays + parked cars
-    rect(273, y, 278, y, WHITE)
-for i, y in enumerate(range(142, 318, 26)):
-    col = [(200, 64, 64), (236, 236, 236), (64, 96, 168), (48, 48, 56), (220, 200, 80), (120, 160, 120), (200, 64, 64)][i % 7]
-    rect(273, y + 1, 278, y + 9, col, OUT); rect(274, y + 3, 277, y + 4, GL1); rect(274, y + 7, 277, y + 7, GL0)
-for y in range(36, 120, 6):                            # one-way arrows
-    pass
-for y in (60, 200, 420):
-    rect(279, y, 279, y + 6, WHITE); pt(278, y + 1, WHITE); pt(280, y + 1, WHITE)
-
-# ── paths ──
-def path(x0, y0, x1, y1):
-    rect(x0, y0, x1, y1, P0)
-    rect(x0, y0, x1, y0, P1)
-    for _ in range((x1 - x0 + 1) * (y1 - y0 + 1) // 18):
-        pt(rnd.randrange(x0, x1 + 1), rnd.randrange(y0, y1 + 1), P1)
-
-
-def brickpath(x0, y0, x1, y1):
-    rect(x0, y0, x1, y1, B2)
     for y in range(y0, y1 + 1):
         for x in range(x0, x1 + 1):
-            if (y - y0) % 3 == 2 or (x + ((y - y0) // 3) * 2) % 4 == 0:
-                pt(x, y, B1)
+            shade_px(x, y)
 
 
-path(4, 106, 271, 114)               # uphill path (dorm front) → road
-path(234, 114, 241, 226)             # east walk along LUX
-path(234, 336, 241, 360)             # gate → field walk
-path(4, 352, 271, 360)               # walk along the field
-brickpath(234, 322, 271, 334)        # main gate entrance
-brickpath(112, 322, 152, 352)        # plaza → field
-path(44, 100, 52, 106)               # A동 door
-path(158, 100, 166, 106)             # B동 door
+KEEP = {}
 
-# ── 주차장 (기숙사 앞 작은 공간) ──
-rect(6, 120, 66, 164, ROAD1, S0)
-for x in range(8, 66, 8):
-    rect(x, 121, x, 131, WHITE); rect(x, 153, x, 163, WHITE)
-for i, x in enumerate((9, 25, 41, 57)):
-    col = [(64, 96, 168), (236, 236, 236), (200, 64, 64), (90, 90, 96)][i]
-    rect(x, 122, x + 5, 130, col, OUT); rect(x + 1, 124, x + 4, 125, GL1)
-for i, x in enumerate((17, 49)):
-    col = [(220, 200, 80), (236, 236, 236)][i]
-    rect(x, 154, x + 5, 162, col, OUT); rect(x + 1, 159, x + 4, 160, GL1)
-rect(66, 136, 76, 148, ROAD1)        # driveway to V
+# ═════════════════════ GROUND: forest everywhere, then campus clearings ═════════════════════
+rect(0, 0, W, H, F1)
+for _ in range(2600):                                   # layered canopy blobs, lit from the top-left
+    x, y, r = rnd.randrange(-4, W + 4), rnd.randrange(-4, H + 4), rnd.choice((2, 3, 3, 4, 5))
+    d.ellipse((x - r + 1, y - r + 1, x + r + 1, y + r + 1), fill=F0)
+    d.ellipse((x - r, y - r, x + r, y + r), fill=F1 if rnd.random() < .6 else F2)
+    d.ellipse((x - r + 1, y - r + 1, x, y), fill=F2 if rnd.random() < .7 else F3)
+for _ in range(45):                                     # a few autumn red maples (photos)
+    x, y = rnd.randrange(W), rnd.randrange(H)
+    if pix[x, y] in (F1, F2):
+        d.ellipse((x, y, x + 2, y + 2), fill=RED2); pt(x, y, RED)
 
-# ── 잔디광장 (P홀 뒤, 예전 수공간 → 잔디, 나무 한 그루) ──
-rect(3, 186, 25, 322, G2, T1)
-for y in range(187, 322):
-    if (y // 4) % 2 == 0:
-        rect(4, y, 24, y, G3 if (y // 4) % 4 == 0 else G2)
-for y in range(190, 320, 9):
-    for x in range(6, 24, 7):
-        pt(x + (y // 9) % 2 * 3, y, (248, 248, 200))
 
-# ── World Plaza (paved, central narrow stair, sculpture, planters) ──
-rect(72, 234, 190, 322, K0)
-for y in range(234, 323):
-    for x in range(72, 191):
-        if (y - 234) % 6 == 0 or (x - 72 + ((y - 234) // 6) % 2 * 6) % 12 == 0:
-            pix[x, y] = K1
-# level change across the plaza with a narrow central stair (no railings)
-rect(72, 280, 190, 283, K1); rect(72, 284, 190, 284, S1)
-for i, y in enumerate(range(278, 288, 2)):
-    rect(124, y, 138, y, S2 if i % 2 == 0 else S1)
-rect(123, 277, 123, 288, S0); rect(139, 277, 139, 288, S0)
+def clearing(poly):
+    d.polygon(poly, fill=G1)
 
-# ── 운동장: 흙 운동장 (no track, no turf) ──
-FX0, FY0, FX1, FY1 = 30, 368, 262, 472
-rect(FX0 - 2, FY0 - 2, FX1 + 2, FY1 + 2, S1)             # low fence base
+
+def grass_texture(x0, y0, x1, y1):
+    for _ in range((x1 - x0) * (y1 - y0) // 30):
+        x, y = rnd.randrange(x0, x1), rnd.randrange(y0, y1)
+        if pix[x, y] == G1:
+            rect(x, y, x + rnd.randrange(1, 3), y, G0 if rnd.random() < .5 else G2)
+
+
+clearing([(0, 40), (100, 30), (104, 180), (82, 186), (82, 250), (40, 262), (0, 262)])     # dorm / tennis / gate side
+clearing([(78, 172), (160, 170), (160, 250), (78, 250)])                                   # garden
+clearing([(96, 104), (186, 150), (186, 200), (150, 200), (96, 170)])                       # around V홀
+clearing([(144, 170), (288, 170), (288, 352), (196, 356), (166, 340), (144, 300)])         # main block
+clearing([(156, 342), (288, 342), (288, 480), (156, 480)])                                 # field + farm
+grass_texture(0, 30, 288, 480)
+
+# ── roads (thick polylines) ──
+def polyroad(pts, w, fill=ROAD0, edge=S2):
+    d.line(pts, fill=edge, width=w + 2, joint='curve')
+    d.line(pts, fill=fill, width=w, joint='curve')
+    for (x, y) in pts:
+        d.ellipse((x - w // 2, y - w // 2, x + w // 2, y + w // 2), fill=fill)
+
+
+polyroad([(-4, 271), (78, 270)], 6)                                          # entry road (photo: narrow road from the north)
+polyroad([(76, 272), (76, 210), (64, 182), (52, 168), (50, 120), (48, 60)], 7)   # road up to the dorms
+polyroad([(80, 271), (134, 268), (152, 290), (170, 322), (186, 344), (200, 350), (288, 350)], 7)  # road down to the field
+polyroad([(186, 344), (192, 476)], 6)
+for (x0, y0, x1, y1) in ((10, 270, 70, 270), (82, 270, 130, 268)):
+    for x in range(x0, x1, 8):
+        pt(x, y0, YEL); pt(x + 1, y0, YEL)
+
+# ── 붉은 벽돌 보행로 (gate → main block) ──
+d.polygon([(80, 246), (162, 239), (162, 258), (80, 260)], fill=TB2)
+for y in range(238, 262):
+    for x in range(80, 163):
+        if pix[x, y] == TB2 and ((y % 3 == 2) or ((x + (y // 3) * 2) % 4 == 0)):
+            pix[x, y] = TB1
+for x in range(86, 162, 12):                                               # stone cross bands
+    d.line((x, 245 - (x - 80) // 12, x, 259), fill=K0)
+d.line((80, 246, 162, 239), fill=K1); d.line((80, 260, 162, 258), fill=K1)
+
+# ── 생태연못 garden (between the promenade and V홀) ──
+rect(80, 176, 156, 236, G2)
+for _ in range(240):
+    x, y = rnd.randrange(80, 156), rnd.randrange(176, 236)
+    rect(x, y, x + 1, y, G1 if rnd.random() < .6 else G3)
+d.polygon([(100, 198), (116, 192), (130, 198), (132, 212), (122, 222), (104, 220), (96, 210)], fill=W1, outline=W0)
+for (x, y) in ((104, 204), (114, 198), (122, 214), (108, 214)):
+    rect(x, y, x + 2, y, W2)
+for (x, y) in ((100, 208), (126, 204), (112, 216)):
+    d.ellipse((x, y, x + 3, y + 2), fill=F3, outline=F2)
+d.arc((84, 178, 150, 236), 190, 330, fill=TB2, width=2)                   # curving red path (photo)
+d.line((126, 200, 140, 232), fill=P0, width=2)
+rect(114, 219, 128, 222, WOOD, OUT)                                        # wooden deck
+for x in range(115, 128, 2):
+    pt(x, 220, WOOD_L)
+for (x, y) in ((86, 182), (146, 182), (88, 228), (132, 186), (150, 226), (142, 200)):   # red maples + shrubs
+    d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=RED2); d.ellipse((x - 3, y - 3, x + 1, y), fill=RED)
+for (x, y) in ((96, 224), (126, 226), (84, 206)):
+    d.ellipse((x - 3, y - 3, x + 3, y + 3), fill=F2); pt(x - 1, y - 2, F3)
+KEEP['pond water'] = (96, 192, 133, 223)
+
+# ── courts ──
+rect(25, 183, 47, 225, (190, 96, 72), OUT)                                 # 테니스장 (orange surround, green court)
+rect(29, 188, 43, 220, (96, 150, 96), WHITE)
+d.line((29, 204, 43, 204), fill=S2); d.line((36, 192, 36, 216), fill=WHITE)
+rect(29, 192, 43, 216, None, WHITE)
+for y in range(183, 226, 3):
+    pt(24, y, S2); pt(48, y, S2)
+KEEP['tennis lines'] = (29, 188, 44, 221)
+rect(70, 152, 100, 173, S1, OUT)                                           # 농구장 (grey square court)
+rect(72, 154, 98, 171, (150, 154, 160), WHITE)
+d.line((72, 162, 98, 162), fill=WHITE); d.ellipse((81, 158, 89, 166), outline=WHITE)
+rect(72, 161, 73, 163, (220, 120, 90)); rect(97, 161, 98, 163, (220, 120, 90))
+KEEP['court lines'] = (72, 154, 99, 172)
+
+# ── 운동장 (dirt field, long axis vertical) + farm ──
+FX0, FY0, FX1, FY1 = 200, 356, 278, 472
+rect(FX0 - 2, FY0 - 2, FX1 + 2, FY1 + 2, S1)
 rect(FX0, FY0, FX1, FY1, DIRT1)
-for _ in range(1500):
+for _ in range(1100):
     x, y = rnd.randrange(FX0, FX1 + 1), rnd.randrange(FY0, FY1 + 1)
     pt(x, y, DIRT0 if rnd.random() < .5 else DIRT2)
-for _ in range(40):                                     # tyre / rake streaks
-    x, y = rnd.randrange(FX0 + 4, FX1 - 12), rnd.randrange(FY0 + 3, FY1 - 3)
-    rect(x, y, x + rnd.randrange(4, 10), y, DIRT2)
-for (cx_, cy_, rx_, ry_) in ((FX0 + 16, (FY0 + FY1) // 2, 10, 14), (FX1 - 16, (FY0 + FY1) // 2, 10, 14),
-                             ((FX0 + FX1) // 2, (FY0 + FY1) // 2, 18, 12)):
-    for _ in range(140):                                # scuffed goal mouths / centre
-        x = cx_ + int(rnd.gauss(0, rx_ / 2)); y = cy_ + int(rnd.gauss(0, ry_ / 2))
-        pt(x, y, DIRT0)
-CH = (236, 226, 204)                                    # faint chalk lines
-for x in range(FX0 + 8, FX1 - 7):
-    if x % 2 == 0:
-        pt(x, FY0 + 8, CH); pt(x, FY1 - 8, CH)
-for y in range(FY0 + 8, FY1 - 7):
-    if y % 2 == 0:
-        pt(FX0 + 8, y, CH); pt(FX1 - 8, y, CH); pt((FX0 + FX1) // 2, y, CH)
 mx, my = (FX0 + FX1) // 2, (FY0 + FY1) // 2
-for a in range(0, 360, 12):
-    import math
-    pt(int(mx + 13 * math.cos(math.radians(a))), int(my + 13 * math.sin(math.radians(a))), CH)
-for gx, side in ((FX0 + 8, 1), (FX1 - 8, -1)):          # penalty boxes + goals
-    bx0, bx1 = (gx, gx + 22 * side)
-    for y in range(my - 22, my + 23, 2):
-        pt(bx1, y, CH)
-    for x in range(min(gx, bx1), max(gx, bx1) + 1, 2):
-        pt(x, my - 22, CH); pt(x, my + 22, CH)
-    gx2 = gx - 5 * side
-    rect(min(gx, gx2), my - 9, max(gx, gx2), my - 9, WHITE); rect(min(gx, gx2), my + 9, max(gx, gx2), my + 9, WHITE)
-    rect(gx2, my - 9, gx2, my + 9, WHITE)
-    for y in range(my - 8, my + 9, 2):
-        for x in range(min(gx, gx2) + 1, max(gx, gx2)):
-            if (x + y) % 2 == 0:
-                pt(x, y, S2)
-# fence posts around the field
-for x in range(FX0 - 2, FX1 + 3, 6):
-    pt(x, FY0 - 3, S0); pt(x, FY1 + 3, S0)
-for y in range(FY0 - 2, FY1 + 3, 6):
-    pt(FX0 - 3, y, S0); pt(FX1 + 3, y, S0)
-# benches / stands on the north edge of the field + drinking fountain (식수대)
-for bx in (40, 68, 196, 224):
-    rect(bx, 362, bx + 14, 364, WOOD, OUT); rect(bx + 1, 362, bx + 13, 362, WOOD_L)
-rect(166, 361, 171, 366, S1, OUT); pt(168, 362, W1); pt(169, 362, W2)
-# vegetable plots (밭) around the field
-for (x0, y0) in ((3, 368), (3, 402), (3, 436)):             # vegetable plots (밭) beside the field
-    rect(x0, y0, x0 + 20, y0 + 30, DIRT0, WOOD)
-    for y in range(y0 + 2, y0 + 29, 4):
-        rect(x0 + 2, y, x0 + 18, y + 1, (150, 116, 80))
-        for x in range(x0 + 3, x0 + 18, 3):
-            pt(x, y - 1, T2); pt(x, y, T1)
+CH = (240, 230, 210)
+for x in range(FX0 + 5, FX1 - 4, 2):
+    pt(x, FY0 + 5, CH); pt(x, FY1 - 5, CH); pt(x, my, CH)
+for y in range(FY0 + 5, FY1 - 4, 2):
+    pt(FX0 + 5, y, CH); pt(FX1 - 5, y, CH)
+for a in range(0, 360, 15):
+    pt(int(mx + 9 * math.cos(math.radians(a))), int(my + 9 * math.sin(math.radians(a))), CH)
+for gy, side in ((FY0 + 5, 1), (FY1 - 5, -1)):
+    for x in range(mx - 16, mx + 17, 2):
+        pt(x, gy + 16 * side, CH)
+    for y in range(min(gy, gy + 16 * side), max(gy, gy + 16 * side) + 1, 2):
+        pt(mx - 16, y, CH); pt(mx + 16, y, CH)
+    gy2 = gy - 4 * side
+    rect(mx - 7, min(gy, gy2), mx - 7, max(gy, gy2), WHITE); rect(mx + 7, min(gy, gy2), mx + 7, max(gy, gy2), WHITE)
+    rect(mx - 7, gy2, mx + 7, gy2, WHITE)
+    KEEP[f'goal@{gy}'] = (mx - 7, min(gy, gy2), mx + 8, max(gy, gy2) + 1)
+rect(203, 410, 212, 430, WHITE, OUT)                                         # white tent stand (photo)
+for y in range(412, 429, 3):
+    rect(204, y, 211, y, S2)
+shade(213, 412, 214, 431)
+KEEP['tent stand'] = (203, 410, 213, 431)
+for i, (x0, y0) in enumerate(((162, 372), (162, 404), (162, 436))):      # farm plots
+    rect(x0, y0, x0 + 20, y0 + 26, DIRT0, WOOD)
+    for y in range(y0 + 3, y0 + 25, 4):
+        rect(x0 + 2, y, x0 + 18, y, (150, 116, 80))
+        if i != 1:
+            for x in range(x0 + 3, x0 + 18, 3):
+                pt(x, y - 1, F3)
 
-# ── 생태연못 (along LUX / dorm side, by the gate) ──
-d.rounded_rectangle((235, 226, 268, 318), radius=10, fill=W1, outline=W0)
-rect(234, 224, 269, 225, P1)
-for _ in range(60):
-    x, y = rnd.randrange(238, 266), rnd.randrange(230, 315)
-    if pix[x, y] == W1:
-        rect(x, y, x + 2, y, W2 if rnd.random() < .5 else W0)
-for (x, y) in [(239, 236), (259, 240), (240, 296), (259, 306), (238, 258)]:          # lily pads
-    d.ellipse((x, y, x + 5, y + 3), fill=T2, outline=T1); pt(x + 1, y + 1, PINK)
-for (x, y) in [(242, 248), (262, 256), (240, 286), (262, 292)]:                       # carp (잉어)
-    rect(x, y, x + 2, y, ORANGE); pt(x + 3, y, WHITE)
-for (x, y) in [(237, 230), (266, 236), (237, 312), (266, 312), (236, 270)]:  # rocks
-    d.ellipse((x - 2, y - 1, x + 2, y + 2), fill=S1, outline=S0); pt(x - 1, y, S2)
-for (x, y) in [(238, 304), (240, 306), (265, 230), (263, 232), (267, 278), (265, 280)]:  # reeds
-    rect(x, y - 3, x, y, T1); pt(x, y - 4, WOOD)
-rect(249, 222, 255, 236, WOOD, OUT)                     # wooden pier into the pond
-for y in range(224, 236, 2):
-    rect(250, y, 254, y, WOOD_L)
-rect(222, 310, 230, 314, WOOD, OUT); rect(223, 310, 229, 310, WOOD_L)   # wooden table by the pond
-rect(223, 307, 229, 308, WOOD); rect(223, 316, 229, 317, WOOD)
+# ── main block ground: 월드플라자 courtyard + brick terrace + grass mound ──
+d.polygon([(182, 220), (224, 220), (224, 300), (182, 300)], fill=K0)
+for y in range(220, 301):
+    for x in range(182, 225):
+        if (y - 220) % 8 == 0 or (x - 182) % 8 == 0:
+            pix[x, y] = K1
+        elif ((x - 182) // 8 + (y - 220) // 8) % 2 == 0 and (x + y) % 2 == 0:
+            pix[x, y] = TB2
+d.rectangle((190, 236, 216, 262), outline=TB1)                              # central square pattern (photo)
+d.rectangle((196, 242, 210, 256), outline=TB1)
+rect(176, 300, 246, 346, TB2)                                               # brick terrace
+for y in range(300, 347):
+    for x in range(176, 247):
+        if (y % 3 == 2) or ((x + (y // 3) * 2) % 4 == 0):
+            pix[x, y] = TB1
+for i, y in enumerate(range(300, 306)):                                    # stairs courtyard → terrace
+    rect(196, y, 222, y, S2 if i % 2 == 0 else S1)
+KEEP['plaza stairs'] = (196, 300, 223, 306)
+d.pieslice((168, 296, 208, 336), 0, 180, fill=G2, outline=OUT)             # semicircular grass mound
+d.arc((172, 300, 204, 332), 0, 180, fill=G1)
+rect(230, 330, 244, 344, (120, 80, 52)); rect(231, 331, 243, 343, F2)      # planter
+for (x, y) in ((186, 228), (186, 292), (216, 228), (216, 292)):             # benches
+    rect(x, y, x + 5, y + 1, WOOD_L); rect(x, y + 2, x + 5, y + 2, WOOD)
+rect(238, 198, 264, 246, TB2)                                               # brick plaza by the theater
+for y in range(198, 247):
+    for x in range(238, 265):
+        if (y % 3 == 2) or ((x + (y // 3) * 2) % 4 == 0):
+            pix[x, y] = TB1
 
-# ── amphitheaters (semicircle, seats facing a stage) ──
-def amph(cx, cy, r, canopy=False):
-    for i in range(0, r - 4, 3):
-        d.pieslice((cx - r + i, cy - r + i, cx + r - i, cy + r - i), 180, 360,
-                   fill=(S2 if (i // 3) % 2 == 0 else S1), outline=OUT if i == 0 else None)
-        d.arc((cx - r + i, cy - r + i, cx + r - i, cy + r - i), 180, 360, fill=S0 if i else OUT)
-    rect(cx - r + 6, cy - 3, cx + r - 6, cy + 2, WOOD, OUT)            # stage
-    rect(cx - r + 7, cy - 2, cx + r - 7, cy - 2, WOOD_L)
-    if canopy:                                                          # 비막이 (rain shelter) over the stage
-        rect(cx - r + 4, cy - 9, cx + r - 4, cy - 6, (232, 232, 236), OUT)
-        rect(cx - r + 5, cy - 8, cx + r - 5, cy - 8, WHITE)
-        rect(cx - r + 5, cy - 5, cx - r + 5, cy + 1, S0); rect(cx + r - 5, cy - 5, cx + r - 5, cy + 1, S0)
+# ── 야외극장 (big circular theater + white semicircular canopy) ──
+TCX, TCY, TRR = 262, 222, 20
+d.ellipse((TCX - TRR + 2, TCY - TRR + 2, TCX + TRR + 3, TCY + TRR + 3), fill=F0)
+d.ellipse((TCX - TRR, TCY - TRR, TCX + TRR, TCY + TRR), fill=TB1, outline=OUT)
+for rr in range(TRR - 2, 6, -3):
+    d.ellipse((TCX - rr, TCY - rr, TCX + rr, TCY + rr), outline=TB0)
+d.ellipse((TCX - 6, TCY - 6, TCX + 6, TCY + 6), fill=TB2, outline=TB0)
+d.ellipse((TCX - 3, TCY - 3, TCX + 3, TCY + 3), fill=K0, outline=S0)
+d.arc((TCX - TRR - 3, TCY - TRR - 3, TCX + TRR + 3, TCY + TRR + 3), -75, 75, fill=WHITE, width=4)
+d.arc((TCX - TRR - 3, TCY - TRR - 3, TCX + TRR + 3, TCY + TRR + 3), -75, 75, fill=S1, width=1)
+KEEP['theater'] = (TCX - TRR, TCY - TRR - 3, TCX + TRR + 4, TCY + TRR + 4)
 
+# ── 야외공연장 (small round amphitheater in the woods: blue seats, red floor) ──
+ACX, ACY, AR = 148, 346, 11
+d.ellipse((ACX - AR - 3, ACY - AR - 3, ACX + AR + 3, ACY + AR + 3), fill=G1)
+d.pieslice((ACX - AR, ACY - AR, ACX + AR, ACY + AR), 180, 360, fill=SEAT, outline=OUT)
+for rr in range(AR - 3, 3, -3):
+    d.arc((ACX - rr, ACY - rr, ACX + rr, ACY + rr), 180, 360, fill=SEAT2)
+d.pieslice((ACX - AR, ACY - AR, ACX + AR, ACY + AR), 0, 180, fill=TB1, outline=OUT)
+d.ellipse((ACX - 4, ACY - 2, ACX + 4, ACY + 4), fill=TB2)
+KEEP['small amphitheater'] = (ACX - AR, ACY - AR, ACX + AR + 1, ACY + AR + 1)
 
-shade_ellipse(213, 140, 255, 172)
-amph(232, 166, 20, canopy=True)   # 야외학습장 (behind the D–C bridge, against the hill)
-shade_ellipse(9, 326, 47, 352)
-amph(26, 348, 18)                  # 야외공연장 (opposite side, lower)
-
-# ── basketball court (next to dorm B) ──
-rect(210, 22, 264, 78, S0)
-rect(212, 24, 262, 76, COURT0)
-rect(216, 28, 258, 72, COURT1, WHITE)
-d.line((216, 50, 258, 50), fill=WHITE)
-d.ellipse((231, 44, 243, 56), outline=WHITE)
-d.arc((226, 18, 248, 40), 0, 180, fill=WHITE); d.arc((226, 60, 248, 82), 180, 360, fill=WHITE)
-rect(234, 28, 240, 34, (220, 120, 90)); rect(234, 66, 240, 72, (220, 120, 90))
-rect(235, 25, 239, 25, WHITE, None); rect(235, 75, 239, 75, WHITE)
-for x in range(210, 265, 3):                                           # chain-link fence
-    pt(x, 21, S2); pt(x, 79, S2)
-for y in range(21, 80, 3):
-    pt(209, y, S2); pt(265, y, S2)
-
-# ═════════════════════ BUILDINGS ═════════════════════
-def facade(x0, y0, x1, floors, doors=(), open_floor=None):
-    """brick facade; returns bottom y. floors drawn top→bottom, 7 px each"""
-    y1 = y0 + floors * 7 + 3
-    rect(x0, y0, x1, y1, B1)
-    for y in range(y0, y1 + 1):
-        r = y - y0
-        if r % 3 == 2:
-            rect(x0, y, x1, y, B0)
-        else:
-            off = 0 if (r // 3) % 2 == 0 else 3
-            for x in range(x0 + off, x1 + 1, 6):
-                pt(x, y, B0)
-            if r % 3 == 0:
-                for x in range(x0 + off + 2, x1, 6):
-                    if rnd.random() < .45:
-                        pt(x, y, B2)
-    rect(x0, y0, x1, y0, CR); rect(x0, y0 + 1, x1, y0 + 1, B0)           # cornice
-    nwin = (x1 - x0 - 5) // 7
-    left = x0 + (x1 - x0 - (nwin * 7 - 1)) // 2
-    for f in range(floors):
-        fy = y0 + 2 + f * 7
-        rect(x0 + 1, fy + 6, x1 - 1, fy + 6, B2 if f < floors - 1 else B1)     # slab band
-        if open_floor == f:                                                       # open corridor (V홀 3F)
-            rect(x0 + 2, fy + 1, x1 - 2, fy + 5, (60, 44, 52))
-            rect(x0 + 2, fy + 5, x1 - 2, fy + 5, B2)
-            for x in range(x0 + 4, x1 - 2, 7):
-                rect(x, fy + 1, x + 1, fy + 5, CR)
-            rect(x0 + 2, fy + 3, x1 - 2, fy + 3, S1)
-            continue
-        for i in range(nwin):
-            wx = left + i * 7
-            rect(wx, fy + 1, wx + 5, fy + 5, CR)
-            rect(wx + 1, fy + 2, wx + 4, fy + 4, GL1)
-            rect(wx + 1, fy + 2, wx + 4, fy + 2, GL0)
-            pt(wx + 3, fy + 3, GL2); pt(wx + 4, fy + 3, GL2)
-    for dcx in doors:                                                   # glass double doors + canopy + steps
-        fy = y0 + 2 + (floors - 1) * 7
-        rect(dcx - 4, fy + 1, dcx + 4, y1 - 1, CR)
-        rect(dcx - 3, fy + 2, dcx + 3, y1 - 1, GL0)
-        rect(dcx - 3, fy + 2, dcx - 1, fy + 2, GL2); pt(dcx, fy + 2, CR); rect(dcx, fy + 2, dcx, y1 - 1, CR)
-        rect(dcx - 6, fy, dcx + 6, fy + 1, R2, None); rect(dcx - 6, fy + 1, dcx + 6, fy + 1, R0)
-        rect(dcx - 5, y1 + 1, dcx + 5, y1 + 1, S2); rect(dcx - 6, y1 + 2, dcx + 6, y1 + 2, S1)
-    rect(x0, y1, x1, y1, B0)
-    return y1
+# ═════════════════════ BUILDINGS (footprints traced from the photo, 3/4 view) ═════════════════════
+FH = 4                                  # px per storey (compact Emerald-style heights)
+MAT = {'brick': (B0, B1, B2), 'conc': (DC0, DC1, DC2)}
 
 
-def roof(x0, y0, x1, y1):
-    rect(x0, y0, x1, y1, R1)
-    rect(x0 + 1, y0 + 1, x1 - 1, y0 + 1, R2); rect(x0 + 1, y0 + 1, x0 + 1, y1 - 1, R2)  # lit parapet
-    rect(x1 - 1, y0 + 1, x1 - 1, y1 - 1, R0 if False else R2)
-    rect(x0 + 1, y1 - 1, x1 - 1, y1 - 1, R2)
-    rect(x0 + 2, y0 + 2, x1 - 2, y0 + 2, R0); rect(x0 + 2, y0 + 2, x0 + 2, y1 - 2, R0)  # parapet shadow
-    for y in range(y0 + 4, y1 - 1, 4):                                                    # roof membrane seams
-        for x in range(x0 + 4, x1 - 2, 2):
-            if (x + y) % 4 == 0:
-                pt(x, y, (96, 106, 102))
+def wall_px(x, r, mat):
+    m0, m1, m2 = MAT[mat]
+    if mat == 'brick':
+        if r % 2 == 1:
+            return m0 if (x + (r // 2) * 2) % 4 == 0 else m1
+        return m1 if (x * 3 + r) % 7 else m2
+    return PK if r % FH == 3 else m1
 
 
-def ac(x, y):
-    rect(x, y, x + 5, y + 4, S1, OUT); rect(x + 1, y + 1, x + 4, y + 1, S2)
-    d.ellipse((x + 1, y + 1, x + 4, y + 4), outline=S0); pt(x + 6, y + 1, R0); rect(x + 6, y + 1, x + 6, y + 5, R0)
-    rect(x + 1, y + 5, x + 6, y + 5, R0)
-
-
-def solar(x, y, w, h):
-    rect(x, y, x + w, y + h, GL0, OUT)
-    for xx in range(x + 2, x + w, 3):
-        rect(xx, y + 1, xx, y + h - 1, (88, 128, 180))
-    rect(x + 1, y + 1, x + w - 1, y + 1, GL1)
-    rect(x + 1, y + h + 1, x + w + 1, y + h + 1, R0)
-
-
-def railing(x0, x1, y):
-    for x in range(x0, x1 + 1, 2):
-        pt(x, y, S2)
-
-
-def garden(x0, y0, x1, y1):
-    rect(x0, y0, x1, y1, G1, T0)
-    for y in range(y0 + 1, y1):
-        for x in range(x0 + 1, x1):
-            if (x * 7 + y * 3) % 5 == 0:
-                pt(x, y, T2)
-            elif (x * 5 + y * 11) % 17 == 0:
-                pt(x, y, rnd.choice([RED, YEL, PINK, WHITE]))
-
-
-def building(x0, y0, x1, roof_h, floors, doors=(), open_floor=None, cast=True):
-    fy1 = y0 + roof_h + floors * 7 + 3
-    if cast:
-        shade(x1 + 1, y0 + 3, x1 + 4, fy1 + 2)
-        shade(x0 + 3, fy1 + 1, x1 + 4, fy1 + 3)
-    roof(x0, y0, x1, y0 + roof_h)
-    facade(x0, y0 + roof_h, x1, floors, doors, open_floor)
-    rect(x0, y0, x1, fy1, None, OUT)
-    rect(x0, y0 + roof_h, x1, y0 + roof_h, OUT)
-    return fy1
-
-
-def bridge_h(x0, x1, y, glass=True):
-    """horizontal sky bridge, seen from the front: roof strip + glass band"""
-    shade(x0, y + 10, x1, y + 13)
-    rect(x0, y, x1, y + 2, R2, OUT)
-    rect(x0, y + 3, x1, y + 8, GL1 if glass else B1, OUT)
-    if glass:
-        rect(x0 + 1, y + 3, x1 - 1, y + 3, GL0)
-        for x in range(x0 + 4, x1, 6):
-            rect(x, y + 4, x, y + 7, CR)
-            pt(x + 2, y + 5, GL2)
-    rect(x0, y + 9, x1, y + 9, B0)
-
-
-def bridge_v(x0, x1, y0, y1, covered=True):
-    """short N–S sky bridge between stacked blocks (seen from above)"""
-    shade(x1 + 1, y0, x1 + 2, y1)
-    if covered:
-        rect(x0, y0, x1, y1, R2, OUT)
-        rect(x0 + 1, y0, x0 + 1, y1, GL1); rect(x1 - 1, y0, x1 - 1, y1, GL0)
-    else:   # open-air bridge: brick deck with railings
-        rect(x0, y0, x1, y1, B2, OUT)
-        rect(x0 + 1, y0, x0 + 1, y1, S2); rect(x1 - 1, y0, x1 - 1, y1, S2)
-
-
-# ── 기숙사 Ace Hall ──
-A_Y1 = building(14, 4, 80, 18, 10, doors=(48,))          # A동 (tall, left)
-C_Y1 = building(80, 16, 112, 14, 8, doors=(96,))         # C동 (annex beside A)
-for x in (88, 104):
-    ac(x - 3, 19)
-B_Y1 = building(122, 46, 200, 16, 6, doors=(162,))       # B동 (lower, right)
-ac(126, 50); ac(190, 50); solar(132, 49, 14, 4); solar(178, 49, 9, 4)
-ac(18, 8); solar(18, 15, 10, 4); ac(71, 8)
-
-# 3F outdoor passage V ↔ dorm (crosses the uphill path)
-bridge_v(170, 178, B_Y1 + 1, 118, covered=False)
-
-# ── V홀 (5F, curved): drawn flat on a layer then each column is bent ──
-VX0, VX1, VY0 = 76, 188, 118
-layer = Image.new('RGB', (VX1 - VX0 + 1, 16 + 5 * 7 + 4), (255, 0, 255))
-_img, _d, _pix = img, d, pix
-img = layer; d = ImageDraw.Draw(layer); d.fontmode = '1'; pix = layer.load()
-roof(0, 0, VX1 - VX0, 16)
-facade(0, 16, VX1 - VX0, 5, doors=(28, 84), open_floor=2)
-rect(0, 0, VX1 - VX0, 16 + 5 * 7 + 3, None, OUT); rect(0, 16, VX1 - VX0, 16, OUT)
-ac(10, 5); ac(96, 5); solar(20, 4, 14, 5); solar(78, 4, 14, 5)
-img, d, pix = _img, _d, _pix
-VW = VX1 - VX0
-V_LEFT = (VW + 1 - ((VW + 1 - 5) // 7 * 7 - 1)) // 2     # same first-window x as facade()
-
-
-def vbend(i):
-    # bend only at the gaps between window pairs → every window stays whole
-    seg = max(0, min(7, (i - V_LEFT + 1) // 14))
-    return min(seg, 7 - seg, 3)           # 0,1,2,3,3,2,1,0 → centre pushed forward: gently curved bar
-for i in range(VW + 1):
-    oy = VY0 - 3 + vbend(i)
-    shade(VX0 + i + 3, oy + layer.height, VX0 + i + 3, oy + layer.height + 2)
-for i in range(VW + 1):
-    oy = VY0 - 3 + vbend(i)
-    col = layer.crop((i, 0, i + 1, layer.height))
-    img.paste(col, (VX0 + i, oy))
-shade(VX1 + 1, VY0, VX1 + 3, VY0 + layer.height - 2)
-V_BOT = VY0 - 3 + 3 + layer.height       # ≈ bottom of the curved V block (centre)
-
-# V–D bridges (3F open, 4F covered)
-bridge_v(100, 108, V_BOT, 178, covered=False)
-bridge_v(156, 164, V_BOT, 178, covered=True)
-
-# ── D홀 (5F top bar) ──
-D_Y1 = building(52, 178, 212, 18, 5, doors=(132,))
-ac(58, 182); ac(66, 182); solar(76, 182, 18, 6); solar(170, 182, 18, 6); ac(196, 182); ac(204, 186)
-# D–P (3–4F) and C–D (2–4F, 2F open) bridges
-bridge_v(58, 66, D_Y1, 242)
-bridge_v(198, 206, D_Y1, 242)
-# D–LUX link
-rect(212, 192, 216, 210, R2, OUT)
-
-# ── LUX홀 (2F, multipurpose, roof gardens) ──
-L_Y1 = building(216, 176, 264, 24, 2, doors=(240,))
-garden(219, 179, 261, 185)
-for x in range(219, 262, 2):
-    pt(x, 178, S2)
-
-# ── P홀 / C홀 wings (4F) ──
-P_Y1 = building(30, 242, 72, 48, 4, doors=(51,))
-C_Y1 = building(190, 242, 232, 48, 4, doors=(211,))
-for (x0, x1) in ((30, 72), (190, 232)):
-    ac(x0 + 4, 246); ac(x1 - 10, 246)
-    solar(x0 + 5, 272, 12, 10); solar(x1 - 17, 272, 12, 10)
-    railing(x0 + 3, x1 - 3, 285)
-# P–C 3F glass bridge across the plaza mouth
-bridge_h(72, 190, 300)
-
-# ── 정문 + 경비실 (INFORMATION) ──
-rect(246, 337, 264, 348, B1, OUT)                       # guard house
-rect(246, 337, 264, 340, R1, OUT)
-rect(249, 342, 254, 346, GL1, CR); rect(257, 342, 261, 348, GL0, CR)
-shade(265, 339, 267, 350)
-for (x, y) in ((262, 315), (262, 335)):                 # gate pillars
-    rect(x, y, x + 6, y + 6, B1, OUT); rect(x, y, x + 6, y + 1, CR, OUT)
-    shade(x + 7, y + 2, x + 8, y + 7)
-rect(264, 323, 266, 335, S0)                            # sliding gate rail
-for y in range(324, 335, 2):
-    pt(265, y, S2)
-
-# ── 소각장 (behind the field's vehicle entrance, low wall) ──
-rect(262, 448, 269, 474, S1, OUT)
-rect(263, 452, 268, 461, S0, OUT); rect(264, 449, 266, 452, B0, OUT)
-for y in range(462, 474, 2):
-    pt(263, y, S2)
-
-# ═════════════════════ TREES & PROPS ═════════════════════
-KEEP = {}   # important art the labels must not cover: name -> box
-
-
-def tree(x, y, big=False):
-    r = 6 if big else 4
-    KEEP[f'tree@{x},{y}'] = (x - r, y - r, x + r + 2, y + r + 3)
-    shade_ellipse(x - r + 2, y + r - 2, x + r + 4, y + r + 3)
-    rect(x, y + r - 1, x + 1, y + r + 2, TRUNK)
-    d.ellipse((x - r, y - r, x + r + 1, y + r), fill=T1, outline=T0)
-    d.ellipse((x - r + 1, y - r + 1, x + r - 1, y + r - 2), fill=T1)
-    d.ellipse((x - r + 1, y - r + 1, x + 1, y), fill=T2)
-    pt(x - r + 3, y - r + 2, G3); pt(x - r + 2, y - r + 3, G3)
-    rect(x - r + 2, y + r - 1, x + r - 1, y + r - 1, T0)
-
-
-def hedge(x0, y0, x1, y1):
-    rect(x0, y0, x1, y1, T1, T0)
-    rect(x0 + 1, y0 + 1, x1 - 1, y0 + 1, T2)
-    for x in range(x0 + 2, x1, 3):
-        pt(x, y0 + 2, T2)
-
-
-def flowerbed(x0, y0, x1, y1):
-    rect(x0, y0, x1, y1, (120, 80, 52), WOOD)
-    for y in range(y0 + 1, y1):
-        for x in range(x0 + 1, x1):
-            if (x + y) % 2 == 0:
-                pt(x, y, [RED, YEL, PINK, WHITE][(x // 2 + y) % 4])
+def bld(foot, floors, mat='brick', roof=(R0, R1, R2), bay=4, doors=(), glass=(GL0, GL1, GL2), curtain=None):
+    """footprint polygon on the ground → roof lifted by the wall height, wall hangs below the roof's lower edge.
+    stepped only every `bay` px on curved edges so the windows stay whole. returns wall-bottom per column"""
+    h = floors * FH + 2
+    roof_poly = [(x, y - h) for (x, y) in foot]
+    m = Image.new('1', (W, H + 64), 0)
+    ImageDraw.Draw(m).polygon([(x, y + 32) for (x, y) in roof_poly], fill=1)
+    mp = m.load()
+    cols = {}
+    for x in range(W):
+        ys = [y - 32 for y in range(H + 64) if mp[x, y]]
+        if ys:
+            cols[x] = (min(ys), max(ys))
+    xs0 = min(cols)
+    bay_top = {}
+    for x, (_, yb) in cols.items():
+        b = (x - xs0) // bay
+        bay_top[b] = max(bay_top.get(b, -99), yb)
+    sil = set()
+    for x, (yt, yb) in cols.items():
+        for y in range(yt, bay_top[(x - xs0) // bay] + h + 1):
+            sil.add((x, y))
+    for (x, y) in sil:                                           # cast shadow (light from top-left)
+        for k in (1, 2, 3):
+            if (x + k, y + k) not in sil:
+                shade_px(x + k, y + k) if k == 3 else None
+    m0, m1, m2 = MAT[mat]
+    bottoms = {}
+    for x, (yt, yb) in cols.items():
+        Yb = bay_top[(x - xs0) // bay]
+        bx = (x - xs0) % bay
+        for y in range(yb + 1, Yb + h + 1):
+            r = y - Yb
+            c = wall_px(x, max(r, 0), mat)
+            if r <= 1:
+                c = m2 if r == 1 else m1
             else:
-                pt(x, y, T1)
+                f, fr = (r - 2) // FH, (r - 2) % FH
+                if curtain and curtain[0] <= x <= curtain[1]:
+                    c = CG0 if (x % 3 == 0 or fr == 0) else CG1
+                    if fr == 1 and x % 5 == 0:
+                        c = CG2
+                elif f < floors and bx in (1, 2) and fr in (1, 2):
+                    c = glass[0] if fr == 1 else glass[1]
+                    if fr == 2 and bx == 2:
+                        c = glass[2]
+                elif fr == 3 and f < floors:
+                    c = CR if mat == 'brick' else c
+            if 0 <= y < H:
+                pix[x, y] = c
+        bottoms[x] = Yb + h
+        for dcx in doors:
+            if abs(x - dcx) <= 2:
+                for y in range(Yb + h - 4, Yb + h):
+                    pt(x, y, CR if abs(x - dcx) == 2 else GL0)
+    for x, (yt, yb) in cols.items():                             # roof with lit parapet
+        for y in range(yt, yb + 1):
+            edge = not (mp[x - 1, y + 32] and mp[x + 1, y + 32] and mp[x, y + 31] and mp[x, y + 33])
+            inner = not (mp[x - 2, y + 32] and mp[x, y + 30])
+            pt(x, y, roof[2] if edge else (roof[0] if inner else roof[1]))
+    for (x, y) in sil:
+        if any((x + dx, y + dy) not in sil for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+            pt(x, y, OUT)
+    for x, (yt, yb) in cols.items():
+        pt(x, yb + 1, OUT)
+    return bottoms
 
 
-def lamp(x, y):
-    rect(x, y - 6, x, y, S0); rect(x - 1, y - 8, x + 1, y - 7, YEL, None); pt(x, y - 9, OUT)
-    pt(x + 1, y + 1, GS)
+def roofbox(x0, y0, x1, y1, col=R3):
+    """stair core / plant room on a roof"""
+    rect(x0, y0, x1, y1, col, OUT); rect(x0 + 1, y0 + 1, x1 - 1, y0 + 1, WHITE)
+    rect(x1 + 1, y0 + 1, x1 + 1, y1 + 1, R0); rect(x0 + 1, y1 + 1, x1 + 1, y1 + 1, R0)
 
 
-def bench(x, y):
-    rect(x, y, x + 6, y + 1, WOOD_L); rect(x, y + 2, x + 6, y + 2, WOOD); pt(x, y + 3, OUT); pt(x + 6, y + 3, OUT)
+def acs(x0, y0, n, step=4):
+    for i in range(n):
+        x = x0 + i * step
+        rect(x, y0, x + 2, y0 + 2, S2, S0)
 
 
-# plaza dressing: planters with trees, benches, lamps, sculpture '서 있는 사람'
-for (x, y) in ((84, 248), (178, 248), (84, 294), (178, 294)):
-    rect(x - 6, y + 2, x + 6, y + 8, S1, S0)
-    tree(x, y)
-for (x0, x1) in ((96, 106), (156, 166)):
-    flowerbed(x0, 262, x1, 266)
-for x in (100, 156):
-    bench(x, 272)
-for x in (78, 184):
-    lamp(x, 276)
-for i, (x, h) in enumerate(((128, 10), (131, 13), (134, 9))):       # three-stick sculpture
-    shade(x + 1, 268, x + 3, 269)
-    rect(x, 268 - h, x, 268, (200, 200, 208)); pt(x, 268 - h, WHITE)
-rect(125, 268, 137, 270, S1, S0)
+def rectfoot(x0, y0, x1, y1):
+    return [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
 
-# hedges along walks
-hedge(4, 115, 66, 117)
-hedge(76, 346, 110, 349); hedge(154, 346, 232, 349)
-hedge(4, 346, 8, 349)
-hedge(242, 115, 268, 117)
-flowerbed(76, 324, 108, 330); flowerbed(156, 324, 188, 330)
-flowerbed(214, 222, 232, 226)
 
-# trees (back → front)
-TREES = [
-    (4, 12, 1), (6, 34, 0), (5, 52, 1), (6, 76, 0), (116, 8, 1), (116, 30, 0), (206, 6, 1), (269, 8, 0),
-    (116, 92, 0), (204, 92, 1), (264, 94, 0), (88, 96, 0), (8, 94, 0),
-    (200, 150, 0), (264, 150, 0),
-    (70, 126, 0), (72, 170, 0), (10, 176, 0), (24, 170, 1), (40, 172, 0),
-    (14, 272, 1),                                          # 잔디광장's single tree
-    (224, 336, 0), (6, 334, 0), (172, 338, 0), (200, 336, 1),
-]
-for (x, y, big) in sorted(TREES, key=lambda t: t[1]):
-    tree(x, y, bool(big))
-for (x, y) in ((50, 116), (130, 116), (230, 116), (60, 362), (150, 362), (230, 230), (230, 300)):
-    lamp(x, y)
-for (x, y) in ((214, 108), (96, 120)):
-    bench(x, y)
+# draw back → front (by footprint bottom)
+# 기숙사 B동 (6F) and A동 (8F): long parallel blocks, teal roofs, joined by a walkway
+bld(rectfoot(58, 44, 88, 150), 6, 'conc', roof=(RT0, RT1, R2), doors=(73,))
+roofbox(62, 14, 84, 20); acs(62, 108, 5)
+rect(36, 108, 58, 113, R2, OUT); rect(37, 110, 57, 111, GL1)                # walkway A ↔ B
+bld(rectfoot(8, 56, 36, 176), 8, 'conc', roof=(RT0, RT1, R2), doors=(22,))
+roofbox(12, 26, 32, 32); acs(12, 124, 6)
 
-# scattered wildflowers on grass
-for _ in range(90):
-    x, y = rnd.randrange(W), rnd.randrange(H)
-    if pix[x, y] in (G1, G0, G2):
-        pt(x, y, rnd.choice([RED, YEL, WHITE, PINK]))
+# 정문 guard house + small building by the gate road
+bld(rectfoot(52, 214, 70, 232), 2, 'brick', doors=(61,))
+roofbox(55, 214, 64, 218)
+bld(rectfoot(62, 276, 74, 284), 1, 'brick')
+for (x, y) in ((79, 263), (79, 277)):                                       # gate pillars
+    rect(x, y - 4, x + 3, y + 1, B1, OUT); rect(x, y - 4, x + 3, y - 3, CR)
+    KEEP[f'gate pillar {y}'] = (x, y - 4, x + 4, y + 2)
+KEEP['guard house'] = (62, 262, 75, 285)
+
+# V홀: long curved (fan) building, 5F
+VC = (80, 258)
+foot = [(VC[0] + 124 * math.cos(math.radians(t)), VC[1] + 124 * math.sin(math.radians(t))) for t in range(-80, -37, 2)]
+foot += [(VC[0] + 110 * math.cos(math.radians(t)), VC[1] + 110 * math.sin(math.radians(t))) for t in range(-38, -81, -2)]
+vb = bld(foot, 5, 'brick', bay=4, glass=(CG0, CG1, CG2), doors=(112,))
+for t in range(-78, -40, 6):                                               # rooftop units following the arc
+    x, y = VC[0] + 117 * math.cos(math.radians(t)), VC[1] + 117 * math.sin(math.radians(t)) - 22
+    rect(int(x) - 1, int(y) - 1, int(x) + 1, int(y) + 1, S2, S0)
+KEEP['V entrance'] = (109, vb[112] - 5, 116, vb[112] + 1)
+
+# gym (D홀 1F 체육관): big green-roofed box behind D
+bld(rectfoot(172, 182, 230, 206), 2, 'brick', roof=(GY0, GY1, GY2), glass=(CG0, CG1, CG2))
+for x in range(176, 228, 6):
+    d.line((x, 173, x, 194), fill=GY0)
+# V–D bridge (from V's end down to D's back-left)
+rect(151, vb[154] - 10, 158, 204, CG1, OUT); rect(152, vb[154] - 10, 152, 204, CG2)
+for y in range(vb[154] - 8, 204, 3):
+    rect(153, y, 157, y, CG0)
+# LUX홀: round domed hall + 1-storey link to the D/P corner
+bld(rectfoot(146, 208, 164, 224), 1, 'brick', glass=(CG0, CG1, CG2), doors=(156,))
+DCX, DCY, DR = 136, 216, 12
+dome_foot = [(DCX + DR * math.cos(math.radians(t)), DCY + DR * .8 * math.sin(math.radians(t))) for t in range(0, 360, 10)]
+bld(dome_foot, 1, 'brick', roof=(DOME0, DOME1, DOME2), glass=(CG0, CG1, CG2))
+dy0 = DCY - 6
+for rr, col in ((DR - 2, DOME1), (DR - 5, DOME2), (DR - 8, DOME1)):        # concentric rings (photo)
+    d.ellipse((DCX - rr, dy0 - rr * .8, DCX + rr, dy0 + rr * .8), outline=DOME0, fill=col if rr == DR - 8 else None)
+d.ellipse((DCX - 2, dy0 - 2, DCX + 2, dy0 + 1), fill=WHITE, outline=OUT)
+KEEP['LUX dome'] = (DCX - DR, DCY - 6 - DR, DCX + DR + 1, DCY + 12)
+# D홀 (top wing, 5F) with the teal curtain wall
+bld(rectfoot(150, 204, 240, 222), 5, 'brick', curtain=(196, 212), doors=(204,))
+acs(156, 186, 3); roofbox(166, 184, 176, 190); acs(226, 186, 3)
+# C홀 (right wing, 4F)
+bld(rectfoot(222, 222, 248, 302), 4, 'brick', doors=(235,))
+roofbox(226, 210, 244, 218); acs(226, 240, 5); acs(226, 270, 5); roofbox(228, 280, 242, 286)
+# P홀 (left wing, 4F)
+bld(rectfoot(160, 206, 182, 312), 4, 'brick', doors=(171,))
+roofbox(163, 196, 179, 204); acs(164, 230, 4); acs(164, 262, 4); roofbox(164, 280, 178, 288)
+# underground parking entrance by the field road (photo: not visible; namu: under P홀)
+d.polygon([(138, 276), (150, 276), (152, 284), (140, 284)], fill=(30, 26, 36), outline=OUT)
+rect(139, 274, 151, 275, B1, OUT)
+KEEP['parking entrance'] = (138, 273, 153, 285)
+
+# a few campus trees in clearings
+for (x, y) in ((92, 140), (150, 320), (264, 268), (270, 300), (252, 330), (100, 268)):
+    r = 4
+    d.ellipse((x - r + 2, y - r + 3, x + r + 3, y + r + 3), fill=GS)
+    d.ellipse((x - r, y - r, x + r, y + r), fill=F2, outline=F0)
+    d.ellipse((x - r + 1, y - r + 1, x, y), fill=F3)
+    KEEP[f'tree@{x},{y}'] = (x - r, y - r, x + r + 4, y + r + 4)
 
 # ═════════════════════ LABELS ═════════════════════
 LABELS = []
 
 
 def label(cx, cy, text, kind='area', vertical=False):
-    """name plate centred at (cx, cy). kind: 'bld' (dark plate) or 'area' (cream plate)"""
     bg, fg = (BLD_BG, SIGN_BG) if kind == 'bld' else (SIGN_BG, OUT)
+    chars = text.split('|') if '|' in text else list(text)
     if vertical:
-        w, h = 16, len(text) * 13 + 3
+        w, h = 16, len(chars) * 13 + 3
     else:
-        bb = d.textbbox((0, 0), text, font=FONT)
-        w, h = bb[2] + 6, 15
+        w, h = d.textbbox((0, 0), text, font=FONT)[2] + 6, 15
     x0, y0 = int(cx - w / 2), int(cy - h / 2)
     x1, y1 = x0 + w - 1, y0 + h - 1
-    rect(x0 + 1, y0 + 1, x1 + 1, y1 + 1, OUT)                       # drop shadow
+    rect(x0 + 1, y0 + 1, x1 + 1, y1 + 1, OUT)
     rect(x0, y0, x1, y1, bg, OUT)
     rect(x0 + 1, y0 + 1, x1 - 1, y0 + 1, (255, 255, 255) if kind != 'bld' else (100, 84, 110))
     if vertical:
-        for i, ch in enumerate(text):
+        for i, ch in enumerate(chars):
             cw = d.textbbox((0, 0), ch, font=FONT)[2]
             d.text((x0 + (w - cw) // 2, y0 + 2 + i * 13), ch, font=FONT, fill=fg)
     else:
         d.text((x0 + 3, y0 + 1), text, font=FONT, fill=fg)
-    LABELS.append((text, (x0, y0, x1 + 1, y1 + 1)))
+    LABELS.append((text.replace('|', ''), (x0, y0, x1 + 2, y1 + 2)))
 
 
-# buildings (plates on the flat roofs, details kept clear)
-label(47, 13, '기숙사 A동', 'bld')
-label(96, 23, 'C동', 'bld')
-label(161, 56, 'B동', 'bld')
-label(132, 122, 'V홀 식당·도서관', 'bld')
-label(132, 187, 'D홀', 'bld')
-label(240, 194, 'LUX홀', 'bld')
-label(51, 259, 'P홀', 'bld')
-label(211, 259, 'C홀', 'bld')
-# open areas
-label(237, 89, '농구장')
-label(232, 133, '야외학습장')
-label(131, 242, 'World Plaza')
-label(14, 220, '잔디광장', vertical=True)
-label(252, 270, '생태연못', vertical=True)
-label(246, 328, '정문')
-label(80, 338, '야외공연장')
-label(146, 404, '운동장')
+label(22, 80, '기|숙|사|A|동', 'bld', vertical=True)
+label(73, 70, '기|숙|사|B|동', 'bld', vertical=True)
+label(30, 243, '테니스장')
+label(87, 181, '농구장')
+label(164, 118, 'V홀', 'bld')
+label(87, 220, '생태연못', vertical=True)
+label(136, 237, 'LUX홀', 'bld')
+label(40, 291, '정문')
+label(171, 240, 'P홀', 'bld', vertical=True)
+label(204, 191, 'D홀', 'bld')
+label(202, 165, '체육관')
+label(232, 254, 'C홀', 'bld', vertical=True)
+label(203, 260, '월드플라자', vertical=True)
+label(260, 186, '야외극장')
+label(148, 370, '야외공연장')
+label(239, 445, '운동장')
 
-KEEP.update({
-    '야외학습장 seats': (212, 146, 253, 169), '야외공연장 seats': (8, 330, 45, 351),
-    'gate pillar N': (262, 315, 269, 322), 'gate pillar S': (262, 335, 269, 342), 'guard house': (246, 337, 265, 349),
-    'sculpture': (125, 256, 138, 271), 'plaza stair': (123, 277, 140, 289), 'court lines': (216, 28, 259, 73),
-    'pond table': (222, 306, 231, 318), 'pond pier': (249, 222, 256, 237), 'fountain(식수대)': (166, 361, 172, 367),
-})
+# ── QR pin proposals (base px; the app draws the pins) ──
+PINS = [
+    ('A01', 'P홀 1층 로비', 171, 306), ('A02', 'P홀 4층 복도', 171, 272),
+    ('A03', 'D홀 1층 체육관', 182, 178), ('A04', 'D홀 3층 물리실', 188, 212), ('A05', 'D홀 5층 자습실', 218, 206),
+    ('A06', 'C홀 1층 시청각실', 242, 298), ('A07', 'C홀 4층 보건실 앞', 230, 286), ('A08', 'C홀 2층 1학년부', 236, 226),
+    ('A09', '월드플라자 계단', 214, 303), ('A10', 'V홀 1층 식당', 112, 160), ('A11', 'V홀 2층 도서관', 150, 140),
+    ('A12', 'LUX홀 매점', 156, 216), ('A13', 'LUX홀 밴드 연습실', 136, 206), ('A14', '기숙사 A동 1층', 22, 172),
+    ('A15', '기숙사 B동 앞', 66, 146), ('A16', '농구장', 86, 160), ('A17', '운동장 스탠드', 207, 420),
+    ('A18', '운동장 골대', 239, 364), ('A19', '생태연못', 114, 208), ('A20', '정문', 70, 268),
+    ('A21', '잔디 둔덕(테라스)', 186, 318), ('A22', '야외극장', 262, 222), ('A23', '지하주차장 입구', 145, 280),
+    ('A24', '붉은 벽돌 보행로', 112, 251),
+]
+PIN_R = 4
 
-# ── automated overlap check ──
-def check_labels():
+
+def hits(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+def check():
     ok = True
-    for name, (x0, y0, x1, y1) in LABELS:
-        if x0 < 0 or y0 < 0 or x1 > W or y1 > H:
-            print('OUT OF BOUNDS:', name, (x0, y0, x1, y1)); ok = False
+    for name, a in LABELS:
+        if a[0] < 0 or a[1] < 0 or a[2] > W or a[3] > H:
+            print('LABEL OUT OF BOUNDS:', name, a); ok = False
+        for kname, b in KEEP.items():
+            if hits(a, b):
+                print('LABEL COVERS ART:', name, '->', kname); ok = False
     for i in range(len(LABELS)):
         for j in range(i + 1, len(LABELS)):
-            a, b = LABELS[i][1], LABELS[j][1]
-            if a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]:
-                print('OVERLAP:', LABELS[i][0], LABELS[j][0]); ok = False
-    for name, a in LABELS:
-        for kname, b in KEEP.items():
-            if a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]:
-                print('COVERS ART:', name, '->', kname); ok = False
-    print(f'label check: {len(LABELS)} labels, {"OK - no overlaps, all inside" if ok else "FAILED"}')
-    for name, (x0, y0, x1, y1) in LABELS:
-        print(f'  {name:<12} box=({x0},{y0})-({x1},{y1})  centre=({(x0 + x1) / 2 / W:.2f}, {(y0 + y1) / 2 / H:.2f})')
-    assert ok
+            if hits(LABELS[i][1], LABELS[j][1]):
+                print('LABEL OVERLAP:', LABELS[i][0], LABELS[j][0]); ok = False
+    for pid, pname, x, y in PINS:
+        if not (PIN_R <= x < W - PIN_R and PIN_R <= y < H - PIN_R):
+            print('PIN OUT OF BOUNDS:', pid); ok = False
+        for name, (x0, y0, x1, y1) in LABELS:
+            nx, ny = min(max(x, x0), x1 - 1), min(max(y, y0), y1 - 1)
+            if (x - nx) ** 2 + (y - ny) ** 2 <= (PIN_R + 1) ** 2:
+                print('PIN ON LABEL:', pid, pname, '->', name); ok = False
+    for i in range(len(PINS)):
+        for j in range(i + 1, len(PINS)):
+            a, b = PINS[i], PINS[j]
+            dist = math.hypot((a[2] - b[2]) / W, (a[3] - b[3]) / H)
+            if dist < .04:
+                print(f'PINS TOO CLOSE: {a[0]} {b[0]} {dist:.3f}'); ok = False
+    print(f'check: {len(LABELS)} labels, {len(PINS)} pins -> '
+          f'{"OK (labels: no overlaps, inside, clear of key art; pins: clear of labels, >= .04 apart)" if ok else "FAILED"}')
+    return ok
 
 
-check_labels()
+ok = check()
+print('-- SQL-ready pin rows (id, map_x, map_y) --')
+for pid, pname, x, y in PINS:
+    print(f"  ('{pid}', {x / W:.3f}, {y / H:.3f}),  -- {pname}")
+
+if os.environ.get('PIN_PREVIEW'):
+    pv = img.copy(); pd = ImageDraw.Draw(pv)
+    for pid, pname, x, y in PINS:
+        pd.ellipse((x - PIN_R, y - PIN_R, x + PIN_R, y + PIN_R), fill=(255, 40, 40), outline=(255, 255, 255))
+    pv.resize((W * 3, H * 3), Image.Resampling.NEAREST).save(os.environ['PIN_PREVIEW'])
+assert ok
 
 out = os.path.join(ROOT, 'web', 'img', 'map.png')
-img.resize((W * SCALE, H * SCALE), Image.Resampling.NEAREST).save(out, optimize=True)
-print(out, img.size, '→', (W * SCALE, H * SCALE))
+img.save(out, optimize=True)
+print(out, img.size)
