@@ -43,7 +43,7 @@ async function start() {
       h('div#notice'),
       h('div.legend-row#legend'),
       h('div', h('h2', '기수 대항전'), h('div.gens#gens')),
-      h('div', h('h2', '방금 잡힌 몬스터'), h('div.feed#feed')))),
+      h('div.grow', h('h2', '방금 잡힌 몬스터'), h('div.feed#feed')))),
     h('button.btn.small.fs-btn', { onclick: () => document.documentElement.requestFullscreen?.() }, '전체 화면'));
   tick();
   setInterval(tick, 8000);
@@ -62,8 +62,8 @@ async function tick() {
     d.ended && h('div.notice', '🎉 축제가 끝났어요! 최종 순위를 확인하세요'),
     d.notice && h('div.notice', `📢 ${d.notice}`),
   ].filter(Boolean));
-  $('#gens').replaceChildren(...d.gens.slice(0, 4).map((g) => h('div', h('b', `${g.gen}기 `), `${g.score}점`, h('small', ` · ${g.players}명`))));
-  $('#feed').replaceChildren(...d.feed.slice(0, d.rotating.length ? 3 : 6).map((f) => h('div',
+  $('#gens').replaceChildren(...d.gens.filter((g) => g.players > 0).map((g) => h('div', h('b', `${g.gen}기 `), `${g.score}점`, h('small', ` · ${g.players}명`))));
+  $('#feed').replaceChildren(...d.feed.map((f) => h('div',
     spriteCanvas(f.species_id, 48), h('span', `${f.display}님이 `, h('b', josa(name(f.species_id), '을', '를')), ' 잡았다!'),
     h('small', { style: { marginLeft: 'auto', opacity: '.7' } }, timeAgo(f.at)))));
 

@@ -188,6 +188,10 @@ await patchSetting('evo_prob', [0, 0.7, 0.35]);
 ok((await S[1].rpc('evolve', { p_line: line2 })).error === 'NO_TICKET', 'no tickets left → NO_TICKET');
 
 console.log('\n[10] rotating legendary QR');
+// legendary QRs start switched off; an operator puts one on the TV (admin 현황판 → 전설 출현)
+const legendOn = (v) => fetch(`${URL_}/rest/v1/qr_points?id=eq.L01`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOK}` }, body: JSON.stringify({ active: v, active_from: null, active_until: null }) });
+ok((await booth.rpc('screen_feed')).data?.rotating?.every(x => x.id !== 'L01'), 'legendary QR is not on the TV until an operator turns it on');
+await legendOn(true);
 const rt = await booth.rpc('screen_rotating_token', { p_qr: 'L01' });
 ok(rt.data?.token?.length === 10, 'screen gets current token', rt);
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: rt.data.token }] });
@@ -204,6 +208,8 @@ const leg = (await S[3].rpc('sync')).data.state.collection.find(c => c.line_id >
 await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: 1 });
 ok(leg && (await S[3].rpc('evolve', { p_line: leg.line_id })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
 await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: -1 });
+ok((await booth.rpc('screen_feed')).data?.rotating?.some(x => x.id === 'L01'), 'TV shows the legendary QR while it is on');
+await legendOn(false);
 
 console.log('\n[11] token rotation keeps old token alive (grace), hard revoke kills it');
 const nt = (await admin.rpc('admin_rotate_qr', { p_id: 'A11', p_hard: false })).data;

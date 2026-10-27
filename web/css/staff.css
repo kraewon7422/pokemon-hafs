@@ -8,6 +8,9 @@ body { background: #283048; color: #fff; min-height: 100vh; }
 .staff .box .btn { border-color: var(--ink); box-shadow: 0 4px 0 var(--ink); }
 .login-card { max-width: 380px; margin: 10vh auto; display: grid; gap: 10px; }
 .login-card input, .booth-input { min-height: 48px; padding: 8px 12px; border: 3px solid var(--ink); border-radius: 8px; font-size: var(--fs-l); width: 100%; }
+/* body text is white on these dark pages — inputs must not inherit it (white text on a white field) */
+input, select, textarea { color: #101828; background: #fff; }
+input::placeholder, textarea::placeholder { color: #6a7490; }
 
 /* booth */
 .booth { display: grid; grid-template-columns: minmax(280px, 420px) 1fr; gap: 14px; align-items: start; }
@@ -42,7 +45,10 @@ body { background: #283048; color: #fff; min-height: 100vh; }
 
 /* big screen (TV 1920x1080): everything fits in one screen, text on the 12px pixel grid */
 .screen { height: 100vh; overflow: hidden; padding: 24px 36px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 36px; font-size: 24px; }
-.screen > section { min-height: 0; display: grid; align-content: start; gap: 18px; overflow: hidden; }
+.screen > section { min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
+/* long lists scroll inside the screen (mouse wheel / touch) instead of being cut off */
+.screen .grow { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.screen .grow > .feed, .screen .top10 { flex: 1; min-height: 0; overflow-y: auto; align-content: start; scrollbar-width: thin; scrollbar-color: #586890 transparent; }
 .screen h2 { margin: 0; color: #f8d048; text-shadow: 3px 3px 0 #101828; font-size: 36px; }
 .screen .top10 { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
 .screen .top10 li { display: grid; grid-template-columns: 72px 1fr auto; align-items: center; gap: 12px; background: rgba(255,255,255,.08); border: 3px solid #586890; border-radius: 12px; padding: 6px 16px; min-height: 60px; }
@@ -53,7 +59,14 @@ body { background: #283048; color: #fff; min-height: 100vh; }
 .screen .gens div { background: rgba(255,255,255,.1); border: 3px solid #586890; border-radius: 12px; padding: 6px 16px; }
 .screen .gens div:first-child { border-color: #f8d048; }
 .screen .notice { background: #f8d048; color: #101828; border-radius: 12px; padding: 8px 16px; font-weight: bold; }
-.legend-row { display: flex; gap: 18px; }
+.legend-row { display: flex; gap: 18px; flex: none; }
+.legend-row:empty { display: none; }
+/* small window / portrait: one column and the whole page scrolls */
+@media (max-width: 1100px), (max-height: 640px) {
+  .screen { height: auto; min-height: 100vh; overflow: visible; grid-template-columns: 1fr; }
+  .screen > section, .screen .grow { overflow: visible; }
+  .screen .grow > .feed, .screen .top10 { overflow: visible; }
+}
 .legend-qr { background: #fff; color: #101828; border: 6px solid #f8d048; border-radius: 14px; padding: 12px; display: grid; justify-items: center; gap: 6px; flex: 1; }
 .legend-qr canvas { width: min(18vw, 30vh); height: auto; image-rendering: pixelated; }
 .fs-btn { position: fixed; left: 10px; bottom: 10px; opacity: .25; }
