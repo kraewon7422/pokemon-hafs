@@ -1075,7 +1075,7 @@ function renderLogin(error = '') {
       },
     }, h('small', '- 개발용 테스트 로그인 -'), email, pw, h('button.btn', { type: 'submit' }, '테스트 로그인')));
   }
-  content.push(h('p.foot-note', '학교 구글 계정으로 로그인하면 학번이 자동으로 연결돼요. 저장하는 정보: 학번, 이름, 게임 기록 (축제 종료 2주 후 삭제).'));
+  content.push(h('p.foot-note', '학교 구글 계정으로 로그인하면 학번이 자동으로 연결돼요. 저장하는 정보: 학번, 이름, 게임 기록 (축제 종료 2주 후 삭제). ', h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')));
   app().replaceChildren(h('div.login', content));
   renderGoogleButton(gbox, (m) => { err.textContent = m; }).catch((e) => { err.textContent = e.message; });
 }
