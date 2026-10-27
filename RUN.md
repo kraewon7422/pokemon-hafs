@@ -35,7 +35,7 @@ python -m http.server 8124
 
 ## 서버 테스트
 ```bash
-node tests/rpc_test.mjs        # → "63 passed, 0 failed" 이어야 함
+node tests/rpc_test.mjs        # → "95 passed, 0 failed" 이어야 함 (tests/.env 필요: PROGRESS.md §4)
 ```
 테스트용 학생 4명(022001~022003, 023004)의 기록을 지우고 다시 만든다. 실전 프로젝트에 절대 돌리지 말 것.
 
@@ -49,7 +49,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0004 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음)
+1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0007 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음)
 2. `settings` 수정: `email_domains`(학교 도메인), `email_regex`(학번 추출), `admin_emails`, `booth_emails`
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
 4. Authentication → Rate Limits 올리기 (학교 와이파이 = IP 하나). JWT 만료 시간 늘리기
