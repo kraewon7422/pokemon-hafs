@@ -1,7 +1,7 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v9';
+const VERSION = 'hafsmon-v10';
 const SHELL = [
   './', 'index.html', 's/', 's/index.html', 'manifest.webmanifest',
   'css/pixel.css', 'css/types.css', 'css/app.css',

@@ -7,7 +7,7 @@ import { parsePlace, isBag, makeNonce, bagPayload, drawQR } from './qrfmt.js';
 import { Scanner } from './scanner.js';
 import { spriteCanvas, paint } from './sprites.js';
 import { sfx, unlockAudio, isMuted, setMuted } from './sfx.js';
-import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON } from './ui.js';
+import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, escapeInApp, isIOS, renderGoogleButton, devLogin, signOut } from './auth.js';
 
 const S = {
@@ -295,14 +295,14 @@ function nextAction() {
   const quizzes = S.snap.quizzes || [];
   const items = bag();
   const p = S.snap.profile;
-  if (quizzes.length) return ['📝', `퀴즈 ${quizzes.length}개! 맞히면 진화권 100%`, 'gold', () => openQuiz()];
-  if (items.length) return ['🎫', `가방에 티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
+  if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 진화권 100%`, 'gold', () => openQuiz()];
+  if (items.length) return [pix('ticket', 'l'), `가방에 티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
   const ev = evolvable();
   if (p.evo_tickets > 0 && ev.length) {
-    return ['✨', `진화권 ${p.evo_tickets}장 - 몬스터를 진화시켜요`, 'gold',
+    return [pix('spark', 'l'), `진화권 ${p.evo_tickets}장 - 몬스터를 진화시켜요`, 'gold',
       () => openDetail(speciesOf(dexOf(ev[0].line_id, ev[0].stage)))];
   }
-  return ['📷', 'QR을 찾아서 찍어 보세요', 'go', openScanner];
+  return [pix('camera', 'l'), 'QR을 찾아서 찍어 보세요', 'go', openScanner];
 }
 
 function viewHome() {
@@ -321,17 +321,17 @@ function viewHome() {
   return [
     S.updateReady && h('button.btn.big.gold', { onclick: () => S.updateReady() }, '⬆ 새 버전 적용하기 (2초)'),
     !S.updateReady && Number(R.min_client_version) > CONFIG.VERSION && h('div.box.warn-box', '⬆ 새 버전이 있어요! 앱(브라우저 탭)을 완전히 닫았다가 다시 열어 주세요.'),
-    R.notice && h('div.box.notice-box', '📢 ', String(R.notice)),
+    R.notice && h('div.box.notice-box', pix('mega'), String(R.notice)),
     R.festival_ended && h('div.box.ended-box',
-      h('div.big', '🎉 축제 끝! 수고했어요'),
+      h('div.big', pix('spark', 'l'), '축제 끝! 수고했어요'),
       h('div', p.in_ranking === false ? '선생님·손님 계정은 랭킹에서 제외돼요.' : `최종 순위 ${p.rank ? '#' + p.rank : '-'} · 점수 ${p.score} · 도감 ${p.dex_count}/${total}`),
       R.prize_note && h('div', String(R.prize_note))),
-    !S.snap.festival_open && !R.festival_ended && h('div.box', '⏸ 지금은 게임 운영 시간이 아니에요. 찍은 QR은 저장해 두었다가 다시 열리면 보내요.'),
-    (R.legend_schedule || []).length > 0 && !R.festival_ended && h('div.box.legend-box', h('span', { style: { fontSize: 'var(--fs-xl)' } }, '⚡'),
+    !S.snap.festival_open && !R.festival_ended && h('div.box', pix('pause'), '지금은 게임 운영 시간이 아니에요. 찍은 QR은 저장해 두었다가 다시 열리면 보내요.'),
+    (R.legend_schedule || []).length > 0 && !R.festival_ended && h('div.box.legend-box', pix('bolt', 'l'),
       h('div', h('b', '전설의 몬스터 출현'), h('br'),
-        R.legend_schedule.map((l) => (l.from ? `${fmtTime(l.from)}${l.until ? '~' + fmtTime(l.until) : ''}` : '지금')).join(' · '),
+        [...new Set(R.legend_schedule.map((l) => (l.from ? `${fmtTime(l.from)}${l.until ? '~' + fmtTime(l.until) : ''}` : '지금')))].join(' · '),
         ' · 메인 부스 대형 화면')),
-    minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', `⏰ 마감까지 ${minsLeft}분! 가방 티켓은 마감 전에 부스에서 써 주세요.`),
+    minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', pix('clock'), `마감까지 ${minsLeft}분! 가방 티켓은 마감 전에 부스에서 써 주세요.`),
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
 
@@ -350,14 +350,14 @@ function viewHome() {
     h('section.box', { 'aria-label': '가방' },
       h('div.banner', h('b', `가방 ${items.length}/${R.bag_max}`),
         h('span', { style: { fontSize: '13px' } }, items.length ? '메인 부스에서 몬스터로 바꿔요' : 'QR을 찍으면 티켓이 들어와요')),
-      items.length ? h('div.bag-row', items.map((t) => h(`span.chip${t.synced ? '' : '.local'}`, t.synced ? '🎫' : '⏳', t.name))) : null,
+      items.length ? h('div.bag-row', items.map((t) => h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name))) : null,
       h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '부스에서 보여주기 (가방 QR)'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
-        '🎁 지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
+        pix('gift'), '지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
 
     rouletteBox(),
 
-    hint && h('section.box.hint', h('b', '💡 힌트  '), hint.hint),
+    hint && h('section.box.hint', h('b', pix('bulb'), '힌트  '), hint.hint),
   ];
 }
 
@@ -425,6 +425,8 @@ async function spinRoulette() {
   renderTab();
 }
 
+const soundLabel = () => (isMuted() ? [pix('mute'), '소리 꺼짐 (누르면 켜기)'] : [pix('sound'), '소리 켜짐 (누르면 끄기)']);
+
 // ⚙ settings (top-right). Name visibility comes first so students can find it immediately.
 function openSettings() {
   sfx.select();
@@ -432,7 +434,7 @@ function openSettings() {
   const masked = `${p.gen ? p.gen + '기 ' : ''}${maskName(p.name)}`;
   sheet([
     h('div.grab'),
-    h('h2', { style: { margin: '0 4px' } }, '⚙ 설정'),
+    h('h2', { style: { margin: '0 4px' } }, '설정'),
     h('section.box.setting-name',
       h('b', '랭킹·대형 화면에 보이는 내 이름'),
       h('div.seg', { role: 'group', 'aria-label': '이름 공개' },
@@ -440,11 +442,11 @@ function openSettings() {
         h('button', { 'aria-pressed': String(!p.show_on_board), onclick: () => setPublic(false) }, '비공개: 익명 트레이너')),
       h('small', '공개해도 이름 가운데 글자는 가려져요. 언제든 바꿀 수 있어요.')),
     h('section.box', { style: { display: 'grid', gap: '8px' } },
-      h('button.btn', { onclick: (e) => { setMuted(!isMuted()); e.currentTarget.textContent = isMuted() ? '🔇 소리 꺼짐 (누르면 켜기)' : '🔊 소리 켜짐 (누르면 끄기)'; } },
-        isMuted() ? '🔇 소리 꺼짐 (누르면 켜기)' : '🔊 소리 켜짐 (누르면 끄기)'),
-      h('button.btn', { onclick: () => showOnboarding(true) }, '📖 게임 방법 다시 보기'),
-      h('button.btn', { onclick: showInstall }, '📲 홈 화면에 추가'),
-      h('button.btn', { onclick: confirmLogout }, '🚪 로그아웃')),
+      h('button.btn', { onclick: (e) => { setMuted(!isMuted()); e.currentTarget.replaceChildren(...soundLabel()); } },
+        ...soundLabel()),
+      h('button.btn', { onclick: () => showOnboarding(true) }, pix('book'), '게임 방법 다시 보기'),
+      h('button.btn', { onclick: showInstall }, pix('phone'), '홈 화면에 추가'),
+      h('button.btn', { onclick: confirmLogout }, pix('door'), '로그아웃')),
     h('small', { style: { textAlign: 'center' } }, `${p.student_id.replace(/^g:/, '')} · 버전 ${CONFIG.VERSION}`),
   ]);
 }
@@ -481,7 +483,7 @@ function showInstall() {
 function confirmLogout() {
   const n = bag().filter((t) => !t.synced).length;
   sheet(h('div.box',
-    h('p', n ? `⚠ 아직 서버에 못 보낸 티켓이 ${n}장 있어요. 로그아웃하면 사라져요!` : '로그아웃할까요?'),
+    h('p', n ? [pix('warn'), `아직 서버에 못 보낸 티켓이 ${n}장 있어요. 로그아웃하면 사라져요!`] : '로그아웃할까요?'),
     h('div', { style: { display: 'flex', gap: '8px' } },
       h('button.btn', { onclick: () => closeOverlay() }, '취소'),
       h('button.btn.primary', { onclick: async () => { closeOverlay(); await signOut(); await kv.clear(); S.snap = null; S.outbox = []; renderLogin(); } }, '로그아웃'))));
@@ -504,7 +506,7 @@ function viewMap() {
         document.querySelectorAll('.pin.sel').forEach((x) => x.classList.remove('sel'));
         e.currentTarget.classList.add('sel');
         info.replaceChildren(h('b', q.name), h('br'), q.hint || '', h('br'),
-          h('small', inBag.has(q.id) ? '🎫 가방에 티켓 있음 - 부스에서 쓰면 다시 찍을 수 있어요' : `오늘 ${n}/${capOf(q)}번 찍음`));
+          h('small', inBag.has(q.id) ? [pix('ticket'), '가방에 티켓 있음 - 부스에서 쓰면 다시 찍을 수 있어요'] : `오늘 ${n}/${capOf(q)}번 찍음`));
       },
     }, h('span', q.id.replace(/^A0?/, '')));
   });
@@ -520,9 +522,9 @@ function viewMap() {
   return [
     h('div.banner', h('h2.section-title', '학교 지도'),
       h('div.zoom', { role: 'group', 'aria-label': '지도 확대' },
-        h('button.btn.small', { disabled: zoom <= 1, onclick: () => setZoom(zoom - 1), 'aria-label': '축소' }, '－'),
+        h('button.btn.small', { disabled: zoom <= 1, onclick: () => setZoom(zoom - 1), 'aria-label': '축소' }, '-'),
         h('span', `×${zoom}`),
-        h('button.btn.small', { disabled: zoom >= 3, onclick: () => setZoom(zoom + 1), 'aria-label': '확대' }, '＋'))),
+        h('button.btn.small', { disabled: zoom >= 3, onclick: () => setZoom(zoom + 1), 'aria-label': '확대' }, '+'))),
     h(`div.map-scroll${zoom > 1 ? '.zoomed' : ''}`,
       h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.webp', alt: '학교 지도', draggable: 'false' }),
         MAP_LABELS.map(([t, x, y]) => h('span.map-label', { style: { left: `${x * 100}%`, top: `${y * 100}%` }, 'aria-hidden': 'true' }, t)), pins)),
@@ -533,7 +535,7 @@ function viewMap() {
       h('span', h('i', { style: { background: 'var(--green)' } }), '오늘 찍음'),
       h('span', h('i', { style: { background: 'var(--gray)' } }), '오늘 끝')),
     info,
-    h('p', { style: { fontSize: '13px', margin: 0 } }, '지도에 없는 숨은 장소도 있어요… 👀'),
+    h('p', { style: { fontSize: '13px', margin: 0 } }, '지도에 없는 숨은 장소도 있어요…'),
   ];
 }
 
@@ -583,7 +585,7 @@ function viewDex() {
       h('span.no', dexNo(sp)),
       spriteCanvas(sp.id, 72, ok ? 'normal' : 'silhouette'),
       h('span.nm', ok ? sp.name : '???'),
-      canEvo && h('span.evo-dot', '✨진화'));
+      canEvo && h('span.evo-dot', '진화'));
     })),
   ];
 }
@@ -626,9 +628,9 @@ function openDetail(sp) {
     stages.length > 1 && h('div.box', h('b', '진화'), h(`div.chain.n${stages.length}`, chain)),
     canEvolve && h('div.box.evo-panel',
       h('div.banner', h('span', h('i.ticket-icon'), ` 진화권 × ${p.evo_tickets}`),
-        h('b.prob', chance >= 1 ? '✨ 다음 진화 확정!' : `성공 확률 ${Math.round(chance * 100)}%`)),
+        h('b.prob', chance >= 1 ? [pix('spark'), '다음 진화 확정!'] : `성공 확률 ${Math.round(chance * 100)}%`)),
       h('button.btn.big.gold', { disabled: !p.evo_tickets || !S.online || !S.snap.festival_open, onclick: () => doEvolve(c) },
-        !p.evo_tickets ? '진화권이 없어요 (퀴즈·룰렛으로 받아요)' : !S.online ? '📡 진화는 인터넷이 필요해요' : '진화시키기!'),
+        !p.evo_tickets ? '진화권이 없어요 (퀴즈·룰렛으로 받아요)' : !S.online ? '진화는 인터넷이 필요해요' : '진화시키기!'),
       h('small', '실패해도 다음 확률이 올라가고, 몇 번 실패하면 다음엔 반드시 성공해요.')),
     top === 1 && h('div.box', '★ 전설의 몬스터는 진화하지 않아요.'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기'),
@@ -717,9 +719,9 @@ function viewRank() {
       h('button', { 'aria-pressed': String(S.rankScope === 'gen'), onclick: () => { S.rankScope = 'gen'; loadRanking(); } }, `${p.gen}기`)),
     r ? h('div.box.banner', h('span', '내 순위 ', h('b', r.me ? `#${r.me.rank}` : '-'), ` / ${r.total}명`),
       h('small', `${timeAgo(r.at)} 기준`)) : h('div.box', S.online ? '불러오는 중…' : '오프라인이에요. 인터넷이 연결되면 랭킹을 불러와요.'),
-    !p.show_on_board && h('div.box', { style: { fontSize: '13px' } }, '지금은 "익명 트레이너"로 표시돼요. 오른쪽 위 ⚙ 설정에서 바꿀 수 있어요.'),
+    !p.show_on_board && h('div.box', { style: { fontSize: '13px' } }, '지금은 "익명 트레이너"로 표시돼요. 오른쪽 위 톱니바퀴 설정에서 바꿀 수 있어요.'),
     r && h('ol.rank-list', r.top.map((t) => h(`li${t.me ? '.me' : ''}`,
-      h(`span.rank-no.r${t.rank}`, t.rank <= 3 ? ['🥇', '🥈', '🥉'][t.rank - 1] : `#${t.rank}`),
+      h(`span.rank-no.r${t.rank}`, t.rank <= 3 ? pix(['gold', 'silver', 'bronze'][t.rank - 1], 'l') : `#${t.rank}`),
       h('span', h('div', t.display, t.me ? ' (나)' : ''), h('div.rank-sub', `도감 ${t.dex}`)),
       h('b', `${t.score}점`)))),
     r && !r.top.length && h('div.box', '아직 아무도 몬스터를 잡지 않았어요. 첫 번째가 되어 보세요!'),
@@ -736,7 +738,7 @@ function openScanner() {
   sfx.blip();
   const video = h('video', { playsinline: true, muted: true, 'aria-hidden': 'true' });
   let torchOn = false;
-  const torchBtn = h('button.btn.small', { hidden: true, onclick: async () => { torchOn = !torchOn; await scanner.torch(torchOn); torchBtn.textContent = torchOn ? '🔦 끄기' : '🔦 손전등'; } }, '🔦 손전등');
+  const torchBtn = h('button.btn.small', { hidden: true, onclick: async () => { torchOn = !torchOn; await scanner.torch(torchOn); torchBtn.replaceChildren(pix('light'), torchOn ? '끄기' : '손전등'); } }, pix('light'), '손전등');
   const tip = h('div.scan-tip', '장소에 붙은 QR을 네모 안에 맞춰 주세요');
   const ov = overlay(h('div', { style: { display: 'flex', flexDirection: 'column', width: '100%' } },
     h('div.scanner', video, h('div.reticle'), tip,
@@ -792,8 +794,8 @@ async function handleScan({ q, t }) {
   sfx.scan(); vibrate(80);
   renderTab();
   const offlineNote = S.online ? '' : (known ? '\n(오프라인이라 나중에 자동으로 보내요)'
-    : '\n⚠ 숨은·전설 장소는 바로 인터넷에 연결해야 인정돼요!');
-  say(`${name}에서 티켓을 얻었다! 🎫\n가방 ${items.length + 1}/${R.bag_max} - 메인 부스에서 몬스터로 바꿔요.${offlineNote}`);
+    : '\n※ 숨은·전설 장소는 바로 인터넷에 연결해야 인정돼요!');
+  say(`${name}에서 티켓을 얻었다!\n가방 ${items.length + 1}/${R.bag_max} - 메인 부스에서 몬스터로 바꿔요.${offlineNote}`);
   sync();
 }
 
@@ -827,7 +829,7 @@ async function openBag() {
     h('div.bagqr',
       h('b', `${S.snap.profile.name} · ${S.snap.profile.student_id.replace(/^g:/, '')}`),
       canvas,
-      h('div.bright', '☀ 화면 밝기를 최대로 올려 주세요'),
+      h('div.bright', pix('sun'), '화면 밝기를 최대로 올려 주세요'),
       h('small', S.online ? '부스에서 확인하면 자동으로 넘어가요…' : '오프라인이어도 부스에서 찍을 수 있어요.')),
     h('div.box', h('b', `가방 ${items.length}/${rules().bag_max}`),
       items.length ? h('div.bag-row', items.map((t) => h('span.chip', t.name))) : h('p', '가방이 비었어요. 그래도 부스에서 학번으로 확인할 수 있어요.')),
@@ -860,7 +862,7 @@ async function celebrate(tickets, prevLines) {
     scene.classList.add('flash');
     paint(canvas, sp.id, 200);
     sfx.catch(); vibrate([80, 60, 160]);
-    await typeText(text, `축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!${rare ? ' ✨희귀✨' : ''}\n(${t.qr_name})`);
+    await typeText(text, `축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!${rare ? ' ★희귀★' : ''}\n(${t.qr_name})`);
     text.append(h('span.more', '▼'));
     S.celebrated.add(t.nonce);
     await kv.set('celebrated', [...S.celebrated]);
@@ -908,7 +910,7 @@ function openQuiz() {
     await kv.set('snap', S.snap);
     if (r.correct) { sfx.correct(); vibrate(60); } else sfx.wrong();
     result.replaceChildren(h('div.box', r.correct
-      ? (r.granted ? '정답! 진화권을 1장 얻었다! 🎟 (도감에서 몬스터를 눌러 진화시켜요)' : '정답! (오늘 받을 수 있는 진화권을 다 받았어요)')
+      ? (r.granted ? '정답! 진화권을 1장 얻었다! (도감에서 몬스터를 눌러 진화시켜요)' : '정답! (오늘 받을 수 있는 진화권을 다 받았어요)')
       : `아쉬워요! ${josa(sp?.name || '몬스터', '이', '가')} 고개를 젓는다…`));
     decide.textContent = S.snap.quizzes.length ? '다음 퀴즈' : '닫기';
     decide.disabled = false;
@@ -939,7 +941,7 @@ function renderConsent() {
         h('li', '목적: 축제 게임 운영과 랭킹·상품 지급.'),
         h('li', '축제가 끝나고 2주 뒤 모두 삭제해요.')),
       h('label', { for: 'show', style: { display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' } }, show,
-        h('span', `랭킹·대형 화면에 내 이름을 "${S.snap?.profile?.gen ? S.snap.profile.gen + '기 ' : ''}${maskName(S.snap?.profile?.name)}"처럼 가려서 보여 주기. (체크를 풀면 "익명 트레이너" - 나중에 오른쪽 위 ⚙에서도 바꿀 수 있어요)`))),
+        h('span', `랭킹·대형 화면에 내 이름을 "${S.snap?.profile?.gen ? S.snap.profile.gen + '기 ' : ''}${maskName(S.snap?.profile?.name)}"처럼 가려서 보여 주기. (체크를 풀면 "익명 트레이너" - 나중에 오른쪽 위 톱니바퀴 설정에서도 바꿀 수 있어요)`))),
     err,
     h('button.btn.big.primary', {
       style: { maxWidth: '420px' },
@@ -966,10 +968,10 @@ function maybeOnboard() {
 
 function showOnboarding(again = false) {
   const steps = [
-    ['📷', 'QR 찾기', '학교 곳곳에 붙은 QR을 아래 가운데 볼 버튼으로 찍어요. 폰 기본 카메라 말고 꼭 앱 버튼으로!'],
-    ['🎫', '가방에 티켓', '찍으면 티켓이 가방에 들어가요 (최대 5장). 인터넷이 없어도 저장돼요.'],
-    ['🏫', '메인 부스로!', '부스에서 "가방 QR"을 보여주면 선생님 몬스터를 받아요. 그 장소는 다시 찍을 수 있어요.'],
-    ['✨', '퀴즈 → 진화', '몬스터를 받으면 쌤 퀴즈! 맞히면 진화권. 도감에서 몬스터를 눌러 진화시켜요.'],
+    ['camera', 'QR 찾기', '학교 곳곳에 붙은 QR을 아래 가운데 볼 버튼으로 찍어요. 폰 기본 카메라 말고 꼭 앱 버튼으로!'],
+    ['ticket', '가방에 티켓', '찍으면 티켓이 가방에 들어가요 (최대 5장). 인터넷이 없어도 저장돼요.'],
+    ['school', '메인 부스로!', '부스에서 "가방 QR"을 보여주면 선생님 몬스터를 받아요. 그 장소는 다시 찍을 수 있어요.'],
+    ['spark', '퀴즈 → 진화', '몬스터를 받으면 쌤 퀴즈! 맞히면 진화권. 도감에서 몬스터를 눌러 진화시켜요.'],
   ];
   let i = 0;
   const icon = h('div', { style: { fontSize: '56px', textAlign: 'center' } });
@@ -979,7 +981,7 @@ function showOnboarding(again = false) {
   const next = h('button.btn.big.primary');
   const draw = () => {
     const [a, b, c] = steps[i];
-    icon.textContent = a; title.textContent = `${i + 1}. ${b}`; body.textContent = c;
+    icon.replaceChildren(pix(a, 'xl')); title.textContent = `${i + 1}. ${b}`; body.textContent = c;
     dots.textContent = steps.map((_, j) => (j === i ? '●' : '○')).join('');
     next.textContent = i < steps.length - 1 ? '다음 ▶' : '시작하기!';
   };
@@ -1042,7 +1044,7 @@ function renderLogin(error = '') {
     h('div.logo', CONFIG.GAME_TITLE),
     h('div.logo-sub', '학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!'),
     pending && h('div.box', { style: { maxWidth: '340px', textAlign: 'left', fontSize: '14px' } },
-      h('b', '📷 QR을 찍었는데 이 브라우저는 로그인이 안 돼 있어요'), h('br'),
+      h('b', pix('camera'), 'QR을 찍었는데 이 브라우저는 로그인이 안 돼 있어요'), h('br'),
       '게임을 하던 앱(브라우저)을 열고 가운데 볼 버튼으로 다시 찍거나, QR 아래 5자리 코드를 입력하세요. 처음이라면 여기서 로그인해도 돼요.'),
     h('div.press.blink', 'PRESS START'),
     gbox,
@@ -1083,7 +1085,7 @@ function renderInApp() {
   app().replaceChildren(h('div.login',
     h('div.logo', CONFIG.GAME_TITLE),
     h('div.box', { style: { maxWidth: '360px', textAlign: 'left' } },
-      h('b', '⚠ 카카오톡/인스타 안에서 열렸어요'), h('br'),
+      h('b', pix('warn'), '카카오톡/인스타 안에서 열렸어요'), h('br'),
       '여기서는 구글 로그인이 막혀 있어요. 크롬이나 Safari로 열어 주세요.',
       isIOS() && kind !== 'kakao' ? h('p', '오른쪽 아래(또는 위) ⋯ 버튼 → "Safari로 열기"를 눌러 주세요. ↘') : null),
     h('button.btn.big.primary', { onclick: () => { if (!escapeInApp()) toast('⋯ 메뉴에서 "Safari로 열기"를 눌러 주세요.', 5000); } }, '외부 브라우저로 열기'),

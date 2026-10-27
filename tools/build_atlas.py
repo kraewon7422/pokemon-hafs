@@ -1077,9 +1077,9 @@ def m_quote(s, st, g, T, ph):           # 문장: “ ” 따옴표 귀 + 원고
     k = g['k']
     if ph == 'back':
         for sg in (-1, 1):          # “ ” : round head on top, tail curling down-outward
-            x, y = 32 + sg * g['rx'] * .62, g['top'] - 1 - 2 * k
-            s.part(ell(x, y, 2.6 * k + .7, 2.6 * k + .7), T['acc'], shine=True)
-            s.part(cap(x + sg * 1.2 * k, y + 1.5 * k, x - sg * 1.0 * k, y + 5.5 * k, 1.3 * k + .3, .7 * k + .3), T['acc'])
+            x, y = 32 + sg * g['rx'] * .64, g['top'] - 2 - 3 * k
+            s.part(ell(x, y, 3.5 * k + 1, 3.5 * k + 1), T['acc'], shine=True)
+            s.part(cap(x + sg * 1.8 * k, y + 2 * k, x - sg * 1.5 * k, y + 8 * k, 1.8 * k + .5, .9 * k + .4), T['acc'])
     elif ph == 'mid' and st >= 2:
         x0, y0 = 32 - int(g['rx'] * .5), int(g['cy'] + g['ry'] * .32)
         w, h = int(g['rx']), int(g['ry'] * .5)
