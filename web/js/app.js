@@ -32,6 +32,8 @@ const maxStage = (line) => lineOf(line)?.max_stage ?? 3;
 const speciesOf = (id) => S.catalog?.species.find((s) => s.id === id);
 const qrName = (id) => S.catalog?.qrs.find((q) => q.id === id)?.name;
 const dexOf = (line, stage) => (line - 1) * 3 + stage;
+// shown dex number = position in the list (No.001…No.104, no gaps) — species.id keeps (line-1)*3+stage for the atlas
+const dexNo = (sp) => `No.${String(S.catalog.species.findIndex((x) => x.id === sp.id) + 1).padStart(3, '0')}`;
 const collection = () => S.snap?.collection || [];
 const owned = (line) => collection().find((c) => c.line_id === line);
 const rules = () => ({ bag_max: 5, qr_daily_cap: 3, evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2], ...(S.snap?.rules || {}) });
@@ -499,7 +501,7 @@ function viewDex() {
         onclick: () => { S.dexFilter = s; renderTab(); },
       }, s === 'all' ? '전체' : s))),
     h('div.dex-grid', list.map((sp) => {
-      if (isWithdrawn(sp.line_id)) return h('div.dex-cell.unknown.withdrawn', h('span.no', `No.${String(sp.id).padStart(3, '0')}`), spriteCanvas(sp.id, 72, 'silhouette'), h('span.nm', '비공개'));
+      if (isWithdrawn(sp.line_id)) return h('div.dex-cell.unknown.withdrawn', h('span.no', dexNo(sp)), spriteCanvas(sp.id, 72, 'silhouette'), h('span.nm', '비공개'));
       const ok = reached(sp);
       const c = owned(sp.line_id);
       const canEvo = ok && c.stage === sp.stage && sp.stage < maxStage(sp.line_id) && p.evo_tickets > 0;
@@ -507,7 +509,7 @@ function viewDex() {
         'aria-label': ok ? sp.name : '미발견',
         onclick: () => (ok ? openDetail(sp) : toast('아직 발견하지 못했어요. 학교 곳곳을 찾아보세요!')),
       },
-      h('span.no', `No.${String(sp.id).padStart(3, '0')}`),
+      h('span.no', dexNo(sp)),
       spriteCanvas(sp.id, 72, ok ? 'normal' : 'silhouette'),
       h('span.nm', ok ? sp.name : '???'),
       canEvo && h('span.evo-dot', '✨진화'));
@@ -543,7 +545,7 @@ function openDetail(sp) {
     h('div.grab'),
     h(`div.habitat.t-${line.subject}`, spriteCanvas(sp.id, 176)),
     h('div.box',
-      h('div.banner', h('b', `No.${String(sp.id).padStart(3, '0')} ${sp.name}`), h(`span.type.t-${line.subject}`, line.subject)),
+      h('div.banner', h('b', `${dexNo(sp)} ${sp.name}`), h(`span.type.t-${line.subject}`, line.subject)),
       h('div.kv',
         h('span', '분류'), h('span', sp.category),
         h('span', '키 / 몸무게'), h('span', `${sp.height} / ${sp.weight}`),

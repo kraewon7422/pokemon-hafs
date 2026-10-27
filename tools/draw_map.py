@@ -37,8 +37,8 @@ pix = img.load()
 
 # ── palette ──
 OUT = (40, 32, 48)
-G0 = (78, 148, 72); G1 = (104, 176, 84); G2 = (136, 198, 96); G3 = (180, 222, 120); GS = (62, 118, 70)
-F0 = (26, 70, 50); F1 = (38, 98, 60); F2 = (60, 130, 70); F3 = (96, 160, 84)       # forest canopy
+G0 = (98, 170, 84); G1 = (122, 192, 98); G2 = (150, 210, 112); G3 = (188, 228, 138); GS = (84, 146, 82)
+F0 = (30, 66, 54); F1 = (44, 98, 66); F2 = (66, 134, 74); F3 = (102, 168, 84); F4 = (150, 204, 110)   # forest canopy
 TRUNK = (110, 70, 46)
 P0 = (226, 206, 160); P1 = (200, 176, 130); PS = (168, 146, 110)
 K0 = (218, 210, 196); K1 = (190, 180, 168)
@@ -55,14 +55,14 @@ W0 = (40, 84, 120); W1 = (62, 120, 150); W2 = (150, 200, 220)
 DIRT0 = (176, 140, 96); DIRT1 = (206, 176, 128); DIRT2 = (226, 202, 158)
 WOOD = (150, 98, 58); WOOD_L = (186, 132, 80)
 S0 = (112, 112, 124); S1 = (168, 168, 176); S2 = (210, 210, 214)
-ROAD0 = (96, 96, 106); ROAD1 = (124, 124, 134)
+ROAD0 = (108, 108, 120); ROAD1 = (132, 132, 144)
 WHITE = (248, 248, 240)
 RED = (214, 64, 56); RED2 = (170, 44, 48); YEL = (248, 214, 72); PINK = (240, 156, 196)
 SEAT = (70, 110, 170); SEAT2 = (100, 140, 196)
 SIGN_BG = (252, 246, 228); BLD_BG = (64, 48, 72)
 DOME0 = (120, 150, 160); DOME1 = (170, 200, 206); DOME2 = (220, 238, 240)
 
-SHADE = {G0: GS, G1: GS, G2: G0, G3: G1, GS: GS, F3: F2, F2: F1, F1: F0,
+SHADE = {G0: GS, G1: GS, G2: G0, G3: G1, GS: GS, F4: F3, F3: F2, F2: F1, F1: F0,
          P0: P1, P1: PS, K0: K1, K1: (164, 154, 144), DIRT1: DIRT0, DIRT2: DIRT1, DIRT0: (150, 116, 80),
          ROAD0: (76, 76, 86), ROAD1: ROAD0, W1: W0, W2: W1, S1: S0, S2: S1,
          TB2: TB1, TB1: TB0, TB0: (122, 56, 44)}
@@ -91,36 +91,31 @@ def shade(x0, y0, x1, y1):
 
 KEEP = {}
 
-# ═════════════════════ GROUND: forest everywhere, then campus clearings ═════════════════════
-rect(0, 0, W, H, F1)
-for _ in range(2600):                                   # layered canopy blobs, lit from the top-left
-    x, y, r = rnd.randrange(-4, W + 4), rnd.randrange(-4, H + 4), rnd.choice((2, 3, 3, 4, 5))
-    d.ellipse((x - r + 1, y - r + 1, x + r + 1, y + r + 1), fill=F0)
-    d.ellipse((x - r, y - r, x + r, y + r), fill=F1 if rnd.random() < .6 else F2)
-    d.ellipse((x - r + 1, y - r + 1, x, y), fill=F2 if rnd.random() < .7 else F3)
-for _ in range(45):                                     # a few autumn red maples (photos)
-    x, y = rnd.randrange(W), rnd.randrange(H)
-    if pix[x, y] in (F1, F2):
-        d.ellipse((x, y, x + 2, y + 2), fill=RED2); pt(x, y, RED)
-
-
-def clearing(poly):
-    d.polygon(poly, fill=G1)
+# ═════════════════════ GROUND: grass everywhere; forest is planted at the end around everything ═════════════════════
+rect(0, 0, W, H, G1)
+CLEARINGS = [
+    [(0, 40), (100, 30), (104, 180), (82, 186), (82, 250), (40, 262), (0, 262)],     # dorm / tennis / gate side
+    [(78, 172), (160, 170), (160, 250), (78, 250)],                                   # garden
+    [(96, 104), (186, 150), (186, 200), (150, 200), (96, 170)],                       # around V홀
+    [(144, 170), (288, 170), (288, 352), (196, 356), (166, 340), (144, 300)],         # main block
+    [(156, 342), (288, 342), (288, 480), (156, 480)],                                 # field + farm
+]
+clear_mask = Image.new('L', (W, H), 0)
+for poly in CLEARINGS:
+    ImageDraw.Draw(clear_mask).polygon(poly, fill=255)
 
 
 def grass_texture(x0, y0, x1, y1):
-    for _ in range((x1 - x0) * (y1 - y0) // 30):
+    for _ in range((x1 - x0) * (y1 - y0) // 22):
         x, y = rnd.randrange(x0, x1), rnd.randrange(y0, y1)
         if pix[x, y] == G1:
-            rect(x, y, x + rnd.randrange(1, 3), y, G0 if rnd.random() < .5 else G2)
+            if rnd.random() < .55:
+                pt(x, y, G0); pt(x + 1, y, G0); pt(x, y - 1, G2)            # little tuft: dark blade + lit tip
+            else:
+                pt(x, y, G2)
 
 
-clearing([(0, 40), (100, 30), (104, 180), (82, 186), (82, 250), (40, 262), (0, 262)])     # dorm / tennis / gate side
-clearing([(78, 172), (160, 170), (160, 250), (78, 250)])                                   # garden
-clearing([(96, 104), (186, 150), (186, 200), (150, 200), (96, 170)])                       # around V홀
-clearing([(144, 170), (288, 170), (288, 352), (196, 356), (166, 340), (144, 300)])         # main block
-clearing([(156, 342), (288, 342), (288, 480), (156, 480)])                                 # field + farm
-grass_texture(0, 30, 288, 480)
+grass_texture(0, 0, W, H)
 
 # ── roads (thick polylines) ──
 def polyroad(pts, w, fill=ROAD0, edge=S2):
@@ -430,13 +425,80 @@ d.polygon([(138, 276), (150, 276), (152, 284), (140, 284)], fill=(30, 26, 36), o
 rect(139, 274, 151, 275, B1, OUT)
 KEEP['parking entrance'] = (138, 273, 153, 285)
 
-# a few campus trees in clearings
-for (x, y) in ((92, 140), (150, 320), (264, 268), (270, 300), (252, 330), (100, 268)):
-    r = 4
-    d.ellipse((x - r + 2, y - r + 3, x + r + 3, y + r + 3), fill=GS)
-    d.ellipse((x - r, y - r, x + r, y + r), fill=F2, outline=F0)
-    d.ellipse((x - r + 1, y - r + 1, x, y), fill=F3)
-    KEEP[f'tree@{x},{y}'] = (x - r, y - r, x + r + 4, y + r + 4)
+# ═════════════════════ FOREST: planted tree by tree, never touching roads / buildings / courts ═════════════════════
+GRASSY = {G0, G1, G2, G3, GS}
+free = Image.new('L', (W, H), 0)                    # 255 = plain grass (may hold a tree)
+fp = free.load()
+for y in range(H):
+    for x in range(W):
+        if pix[x, y] in GRASSY:
+            fp[x, y] = 255
+from PIL import ImageFilter
+free = free.filter(ImageFilter.MinFilter(5))         # keep trees ≥ 2 px away from anything built
+fp = free.load()
+cm = clear_mask.load()
+forest_core = clear_mask.point(lambda v: 255 - v).filter(ImageFilter.MinFilter(9)).load()   # deep forest, 4 px inside
+
+
+def tree(x, y, r, maple=False):
+    """round canopy, lit from the top-left, with a soft shadow down-right on the grass"""
+    for yy in range(y - r + 2, y + r + 4):            # shadow on grass only
+        for xx in range(x - r + 2, x + r + 4):
+            if (xx - x - 2) ** 2 + (yy - y - 2) ** 2 <= r * r and 0 <= xx < W and 0 <= yy < H and pix[xx, yy] in GRASSY:
+                pix[xx, yy] = GS
+    body, mid, lit = ((178, 82, 52), (214, 116, 62), (238, 168, 92)) if maple else (F1, F2, F3)   # autumn maple vs pine-green
+    d.ellipse((x - r, y - r, x + r, y + r), fill=F0)
+    d.ellipse((x - r + 1, y - r + 1, x + r - 1, y + r - 1), fill=body)
+    d.ellipse((x - r + 1, y - r + 1, x + r // 3, y + r // 3), fill=mid)
+    d.ellipse((x - r + 2, y - r + 2, x - r // 3, y - r // 3), fill=lit)
+    if r >= 4 and not maple:
+        pt(x - r + 3, y - r + 3, F4)
+
+
+def fits(x, y, r):
+    for yy in range(y - r, y + r + 1):
+        for xx in range(x - r, x + r + 1):
+            if (xx - x) ** 2 + (yy - y) ** 2 <= r * r:
+                if not (0 <= xx < W and 0 <= yy < H):
+                    continue                          # canopies may leave the map edge
+                if fp[xx, yy] == 0:
+                    return False
+    return True
+
+
+# deep-forest floor (only where no tree will ever be visible as a gap)
+for y in range(H):
+    for x in range(W):
+        if forest_core[x, y] and fp[x, y]:
+            pix[x, y] = F0 if (x * 7 + y * 3) % 11 else F1
+cands = []
+for _ in range(9000):
+    x, y = rnd.randrange(-3, W + 3), rnd.randrange(-3, H + 3)
+    inside = 0 <= x < W and 0 <= y < H
+    if inside and cm[x, y]:                           # trunk must stand in the forest (canopy may lean out)
+        continue
+    cands.append((y, x, rnd.choice((3, 4, 4, 5, 5, 6))))
+cands.sort()                                          # back to front
+planted = []
+for y, x, r in cands:
+    if any((x - px_) ** 2 + (y - py_) ** 2 < (r + pr - 3) ** 2 for (px_, py_, pr) in planted[-160:]):
+        continue
+    if fits(x, y, r):
+        tree(x, y, r, maple=rnd.random() < .012)
+        planted.append((x, y, r))
+
+# campus trees in clearings (also only where they fit)
+for (x, y) in ((92, 140), (150, 320), (264, 268), (270, 300), (252, 330), (100, 268), (196, 168),
+               (120, 100), (136, 112), (6, 30), (100, 40)):
+    if fits(x, y, 4):
+        tree(x, y, 4)
+        KEEP[f'tree@{x},{y}'] = (x - 4, y - 4, x + 8, y + 8)
+
+# a few flowers in the lawns
+for _ in range(160):
+    x, y = rnd.randrange(W), rnd.randrange(H)
+    if pix[x, y] == G1 and cm[x, y] and fp[x, y]:
+        pt(x, y, rnd.choice(((248, 248, 240), (248, 214, 72), (240, 120, 140))))
 
 # ═════════════════════ LABELS ═════════════════════
 LABELS = []
