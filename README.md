@@ -6,7 +6,18 @@ redeem them at the main booth for monsters, answer quizzes for evolution tickets
 the ranking. A Supabase backend stores accounts, collections and codes, and an admin page
 shows live system status.
 
-> Status: full game loop playable on a staging server (95 server-rule tests passing). Remaining: real quiz/art content, school Google login, production deploy — see [PROGRESS.md](PROGRESS.md).
+## 바로가기 (테스트 사이트)
+
+| 화면 | 주소 | 누가 |
+|---|---|---|
+| 🎮 **학생 앱** | **https://pokemon-hafs.pages.dev** | 학생·손님 (폰) |
+| 🛠 **운영자 페이지** | **https://pokemon-hafs.pages.dev/admin** | 운영자 (운영진 탭에서 다른 운영자 초대) |
+| 🎫 **부스 화면** | **https://pokemon-hafs.pages.dev/booth** | 메인 부스 스태프 (태블릿·노트북) |
+| 📺 **TV 대형 화면** | **https://pokemon-hafs.pages.dev/screen** | 부스 TV (전설 QR·실시간 피드) |
+
+운영자·부스 화면은 운영자가 초대한 **구글 계정**으로 로그인해야 들어갈 수 있어요.
+
+> Status: full game loop playable on a staging server (127 server-rule tests passing). Any Google account can log in. Remaining: real quiz/art content, production server — see [PROGRESS.md](PROGRESS.md).
 
 ---
 

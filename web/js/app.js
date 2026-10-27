@@ -114,7 +114,7 @@ function afterLogin() {
   return loginFlight;
 }
 
-async function doAfterLogin() {
+async function doAfterLogin(retried = false) {
   try {
     const profile = await rpc('ensure_profile');
     if (profile.needs_register) return renderRegister(profile);
@@ -132,11 +132,26 @@ async function doAfterLogin() {
       if (S.snap && S.catalog) { if (!$('nav.tabs')) renderShell(); return; }
       return renderLogin('인터넷에 연결된 곳에서 처음 로그인해 주세요.');
     }
-    // session lost (logged out in another tab, expired) → PostgREST answers 'permission denied' for anon
-    const msg = /permission denied|JWT|NOT_AUTHENTICATED/i.test(e.message) ? '로그인이 풀렸어요. 다시 로그인해 주세요.' : errorText(e.message);
-    await signOut();
-    renderLogin(msg);
+    // an expired access token (phone was asleep) is normal: refresh it and try again before giving up
+    if (/permission denied|JWT|NOT_AUTHENTICATED/i.test(e.message) && !retried) {
+      const { data } = await sb.auth.refreshSession().catch(() => ({ data: {} }));
+      if (data?.session) return doAfterLogin(true);
+      await signOut();
+      return renderLogin('로그인이 풀렸어요. 다시 로그인해 주세요.');
+    }
+    // any other error: keep the login (never log out because of a server hiccup or an old app version)
+    if (S.snap && S.catalog) { if (!$('nav.tabs')) renderShell(); toast(errorText(e.message)); return; }
+    renderRetry(errorText(e.message));
   }
+}
+
+// something went wrong after login, but the login itself is fine → offer a retry instead of logging out
+function renderRetry(msg) {
+  app().replaceChildren(h('div.login',
+    h('div.logo', CONFIG.GAME_TITLE),
+    h('div.box.login-note', h('b', '잠깐 문제가 생겼어요'), h('br'), msg),
+    h('button.btn.big.primary', { onclick: () => afterLogin() }, '다시 시도'),
+    h('button.btn.small.ghost', { onclick: async () => { await signOut(); await kv.clear(); S.snap = null; renderLogin(); } }, '다른 계정으로 로그인')));
 }
 
 async function loadCatalog() {
@@ -206,7 +221,7 @@ function sync(opts = {}) {
       }
     } catch (e) {
       if (e.offline) S.online = false;
-      else if (e.message === 'NO_PROFILE') { await signOut(); renderLogin('계정 연결이 해제됐어요. 다시 로그인해 주세요.'); }
+      else if (e.message === 'NO_PROFILE') { S.snap = null; await kv.del('snap'); afterLogin(); }
       else reportError('sync: ' + e.message);
     } finally {
       S.syncing = null;

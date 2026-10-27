@@ -66,7 +66,8 @@ export async function devLogin(email, password) {
 }
 
 export async function signOut() {
-  try { await sb.auth.signOut(); } catch { /* offline: local session still cleared below */ }
+  // scope 'local': log out this device only (the default 'global' also ends the login on every other phone)
+  try { await sb.auth.signOut({ scope: 'local' }); } catch { /* offline: local session still cleared below */ }
   try { Object.keys(localStorage).filter((k) => k.startsWith('sb-')).forEach((k) => localStorage.removeItem(k)); } catch { /* ignore */ }
 }
 

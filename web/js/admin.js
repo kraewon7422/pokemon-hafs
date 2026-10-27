@@ -42,7 +42,7 @@ const SETTING_HELP = {
   min_client_version: '앱 최소 버전 숫자. 올리면 옛 버전 폰에 "업데이트" 배너가 떠요',
 };
 const TABS = [
-  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['set', '설정'],
+  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['staff', '운영진'], ['set', '설정'],
 ];
 const CODE_BATCH = 700;   // admin_make_login_codes accepts at most 700 ids per call
 
@@ -326,7 +326,7 @@ function setBanner(open, selfRedeem) {
   if (sr && selfRedeem !== undefined) sr.classList.toggle('on', isOn(selfRedeem));
 }
 
-const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, set: tabSet };
+const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, staff: tabStaff, set: tabSet };
 
 async function go(tab) {
   S.tab = tab;
@@ -1478,6 +1478,54 @@ window.addEventListener('beforeunload', (e) => {
 });
 
 // ───────────────────────── 7. 설정 ─────────────────────────
+
+// 운영진: 구글 이메일로 운영자·부스 스태프 초대 / 해제 (0009). 목록 = settings.admin_emails / booth_emails
+async function tabStaff() {
+  const ROLE = { admin: '운영자', booth: '부스 스태프' };
+  const list = h('div');
+  const draw = (rows) => list.replaceChildren(rows.length ? h('div.tbl-wrap', h('table.tbl',
+    h('thead', h('tr', h('th', '구글 이메일'), h('th', '역할'), h('th', '상태'), h('th', ''))),
+    h('tbody', rows.map((r) => {
+      const del = h('button.btn.small.danger', { disabled: r.me, title: r.me ? '내 계정은 다른 운영자만 바꿀 수 있어요' : '' }, '해제');
+      del.onclick = () => {
+        if (!confirm(`${r.email} 의 ${ROLE[r.role]} 권한을 해제할까요?`)) return;
+        busy(del, async () => { draw(await rpc('admin_remove_staff', { p_email: r.email })); toast('해제했어요.'); });
+      };
+      return h('tr',
+        h('td.mono', r.email, r.me ? h('span.small-txt.muted', ' (나)') : null),
+        h('td', chip(ROLE[r.role] || r.role, r.role === 'admin' ? 'hot' : 'blue')),
+        h('td', r.joined ? chip('로그인함', 'ok') : chip('아직 로그인 전', 'off')),
+        h('td', del));
+    })))) : h('p.muted', '아직 아무도 없어요.'));
+  draw(await rpc('admin_list_staff'));
+
+  const email = h('input.inp', { type: 'email', placeholder: '예: teacher@gmail.com', autocomplete: 'off', required: true });
+  const role = h('select.inp', h('option', { value: 'admin' }, '운영자 (이 페이지 전체)'), h('option', { value: 'booth' }, '부스 스태프 (부스·TV 화면)'));
+  const add = h('button.btn.go', { type: 'submit' }, '초대하기');
+  const form = h('form.box.stack', {
+    onsubmit: (e) => {
+      e.preventDefault();
+      busy(add, async () => {
+        draw(await rpc('admin_invite_staff', { p_email: email.value, p_role: role.value }));
+        toast(`${email.value.trim()} 를 ${ROLE[role.value]}(으)로 추가했어요.`);
+        email.value = '';
+      });
+    },
+  },
+    h('h2', '운영진 초대'),
+    h('p.small-txt', '그 사람의 ', h('b', '구글 계정 이메일'), '을 적으면 끝이에요. 그 계정으로 이 사이트에 구글 로그인하면 바로 권한이 생겨요. 이미 로그인한 적이 있으면 지금 바로 바뀌어요.'),
+    h('div.row', email, role, add),
+    h('p.small-txt.muted', '보안상 구글 로그인 계정만 권한을 받아요 (학번 코드·비밀번호 계정은 안 됨). 내 권한은 다른 운영자만 바꿀 수 있어요.'));
+
+  const site = new URL('.', location.href).href.replace(/\/$/, '');
+  const links = h('div.box.stack',
+    h('h2', '운영 화면 주소'),
+    h('p.small-txt', '운영진에게 이 주소를 보내 주세요.'),
+    ...[['admin', '운영자 페이지'], ['booth', '부스 화면 (태블릿·노트북)'], ['screen', 'TV 대형 화면']].map(([p, t]) =>
+      h('div', h('b', t, ': '), h('a.mono', { href: `${site}/${p}.html`, target: '_blank', rel: 'noopener' }, `${site}/${p}.html`))));
+
+  return [h('div.cols', form, links), h('div.box.stack', h('h2', '현재 운영진'), list)];
+}
 
 async function tabSet() {
   const rows = await tq(sb.from('settings').select('*').order('key'));
