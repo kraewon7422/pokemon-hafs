@@ -1,0 +1,31 @@
+# secrets — never commit (use .env.example with empty values instead)
+.env
+.env.*
+!.env.example
+*secret*
+*credential*
+*token*
+service-account*.json
+supabase/.temp/
+supabase/.branches/
+
+# personal work logs / scratch
+CONTINUE.md
+.work/
+old/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
+
+# tooling
+node_modules/
+__pycache__/
+venv/
+.venv/
+
+# raw art sources (teacher photos etc.) — share via team drive, not git
+art-src/
