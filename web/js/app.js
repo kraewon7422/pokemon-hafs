@@ -1067,13 +1067,13 @@ function renderLogin(error = '') {
   if (CONFIG.DEV_LOGIN) {
     const email = h('input', { type: 'email', placeholder: '테스트 이메일 (022001@test.local)', autocomplete: 'username' });
     const pw = h('input', { type: 'password', placeholder: '테스트 비밀번호', autocomplete: 'current-password' });
-    content.push(h('form.dev-login', {
+    content.push(h('details.dev-login', h('summary', '개발용 테스트 로그인'), h('form', {
       onsubmit: async (e) => {
         e.preventDefault();
         err.textContent = '';
         try { await devLogin(email.value.trim(), pw.value); } catch (x) { err.textContent = x.message; }
       },
-    }, h('small', '- 개발용 테스트 로그인 -'), email, pw, h('button.btn', { type: 'submit' }, '테스트 로그인')));
+    }, email, pw, h('button.btn.small', { type: 'submit' }, '테스트 로그인'))));
   }
   content.push(h('p.foot-note', '학교 구글 계정으로 로그인하면 학번이 자동으로 연결돼요. 저장하는 정보: 학번, 이름, 게임 기록 (축제 종료 2주 후 삭제). ', h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')));
   app().replaceChildren(h('div.login', content));
