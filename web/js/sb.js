@@ -36,6 +36,8 @@ const MESSAGES = {
   ROULETTE_WAIT: '룰렛은 조금 더 기다려야 돌릴 수 있어요.',
   ROULETTE_DAILY_MAX: '오늘 룰렛은 다 돌렸어요. 내일 또 만나요!',
   ROULETTE_OFF: '지금은 룰렛을 쉬고 있어요.',
+  BAD_ROLE: '역할은 운영자 또는 부스 스태프만 고를 수 있어요.',
+  CANNOT_CHANGE_SELF: '내 계정의 역할은 여기서 바꿀 수 없어요. 다른 운영자에게 부탁하세요.',
 };
 export const errorText = (code) => MESSAGES[code] || `오류가 났어요 (${code})`;
 

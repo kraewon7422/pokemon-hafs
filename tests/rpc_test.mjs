@@ -82,7 +82,7 @@ ok(an.status >= 400 || (Array.isArray(an.data) && an.data.length === 0), 'anon c
 ok((await S[0].rpc('booth_redeem', { p_payload: '022001' })).error === 'NOT_STAFF', 'student cannot call booth_redeem');
 ok((await S[0].rpc('admin_stats')).error === 'NOT_ADMIN', 'student cannot call admin_stats');
 ok((await anon.rpc('sync', { p_scans: [] })).error, 'anon cannot call sync');
-for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette', 'register_profile'])
+for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette', 'register_profile', 'admin_invite_staff', 'admin_list_staff'])
   ok((await anon.rpc(fn, {})).error, `anon cannot call ${fn}`);
 for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name'])
   ok((await S[0].rpc(fn, {})).error, `student cannot call internal ${fn}`);
@@ -372,6 +372,26 @@ console.log('\n[17] open login: register screen, 학번 code accounts, dev accou
   await setS('dev_login', false);
   ok((await anon.rpc('dev_create_account', { p_email: 'reg3' })).error === 'DEV_LOGIN_OFF', 'dev accounts only while dev_login is on');
   await setS('dev_login', true);
+}
+
+console.log('\n[18] staff invite (admin page → 운영진)');
+{
+  const em = 'helper@x.test';
+  ok((await S[0].rpc('admin_list_staff')).error === 'NOT_ADMIN', 'students cannot see the staff list');
+  ok((await S[0].rpc('admin_invite_staff', { p_email: em, p_role: 'admin' })).error === 'NOT_ADMIN', 'students cannot invite staff');
+  r = await admin.rpc('admin_invite_staff', { p_email: ' Helper@X.test ', p_role: 'booth' });
+  ok(r.data?.some(x => x.email === em && x.role === 'booth' && x.joined === false), 'admin invites a booth helper (email normalised)', r.data);
+  r = await admin.rpc('admin_invite_staff', { p_email: em, p_role: 'admin' });
+  ok(r.data?.filter(x => x.email === em).length === 1 && r.data.find(x => x.email === em).role === 'admin', 'promote booth → admin (one role per email)', r.data);
+  ok(r.data?.some(x => x.email === 'admin@staff.test' && x.me && x.joined), 'list marks me + joined', r.data);
+  ok((await admin.rpc('admin_invite_staff', { p_email: 'admin@staff.test', p_role: 'booth' })).error === 'CANNOT_CHANGE_SELF', 'cannot change my own role');
+  ok((await admin.rpc('admin_remove_staff', { p_email: 'admin@staff.test' })).error === 'CANNOT_CHANGE_SELF', 'cannot remove myself');
+  ok((await admin.rpc('admin_invite_staff', { p_email: 'nope', p_role: 'admin' })).error === 'BAD_EMAIL', 'bad email refused');
+  ok((await admin.rpc('admin_invite_staff', { p_email: em, p_role: 'root' })).error === 'BAD_ROLE', 'bad role refused');
+  r = await admin.rpc('admin_remove_staff', { p_email: em });
+  ok(!r.data?.some(x => x.email === em), 'remove staff', r.data);
+  const set = (await admin.select('settings?key=in.(admin_emails,booth_emails)&select=key,value')).data;
+  ok(set?.find(x => x.key === 'admin_emails')?.value.includes('admin@staff.test') && set.find(x => x.key === 'booth_emails')?.value.includes('booth1@staff.test'), 'original staff lists intact', set);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
