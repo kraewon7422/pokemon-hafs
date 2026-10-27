@@ -67,6 +67,11 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 details.code-login { width: min(100%, 320px); text-align: left; }
 details.code-login summary { cursor: pointer; color: #283048; font-size: var(--fs-m); text-shadow: 1px 1px 0 #fff; padding: 6px 0; }
 details.code-login form { margin-top: 8px; }
+/* dev-only test login (CONFIG.DEV_LOGIN): small and folded so it doesn't compete with the real logins */
+details.dev-login { width: min(100%, 260px); text-align: left; opacity: .8; }
+details.dev-login summary { cursor: pointer; color: #283048; font-size: var(--fs-s); padding: 4px 0; list-style-position: inside; }
+details.dev-login form { display: grid; gap: 6px; margin-top: 6px; }
+details.dev-login input { min-height: 36px; font-size: var(--fs-s); padding: 4px 8px; }
 
 /* trainer card */
 .trainer {
