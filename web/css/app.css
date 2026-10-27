@@ -178,7 +178,8 @@ details.code-login form { margin-top: 8px; }
 
 /* map */
 .map-wrap { position: relative; border: 4px solid var(--ink); border-radius: 10px; overflow: hidden; background: var(--grass-1); margin: 0 auto; }
-.map-wrap img { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.map-wrap img { display: block; width: 100%; height: auto; }
+.map-label { position: absolute; transform: translate(-50%, -50%); pointer-events: none; white-space: nowrap; font-size: var(--fs-s); line-height: 1; padding: 3px 4px; background: rgba(255,255,255,.88); color: var(--ink); border: 2px solid var(--ink); border-radius: 4px; }
 /* map pins: a small dot exactly on the spot (labels stay readable); invisible 40px touch area */
 .pin { position: absolute; transform: translate(-50%, -50%); width: 40px; height: 40px; border: 0; padding: 0; background: none; cursor: pointer; }
 .pin::before { content: ''; position: absolute; left: 13px; top: 13px; width: 14px; height: 14px; border-radius: 50%; background: var(--red); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--ink); box-sizing: border-box; }

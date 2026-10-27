@@ -159,7 +159,7 @@ table.tbl td.small-txt { word-break: break-all; overflow-wrap: anywhere; min-wid
 .token-box { background: #f8f9fb; border: 1px dashed #c3cad5; border-radius: 8px; padding: 10px; font-size: 14px; }
 .token-box .code { font-size: 22px; font-weight: 700; letter-spacing: .12em; }
 .map-wrap { position: relative; width: 360px; max-width: 100%; margin: 0 auto; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; line-height: 0; }
-.map-wrap img { width: 100%; height: auto; display: block; image-rendering: pixelated; cursor: crosshair; }
+.map-wrap img { width: 100%; height: auto; display: block; cursor: crosshair; }
 .map-wrap.ro img { cursor: default; }
 .marker { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border-radius: 50%; background: var(--amber); border: 2px solid #fff; box-shadow: 0 0 0 1px #1f2633; pointer-events: none; }
 .marker.off { background: var(--gray); }

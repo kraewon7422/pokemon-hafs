@@ -686,7 +686,7 @@ function poolEditor(q, refresh) {
 // campus map: shows every QR; when a QR is selected, clicking sets its position (saved with 저장)
 function mapBox(q, pos, onPick) {
   const wrap = h('div.map-wrap' + (q ? '' : '.ro'));
-  const img = h('img', { src: 'img/map.png', alt: '학교 지도', draggable: 'false' });
+  const img = h('img', { src: 'img/map.webp', alt: '학교 지도', draggable: 'false' });
   wrap.append(img);
   const update = () => {
     wrap.querySelectorAll('.marker').forEach((m) => m.remove());

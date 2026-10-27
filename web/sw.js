@@ -1,7 +1,7 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v7';
+const VERSION = 'hafsmon-v8';
 const SHELL = [
   './', 'index.html', 's/', 's/index.html', 'manifest.webmanifest',
   'css/pixel.css', 'css/types.css', 'css/app.css',
@@ -9,7 +9,7 @@ const SHELL = [
   'js/sfx.js', 'js/ui.js', 'js/auth.js',
   'vendor/supabase.js', 'vendor/jsQR.js', 'vendor/qrcode.js',
   'fonts/Galmuri11.woff', 'fonts/Galmuri11-Bold.woff',
-  'sprites/atlas.png', 'img/map.png',
+  'sprites/atlas.png', 'img/map.webp',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];
 

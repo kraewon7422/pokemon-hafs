@@ -15,7 +15,8 @@ supabase/
 tests/rpc_test.mjs           서버 규칙 자동 테스트 (63개)
 tools/pixelize.py            AI 그림 → 64x64 도트
 tools/build_atlas.py         art/sprites/*.png → web/sprites/atlas.png
-tools/draw_map.py            학교 지도 픽셀아트 → web/img/map.png
+web/img/map.webp             학교 지도 (팀원이 만든 항공 지도 그림, 90° 회전). 건물 이름표는 app.js MAP_LABELS, 핀은 운영자 페이지 QR 관리
+tools/draw_map.py            예전 도트 지도(v1) → tools/map_v1.png
 docs/DESIGN.md               설계 (먼저 읽기)
 ```
 

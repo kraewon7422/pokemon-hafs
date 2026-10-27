@@ -1,4 +1,4 @@
-"""학교 지도 픽셀아트 v4 (3/4 탑다운 RPG 마을 스타일) → web/img/map.png (288x480 원본 해상도)
+"""학교 지도 픽셀아트 v4 (3/4 탑다운 RPG 마을 스타일) → tools/map_v1.png (지난 버전, 앱은 web/img/map.webp 사용) (288x480 원본 해상도)
 
 배치: 네이버 지도 항공사진 2장(2026-10-28, 북쪽 위)을 반시계 90° 돌려 따라 그림
       (사진 동쪽 = 지도 위, 운동장 = 오른쪽 아래, 기숙사 = 왼쪽 위, 정문 = 왼쪽 가운데).
@@ -606,6 +606,6 @@ if os.environ.get('PIN_PREVIEW'):
     pv.resize((W * 3, H * 3), Image.Resampling.NEAREST).save(os.environ['PIN_PREVIEW'])
 assert ok
 
-out = os.path.join(ROOT, 'web', 'img', 'map.png')
+out = os.path.join(ROOT, 'tools', 'map_v1.png')  # v1 (drawn); the app now uses web/img/map.webp
 img.save(out, optimize=True)
 print(out, img.size)

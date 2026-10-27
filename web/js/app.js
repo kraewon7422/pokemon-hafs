@@ -458,7 +458,8 @@ function viewMap() {
         h('span', `×${zoom}`),
         h('button.btn.small', { disabled: zoom >= 3, onclick: () => setZoom(zoom + 1), 'aria-label': '확대' }, '＋'))),
     h(`div.map-scroll${zoom > 1 ? '.zoomed' : ''}`,
-      h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.png', alt: '학교 지도', draggable: 'false' }), pins)),
+      h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.webp', alt: '학교 지도', draggable: 'false' }),
+        MAP_LABELS.map(([t, x, y]) => h('span.map-label', { style: { left: `${x * 100}%`, top: `${y * 100}%` }, 'aria-hidden': 'true' }, t)), pins)),
     zoom > 1 && h('small', { style: { textAlign: 'center' } }, '손가락으로 끌어서 지도를 움직여요'),
     h('div.legend',
       h('span', h('i', { style: { background: 'var(--red)' } }), '아직 안 찍음'),
@@ -470,14 +471,18 @@ function viewMap() {
   ];
 }
 
-// largest CSS width ≤ the screen at which every map pixel is a whole number of device pixels
-const MAP_W = 288;
+// map fills the screen width at ×1; zoom multiplies it (map.webp is 962x1635, sharp up to ~×3)
 function mapWidth(zoom = 1) {
-  const dpr = window.devicePixelRatio || 1;
   const avail = Math.min(536, (document.querySelector('main')?.clientWidth || window.innerWidth) - 24 - 8);
-  const k = Math.max(1, Math.floor((avail * dpr) / MAP_W)) * zoom;   // zoom stays an integer multiple → crisp
-  return (MAP_W * k) / dpr + 8;   // + border
+  return Math.floor(avail) * zoom + 8;   // + border
 }
+// building names drawn over the map (the picture itself has no text); x/y = fraction of the map
+const MAP_LABELS = [
+  ['기숙사 A동', 0.09, 0.07], ['기숙사 B동', 0.25, 0.02], ['농구장', 0.30, 0.235], ['V홀', 0.47, 0.235],
+  ['체육관', 0.68, 0.295], ['D홀', 0.70, 0.395], ['LUX홀', 0.46, 0.34], ['생태연못', 0.29, 0.375],
+  ['P홀', 0.555, 0.455], ['월드플라자', 0.68, 0.535], ['C홀', 0.79, 0.455], ['야외극장', 0.90, 0.33],
+  ['정문', 0.17, 0.515], ['야외공연장', 0.46, 0.68], ['운동장', 0.79, 0.85],
+];
 const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false });
 
 // ───────────────────────── 도감 (+ 진화) ─────────────────────────
