@@ -56,9 +56,14 @@ console.log('\n[0] setup');
 await admin.rpc('ensure_profile'); await booth.rpc('ensure_profile');
 await admin.select('settings?key=eq.festival_open'); // warm
 for (const sid of ['022001', '022002', '022003', '023004']) await admin.rpc('admin_unlink', { p_student_id: sid });
+const NAMES = ['김민준', '이서연', '박지윤', '최도우'];
+const fresh0 = (await S[0].rpc('ensure_profile')).data;
+ok(fresh0?.needs_register === true, 'first login asks to register (no profile yet)', fresh0);
 const profs = [];
-for (const s of S) profs.push((await s.rpc('ensure_profile')).data);
-ok(profs[0]?.student_id === '022001' && profs[0]?.gen === 22 && profs[0]?.role === 'student', 'student id parsed from email', profs[0]);
+for (const [i, sid] of ['022001', '022002', '022003', '023004'].entries())
+  profs.push((await S[i].rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: NAMES[i], p_show: true })).data);
+ok(profs[0]?.student_id === '022001' && profs[0]?.gen === 22 && profs[0]?.role === 'student' && profs[0]?.consented === true, 'student registers with number + name', profs[0]);
+ok(profs[0]?.display === '22기 김*준', 'display name is masked like 김*준', profs[0]?.display);
 ok(profs[3]?.student_id === '023004' && profs[3]?.gen === 23, 'gen parsed', profs[3]);
 const me = (await admin.rpc('ensure_profile')).data;
 ok(me?.role === 'admin', 'admin role from settings', me);
@@ -77,9 +82,9 @@ ok(an.status >= 400 || (Array.isArray(an.data) && an.data.length === 0), 'anon c
 ok((await S[0].rpc('booth_redeem', { p_payload: '022001' })).error === 'NOT_STAFF', 'student cannot call booth_redeem');
 ok((await S[0].rpc('admin_stats')).error === 'NOT_ADMIN', 'student cannot call admin_stats');
 ok((await anon.rpc('sync', { p_scans: [] })).error, 'anon cannot call sync');
-for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette'])
+for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette', 'register_profile'])
   ok((await anon.rpc(fn, {})).error, `anon cannot call ${fn}`);
-for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base'])
+for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name'])
   ok((await S[0].rpc(fn, {})).error, `student cannot call internal ${fn}`);
 
 console.log('\n[2] scan / sync / lock');
@@ -153,7 +158,8 @@ st = (await S[0].rpc('sync')).data.state;
 const qz = st.quizzes[0];
 const right = qz.choices.findIndex(c => c.startsWith('맞아요'));
 r = await S[0].rpc('answer_quiz', { p_attempt: qz.attempt_id, p_choice: right });
-ok(r.data?.correct === true && r.data.granted === true && r.data.evo_tickets === 1, 'correct answer → +1 ticket', r);
+// random draws can already have paid a duplicate bonus ticket → compare with the count before
+ok(r.data?.correct === true && r.data.granted === true && r.data.evo_tickets === st.profile.evo_tickets + 1, 'correct answer → +1 ticket', r);
 r = await S[0].rpc('answer_quiz', { p_attempt: qz.attempt_id, p_choice: right });
 ok(r.error === 'NO_QUIZ', 'cannot answer the same quiz twice', r);
 const qz2 = st.quizzes[1];
@@ -164,6 +170,8 @@ ok(r.data?.correct === false && r.data.granted === false && r.data.answer_pos ==
 
 console.log('\n[8] evolve race (5 parallel taps, 1 ticket)');
 const line = st.collection[0].line_id;
+const have = (await S[0].rpc('sync')).data.state.profile.evo_tickets;
+if (have !== 1) await admin.rpc('admin_adjust_tickets', { p_student_id: '022001', p_delta: 1 - have });   // exactly 1 ticket for the race
 const evs = await Promise.all(Array.from({ length: 5 }, () => S[0].rpc('evolve', { p_line: line })));
 const spent = evs.filter(e => e.data);
 ok(spent.length === 1 && evs.filter(e => e.error === 'NO_TICKET').length === 4, 'exactly one evolve consumed the ticket', evs.map(e => e.error || 'ok'));
@@ -240,7 +248,7 @@ const tc = client(tTok.access_token);
 const tp = (await tc.rpc('ensure_profile')).data;
 ok(tp?.student_id === 'g:t01' && tp.gen === null && tp.role === 'student', 'guest profile created', tp);
 const ta = (await tc.rpc('accept_terms', { p_show: true })).data;
-ok(ta?.consented === true && ta.display === '테스트쌤', 'consent + display name for guests', ta);
+ok(ta?.consented === true && ta.display === '테**쌤', 'consent + masked display name for guests', ta);
 
 console.log('\n[14] ranking + kill switch');
 r = await S[0].rpc('get_ranking');
@@ -258,7 +266,7 @@ ok(stats.data?.students >= 4 && stats.data.qrs.length >= 25, 'admin stats work',
 
 console.log('\n[15] festival ops: guests out of ranking, export, grant, dup bonus, relink, auto-close');
 r = await S[0].rpc('get_ranking');
-ok(!r.data.top.some(t => t.display === '테스트쌤'), 'teacher/guest code accounts are not ranked');
+ok(!r.data.top.some(t => t.display === '테**쌤'), 'teacher/guest code accounts are not ranked');
 const exp = (await admin.rpc('admin_export_ranking')).data;
 const ex1 = exp?.find(x => x.student_id === '022001');
 ok(ex1?.name === '김민준' && ex1.rank >= 1 && exp.some(x => x.student_id === 'g:t01' && x.rank === null), 'export has real names, guests unranked', ex1);
@@ -321,6 +329,50 @@ r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }]
 ok(r.data?.acks?.[0]?.status === 'closed' && r.data.state.rules.festival_ended === true, 'past festival_close_at → closed + ended flag', r.data?.acks);
 ok((await booth.rpc('booth_redeem', { p_payload: '023004' })).error === 'FESTIVAL_CLOSED', 'booth stops after close time');
 await setS('festival_close_at', null);
+
+console.log('\n[17] open login: register screen, 학번 code accounts, dev accounts');
+{
+  const fresh = async (email) => {
+    await anon.rpc('dev_create_account', { p_email: email });
+    const c = client(await login(email));
+    const pr = (await c.rpc('ensure_profile')).data;
+    if (pr?.student_id) await admin.rpc('admin_unlink', { p_student_id: pr.student_id });   // reset from the last run
+    return c;
+  };
+  const d = (await anon.rpc('dev_create_account', { p_email: 'reg1' })).data;
+  ok(d?.email === 'reg1@test.local', 'dev account: bare name gets @test.local', d);
+  const g = await fresh('reg1@test.local');
+  r = await g.rpc('register_profile', { p_kind: 'guest', p_student_id: '', p_name: '  홍 길동 ', p_show: true });
+  ok(r.data?.student_id?.startsWith('g:') && r.data.in_ranking === false && r.data.display === '홍**동', 'guest registers with name only, not ranked, masked', r.data);
+  ok((await g.rpc('register_profile', { p_kind: 'guest', p_student_id: '', p_name: 'x' })).error === 'ALREADY_REGISTERED', 'cannot register twice');
+  const t = await fresh('reg2@test.local');
+  ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '022001', p_name: '가짜' })).error === 'STUDENT_ID_TAKEN', 'a taken student number is refused');
+  ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '12', p_name: '가짜' })).error === 'BAD_STUDENT_ID', 'bad student number refused');
+  ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '022777', p_name: '<b>' })).error === 'BAD_NAME', 'bad name refused');
+  ok((await t.rpc('register_profile', { p_kind: 'teacher', p_student_id: '', p_name: '가짜' })).error === 'BAD_KIND', 'unknown kind refused');
+
+  const sid = '099' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+  const cc = (await anon.rpc('create_code_account', { p_student_id: sid })).data;
+  ok(cc?.id === sid && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(cc.code), 'student number alone creates a code account (code shown once)', cc);
+  ok((await anon.rpc('create_code_account', { p_student_id: sid })).error === 'CODE_ACCOUNT_EXISTS', 'second request for the same number is refused');
+  ok((await anon.rpc('create_code_account', { p_student_id: '022001' })).error === 'STUDENT_ID_TAKEN', 'code account for a registered number is refused');
+  const ct = await (await fetch(`${URL_}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: `${sid}@code.local`, password: cc.code.replace('-', '') }) })).json();
+  const cl = client(ct.access_token);
+  const need = (await cl.rpc('ensure_profile')).data;
+  ok(need?.needs_register === true && need.code_id === sid, 'code account asks for a name, knows its number', need);
+  r = await cl.rpc('register_profile', { p_kind: 'guest', p_student_id: '022002', p_name: '코드생' });
+  ok(r.data?.student_id === sid && r.data.in_ranking === true, 'code account is always its own student number', r.data);
+  await admin.rpc('admin_unlink', { p_student_id: sid });
+
+  await setS('admin_emails', ['admin@staff.test', 'evil@x.test']);
+  const ev = await fresh('evil@x.test');
+  const evp = (await ev.rpc('ensure_profile')).data;
+  await setS('admin_emails', ['admin@staff.test']);
+  ok(evp?.needs_register === true && evp.role !== 'admin', 'a password account never gets staff rights from the admin list', evp);
+  await setS('dev_login', false);
+  ok((await anon.rpc('dev_create_account', { p_email: 'reg3' })).error === 'DEV_LOGIN_OFF', 'dev accounts only while dev_login is on');
+  await setS('dev_login', true);
+}
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

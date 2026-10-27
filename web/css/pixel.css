@@ -25,7 +25,8 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; padding: 0; }
+[hidden] { display: none !important; }   /* the hidden attribute must win over .btn/.stack/... display rules */
+html, body { margin: 0; padding: 0; overflow-x: clip; }   /* safety net: nothing may push the page sideways on a phone */
 body {
   font-family: var(--font);
   font-size: var(--fs-m);
