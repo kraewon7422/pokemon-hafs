@@ -60,6 +60,14 @@ export async function renderGoogleButton(container, onError) {
   window.google.accounts.id.renderButton(container, { theme: 'outline', size: 'large', text: 'signin_with', locale: 'ko', width: 260 });
 }
 
+// 아이디 계정 (0018): '<아이디>@id.local' 로 비밀번호 로그인. 운영진 아이디는 운영자가 만들어 준다
+export async function idLogin(id, password) {
+  const lid = String(id || '').trim().toLowerCase();
+  if (!/^[a-z][a-z0-9_]{3,15}$/.test(lid)) throw new Error('아이디는 영문으로 시작하는 4~16자예요.');
+  const { error } = await sb.auth.signInWithPassword({ email: `${lid}@id.local`, password });
+  if (error) throw new Error('아이디나 비밀번호가 맞지 않아요.');
+}
+
 export async function devLogin(email, password) {
   const { error } = await sb.auth.signInWithPassword({ email, password });
   if (error) throw new Error(error.message);

@@ -65,14 +65,17 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .evo-dot { font-size: var(--fs-s); color: #a06000; }
 .evo-panel { display: grid; gap: 8px; }
 .chain.n2 { grid-template-columns: 1fr auto 1fr; }
-details.code-login { width: min(100%, 340px); text-align: left; }
-details.code-login summary { cursor: pointer; color: #283048; font-size: var(--fs-m); text-shadow: 1px 1px 0 #fff; padding: 6px 0; }
-details.code-login form { margin-top: 8px; }
+/* 로그인 화면 (0018): 학생 카드 · 비학생 카드 · 맨 아래 구글(복구용) */
+.login-card { width: min(100%, 360px); text-align: left; display: grid; gap: 8px; }
+.login-card .lc-title { font-size: var(--fs-l); color: #283048; }
+.login-card form { display: grid; gap: 8px; }
+.login-card.google-first { justify-items: center; text-align: center; border-color: #f8d048; }
+.google-alt { width: min(100%, 360px); display: grid; justify-items: center; gap: 6px; padding: 8px 10px; border-radius: 10px;
+  background: rgba(255, 255, 255, .78); border: 2px dashed #7890b0; }
+.google-alt small { color: #283048; }
+.title-screen .foot-note { background: rgba(255, 255, 255, .8); border-radius: 8px; padding: 6px 10px; width: min(100%, 360px); }
+.setting-login span { font-weight: bold; }
 /* dev-only test login (CONFIG.DEV_LOGIN): small and folded so it doesn't compete with the real logins */
-details.dev-login { width: min(100%, 260px); text-align: left; opacity: .8; }
-details.dev-login summary { cursor: pointer; color: #283048; font-size: var(--fs-s); padding: 4px 0; list-style-position: inside; }
-details.dev-login form { display: grid; gap: 6px; margin-top: 6px; }
-details.dev-login input { min-height: 36px; font-size: var(--fs-s); padding: 4px 8px; }
 
 /* trainer card */
 .trainer {
