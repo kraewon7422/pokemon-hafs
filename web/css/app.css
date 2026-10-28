@@ -375,7 +375,7 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 @media (prefers-reduced-motion: reduce) { .raid-boss canvas, .chip.special, .raid-banner { animation: none; } }
 
 /* title screen (login): gen-3 feel — sky, sun (소디포), drifting pixel clouds, school skyline, monsters hopping on grass */
-.login.title-screen { position: relative; overflow: hidden; align-content: start; padding-top: calc(env(safe-area-inset-top) + 88px); padding-bottom: calc(84px + env(safe-area-inset-bottom));
+.login.title-screen { position: relative; overflow: hidden; align-content: start; padding-top: calc(env(safe-area-inset-top) + 88px); padding-bottom: calc(150px + env(safe-area-inset-bottom));
   background: linear-gradient(#3878d0 0, #68b0f0 120px, #a8dcf8 230px, #c8ecf8 262px, #58a848 262px, #58a848 270px, var(--grass-1) 270px); }
 .title-sky { position: absolute; inset: 0 0 auto 0; height: 270px; pointer-events: none; }
 .title-sky .sun { position: absolute; right: 8%; top: calc(env(safe-area-inset-top) + 10px); animation: hover 3s ease-in-out infinite; filter: drop-shadow(0 0 12px rgba(255, 220, 80, .8)); }
@@ -396,9 +396,16 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .mons.hop span { animation: hop2 .9s steps(2) infinite alternate; }
 @keyframes hop2 { to { transform: translateY(-8px); } }
 .title-screen .press { color: #fff8a0; }
-.login-help { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; justify-content: center; gap: 8px;
+.login-help { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; justify-items: center; gap: 6px;
   padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: #283048; border-top: 4px solid #182030; }
+.login-help .help-btns { display: flex; justify-content: center; gap: 8px; width: 100%; }
 .login-help .btn { flex: 1; max-width: 220px; white-space: nowrap; }
+/* 만든 동아리: 이름 위에 각 로고 */
+.login-help .clubs { display: flex; align-items: flex-end; justify-content: center; gap: 10px; color: #fff; }
+.login-help .clubs figure { margin: 0; display: grid; justify-items: center; gap: 2px; }
+.login-help .clubs img { height: 40px; width: auto; border-radius: 6px; }
+.login-help .clubs figcaption { font-weight: bold; font-size: 15px; letter-spacing: .5px; text-shadow: 2px 2px 0 #101828; }
+.login-help .clubs .amp { font-weight: bold; font-size: 18px; color: #f8d048; padding-bottom: 1px; text-shadow: 2px 2px 0 #101828; }
 @media (prefers-reduced-motion: reduce) { .title-sky .cloud, .title-sky .sun, .mons.hop span { animation: none; } }
 
 .seg.rank-kinds { grid-template-columns: repeat(3, 1fr); }
