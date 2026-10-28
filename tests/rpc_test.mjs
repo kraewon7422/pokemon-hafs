@@ -506,7 +506,8 @@ let NA, NB;
 console.log('\n[23] battle data: types, moves, stats');
 {
   const sp = (await S[0].select('species?select=id,line_id,hp,atk,def,spa,spd,spe&order=id')).data || [];
-  ok(sp.length >= 110 && sp.every(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].every(v => v > 0)), 'every species has 6 base stats', sp.filter(x => !x.hp).map(x => x.id));
+  ok(sp.length >= 212 && sp.every(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].every(v => v > 0)), 'every species (68 teachers + legends) has 6 base stats', sp.filter(x => !x.hp).map(x => x.id));
+  ok(new Set(sp.map(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].join())).size === sp.length, 'no two species share the same stats');
   const total = (x) => x.hp + x.atk + x.def + x.spa + x.spd + x.spe;
   const by = Object.fromEntries(sp.map(x => [x.id, x]));
   ok(total(by[1]) < total(by[2]) && total(by[2]) < total(by[3]), 'evolved forms are stronger (stage 1 < 2 < 3)', [total(by[1]), total(by[2]), total(by[3])]);
@@ -519,8 +520,11 @@ console.log('\n[23] battle data: types, moves, stats');
   const bad = sp.filter(x => (per[x.id] || []).sort().join() !== 'attack,attack,defense,status').map(x => x.id);
   ok(bad.length === 0, 'every species: 2 attack + 1 status + 1 defense move', bad);
   const tc = (await S[0].select('type_chart?select=atk,def,mult')).data || [];
-  ok(tc.length === 41 && tc.some(c => c.atk === '정보' && c.def === '수학' && Number(c.mult) === 2) && tc.some(c => c.atk === '수학' && c.def === '정보' && Number(c.mult) === 0.5), 'type chart (과목 cycle)', tc.length);
-  const lg = (await S[0].select('lines?id=gte.37&select=id,bonus,max_stage&order=id')).data || [];
+  ok(tc.length > 60 && tc.some(c => c.atk === '정보' && c.def === '수학' && Number(c.mult) === 2) && tc.some(c => c.atk === '국어' && c.def === '국어' && Number(c.mult) === 0.5), 'type chart (attack x defense table)', tc.length);
+  ok(['정치경제:음악', '역사:정보', '체육:수학'].every(k => tc.some(c => `${c.atk}:${c.def}` === k && Number(c.mult) === 0)), 'x0 cells (효과가 없다)');
+  const ln = (await S[0].select('lines?select=id,btype,subject&id=lte.76')).data || [];
+  ok(ln.length === 76 && ln.every(l => l.btype) && ln.filter(l => l.subject === '과학').every(l => ['물리', '화학', '생명', '지구'].includes(l.btype)), '68 teacher lines + legends, science/social split into battle types', ln.filter(l => !l.btype).map(l => l.id));
+  const lg = (await S[0].select('lines?id=gte.37&id=lte.42&select=id,bonus,max_stage&order=id')).data || [];
   ok(lg.length === 6 && lg.every(l => l.bonus && l.max_stage === 1), 'secret + 5 탐구 legends are bonus 1-stage lines', lg);
   const w = await fetch(`${URL_}/rest/v1/moves?id=eq.${mv[0].id}`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${STOK}`, Prefer: 'return=representation' }, body: JSON.stringify({ power: 999 }) });
   ok(w.status >= 400 || (await w.json()).length === 0, 'students cannot change moves');
@@ -594,10 +598,10 @@ console.log('\n[24] raids + special tickets');
   await setS('raid_slots', [{ line: 38, from: '09:00', until: '11:00' }, { line: 39, from: '12:00', until: '13:30' }, { line: 40, from: '16:00', until: '18:00' }]);
 
   // dex rewards: 50 % → 과연기, 100 % → 창문기 (special tickets, no raid)
-  for (let l = 1; l <= 18; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 3 });
+  for (let l = 1; l <= 36; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: l >= 35 ? 1 : 3 });   // 104 of 206 = 50 %
   st = (await B.c.rpc('sync')).data.state;
   ok(st.special?.some(x => x.special === 'dex50' && x.species_id === 121) && !st.special.some(x => x.special === 'dex100'), '도감 50% → 과연기 ticket', st.special);
-  for (let l = 19; l <= 36; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: l >= 35 ? 1 : 3 });
+  for (let l = 43; l <= 76; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 3 });
   st = (await B.c.rpc('sync')).data.state;
   ok(st.special?.some(x => x.special === 'dex100' && x.species_id === 124) && st.special.filter(x => x.special === 'dex50').length === 1, '도감 100% → 창문기 ticket (once each)', st.special);
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });

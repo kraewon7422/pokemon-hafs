@@ -400,3 +400,13 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 @media (prefers-reduced-motion: reduce) { .title-sky .cloud, .title-sky .sun, .mons.hop span { animation: none; } }
 
 .seg.rank-kinds button[aria-pressed="true"] { background: #f86840; color: #fff; text-shadow: 1px 1px 0 #802010; }
+
+/* 타입 상성표 (배틀 탭) */
+.type-table-wrap { overflow-x: auto; margin: 0 -6px; }
+.type-table { border-collapse: collapse; font-size: 11px; min-width: 100%; }
+.type-table th, .type-table td { border: 1px solid #c8d0e0; text-align: center; padding: 2px 1px; min-width: 20px; }
+.type-table thead th { writing-mode: vertical-rl; height: 46px; padding: 2px 0; }
+.type-table tbody th { white-space: nowrap; padding: 2px 4px; text-align: left; }
+.type-table td.x2 { background: #ffd0a0; color: #a02010; font-weight: bold; }
+.type-table td.xh { background: #d8e4f4; color: #2050a0; }
+.type-table td.x0 { background: #404858; color: #fff; font-weight: bold; }

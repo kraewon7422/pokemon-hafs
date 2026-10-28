@@ -12,7 +12,8 @@ web/                 ← 배포되는 정적 사이트 (빌드 없음)
 supabase/
   migrations/0001~0004       DB 구조 + 보안 규칙 + 서버 함수 (번호 순서대로 실행)
   seed.sql                   데모 데이터 (임시 몬스터 34라인 + 전설·비밀·탐구 전설, QR)
-  seed_battle.sql            배틀 데이터 (상성·기술·능력치) — seed.sql 다음에 실행. 손으로 고치지 말고 `python tools/gen_battle_data.py` 로 다시 만들기
+  seed_battle.sql            배틀 데이터 (상성·기술·능력치·배틀 타입) — seed.sql 다음에 실행. 손으로 고치지 말고 `python tools/gen_battle_data.py` 로 다시 만들기
+  (계열 목록 = tools/roster.py. 43~76 계열 SQL = `python tools/gen_roster_sql.py` → seed.sql 의 '명단에 맞춰 늘린 계열' 블록)
 tests/rpc_test.mjs           서버 규칙 자동 테스트 (63개)
 tools/pixelize.py            AI 그림 → 64x64 도트
 tools/build_atlas.py         art/sprites/*.png → web/sprites/atlas.png
@@ -50,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0013 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함)
+1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0014 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함)
 2. `settings` 수정: `admin_emails`, `booth_emails` (운영자·부스 구글 계정), **`dev_login`은 false 그대로** (0008 기본값). 모든 구글 계정이 로그인 가능하므로 도메인 설정은 필요 없음
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
 4. Authentication → Rate Limits 올리기 (학교 와이파이 = IP 하나). JWT 만료 시간 늘리기

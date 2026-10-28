@@ -169,7 +169,7 @@ function renderRetry(msg) {
 
 async function loadCatalog() {
   const [lines, species, qrs, moves, speciesMoves, typeChart] = await Promise.all([
-    sb.from('lines').select('id,teacher,subject,rarity,active,max_stage,withdrawn,secret,bonus').order('id'),
+    sb.from('lines').select('id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus').order('id'),
     sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe').order('id'),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
@@ -803,7 +803,7 @@ function openDetail(sp) {
 const STAT_KEYS = [['hp', 'HP'], ['atk', '공격'], ['def', '방어'], ['spa', '특수공격'], ['spd', '특수방어'], ['spe', '스피드']];
 const CAT_LABEL = { physical: '물리', special: '특수', status: '변화' };
 const KIND_LABEL = { attack: '공격', status: '상태', defense: '방어' };
-const typeOf = (sp) => { const s = lineOf(sp.line_id)?.subject; return s === '비밀' ? '전설' : s; };
+const typeOf = (sp) => { const l = lineOf(sp.line_id); return l?.btype || (l?.subject === '비밀' ? '전설' : l?.subject); };
 // Lv.50 실제 능력치 (개체값 31, 노력치 0, 성격 보정 없음)
 const lv50 = (key, base) => (key === 'hp' ? Math.floor((2 * base + 31) / 2) + 60 : Math.floor((2 * base + 31) / 2) + 5);
 const movesOf = (sp) => (S.catalog.speciesMoves || []).filter((x) => x.species_id === sp.id).sort((a, b) => a.slot - b.slot)
@@ -1082,17 +1082,23 @@ function openRaid(r0) {
 }
 
 function viewBattle() {
-  const cycle = ['국어', '한국사', '사회', '외국어', '영어', '정보', '수학', '과학', '체육', '음악'];
+  const T = ['국어', '수학', '영어', '물리', '화학', '생명', '지구', '지리', '정치경제', '윤리', '역사', '외국어', '정보', '체육', '음악'];
+  const chart = S.catalog.typeChart || [];
+  const m = (a, d) => Number(chart.find((c) => c.atk === a && c.def === d)?.mult ?? 1);
+  const cell = (v) => (v === 2 ? h('td.x2', '2') : v === 0.5 ? h('td.xh', '½') : v === 0 ? h('td.x0', '0') : h('td', ''));
+  const short = (t) => ({ 정치경제: '정경' }[t] || t);
   return [
     h('div.box.stack',
       h('div.banner', h('b', pix('spark'), ' 배틀'), h('span.chip', '곧 열려요')),
       h('p', '내 몬스터 3마리로 팀을 만들어 친구 팀이나 선생님과 겨뤄요. 기술은 몬스터마다 4개 (공격 2 · 상태 1 · 방어 1).'),
       h('small.muted', '도감에서 몬스터를 누르고 "능력치·기술"을 보면 미리 확인할 수 있어요.')),
     h('div.box.stack',
-      h('b', '과목 상성'),
-      h('small', '화살표 방향으로 효과가 굉장해요 (×2). 거꾸로는 별로예요 (×0.5). 각 과목은 다음 두 과목에 강해요.'),
-      h('div.type-cycle', cycle.map((t, i) => [h(`span.type.t-${t}`, t), i < cycle.length - 1 ? h('span.arrow', '→') : h('span.arrow', '↺')]).flat()),
-      h('small.muted', '전설은 모두에게 보통이고, 전설끼리만 효과가 굉장해요.')),
+      h('b', '타입 상성표'),
+      h('small', '왼쪽 = 공격하는 기술의 타입, 위 = 맞는 몬스터의 타입. 2 = 효과가 굉장했다 · ½ = 별로인 듯하다 · 0 = 효과가 없다'),
+      h('div.type-table-wrap', h('table.type-table',
+        h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, short(d))))),
+        h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, short(a)), T.map((d) => cell(m(a, d)))))))),
+      h('small.muted', '전설은 모두에게 보통이고, 전설끼리만 효과가 굉장해요. 효과 없음: 정치경제→음악, 역사→정보, 체육→수학.')),
   ];
 }
 
