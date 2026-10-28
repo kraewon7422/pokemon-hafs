@@ -71,3 +71,22 @@ input::placeholder, textarea::placeholder { color: #6a7490; }
 .legend-qr canvas { width: min(18vw, 30vh); height: auto; image-rendering: pixelated; }
 .fs-btn { position: fixed; left: 10px; bottom: 10px; opacity: .25; }
 :fullscreen .fs-btn { display: none; }
+
+/* booth: special tickets (레이드·도감 보상) */
+.ticket-list li.special { background: linear-gradient(110deg, #f8d040, #fff4b0 40%, #f0b820 60%, #ffe680); background-size: 250% 100%; animation: shimmer 2.4s linear infinite; color: #3a2400; font-weight: bold; }
+.chip.special { background: #f8d040; color: #3a2400; font-weight: bold; }
+@keyframes shimmer { to { background-position: 250% 0; } }
+
+/* TV raids */
+.raid-row-tv { display: grid; gap: 12px; flex: none; }
+.raid-row-tv:empty { display: none; }
+.raid-tv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 14px 18px; border-radius: 16px;
+  background: linear-gradient(90deg, #402060, #803080); box-shadow: 0 0 0 4px #f878c8 inset; }
+.raid-tv h3 { margin: 0 0 6px; font-size: 28px; }
+.raid-tv .hpbar { height: 26px; border: 4px solid #101828; border-radius: 8px; background: #384050; overflow: hidden; }
+.raid-tv .hpbar i { display: block; height: 100%; background: #48d048; transition: width .5s; }
+.raid-tv .hpbar i.yellow { background: #f8c830; } .raid-tv .hpbar i.red { background: #f04830; }
+.raid-tv .meta { display: flex; gap: 18px; font-size: 20px; margin-top: 6px; flex-wrap: wrap; }
+.raid-tv .qr { display: grid; justify-items: center; gap: 4px; background: #fff; color: #101828; padding: 8px; border-radius: 10px; }
+.raid-tv .qr canvas { width: 170px; height: 170px; image-rendering: pixelated; }
+.raid-tv.won { box-shadow: 0 0 0 4px #f8d048 inset; }

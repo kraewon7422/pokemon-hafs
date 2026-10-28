@@ -39,11 +39,13 @@ const owned = (line) => collection().find((c) => c.line_id === line);
 const rules = () => ({ bag_max: 5, qr_daily_cap: 3, evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2], ...(S.snap?.rules || {}) });
 const serverPending = () => (S.snap?.tickets || []).filter((t) => t.status === 'pending');
 // tickets in the bag = server pending + local scans the server hasn't seen yet
+const specialOf = (nonce) => (S.snap?.special || []).find((x) => x.nonce === nonce);
 const bag = () => [
-  ...serverPending().map((t) => ({ nonce: t.nonce, qr_id: t.qr_id, token: t.token, name: t.qr_name, synced: true })),
+  ...serverPending().map((t) => ({ nonce: t.nonce, qr_id: t.qr_id, token: t.token, name: t.qr_name, synced: true, special: specialOf(t.nonce) })),
   ...S.outbox.filter((o) => !serverPending().some((t) => t.nonce === o.n))
     .map((o) => ({ nonce: o.n, qr_id: o.q, token: o.t, name: o.q === '_' ? '수동 코드' : qrName(o.q) || '확인 중인 장소', synced: false })),
 ];
+const normalBag = () => bag().filter((t) => !t.special);   // only these count towards bag_max
 const evolvable = () => collection().filter((c) => c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id));
 const isWithdrawn = (line) => (S.snap?.rules?.withdrawn || []).includes(line) || !!lineOf(line)?.withdrawn;
 const isSecret = (line) => !!lineOf(line)?.secret;
@@ -266,6 +268,16 @@ const CAPSULE = `<svg viewBox="0 0 32 32" aria-hidden="true">
   <rect x="2" y="14.5" width="28" height="3" fill="#202838"/>
   <circle cx="16" cy="16" r="5" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
   <circle cx="16" cy="16" r="2" fill="#fff" stroke="#c8c8c8" stroke-width="1"/></svg>`;
+// 타이틀 화면의 학교 실루엣 (픽셀, crispEdges)
+const SCHOOL_SVG = `<svg viewBox="0 0 160 40" shape-rendering="crispEdges" aria-hidden="true">
+<rect x="0" y="22" width="34" height="18" fill="#5a78a8"/><rect x="34" y="12" width="44" height="28" fill="#4a6898"/>
+<rect x="78" y="18" width="30" height="22" fill="#5a78a8"/><rect x="108" y="8" width="26" height="32" fill="#4a6898"/>
+<rect x="134" y="24" width="26" height="16" fill="#5a78a8"/><rect x="52" y="4" width="8" height="8" fill="#4a6898"/>
+<rect x="55" y="0" width="2" height="4" fill="#f8d048"/>
+${[...Array(6)].map((_, i) => `<rect x="${38 + i * 6}" y="18" width="3" height="4" fill="#f8f0a0"/><rect x="${38 + i * 6}" y="28" width="3" height="4" fill="#f8f0a0"/>`).join('')}
+${[...Array(3)].map((_, i) => `<rect x="${112 + i * 7}" y="14" width="3" height="4" fill="#f8f0a0"/><rect x="${112 + i * 7}" y="24" width="3" height="4" fill="#f8f0a0"/>`).join('')}
+</svg>`;
+
 const TABS = [['home', '홈'], ['map', '지도'], ['raid', '레이드'], ['scan', 'QR'], ['battle', '배틀'], ['dex', '도감'], ['rank', '랭킹']];
 
 function renderShell() {
@@ -367,6 +379,7 @@ function viewHome() {
   const titles = titlesOf(p, D);
   const partner = [...collection()].sort((a, b) => b.stage - a.stage || new Date(b.first_caught_at) - new Date(a.first_caught_at))[0];
   const items = bag();
+  const normal = items.filter((t) => !t.special);
   const visited = new Set((S.snap.tickets || []).map((t) => t.qr_id));
   const hints = S.catalog.qrs.filter((q) => q.hint && !visited.has(q.id));
   const hint = hints.length ? hints[new Date().getMinutes() % hints.length] : null;
@@ -388,6 +401,9 @@ function viewHome() {
       h('div', h('b', '전설의 몬스터 출현'), h('br'),
         [...new Set(R.legend_schedule.map((l) => (l.from ? `${fmtTime(l.from)}${l.until ? '~' + fmtTime(l.until) : ''}` : '지금')))].join(' · '),
         ' · 메인 부스 대형 화면')),
+    (S.snap.raids_live || []).length > 0 && !R.festival_ended && h('button.box.raid-banner', { onclick: () => go('raid') },
+      spriteCanvas(S.snap.raids_live[0].species_id, 48),
+      h('div', h('b', '레이드 보스 출현!'), h('br'), h('small', `${S.snap.raids_live.map((x) => x.title).join(' · ')} — 대형 화면의 QR을 찍어 참가해요`))),
     minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', pix('clock'), `마감까지 ${minsLeft}분! 가방 티켓은 마감 전에 부스에서 써 주세요.`),
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
@@ -406,9 +422,11 @@ function viewHome() {
       }))),
 
     h('section.box', { 'aria-label': '가방' },
-      h('div.banner', h('b', `가방 ${items.length}/${R.bag_max}`),
+      h('div.banner', h('b', `가방 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
         h('span', { style: { fontSize: '13px' } }, items.length ? '메인 부스에서 몬스터로 바꿔요' : 'QR을 찍으면 티켓이 들어와요')),
-      items.length ? h('div.bag-row', items.map((t) => h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name))) : null,
+      items.length ? h('div.bag-row', items.map((t) => (t.special
+        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성' }[t.special.special] || ''}`))
+        : h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name)))) : null,
       h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '가방 QR 보여주기'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
         pix('gift'), '지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
@@ -893,16 +911,174 @@ function sumMoves(sp) {
   return wrap;
 }
 
-// ───────── 레이드 / 배틀 탭 (PR B·C 에서 채움) ─────────
+// ───────── 배틀 탭 (PR C 에서 채움) ─────────
+// ───────── 레이드: 큰 보스를 다 같이 탭해서 쓰러뜨리기 (0013) ─────────
+const isRaidQr = (q) => /^R\d{1,5}$/.test(q);
+const curSpecies = (line) => { const c = owned(line); return c ? speciesOf(dexOf(line, c.stage)) : null; };
+// 서버 _raid_per_tap 과 같은 식 (화면 안내용; 실제 데미지는 서버가 정함)
+function estimatePerTap(line, bossId) {
+  const a = curSpecies(line); const b = speciesOf(bossId);
+  if (!a || !b) return 3;
+  const tp = (sp) => typeOf(sp);
+  const m = Number((S.catalog.typeChart || []).find((c) => c.atk === tp(a) && c.def === tp(b))?.mult || 1);
+  const phys = (a.atk || 0) >= (a.spa || 0);
+  const atk = lv50('atk', phys ? a.atk : a.spa); const def = lv50('def', phys ? b.def : b.spd);
+  return Math.max(1, Math.round((10 * atk / Math.max(def, 1)) * m));
+}
+const bestLine = (bossId) => collection().filter((c) => !isWithdrawn(c.line_id))
+  .map((c) => [c.line_id, estimatePerTap(c.line_id, bossId)]).sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
+
+async function loadMyRaids() {
+  S.myRaidsAt = Date.now();
+  try { S.myRaids = await rpc('my_raids', {}, { retries: 0 }); if (S.tab === 'raid' && !S.overlay) renderTab(); } catch { /* offline */ }
+}
+
 function viewRaid() {
-  const slots = [[112, '아침'], [115, '점심'], [118, '저녁']];
+  if (S.online && (!S.myRaidsAt || Date.now() - S.myRaidsAt > 8000)) loadMyRaids();
+  const live = S.snap.raids_live || [];
+  const mine = S.myRaids || [];
+  const left = (iso) => fmtWait(Math.max(0, new Date(iso) - Date.now()));
   return [
     h('div.box.stack',
-      h('div.banner', h('b', pix('bolt'), ' 레이드'), h('span.chip', '곧 열려요')),
-      h('p', '대형 화면에 보스가 나타나면 QR을 찍고 다 같이 화면을 탭해서 보스 체력을 깎아요. 이기면 그 몬스터 티켓을 받아요.'),
-      h('div.raid-preview', slots.map(([id, t]) => h('div', spriteCanvas(id, 64, 'silhouette'), h('small', `${t} 전설`)))),
-      h('small.muted', '교장·교감 레이드, 시간대 전설(아침·점심·저녁), 운영진이 여는 특별 레이드가 있어요.')),
+      h('div.banner', h('b', pix('bolt'), ' 레이드'), live.length ? h('span.chip.hot', '보스 출현 중!') : null),
+      h('p', { style: { margin: 0 } }, '대형 화면이나 운영진이 보여 주는 레이드 QR을 찍으면 참가해요. 다 같이 보스를 마구 탭해서 체력을 0으로 만들면, 열심히 싸운 모두가 그 몬스터 티켓을 받아요!'),
+      h('button.btn.big.primary', { onclick: openScanner }, pix('camera'), '레이드 QR 찍기')),
+    live.length > 0 && h('div.box.stack',
+      h('b', '지금 대형 화면에 나타난 보스'),
+      live.map((r) => h('div.raid-row', spriteCanvas(r.species_id, 56), h('div', h('b', r.title), h('small', `남은 시간 ${left(r.ends_at)} · 메인 부스 대형 화면의 QR을 찍어요`))))),
+    mine.length > 0 && h('div.box.stack',
+      h('b', '내가 참가한 레이드'),
+      mine.map((r) => h('button.raid-row', { onclick: () => (r.status === 'active' ? openRaid(r) : toast(r.status === 'won' ? '이긴 레이드예요! 보상 티켓은 가방에 있어요.' : '끝난 레이드예요.')) },
+        spriteCanvas(r.species_id, 56),
+        h('div', h('b', r.title),
+          h('div.hpbar.small', h('i', { style: { width: `${(r.hp / r.hp_max) * 100}%` } })),
+          h('small', r.status === 'active' ? `남은 시간 ${left(r.ends_at)} · 내 데미지 ${r.me?.damage || 0}` : r.status === 'won' ? (r.me?.rewarded ? '승리! 보상 받음 ★' : '승리 (보상 조건 미달)') : '실패')),
+        h(`span.chip${r.status === 'active' ? '.hot' : ''}`, r.status === 'active' ? '참가하기' : r.status === 'won' ? '승리' : '끝')))),
+    h('div.box.stack',
+      h('b', '시간대 전설 레이드'),
+      h('div.raid-preview', [[112, '아침'], [115, '점심'], [118, '저녁']].map(([id, t]) =>
+        h('div', spriteCanvas(id, 56, (owned(speciesOf(id)?.line_id) ? 'normal' : 'silhouette')), h('small', `${t} 전설`)))),
+      h('small.muted', '아침·점심·저녁마다 다른 전설이 대형 화면에 나타나요. 교장·교감 선생님 레이드와 운영진 특별 레이드도 있어요.')),
   ];
+}
+
+async function joinRaid(q, t) {
+  if (!S.online) return say('레이드는 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  try {
+    const r = await rpc('raid_join', { p_q: q, p_t: t, p_line: null }, { retries: 0 });
+    sfx.scan(); vibrate(80);
+    openRaid(r);
+  } catch (e) { sfx.error(); say(errorText(e.message), true); }
+}
+
+function openRaid(r0) {
+  if (S.overlay) closeOverlay({ replacing: true });
+  unlockAudio();
+  let r = r0;
+  let line = r.me?.line_id || bestLine(r.species_id);
+  let pending = 0;            // taps not sent yet (sent every 4 s)
+  let busy = false; let over = false;
+  const skew = new Date(r.server_time || Date.now()) - Date.now();
+  const per = () => (r.me?.line_id === line && r.me?.per_tap) || estimatePerTap(line, r.species_id);
+  const boss = spriteCanvas(r.species_id, 192);
+  const bossBtn = h('button.raid-boss', { 'aria-label': '보스 공격하기 (계속 탭)' }, boss);
+  const fx = h('div.raid-fx', { 'aria-hidden': 'true' });
+  const hpFill = h('i'); const hpText = h('span.hp-num'); const timer = h('b.raid-timer');
+  const info = h('div.raid-info');
+  const pickBtn = h('button.btn.small');
+  const picker = h('div.raid-pick', { hidden: true });
+  const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
+  const draw = () => {
+    const hp = r.status === 'active' ? Math.max(0, r.hp - pending * per()) : r.hp;
+    const ratio = hp / r.hp_max;
+    hpFill.style.width = `${ratio * 100}%`;
+    hpFill.className = ratio < 0.2 ? 'red' : ratio < 0.5 ? 'yellow' : '';
+    hpText.textContent = `HP ${hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`;
+    info.replaceChildren(h('span', `참가 ${r.players}명`), h('span', `내 데미지 ${((r.me?.damage || 0) + pending * per()).toLocaleString()}`), h('span', `탭당 ${per()}`));
+    const sp = curSpecies(line);
+    pickBtn.replaceChildren(...(sp ? [spriteCanvas(sp.id, 28), ` ${sp.name} ▾`] : ['내 몬스터 고르기 ▾']));
+  };
+  const tick = () => {
+    const ms = new Date(r.ends_at) - (Date.now() + skew);
+    timer.textContent = r.status === 'active' ? `⏱ ${fmtWait(Math.max(0, ms))}` : r.status === 'won' ? '격파!' : '종료';
+  };
+  const finish = async () => {
+    if (over) return;
+    over = true;
+    clearInterval(S.raidTimer); clearInterval(S.raidFlush);
+    bossBtn.disabled = true;
+    const sp = speciesOf(r.species_id);
+    if (r.status === 'won') {
+      boss.classList.add('faint');
+      sfx.catch(); vibrate([80, 60, 80, 60, 200]);
+      await typeText(text, r.me?.rewarded
+        ? `${josa(sp.name, '을', '를')} 쓰러뜨렸다!!\n★ 레이드 보상: ${sp.name} 티켓이 가방에 들어왔어요!\n메인 부스에서 몬스터로 바꿔요. (가방 칸은 안 차지해요)`
+        : `${josa(sp.name, '을', '를')} 쓰러뜨렸다!\n하지만 공격이 조금 부족해서 보상은 못 받았어요. 다음엔 더 많이 탭해요!`);
+      sync({ force: true });
+    } else {
+      sfx.fail();
+      await typeText(text, `${josa(sp.name, '은', '는')} 도망가 버렸다…\n시간 안에 체력을 0으로 만들지 못했어요.`);
+    }
+    text.append(h('button.btn.big.primary', { style: { marginTop: '10px' }, onclick: () => closeOverlay() }, '확인'));
+    loadMyRaids();
+  };
+  const flush = async () => {
+    if (busy || over) return;
+    busy = true;
+    const taps = pending;
+    try {
+      r = await rpc(taps ? 'raid_attack' : 'raid_state', taps ? { p_raid: r.id, p_taps: taps, p_line: line } : { p_raid: r.id }, { retries: 0 });
+      pending -= taps;
+    } catch (e) { if (/RAID_/.test(e.message)) toast(errorText(e.message)); }
+    busy = false;
+    draw(); tick();
+    if (r.status !== 'active') finish();
+  };
+  const hit = (e) => {
+    e.preventDefault();
+    if (over || r.status !== 'active') return;
+    pending++;
+    bossBtn.classList.remove('hit'); void bossBtn.offsetWidth; bossBtn.classList.add('hit');
+    const n = h('span.dmg', `-${per()}`);
+    n.style.left = `${20 + Math.random() * 60}%`; n.style.top = `${15 + Math.random() * 45}%`;
+    fx.append(n); setTimeout(() => n.remove(), 700);
+    if (pending % 4 === 1) sfx.blip();
+    vibrate(12);
+    draw();
+  };
+  bossBtn.addEventListener('pointerdown', hit);
+  bossBtn.addEventListener('click', (e) => e.preventDefault());
+  pickBtn.onclick = () => {
+    picker.hidden = !picker.hidden;
+    if (picker.hidden) return;
+    const opts = collection().filter((c) => !isWithdrawn(c.line_id))
+      .map((c) => [c.line_id, estimatePerTap(c.line_id, r.species_id)]).sort((a, b) => b[1] - a[1]).slice(0, 12);
+    picker.replaceChildren(...(opts.length ? opts.map(([l, d]) => {
+      const sp = curSpecies(l);
+      return h(`button.raid-opt${l === line ? '.on' : ''}`, { onclick: () => { line = l; picker.hidden = true; draw(); sfx.select(); } },
+        spriteCanvas(sp.id, 40), h('small', sp.name), h('b', `탭당 ${d}`));
+    }) : [h('small', '아직 몬스터가 없어요. 몬스터가 없어도 탭당 3씩 공격할 수 있어요!')]));
+  };
+  const ov = overlay(h('div.raid-stage',
+    h('div.raid-top', h('b', r.title), timer),
+    h('div.raid-hp', h('div.hpbar', hpFill), hpText),
+    h('div.raid-arena', bossBtn, fx),
+    info,
+    h('div.raid-ctrl', pickBtn, h('button.btn.small.ghost', { onclick: () => closeOverlay() }, '나가기')),
+    picker,
+    text), 'full');
+  ov.classList.add('raid-overlay');
+  ov.onclose = () => { over = true; clearInterval(S.raidTimer); clearInterval(S.raidFlush); if (pending) rpc('raid_attack', { p_raid: r.id, p_taps: pending, p_line: line }, { retries: 0 }).catch(() => {}); loadMyRaids(); };
+  clearInterval(S.raidTimer); clearInterval(S.raidFlush);
+  S.raidTimer = setInterval(tick, 1000);
+  S.raidFlush = setInterval(flush, 4000);
+  draw(); tick();
+  const sp = speciesOf(r.species_id);
+  const mine = curSpecies(line);
+  const m = mine ? Number((S.catalog.typeChart || []).find((c) => c.atk === typeOf(mine) && c.def === typeOf(sp))?.mult || 1) : 1;
+  typeText(text, r.status !== 'active' ? '이미 끝난 레이드예요.'
+    : `앗! 레이드 보스 ${josa(sp.name, '이', '가')} 나타났다!\n보스를 마구 탭해서 공격해!${m > 1 ? '\n(내 몬스터는 이 보스에게 효과가 굉장해!)' : m < 1 ? '\n(내 몬스터는 이 보스에게 효과가 별로야… 다른 몬스터를 골라 봐)' : ''}`);
+  if (r.status !== 'active') finish();
 }
 
 function viewBattle() {
@@ -979,13 +1155,16 @@ async function evolutionScene(fromDex, toDex, success, col) {
 
 // ───────────────────────── 랭킹 ─────────────────────────
 
+// 랭킹 3가지: 도감 / 점수 / 배틀 승리 × 전체 / 우리 기수
+const RANK_KINDS = [['dex', '도감'], ['score', '점수'], ['battle', '배틀 승리']];
 async function loadRanking() {
-  const scope = S.rankScope;
+  S.rankKind ||= 'score';
+  const scope = `${S.rankKind}:${S.rankScope}`;
   const key = 'rank:' + scope;
   S.rank[scope] ||= await kv.get(key);
   if (S.tab === 'rank') renderTab();
   try {
-    const data = await rpc('get_ranking', { p_gen: scope === 'gen' ? S.snap.profile.gen : null }, { retries: 0 });
+    const data = await rpc('get_ranking_by', { p_gen: S.rankScope === 'gen' ? S.snap.profile.gen : null, p_kind: S.rankKind }, { retries: 0 });
     S.rank[scope] = data;
     await kv.set(key, data);
     S.online = true;
@@ -994,9 +1173,14 @@ async function loadRanking() {
 }
 
 function viewRank() {
-  const r = S.rank[S.rankScope];
+  S.rankKind ||= 'score';
+  const r = S.rank[`${S.rankKind}:${S.rankScope}`];
   const p = S.snap.profile;
+  const unit = { dex: (t) => `도감 ${t.value}`, score: (t) => `${t.value}점`, battle: (t) => `${t.value}승` }[S.rankKind];
+  const sub = { dex: (t) => `${t.score}점`, score: (t) => `도감 ${t.dex}`, battle: (t) => `도감 ${t.dex} · ${t.score}점` }[S.rankKind];
   return [
+    h('div.seg.rank-kinds', { role: 'group', 'aria-label': '랭킹 종류' }, RANK_KINDS.map(([k, label]) =>
+      h('button', { 'aria-pressed': String(S.rankKind === k), onclick: () => { S.rankKind = k; sfx.blip(); loadRanking(); } }, label))),
     p.gen && h('div.seg', { role: 'group' },
       h('button', { 'aria-pressed': String(S.rankScope === 'all'), onclick: () => { S.rankScope = 'all'; loadRanking(); } }, '전체'),
       h('button', { 'aria-pressed': String(S.rankScope === 'gen'), onclick: () => { S.rankScope = 'gen'; loadRanking(); } }, `${p.gen}기`)),
@@ -1005,10 +1189,13 @@ function viewRank() {
     !p.show_on_board && h('div.box', { style: { fontSize: '13px' } }, '지금은 "익명 트레이너"로 표시돼요. 오른쪽 위 톱니바퀴 설정에서 바꿀 수 있어요.'),
     r && h('ol.rank-list', r.top.map((t) => h(`li${t.me ? '.me' : ''}`,
       h(`span.rank-no.r${t.rank}`, t.rank <= 3 ? pix(['gold', 'silver', 'bronze'][t.rank - 1], 'l') : `#${t.rank}`),
-      h('span', h('div', t.display, t.me ? ' (나)' : ''), h('div.rank-sub', `도감 ${t.dex}`)),
-      h('b', `${t.score}점`)))),
-    r && !r.top.length && h('div.box', '아직 아무도 몬스터를 잡지 않았어요. 첫 번째가 되어 보세요!'),
-    h('p', { style: { fontSize: '13px', margin: 0 } }, '점수: 1단계 1점 · 2단계 3점 · 3단계 6점 (+희귀·전설 보너스). 동점이면 먼저 도달한 사람이 위.'),
+      h('span', h('div', t.display, t.me ? ' (나)' : ''), h('div.rank-sub', sub(t))),
+      h('b', unit(t))))),
+    r && !r.top.length && h('div.box', S.rankKind === 'battle' ? '아직 배틀에서 이긴 사람이 없어요. 배틀이 열리면 첫 승리를 노려 보세요!' : '아직 아무도 몬스터를 잡지 않았어요. 첫 번째가 되어 보세요!'),
+    h('p', { style: { fontSize: '13px', margin: 0 } }, {
+      dex: '도감: 모은 몬스터 수 (진화한 단계까지 모두 셈). 동점이면 먼저 도달한 사람이 위.',
+      score: '점수: 1단계 1점 · 2단계 3점 · 3단계 6점 (+희귀·전설 보너스). 동점이면 먼저 도달한 사람이 위. 상품은 점수 순위 기준.',
+      battle: '배틀 승리: 다른 트레이너·선생님과의 배틀에서 이긴 횟수. 동점이면 먼저 이긴 사람이 위.' }[S.rankKind]),
   ];
 }
 
@@ -1062,8 +1249,9 @@ function manualEntry() {
 }
 
 async function handleScan({ q, t }) {
+  if (isRaidQr(q)) return joinRaid(q, t);
   const R = rules();
-  const items = bag();
+  const items = normalBag();
   const known = S.catalog?.qrs.find((x) => x.id === q);
   const name = q === '_' ? '수동 코드 장소' : known?.name || '숨겨진 장소';
   if (items.length >= R.bag_max) return say(`가방이 꽉 찼어요! (${R.bag_max}장) 먼저 메인 부스에서 티켓을 써 주세요.`, true);
@@ -1114,8 +1302,10 @@ async function openBag() {
       canvas,
       h('div.bright', pix('sun'), '화면 밝기를 최대로 올려 주세요'),
       h('small', S.online ? '부스에서 확인하면 자동으로 넘어가요…' : '오프라인이어도 부스에서 찍을 수 있어요.')),
-    h('div.box', h('b', `가방 ${items.length}/${rules().bag_max}`),
-      items.length ? h('div.bag-row', items.map((t) => h('span.chip', t.name))) : h('p', '가방이 비었어요. 그래도 부스에서 학번으로 확인할 수 있어요.')),
+    h('div.box', h('b', `가방 ${items.filter((t) => !t.special).length}/${rules().bag_max}`),
+      items.length ? h('div.bag-row', items.map((t) => (t.special
+        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || t.name)
+        : h('span.chip', t.name)))) : h('p', '가방이 비었어요. 그래도 부스에서 학번으로 확인할 수 있어요.')),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
   S.bagOpen = true;
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* best effort */ }
@@ -1354,12 +1544,16 @@ function renderLogin(error = '') {
   closeOverlay();
   const err = h('div.err', { role: 'alert' }, error);
   const gbox = h('div.gbox');
-  const mons = h('div.mons', [1, 13, 25, 37].map((d) => spriteCanvas(d, 56)));
+  const mons = h('div.mons.hop', [1, 13, 25, 37, 49].map((d, i) => h('span', { style: { animationDelay: `${i * 0.18}s` } }, spriteCanvas(d, 52))));
   const pending = sessionStorage.getItem('pendingScan');
+  // 3세대 타이틀 화면 느낌: 하늘 + 해(소디포) + 구름 + 학교 실루엣 + 잔디 위 몬스터들
+  const sky = h('div.title-sky', { 'aria-hidden': 'true' },
+    h('span.sun', spriteCanvas(112, 64)), h('i.cloud.c1'), h('i.cloud.c2'), h('i.cloud.c3'),
+    h('div.school', { html: SCHOOL_SVG }));
   const content = [
+    sky,
+    h('div.title-plate', h('div.logo', CONFIG.GAME_TITLE), h('div.logo-sub', '학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!')),
     mons,
-    h('div.logo', CONFIG.GAME_TITLE),
-    h('div.logo-sub', '학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!'),
     pending && h('div.box.login-note',
       h('b', pix('camera'), 'QR을 찍었는데 이 브라우저는 로그인이 안 돼 있어요'), h('br'),
       '게임을 하던 앱(브라우저)을 열고 가운데 볼 버튼으로 다시 찍거나, QR 아래 5자리 코드를 입력하세요. 처음이라면 여기서 로그인해도 돼요.'),
@@ -1371,8 +1565,12 @@ function renderLogin(error = '') {
   if (CONFIG.DEV_LOGIN) content.push(devLoginBox(err));
   content.push(installButton('.small'),
     h('p.foot-note', '구글 계정 아무거나 로그인할 수 있어요. 처음 한 번만 학생/외부인을 고르고 이름을 적어요. ',
-      h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')));
-  app().replaceChildren(h('div.login', content));
+      h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')),
+    // 늘 맨 아래에: 문의하기 · 비밀번호를 잊었어요
+    h('nav.login-help', { 'aria-label': '도움' },
+      h('button.btn.small', { type: 'button', onclick: () => inquiryPublicSheet() }, pix('memo'), '문의하기'),
+      h('button.btn.small', { type: 'button', onclick: () => forgotSheet() }, pix('ticket'), '비밀번호를 잊었어요')));
+  app().replaceChildren(h('div.login.title-screen', content));
   renderGoogleButton(gbox, (m) => { err.textContent = m; }).catch((e) => { err.textContent = e.message; });
 }
 
@@ -1411,6 +1609,29 @@ function codeLogin(err) {
   }, cid, pw, go, help,
   h('small', '처음 쓰는 번호면 지금 적은 비밀번호로 계정이 만들어져요. 구글로 들어와도 같은 고유번호면 같은 계정이에요.'));
   return h('details.code-login', h('summary', '구글 없이: 고유번호 + 비밀번호로 로그인'), form);
+}
+
+// 로그인 전 문의 (이름 + 선택 고유번호 + 내용) → 운영자 페이지 '요청' 탭
+function inquiryPublicSheet() {
+  const nm = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, autocomplete: 'name' });
+  const cid = h('input', { placeholder: '고유번호 (있으면)', inputmode: 'numeric', maxlength: 6 });
+  const body = h('textarea', { rows: 5, maxlength: 1000, placeholder: '예: 로그인이 안 돼요 / 구글 버튼이 안 보여요' });
+  const err = h('div.err', { role: 'alert' });
+  const send = h('button.btn.big.primary', { type: 'submit' }, '보내기');
+  sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '운영진에게 문의하기'),
+    h('form.stack.box', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        send.disabled = true;
+        try {
+          await rpc('send_inquiry_public', { p_body: body.value, p_name: nm.value, p_student_id: cid.value }, { retries: 0 });
+          closeOverlay();
+          toast('보냈어요! 급하면 메인 부스로 와 주세요.', 4000);
+        } catch (x) { err.textContent = errorText(x.message); send.disabled = false; }
+      },
+    }, h('small', '로그인이 안 되거나 궁금한 점을 적어 주세요. 운영진이 확인해요.'),
+    h('label.field', h('span', '이름'), nm), h('label.field', h('span', '고유번호'), cid), body, err, send)]);
 }
 
 // 비밀번호를 모르겠어요 → 운영자에게 초기화 요청 (허용되면 여기서 고른 새 비밀번호가 된다)

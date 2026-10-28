@@ -41,12 +41,48 @@ async function start() {
     h('section', h('h2', `🏆 ${CONFIG.GAME_TITLE} TOP 10`), h('ol.top10#top')),
     h('section',
       h('div#notice'),
+      h('div.raid-row-tv#raids'),
       h('div.legend-row#legend'),
       h('div', h('h2', '기수 대항전'), h('div.gens#gens')),
       h('div.grow', h('h2', '방금 잡힌 몬스터'), h('div.feed#feed')))),
     h('button.btn.small.fs-btn', { onclick: () => document.documentElement.requestFullscreen?.() }, '전체 화면'));
   tick();
   setInterval(tick, 8000);
+  tickRaids();
+  setInterval(tickRaids, 3000);
+}
+
+// 레이드: 보스 체력바 + 30초마다 바뀌는 참가 QR (현장에 있어야 참가). 시간대 전설 레이드도 이 호출이 자동으로 연다.
+const raidCards = new Map();   // raid id → { el, token }
+async function tickRaids() {
+  let d;
+  try { d = await rpc('screen_raids', {}, { retries: 0 }); } catch { return; }
+  const box = $('#raids');
+  if (!box || !d) return;
+  const seen = new Set();
+  for (const r of d.raids) {
+    seen.add(r.id);
+    let c = raidCards.get(r.id);
+    if (!c) {
+      c = { el: h('div.raid-tv'), token: null, qr: h('canvas') };
+      raidCards.set(r.id, c);
+      box.append(c.el);
+    }
+    const ratio = r.hp / r.hp_max;
+    const left = Math.max(0, Math.round((new Date(r.ends_at) - new Date(d.server_time)) / 1000));
+    c.el.classList.toggle('won', r.status === 'won');
+    if (r.status === 'active' && c.token !== r.t) { drawQR(c.qr, placeUrl(site, r.q, r.t), { cell: 6, margin: 2 }); c.token = r.t; }
+    c.el.replaceChildren(
+      spriteCanvas(r.species_id, 128),
+      h('div',
+        h('h3', r.status === 'won' ? `${r.title} — 격파!` : r.status === 'failed' ? `${r.title} — 도망쳤다…` : `⚡ ${r.title}`),
+        h('div.hpbar', h(`i${ratio < 0.2 ? '.red' : ratio < 0.5 ? '.yellow' : ''}`, { style: { width: `${ratio * 100}%` } })),
+        h('div.meta', h('b', `HP ${r.hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`), h('span', `참가 ${r.players}명`),
+          r.status === 'active' && h('span', `남은 시간 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`),
+          r.top?.[0] && h('span', `최고 데미지 ${r.top[0].display}`))),
+      r.status === 'active' ? h('div.qr', c.qr, h('b', 'QR 찍고 참가!')) : h('div'));
+  }
+  for (const [id, c] of raidCards) if (!seen.has(id)) { c.el.remove(); raidCards.delete(id); }
 }
 
 async function tick() {

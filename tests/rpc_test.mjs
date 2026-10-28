@@ -526,5 +526,98 @@ console.log('\n[23] battle data: types, moves, stats');
   ok(w.status >= 400 || (await w.json()).length === 0, 'students cannot change moves');
 }
 
+console.log('\n[24] raids + special tickets');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'raid12' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'raid12'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const A = await mk('레이드에이'), B = await mk('레이드비');
+  await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: 32, p_stage: 3 });   // 체육 attacker
+  ok((await A.c.rpc('raid_join', { p_q: 'R1', p_t: 'x' })).error, 'unknown / bad raid refused');
+  ok((await S[0].rpc('admin_create_raid', { p_species: 3, p_hp: 300, p_minutes: 5 })).error === 'NOT_ADMIN', 'students cannot open raids');
+  const rd = (await admin.rpc('admin_create_raid', { p_species: 3, p_hp: 300, p_minutes: 5, p_tv: false })).data;
+  ok(rd?.q === `R${rd.id}` && rd.t && rd.hp === 300 && rd.status === 'active', 'admin opens a printable raid (static QR)', rd);
+  ok((await A.c.rpc('raid_join', { p_q: rd.q, p_t: 'deadbeef00' })).error === 'RAID_BAD_TOKEN', 'wrong raid token refused');
+  let r = await A.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t, p_line: 32 });
+  ok(r.data?.players === 1 && r.data.me?.line_id === 32 && r.data.me.per_tap > 3, 'join with my 체육 monster (better per-tap damage)', r.data?.me);
+  r = await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 1000, p_line: 32 });
+  ok(r.data?.accepted <= 20 && r.data.dealt === r.data.accepted * r.data.me.per_tap, 'tap cap: 1000 taps sent → only ~8/s accepted', { accepted: r.data?.accepted, dealt: r.data?.dealt });
+  ok((await B.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 5 })).error === 'RAID_NOT_JOINED', 'must join before attacking');
+  await B.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t });
+  for (let i = 0; i < 40; i++) {
+    await new Promise(res => setTimeout(res, 700));
+    r = await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 6 });
+    await B.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 6 });
+    if (r.data?.status !== 'active') break;
+  }
+  r = await A.c.rpc('raid_state', { p_raid: rd.id });
+  ok(r.data?.status === 'won' && r.data.hp === 0 && r.data.players === 2 && r.data.me.rewarded, 'many players wear the boss down → won, rewarded', { status: r.data?.status, hp: r.data?.hp });
+  ok(r.data?.top?.length === 2 && r.data.top[0].damage >= r.data.top[1].damage, 'damage ranking', r.data?.top);
+  let st = (await A.c.rpc('sync')).data.state;
+  const sp = st.special?.find(x => x.special === 'raid');
+  ok(sp?.species_id === 3, 'special raid ticket for the boss (stage-3 문장곤)', st.special);
+  ok((await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 5 })).data?.status === 'won', 'attacking a finished raid does nothing');
+  // special tickets do not count towards the bag limit and redeem to the fixed monster at its stage
+  const pend = st.tickets.filter(t => t.status === 'pending');
+  r = await booth.rpc('booth_redeem', { p_payload: bag(A.sid, pend.map(t => ({ n: t.nonce, q: t.qr_id, t: t.token }))) });
+  const got = r.data?.results?.find(x => x.special === 'raid');
+  ok(got?.species_id === 3 && got.line_id === 1, 'booth turns the raid ticket into 문장곤', r.data?.results);
+  st = (await A.c.rpc('sync')).data.state;
+  ok(st.collection.find(c => c.line_id === 1)?.stage === 3, 'arrives at stage 3 directly');
+
+  // TV raid: token rotates; the printed static token is not accepted
+  const tv = (await admin.rpc('admin_create_raid', { p_species: 106, p_hp: 100000, p_minutes: 5, p_tv: true, p_kind: 'legend', p_title: '교장 선생님 레이드' })).data;
+  const scr = (await booth.rpc('screen_raids')).data;
+  const live = scr?.raids?.find(x => x.id === tv.id);
+  ok(live && live.t && live.t !== tv.t && live.kind === 'legend', 'TV gets a rotating join token', live);
+  ok((await B.c.rpc('raid_join', { p_q: tv.q, p_t: tv.t })).error === 'RAID_BAD_TOKEN', 'TV raid: only the current on-screen token works');
+  ok((await B.c.rpc('raid_join', { p_q: tv.q, p_t: live.t })).data?.players === 1, 'join from the TV QR');
+  ok((await B.c.rpc('sync')).data?.state?.raids_live?.some(x => x.id === tv.id), 'home shows the live TV raid');
+  await admin.rpc('admin_end_raid', { p_id: tv.id });
+  r = await B.c.rpc('raid_attack', { p_raid: tv.id, p_taps: 5 });
+  ok(r.data?.status === 'failed' && !r.data.me.rewarded, 'ended raid = failed, no reward');
+  ok((await B.c.rpc('raid_join', { p_q: tv.q, p_t: live.t })).error === 'RAID_OVER', 'cannot join a finished raid');
+
+  // time-slot raid: TV spawns it inside the window, only one at a time, cooldown after
+  await setS('raid_cooldown_min', 0);   // an earlier run may have just ended one
+  await setS('raid_slots', [{ line: 38, from: '00:00', until: '23:59' }]);
+  await booth.rpc('screen_raids');
+  let slots = (await booth.rpc('screen_raids')).data?.raids?.filter(x => x.kind === 'slot' && x.species_id === 112 && x.status === 'active');
+  ok(slots?.length === 1, 'time-slot legend raid appears on the TV (once)', slots?.length);
+  await admin.rpc('admin_end_raid', { p_id: slots?.[0]?.id });
+  await setS('raid_cooldown_min', 5);
+  slots = (await booth.rpc('screen_raids')).data?.raids?.filter(x => x.kind === 'slot' && x.species_id === 112 && x.status === 'active');
+  ok(slots?.length === 0, 'cooldown before the next time-slot raid');
+  await setS('raid_slots', [{ line: 38, from: '09:00', until: '11:00' }, { line: 39, from: '12:00', until: '13:30' }, { line: 40, from: '16:00', until: '18:00' }]);
+
+  // dex rewards: 50 % → 과연기, 100 % → 창문기 (special tickets, no raid)
+  for (let l = 1; l <= 18; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 3 });
+  st = (await B.c.rpc('sync')).data.state;
+  ok(st.special?.some(x => x.special === 'dex50' && x.species_id === 121) && !st.special.some(x => x.special === 'dex100'), '도감 50% → 과연기 ticket', st.special);
+  for (let l = 19; l <= 36; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: l >= 35 ? 1 : 3 });
+  st = (await B.c.rpc('sync')).data.state;
+  ok(st.special?.some(x => x.special === 'dex100' && x.species_id === 124) && st.special.filter(x => x.special === 'dex50').length === 1, '도감 100% → 창문기 ticket (once each)', st.special);
+  await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
+}
+
+console.log('\n[25] ranking kinds + inquiry before login');
+{
+  for (const k of ['score', 'dex', 'battle']) {
+    const rk = (await S[0].rpc('get_ranking_by', { p_kind: k })).data;
+    const vals = (rk?.top || []).map(t => t.value);
+    ok(rk?.kind === k && vals.every((v, i) => i === 0 || vals[i - 1] >= v) && vals.every(v => v > 0), `ranking by ${k}: sorted, only players with > 0`, vals.slice(0, 5));
+  }
+  ok((await anon.rpc('get_ranking_by', { p_kind: 'dex' })).error, 'anon cannot read the ranking');
+  const body = '로그인이 안 돼요 ' + nonce();
+  ok((await anon.rpc('send_inquiry_public', { p_body: body, p_name: '손님', p_student_id: '22001' })).data?.ok, 'inquiry from the login screen (no login)');
+  ok((await anon.rpc('send_inquiry_public', { p_body: 'x', p_name: '손님' })).error === 'BAD_INQUIRY', 'too short refused');
+  const iq = (await admin.rpc('admin_list_requests')).data?.inquiries?.find(x => x.body === body);
+  ok(iq?.student_id === '022001' && iq.name === '손님 (로그인 전)', 'admin sees it (marked 로그인 전)', iq);
+  await admin.rpc('admin_set_inquiry', { p_id: iq.id, p_done: true });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

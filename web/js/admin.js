@@ -30,6 +30,10 @@ const SETTING_HELP = {
   roulette_enabled: '진화권 룰렛 ON/OFF (true/false)',
   code_self_signup: '구글 없이 고유번호 + 비밀번호로 새 계정을 만들 수 있게 할지 ON/OFF',
   reset_requests_per_10min: '비밀번호 초기화 요청을 10분 동안 전체에서 최대 몇 개 받을지 (장난 방지, 기본 30)',
+  raid_slots: '시간대 전설 레이드: [{"line":38,"from":"09:00","until":"11:00"}, …] — 라인 38 소디포(아침)·39 유리프(점심)·40 TTU(저녁). TV 화면이 이 시간에 자동으로 레이드를 열어요',
+  raid_slot_hp: '시간대 전설 레이드 보스 체력', raid_slot_minutes: '시간대 전설 레이드 한 판 길이(분)', raid_cooldown_min: '시간대 레이드가 끝나고 다음 판까지(분)',
+  raid_tap_cap: '레이드: 1초에 인정하는 탭 수 (오토클릭 방지)', raid_min_taps: '레이드 보상 받으려면 최소 탭 수',
+  dex_rewards: '도감 보상: {"50": 41, "100": 42} = 도감 50% → 과연기, 100% → 창문기 (특별 티켓)',
   roulette_777_per_mille: '이스터에그: 룰렛 꽝 1000번 중 몇 번을 777(럭키 세븐 칭호)로 바꿀지 (기본 10 = 1%)',
   code_signup_per_10min: '학번 코드 계정을 10분 동안 전체에서 최대 몇 개 만들 수 있는지 (번호 선점 방지, 기본 60)',
   allowed_gens: '참여할 수 있는 기수 목록 (예: [20, 21, 22]). 이 밖의 학번은 가입·코드 생성이 거절되고 TV 기수 대항전에도 안 나와요. 매년 바꿔 주세요',
@@ -45,7 +49,7 @@ const SETTING_HELP = {
   min_client_version: '앱 최소 버전 숫자. 올리면 옛 버전 폰에 "업데이트" 배너가 떠요',
 };
 const TABS = [
-  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['req', '요청'], ['staff', '운영진'], ['set', '설정'],
+  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['raid', '레이드'], ['req', '요청'], ['staff', '운영진'], ['set', '설정'],
 ];
 const CODE_BATCH = 700;   // admin_make_login_codes accepts at most 700 ids per call
 
@@ -329,7 +333,7 @@ function setBanner(open, selfRedeem) {
   if (sr && selfRedeem !== undefined) sr.classList.toggle('on', isOn(selfRedeem));
 }
 
-const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, req: tabReq, staff: tabStaff, set: tabSet };
+const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, raid: tabRaid, req: tabReq, staff: tabStaff, set: tabSet };
 
 async function go(tab) {
   S.tab = tab;
@@ -358,22 +362,21 @@ async function tabDash() {
 }
 
 // 전설 출현: rotating QRs appear on the TV (screen.html) only while switched on here
+// 현황판: 교장·교감 선생님 TV 레이드 바로 시작 (0013). 시간대 전설(아침·점심·저녁)은 TV 화면이 알아서 열어요.
 function legendCard() {
-  const legs = (S.stats?.qrs || []).filter((q) => q.kind === 'rotating');
-  if (!legs.length) return null;
+  const quick = (sp, label) => {
+    const btn = h('button.btn.go', `${label} 레이드 시작`);
+    btn.onclick = () => busy(btn, async () => {
+      if (!confirm(`${label} 레이드를 TV 대형 화면에 띄울까요? (체력 30,000 · 10분)`)) return;
+      await rpc('admin_create_raid', { p_species: sp, p_hp: 30000, p_minutes: 10, p_tv: true, p_title: `${label} 선생님 레이드`, p_kind: 'legend' });
+      toast(`${label} 레이드를 열었어요. TV 화면에 QR이 떠요.`);
+    });
+    return h('div.stack', spriteImg(sp), btn);
+  };
   return h('div.box.stack',
-    h('h2', '⚡ 전설 출현 (TV 대형 화면)'),
-    h('p.small-txt.muted', '띄우면 TV 화면에 30초마다 바뀌는 전설 QR이 나타나고, 학생 앱 홈에 "전설 출현" 안내가 떠요. 끝나면 내리세요. (시간 예약은 QR 관리 → 그 QR 편집)'),
-    h('div.row', legs.map((q) => {
-      const btn = h(`button.btn${q.active ? '.danger' : '.go'}`, q.active ? `${q.name} 내리기` : `${q.name} 띄우기`);
-      btn.onclick = () => busy(btn, async () => {
-        const on = !q.active;
-        await tq(sb.from('qr_points').update(on ? { active: true, active_from: null, active_until: null } : { active: false }).eq('id', q.id));
-        toast(on ? `${q.name}: TV에 띄웠어요.` : `${q.name}: TV에서 내렸어요.`);
-        await refreshStats();
-      });
-      return h('div.stack', h('div', chip(q.active ? 'TV에 나오는 중' : '꺼짐', q.active ? 'hot' : 'off'), ' ', h('b', q.name)), btn);
-    })));
+    h('h2', '⚡ 전설 레이드 (TV 대형 화면)'),
+    h('p.small-txt.muted', '누르면 TV에 보스와 30초마다 바뀌는 참가 QR이 떠요. 학생들이 찍고 다 같이 탭해서 쓰러뜨리면 모두 전설 티켓을 받아요. 자세한 설정은 "레이드" 탭.'),
+    h('div.row', quick(106, '교장'), quick(103, '교감')));
 }
 
 async function refreshStats(redraw = true) {
@@ -1602,6 +1605,92 @@ async function tabReq() {
   const reload = h('button.btn.small', '새로 고침');
   reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_requests')));
   return [h('div.row', reload), box];
+}
+
+// 레이드: 아무 몬스터로 레이드 열기 (TV = 현장 QR, 인쇄 = 고정 QR) + 진행 중인 레이드 (0013)
+function spriteImg(id, size = 56) {
+  const c = document.createElement('canvas');
+  const im = new Image();
+  im.onload = () => {
+    c.width = c.height = size;
+    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+    g.drawImage(im, ((id - 1) % 12) * 64, Math.floor((id - 1) / 12) * 64, 64, 64, 0, 0, size, size);
+  };
+  im.src = 'sprites/atlas.png';
+  c.style.width = c.style.height = `${size}px`;
+  c.style.imageRendering = 'pixelated';
+  return c;
+}
+
+async function tabRaid() {
+  if (!S.species?.length) await loadCatalog();
+  const list = h('div');
+  const STATUS = { active: ['진행 중', 'hot'], won: ['승리', 'ok'], failed: ['끝 (실패)', 'off'] };
+  const draw = (rows) => list.replaceChildren(rows.length ? h('div.tbl-wrap', h('table.tbl',
+    h('thead', h('tr', h('th', ''), h('th', '레이드'), h('th', '상태'), h('th', '체력'), h('th.num', '참가'), h('th.num', '보상'), h('th', '끝나는 시각'), h('th', ''))),
+    h('tbody', rows.map((r) => {
+      const end = h('button.btn.small.danger', '끝내기');
+      end.onclick = () => { if (confirm(`${r.title}을(를) 지금 끝낼까요? (실패 처리, 보상 없음)`)) busy(end, async () => { await rpc('admin_end_raid', { p_id: r.id }); draw(await rpc('admin_list_raids')); }); };
+      const qr = h('button.btn.small', '인쇄용 QR');
+      qr.onclick = () => showRaidQr(r);
+      const [label, cls] = STATUS[r.status] || [r.status, 'off'];
+      return h('tr',
+        h('td', spriteImg(r.species_id, 40)),
+        h('td', h('b', r.title), h('br'), h('small.muted', `${r.q} · ${r.kind === 'slot' ? '시간대 전설' : r.kind === 'legend' ? '교장·교감' : '운영자'} · ${r.tv ? 'TV' : '인쇄 QR'}`)),
+        h('td', chip(label, cls)),
+        h('td.mono', `${r.hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`),
+        h('td.num', r.players), h('td.num', r.rewarded ?? 0), h('td', fmtTime(r.ends_at)),
+        h('td', h('div.row', r.status === 'active' && !r.tv && r.t ? qr : null, r.status === 'active' ? end : null)));
+    })))) : h('p.muted', '아직 레이드가 없어요.'));
+  draw(await rpc('admin_list_raids'));
+
+  const sel = h('select.inp', S.species.map((sp) => {
+    const l = S.lineById.get(sp.line_id);
+    return h('option', { value: sp.id }, `${sp.name} (${l?.subject || ''} · ${l?.max_stage === 1 ? '전설' : sp.stage + '단계'})`);
+  }));
+  sel.value = '3';
+  const pic = h('div', spriteImg(3, 72));
+  sel.onchange = () => pic.replaceChildren(spriteImg(Number(sel.value), 72));
+  const hp = h('select.inp',
+    h('option', { value: 3000 }, '작게 3,000 (5~10명)'), h('option', { value: 12000, selected: true }, '보통 12,000 (20~30명)'),
+    h('option', { value: 40000 }, '크게 40,000 (50~100명)'), h('option', { value: 100000 }, '아주 크게 100,000'));
+  const mins = h('select.inp', [5, 10, 15, 30, 60].map((m) => h('option', { value: m, selected: m === 10 }, `${m}분`)));
+  const mode = h('select.inp', h('option', { value: 'tv' }, 'TV 대형 화면 (30초마다 바뀌는 현장 QR)'), h('option', { value: 'print' }, '인쇄용 고정 QR (아무 데나 붙이기)'));
+  const title = h('input.inp', { placeholder: '레이드 이름 (비우면 "몬스터 이름 레이드")', maxlength: 40 });
+  const go = h('button.btn.go', { type: 'submit' }, '레이드 열기');
+  const form = h('form.box.stack', {
+    onsubmit: (e) => {
+      e.preventDefault();
+      busy(go, async () => {
+        const r = await rpc('admin_create_raid', { p_species: Number(sel.value), p_hp: Number(hp.value), p_minutes: Number(mins.value), p_tv: mode.value === 'tv', p_title: title.value });
+        toast(`${r.title}을(를) 열었어요.`);
+        title.value = '';
+        draw(await rpc('admin_list_raids'));
+        if (!r.tv) showRaidQr(r);
+      });
+    },
+  },
+    h('h2', '레이드 열기'),
+    h('p.small-txt', '아무 몬스터(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, 10번 이상 공격한 모두가 그 몬스터 특별 티켓을 받아요 (가방 5칸 제한 없음). 시간 안에 못 잡으면 실패.'),
+    h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 몬스터'), sel)),
+    h('div.row', h('label.field', h('span', '보스 체력'), hp), h('label.field', h('span', '시간'), mins)),
+    h('label.field', h('span', 'QR 방식'), mode), title, go);
+  const reload = h('button.btn.small', '새로 고침');
+  reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_raids')));
+  return [form, h('div.box.stack', h('div.row', h('h2', { style: { flex: 1 } }, '레이드 목록'), reload), list,
+    h('p.small-txt.muted', '시간대 전설 레이드(아침 소디포·점심 유리프·저녁 TTU)는 TV 화면이 켜져 있으면 설정 raid_slots 시간에 자동으로 열려요.'))];
+}
+
+function showRaidQr(r) {
+  const url = placeUrl(siteBase(), r.q, r.t);
+  const cv = drawQR(document.createElement('canvas'), url, { cell: 10, margin: 4 });
+  const w = window.open('', '_blank');
+  if (!w) { toast('팝업이 막혔어요. 팝업을 허용해 주세요.'); return; }
+  w.document.title = r.title;
+  w.document.body.style.cssText = 'font-family:sans-serif;text-align:center;padding:24px';
+  w.document.body.innerHTML = `<h1>${r.title.replace(/</g, '&lt;')}</h1><p>QR을 찍고 레이드에 참가하세요! (${r.q})</p>`;
+  const img = w.document.createElement('img'); img.src = cv.toDataURL(); img.style.width = '360px'; img.style.imageRendering = 'pixelated';
+  w.document.body.append(img);
 }
 
 async function tabSet() {
