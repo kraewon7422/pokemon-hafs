@@ -239,3 +239,9 @@ ol.steps { margin: 4px 0; padding-left: 20px; display: grid; gap: 4px; }
   .slip-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); border: 0; border-radius: 0; overflow: visible; }
   .slip { min-height: 38mm; padding: 4mm 5mm; border-color: #777; }
 }
+
+/* 학생 탭: 기록 삭제 */
+.tbl th.chk, .tbl td.chk { width: 34px; text-align: center; }
+.tbl td.chk input, .tbl th.chk input { width: 18px; height: 18px; }
+.danger-zone { border-color: var(--red); }
+.danger-zone h2 { color: var(--red); }

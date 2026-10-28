@@ -779,5 +779,30 @@ console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)')
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
 }
 
+console.log('\n[28] admin: delete student records (dummy data clean-up)');
+{
+  const sids = [];
+  for (let i = 0; i < 2; i++) {
+    let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'del123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'del123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '더미' + i });
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 3, p_stage: 1 });
+    sids.push(sid);
+  }
+  ok((await S[0].rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '삭제' })).error === 'NOT_ADMIN', 'students cannot delete records');
+  ok((await admin.rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '네' })).error === 'CONFIRM_MISMATCH', 'partial delete needs the confirm word');
+  ok((await admin.rpc('admin_delete_students', { p_student_ids: null, p_confirm: '삭제' })).error === 'CONFIRM_MISMATCH', 'delete-all needs its own confirm word (nothing deleted)');
+  ok((await admin.rpc('admin_count_students')).data?.students > 0, 'student count for the delete-all warning');
+  const staffBefore = (await admin.select('profiles?select=student_id&role=neq.student')).data?.length;
+  const r = await admin.rpc('admin_delete_students', { p_student_ids: [...sids, 'staff-does-not-exist'], p_confirm: '삭제' });
+  ok(r.data?.deleted === 2 && r.data.logins === 2, 'checked students deleted, with their number logins', r);
+  ok(((await admin.select(`profiles?select=student_id&student_id=in.(${sids.join(',')})`)).data || []).length === 0, 'their profiles are gone');
+  ok((await admin.select('profiles?select=student_id&role=neq.student')).data?.length === staffBefore, 'staff accounts untouched');
+  ok(!(await anon.rpc('create_number_account', { p_student_id: sids[0], p_password: 'new123' })).error, 'the number can be signed up again from scratch');
+  const c2 = client(await pwLogin(`${sids[0]}@code.local`, 'new123'));
+  await c2.rpc('register_profile', { p_kind: 'student', p_student_id: sids[0], p_name: '더미다시' });
+  await admin.rpc('admin_delete_students', { p_student_ids: [sids[0]], p_confirm: '삭제' });   // clean up
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
