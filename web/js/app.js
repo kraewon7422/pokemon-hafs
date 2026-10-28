@@ -132,6 +132,18 @@ async function doAfterLogin(retried = false) {
   try {
     const profile = await rpc('ensure_profile');
     if (profile.needs_register) return renderRegister(profile);
+    const link = linkIntent();
+    if (link) {
+      // 이 구글은 이미 어떤 계정에 연결돼 있음 → 그 계정으로 들어왔다
+      clearGoogleIntents();
+      if (profile.login_key !== link.key) {
+        await signOut();
+        return renderLogin('이 구글 계정은 이미 다른 게임 계정에 연결돼 있어요. 다른 구글 계정으로 해 주세요.');
+      }
+      toast('이 구글은 이미 이 계정의 복구용으로 연결돼 있어요.', 4000);
+    }
+    const recovering = sessionStorage.getItem('recover') === '1';
+    if (recovering) sessionStorage.removeItem('recover');
     if (profile.role !== 'student') toast(`${profile.role === 'admin' ? '운영자' : '부스'} 계정으로 로그인했어요.`);
     if (!S.snap) S.celebrated = new Set(['__init__']);   // first sync on this device: don't replay old celebrations
     await loadCatalog();
@@ -139,6 +151,7 @@ async function doAfterLogin(retried = false) {
     if (!S.snap?.profile?.consented && profile.role === 'student') return renderConsent();
     if (!$('nav.tabs')) renderShell();
     persist();
+    if (recovering) { passwordSheet({ recover: true }); return; }   // 구글로 내 계정을 찾았음 → 새 비밀번호
     maybeOnboard();
     handlePendingScan();
   } catch (e) {
@@ -269,15 +282,6 @@ const CAPSULE = `<svg viewBox="0 0 32 32" aria-hidden="true">
   <rect x="2" y="14.5" width="28" height="3" fill="#202838"/>
   <circle cx="16" cy="16" r="5" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
   <circle cx="16" cy="16" r="2" fill="#fff" stroke="#c8c8c8" stroke-width="1"/></svg>`;
-// 타이틀 화면의 학교 실루엣 (픽셀, crispEdges)
-const SCHOOL_SVG = `<svg viewBox="0 0 160 40" shape-rendering="crispEdges" aria-hidden="true">
-<rect x="0" y="22" width="34" height="18" fill="#5a78a8"/><rect x="34" y="12" width="44" height="28" fill="#4a6898"/>
-<rect x="78" y="18" width="30" height="22" fill="#5a78a8"/><rect x="108" y="8" width="26" height="32" fill="#4a6898"/>
-<rect x="134" y="24" width="26" height="16" fill="#5a78a8"/><rect x="52" y="4" width="8" height="8" fill="#4a6898"/>
-<rect x="55" y="0" width="2" height="4" fill="#f8d048"/>
-${[...Array(6)].map((_, i) => `<rect x="${38 + i * 6}" y="18" width="3" height="4" fill="#f8f0a0"/><rect x="${38 + i * 6}" y="28" width="3" height="4" fill="#f8f0a0"/>`).join('')}
-${[...Array(3)].map((_, i) => `<rect x="${112 + i * 7}" y="14" width="3" height="4" fill="#f8f0a0"/><rect x="${112 + i * 7}" y="24" width="3" height="4" fill="#f8f0a0"/>`).join('')}
-</svg>`;
 
 const TABS = [['home', '홈'], ['map', '지도'], ['raid', '레이드'], ['scan', 'QR'], ['battle', '배틀'], ['dex', '도감'], ['rank', '랭킹']];
 
@@ -542,15 +546,22 @@ function openSettings() {
         h('button', { 'aria-pressed': String(!!p.show_on_board), onclick: () => setPublic(true) }, `공개: ${masked}`),
         h('button', { 'aria-pressed': String(!p.show_on_board), onclick: () => setPublic(false) }, '비공개: 익명 트레이너')),
       h('small', '공개해도 이름 가운데 글자는 가려져요. 언제든 바꿀 수 있어요.')),
+    ['number', 'id'].includes(p.login) && p.role === 'student' && h('section.box.stack.setting-login',
+      h('b', '로그인 정보'),
+      h('span', p.login === 'number' ? `학생 · 고유번호 ${p.login_key}` : `비학생 · 아이디 ${p.login_key}`),
+      p.google_linked
+        ? h('small', pix('spark'), ` 복구용 구글: ${p.google_email || '연결됨'}`)
+        : [h('small', '복구용 구글을 연결해 두면 비밀번호를 잊어도 그 구글로 들어와서 다시 정할 수 있어요.'),
+          h('button.btn', { onclick: startGoogleLink }, pix('school'), '복구용 구글 연결하기')]),
     h('section.box', { style: { display: 'grid', gap: '8px' } },
       h('button.btn', { onclick: (e) => { setMuted(!isMuted()); e.currentTarget.replaceChildren(...soundLabel()); } },
         ...soundLabel()),
       h('button.btn', { onclick: () => showOnboarding(true) }, pix('book'), '게임 방법 다시 보기'),
       h('button.btn', { onclick: inquirySheet }, pix('memo'), '운영진에게 문의하기'),
-      /^[0-9]{6}$/.test(p.student_id) && h('button.btn', { onclick: passwordSheet }, pix('ticket'), '고유번호 비밀번호 바꾸기'),
+      ['number', 'id'].includes(p.login) && h('button.btn', { onclick: () => passwordSheet() }, pix('ticket'), '비밀번호 바꾸기'),
       !isStandalone() && h('button.btn', { onclick: showInstall }, pix('phone'), '앱으로 설치하기'),
       h('button.btn', { onclick: confirmLogout }, pix('door'), '로그아웃')),
-    // 운영진: 운영자 페이지 (구글 운영진 계정만 들어갈 수 있음)
+    // 운영진: 운영자 페이지 (운영진 아이디 또는 등록된 구글로 로그인)
     h('a.btn.small.ghost', { href: 'admin.html', target: '_blank', rel: 'noopener' }, pix('school'), '운영진 전용: 운영자 페이지 로그인'),
     h('small', { style: { textAlign: 'center' } }, `${p.student_id.replace(/^g:/, '')} · 버전 ${CONFIG.VERSION}`),
   ]);
@@ -573,14 +584,17 @@ function inquirySheet() {
     }, h('small', '불편한 점, 궁금한 점, 버그를 적어 주세요. 고유번호와 이름이 같이 전달돼요.'), body, err, send)]);
 }
 
-// 고유번호 계정의 비밀번호 바꾸기 (구글로 연결해 들어온 경우도 같은 계정)
-function passwordSheet() {
+// 비밀번호 바꾸기 (고유번호·아이디 계정). recover = 복구용 구글로 들어온 직후 새 비밀번호 정하기.
+// 바꾸고 나면 다른 기기의 로그인은 모두 끊는다 (OWASP: 비밀번호 재설정 후 다른 세션 무효화)
+function passwordSheet({ recover = false } = {}) {
+  const p = S.snap.profile;
   const pw = h('input', { type: 'password', placeholder: '새 비밀번호 (6자 이상)', autocomplete: 'new-password', maxlength: 72 });
   const pw2 = h('input', { type: 'password', placeholder: '한 번 더', autocomplete: 'new-password', maxlength: 72 });
   const err = h('div.err', { role: 'alert' });
-  const save = h('button.btn.big.primary', { type: 'submit' }, '바꾸기');
+  const save = h('button.btn.big.primary', { type: 'submit' }, recover ? '새 비밀번호로 정하기' : '바꾸기');
+  const what = `${p.login === 'id' ? '아이디' : '고유번호'} ${p.login_key || p.student_id}`;
   closeOverlay({ replacing: true });
-  sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '비밀번호 바꾸기'),
+  sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, recover ? '새 비밀번호 정하기' : '비밀번호 바꾸기'),
     h('form.stack.box', {
       onsubmit: async (e) => {
         e.preventDefault();
@@ -590,10 +604,31 @@ function passwordSheet() {
         save.disabled = true;
         const { error } = await sb.auth.updateUser({ password: pw.value });
         if (error) { err.textContent = '바꾸지 못했어요. 잠시 후 다시 해 주세요.'; save.disabled = false; return; }
+        try { await sb.auth.signOut({ scope: 'others' }); } catch { /* best effort */ }
         closeOverlay();
-        toast('비밀번호를 바꿨어요. 다음에 고유번호로 로그인할 때 새 비밀번호를 쓰세요.', 4000);
+        toast(`비밀번호를 바꿨어요. 다른 기기의 로그인은 끊겼어요. 다음부터 ${what}와 새 비밀번호로 들어와요.`, 5000);
       },
-    }, h('small', `고유번호 ${S.snap.profile.student_id}의 비밀번호예요. 구글로 들어올 때는 필요 없어요.`), pw, pw2, err, save)]);
+    }, h('small', recover ? `구글로 내 계정(${what})을 찾았어요. 새 비밀번호를 정해 주세요.` : `${what}의 비밀번호예요.`), pw, pw2, err, save)]);
+}
+
+// 설정 → 복구용 구글 연결: 로그아웃 → 연결할 구글로 로그인 → 이 계정 비밀번호 한 번 더 (renderLinkGoogle)
+function startGoogleLink() {
+  const p = S.snap.profile;
+  const n = bag().filter((t) => !t.synced).length;
+  closeOverlay({ replacing: true });
+  sheet(h('div.box.stack',
+    h('b', '복구용 구글 연결'),
+    h('p', '연결하려면 잠깐 로그아웃하고, 연결할 구글 계정으로 로그인한 다음, 이 계정의 비밀번호를 한 번 더 넣어요.'),
+    n ? h('p.warn-txt', pix('warn'), `아직 서버에 못 보낸 티켓이 ${n}장 있어요. 인터넷이 될 때 먼저 보내고 해 주세요.`) : null,
+    h('div', { style: { display: 'flex', gap: '8px' } },
+      h('button.btn', { onclick: () => closeOverlay() }, '취소'),
+      h('button.btn.primary', {
+        disabled: !!n,
+        onclick: async () => {
+          sessionStorage.setItem('linkGoogle', JSON.stringify({ kind: p.login, key: p.login_key }));
+          closeOverlay(); await signOut(); await kv.clear(); S.snap = null; S.outbox = []; renderLogin();
+        },
+      }, '계속'))));
 }
 
 async function setPublic(show) {
@@ -1892,7 +1927,7 @@ async function openBag() {
     h('div.box', h('b', `가방 ${items.filter((t) => !t.special).length}/${rules().bag_max}`),
       items.length ? h('div.bag-row', items.map((t) => (t.special
         ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || t.name)
-        : h('span.chip', t.name)))) : h('p', '가방이 비었어요. 그래도 부스에서 학번으로 확인할 수 있어요.')),
+        : h('span.chip', t.name)))) : h('p', '가방이 비었어요. 그래도 부스에서 고유번호로 확인할 수 있어요.')),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
   S.bagOpen = true;
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* best effort */ }
@@ -2028,7 +2063,7 @@ function renderConsent() {
     h('div.box', { style: { maxWidth: '420px' } },
       h('b', '시작하기 전에 확인해 주세요'),
       h('ul', { style: { paddingLeft: '18px', margin: '8px 0', fontSize: '14px' } },
-        h('li', '저장하는 정보: 학번, 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요.'),
+        h('li', '저장하는 정보: 고유번호(또는 아이디), 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요.'),
         h('li', '목적: 축제 게임 운영과 랭킹·상품 지급.'),
         h('li', '축제가 끝나고 2주 뒤 모두 삭제해요.')),
       h('label', { for: 'show', style: { display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' } }, show,
@@ -2127,16 +2162,23 @@ function tapToContinue(ov) {
 
 // ───────────────────────── login ─────────────────────────
 
+// 로그인 화면 (0018): 학생 = 고유번호 + 비밀번호, 비학생(선생님·학부모·손님·운영진) = 아이디 + 비밀번호, 맨 아래 구글 = 복구용.
+// 구글은 설정에서 "복구용 구글 연결"을 해 둔 경우에 내 계정으로 들어간다. 비밀번호를 잊으면 그 구글로 들어가서 새로 정한다.
+const linkIntent = () => { try { return JSON.parse(sessionStorage.getItem('linkGoogle') || 'null'); } catch { return null; } };
+const clearGoogleIntents = () => { sessionStorage.removeItem('linkGoogle'); sessionStorage.removeItem('recover'); };
+const keyLabel = (k) => (k.kind === 'number' ? `고유번호 ${k.key}` : `아이디 ${k.key}`);
+
 function renderLogin(error = '') {
   closeOverlay();
   const err = h('div.err', { role: 'alert' }, error);
   const gbox = h('div.gbox');
   const mons = h('div.mons.hop', [1, 13, 25, 37, 49].map((d, i) => h('span', { style: { animationDelay: `${i * 0.18}s` } }, spriteCanvas(d, 52))));
   const pending = sessionStorage.getItem('pendingScan');
-  // 3세대 타이틀 화면 느낌: 하늘 + 해(소디포) + 구름 + 학교 실루엣 + 잔디 위 몬스터들
-  const sky = h('div.title-sky', { 'aria-hidden': 'true' },
-    h('span.sun', spriteCanvas(112, 64)), h('i.cloud.c1'), h('i.cloud.c2'), h('i.cloud.c3'),
-    h('div.school', { html: SCHOOL_SVG }));
+  const link = linkIntent();
+  const recover = sessionStorage.getItem('recover') === '1';
+  const googleFirst = !!(link || recover);
+  // 3세대 타이틀 화면 느낌: 하늘·구름·나무·잔디 = 배경 그림 (web/img/title, CC0) + 해(소디포) + 잔디 위 몬스터들
+  const sky = h('div.title-sky', { 'aria-hidden': 'true' }, h('span.sun', spriteCanvas(112, 64)));
   const content = [
     sky,
     h('div.title-plate', h('div.logo', CONFIG.GAME_TITLE), h('div.logo-sub', '학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!')),
@@ -2144,34 +2186,42 @@ function renderLogin(error = '') {
     pending && h('div.box.login-note',
       h('b', pix('camera'), 'QR을 찍었는데 이 브라우저는 로그인이 안 돼 있어요'), h('br'),
       '게임을 하던 앱(브라우저)을 열고 가운데 볼 버튼으로 다시 찍거나, QR 아래 5자리 코드를 입력하세요. 처음이라면 여기서 로그인해도 돼요.'),
-    h('div.press.blink', 'PRESS START'),
-    gbox,
+    googleFirst
+      ? h('section.box.login-card.google-first',
+        h('b.lc-title', link ? '복구용 구글 연결' : '구글로 내 계정 찾기'),
+        h('small', link
+          ? `${keyLabel(link)} 계정에 연결할 구글 계정으로 로그인하세요. 그다음 그 계정의 비밀번호를 한 번 더 넣으면 연결돼요.`
+          : '복구용으로 연결해 둔 구글 계정으로 로그인하면 내 계정으로 들어가요. 들어가면 바로 새 비밀번호를 정해요.'),
+        gbox,
+        h('button.btn.small.ghost', { type: 'button', onclick: () => { clearGoogleIntents(); renderLogin(); } }, '취소'))
+      : h('div.press.blink', 'PRESS START'),
     err,
-    codeLogin(err),
-  ];
-  if (CONFIG.DEV_LOGIN) content.push(devLoginBox(err));
-  content.push(installButton('.small'),
-    h('p.foot-note', '구글 계정 아무거나 로그인할 수 있어요. 처음 한 번만 학생/외부인을 고르고 이름을 적어요. ',
+    !googleFirst && studentLogin(err),
+    !googleFirst && idLogin(err),
+    !googleFirst && h('section.google-alt', h('small', '복구용 구글을 연결해 뒀다면 구글로 바로 들어와요'), gbox),
+    installButton('.small'),
+    h('p.foot-note', '처음이면 그 자리에서 계정이 만들어져요. 학생은 고유번호 하나 = 계정 하나예요. ',
       h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')),
     // 늘 맨 아래에: 만든 동아리 (Watson & Decfi) · 문의하기 · 비밀번호를 잊었어요
     h('nav.login-help', { 'aria-label': '도움' },
       h('div.clubs', { 'aria-label': '만든 동아리: Watson & Decfi' },
-        h('figure', h('img', { src: 'img/clubs/watson.png', alt: 'Watson 로고', width: 56, height: 48 }), h('figcaption', 'Watson')),
+        h('figure', h('img', { src: 'img/clubs/watson.png', alt: 'Watson 로고', width: 46, height: 45 }), h('figcaption', 'Watson')),
         h('span.amp', { 'aria-hidden': 'true' }, '&'),
-        h('figure', h('img', { src: 'img/clubs/decfi.png', alt: 'Decfi 로고', width: 123, height: 48 }), h('figcaption', 'Decfi'))),
+        h('figure', h('img', { src: 'img/clubs/decfi.png', alt: 'Decfi 로고', width: 39, height: 44 }), h('figcaption', 'Decfi'))),
       h('div.help-btns',
         h('button.btn.small', { type: 'button', onclick: () => inquiryPublicSheet() }, pix('memo'), '문의하기'),
-        h('button.btn.small', { type: 'button', onclick: () => forgotSheet() }, pix('ticket'), '비밀번호를 잊었어요'))));
+        h('button.btn.small', { type: 'button', onclick: () => forgotSheet() }, pix('ticket'), '비밀번호를 잊었어요'))),
+  ];
   app().replaceChildren(h('div.login.title-screen', content));
   renderGoogleButton(gbox, (m) => { err.textContent = m; }).catch((e) => { err.textContent = e.message; });
 }
 
-// 고유번호 로그인 (구글 없이): 번호 + 내가 정한 비밀번호. 처음 쓰는 번호면 이 비밀번호로 계정이 만들어진다 (0011)
-function codeLogin(err) {
-  const cid = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, autocomplete: 'username' });
-  const pw = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'current-password', maxlength: 72 });
+// 학생: 고유번호 + 내가 정한 비밀번호. 처음 쓰는 번호면 이 비밀번호로 계정이 만들어진다 (0011)
+function studentLogin(err) {
+  const cid = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, autocomplete: 'username', 'aria-label': '고유번호' });
+  const pw = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'current-password', maxlength: 72, 'aria-label': '비밀번호' });
   const help = h('div');
-  const go = h('button.btn', { type: 'submit' }, '로그인 (처음이면 계정 만들기)');
+  const go = h('button.btn.primary', { type: 'submit' }, '학생 로그인');
   const sid = () => cid.value.replace(/\D/g, '').padStart(6, '0');
   const form = h('form.stack', {
     onsubmit: async (e) => {
@@ -2193,21 +2243,55 @@ function codeLogin(err) {
         } catch (x) {
           if (x.message === 'CODE_ACCOUNT_EXISTS') {
             err.textContent = '비밀번호가 맞지 않아요.';
-            help.replaceChildren(h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet(sid()) }, '비밀번호를 모르겠어요'));
+            help.replaceChildren(h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet({ kind: 'number', key: sid() }) }, '비밀번호를 모르겠어요'));
           } else err.textContent = errorText(x.message);
         }
       } finally { go.disabled = false; }
     },
-  }, cid, pw, go, help,
-  h('small', '처음 쓰는 번호면 지금 적은 비밀번호로 계정이 만들어져요. 구글로 들어와도 같은 고유번호면 같은 계정이에요.'));
-  return h('details.code-login', h('summary', '구글 없이: 고유번호 + 비밀번호로 로그인'), form);
+  }, cid, pw, go, help);
+  return h('section.box.login-card', h('b.lc-title', pix('school'), ' 학생 · 고유번호로 로그인'), form,
+    h('small', '처음 쓰는 번호면 지금 적은 비밀번호로 계정이 만들어져요.'));
 }
 
-// 로그인 전 문의 (이름 + 선택 고유번호 + 내용) → 운영자 페이지 '요청' 탭
+// 비학생 (선생님·학부모·손님·운영진): 아이디 + 비밀번호. 처음 쓰는 아이디면 계정이 만들어진다. 운영진 아이디는 운영자가 만들어 준다 (0018)
+function idLogin(err) {
+  const idIn = h('input', { placeholder: '아이디 (영문으로 시작, 4~16자)', autocapitalize: 'off', autocomplete: 'username', spellcheck: 'false', maxlength: 16, 'aria-label': '아이디' });
+  const pw = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'current-password', maxlength: 72, 'aria-label': '비밀번호' });
+  const help = h('div');
+  const go = h('button.btn', { type: 'submit' }, '아이디 로그인');
+  const form = h('form.stack', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      help.replaceChildren();
+      const id = idIn.value.trim().toLowerCase();
+      if (!/^[a-z][a-z0-9_]{3,15}$/.test(id)) { err.textContent = '아이디는 영문으로 시작하는 4~16자예요. (영문 소문자·숫자·_ )'; return; }
+      if (pw.value.length < 6) { err.textContent = '비밀번호는 6자 이상이에요.'; return; }
+      const email = `${id}@id.local`;
+      go.disabled = true;
+      try {
+        try { return await devLogin(email, pw.value); } catch { /* not yet / wrong → below */ }
+        try {
+          await rpc('create_id_account', { p_id: id, p_password: pw.value }, { retries: 0 });
+          await devLogin(email, pw.value);
+        } catch (x) {
+          if (x.message === 'ID_TAKEN') {
+            err.textContent = '이미 있는 아이디예요. 비밀번호가 맞지 않아요.';
+            help.replaceChildren(h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet({ kind: 'id', key: id }) }, '비밀번호를 모르겠어요'));
+          } else err.textContent = errorText(x.message);
+        }
+      } finally { go.disabled = false; }
+    },
+  }, idIn, pw, go, help);
+  return h('section.box.login-card', h('b.lc-title', pix('door'), ' 비학생 · 아이디로 로그인'), form,
+    h('small', '선생님·학부모·다른 학교 손님은 원하는 아이디를 정해서 들어와요 (랭킹 제외). 운영진은 운영자에게 받은 아이디로 들어와요.'));
+}
+
+// 로그인 전 문의 (이름 + 선택 고유번호/아이디 + 내용) → 운영자 페이지 '요청' 탭
 function inquiryPublicSheet() {
   const nm = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, autocomplete: 'name' });
-  const cid = h('input', { placeholder: '고유번호 (있으면)', inputmode: 'numeric', maxlength: 6 });
-  const body = h('textarea', { rows: 5, maxlength: 1000, placeholder: '예: 로그인이 안 돼요 / 구글 버튼이 안 보여요' });
+  const cid = h('input', { placeholder: '고유번호 또는 아이디 (있으면)', maxlength: 16 });
+  const body = h('textarea', { rows: 5, maxlength: 1000, placeholder: '예: 로그인이 안 돼요 / 아이디 비밀번호를 잊었어요' });
   const err = h('div.err', { role: 'alert' });
   const send = h('button.btn.big.primary', { type: 'submit' }, '보내기');
   sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '운영진에게 문의하기'),
@@ -2216,22 +2300,42 @@ function inquiryPublicSheet() {
         e.preventDefault();
         err.textContent = '';
         send.disabled = true;
+        const key = cid.value.trim();
+        const isNum = /^[0-9]{5,6}$/.test(key);
         try {
-          await rpc('send_inquiry_public', { p_body: body.value, p_name: nm.value, p_student_id: cid.value }, { retries: 0 });
+          await rpc('send_inquiry_public', { p_body: (key && !isNum ? `[아이디 ${key}] ` : '') + body.value, p_name: nm.value, p_student_id: isNum ? key : null }, { retries: 0 });
           closeOverlay();
           toast('보냈어요! 급하면 메인 부스로 와 주세요.', 4000);
         } catch (x) { err.textContent = errorText(x.message); send.disabled = false; }
       },
     }, h('small', '로그인이 안 되거나 궁금한 점을 적어 주세요. 운영진이 확인해요.'),
-    h('label.field', h('span', '이름'), nm), h('label.field', h('span', '고유번호'), cid), body, err, send)]);
+    h('label.field', h('span', '이름'), nm), h('label.field', h('span', '고유번호 / 아이디'), cid), body, err, send)]);
 }
 
-// 비밀번호를 모르겠어요 → 운영자에게 초기화 요청 (허용되면 여기서 고른 새 비밀번호가 된다)
-function forgotSheet(prefill = '') {
+// 비밀번호를 잊었어요: ① 복구용 구글로 들어가서 새로 정하기 ② 구글이 없으면 학생은 초기화 요청, 아이디는 문의
+function forgotSheet(pre = {}) {
+  sheet([
+    h('div.grab'),
+    h('h2', { style: { margin: '0 4px' } }, '비밀번호를 잊었어요'),
+    h('section.box.stack',
+      h('b', '① 복구용 구글을 연결해 뒀다면'),
+      h('small', '연결한 구글로 로그인하면 내 계정으로 들어가고, 바로 새 비밀번호를 정할 수 있어요.'),
+      h('button.btn.big.primary', { onclick: () => { sessionStorage.removeItem('linkGoogle'); sessionStorage.setItem('recover', '1'); closeOverlay(); renderLogin(); } }, '구글로 내 계정 찾기')),
+    h('section.box.stack',
+      h('b', '② 구글을 연결하지 않았다면'),
+      h('small', '학생은 운영자에게 초기화를 요청해요. 운영자가 확인하고 허용하면 그때 정한 새 비밀번호로 바뀌어요. 아이디 계정은 문의하기로 알려 주세요.'),
+      h('button.btn', { onclick: () => resetRequestSheet(pre.kind === 'number' ? pre.key : '') }, pix('school'), '학생: 운영자에게 초기화 요청'),
+      h('button.btn', { onclick: () => inquiryPublicSheet() }, pix('memo'), '아이디 계정: 문의하기')),
+  ]);
+}
+
+// 학생 비밀번호 초기화 요청 (허용되면 여기서 고른 새 비밀번호가 된다)
+function resetRequestSheet(prefill = '') {
   const err = h('div.err', { role: 'alert' });
   const cid = h('input', { placeholder: '고유번호 6자리', inputmode: 'numeric', maxlength: 6, value: prefill });
   const nm = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, autocomplete: 'name' });
   const pw = h('input', { type: 'password', placeholder: '새 비밀번호 (6자 이상)', autocomplete: 'new-password', maxlength: 72 });
+  const pw2 = h('input', { type: 'password', placeholder: '새 비밀번호 한 번 더', autocomplete: 'new-password', maxlength: 72 });
   const note = h('input', { placeholder: '운영자에게 한마디 (선택)', maxlength: 300 });
   const send = h('button.btn.big.primary', { type: 'submit' }, '초기화 요청 보내기');
   sheet([
@@ -2242,6 +2346,7 @@ function forgotSheet(prefill = '') {
         e.preventDefault();
         err.textContent = '';
         if (pw.value.length < 6) { err.textContent = '새 비밀번호는 6자 이상이에요.'; return; }
+        if (pw.value !== pw2.value) { err.textContent = '두 칸의 새 비밀번호가 서로 달라요.'; return; }
         send.disabled = true;
         try {
           await rpc('request_password_reset', { p_student_id: cid.value.trim(), p_password: pw.value, p_name: nm.value, p_note: note.value }, { retries: 0 });
@@ -2250,71 +2355,62 @@ function forgotSheet(prefill = '') {
         } catch (x) { err.textContent = errorText(x.message); send.disabled = false; }
       },
     },
-    h('small', '운영자가 확인하고 허용하면, 지금 정한 새 비밀번호로 바뀌어요. 이 번호에 연결된 다른 구글 계정은 모두 풀려요.'),
+    h('small', '운영자가 확인하고 허용하면, 지금 정한 새 비밀번호로 바뀌어요. 이 번호에 연결된 구글 계정은 모두 풀려요.'),
     h('label.field', h('span', '고유번호'), cid),
     h('label.field', h('span', '이름'), nm),
-    h('label.field', h('span', '새 비밀번호'), pw),
+    h('label.field', h('span', '새 비밀번호'), pw), pw2,
     note, err, send),
   ]);
 }
 
-
-// 개발용: 아무 이메일 → 없으면 계정을 만들고, 비밀번호는 1234abcd! 고정 (테스트 서버의 dev_login 설정이 켜져 있을 때만)
-function devLoginBox(err) {
-  const email = h('input', { placeholder: '아무 이메일 (예: test1)', autocomplete: 'username', autocapitalize: 'off' });
-  return h('details.dev-login', h('summary', '개발용 테스트 로그인'), h('form', {
-    onsubmit: async (e) => {
-      e.preventDefault();
-      err.textContent = '';
-      try {
-        const res = await rpc('dev_create_account', { p_email: email.value }, { retries: 0 });
-        await devLogin(res.email, '1234abcd!');
-      } catch (x) { err.textContent = errorText(x.message); }
-    },
-  }, email, h('small', '비밀번호는 1234abcd! 로 고정, 처음 쓰는 이메일이면 계정이 만들어져요.'), h('button.btn.small', { type: 'submit' }, '테스트 로그인')));
-}
-
 const GENS = [20, 21, 22];   // hint only; the server setting allowed_gens decides (0010)
 
-// 첫 로그인: 학생(고유번호 + 비밀번호 + 이름) / 외부인(이름만) + 동의.
-// 구글 계정 → 학생: 고유번호 하나 = 계정 하나 (link_number). 처음이면 비밀번호를 정하고, 있으면 그 비밀번호를 넣는다.
+// 첫 로그인: 이름 + 동의.
+//  · 고유번호/아이디로 로그인했으면 이름만.
+//  · 구글로 처음 들어왔으면: 학생 = 고유번호 + 비밀번호 (link_number), 비학생 = 아이디 + 비밀번호 (link_id) — 구글은 그 계정의 복구용이 된다.
 function renderRegister(info) {
   closeOverlay();
-  const fixedId = info.code_id || '';
-  const google = !!info.google && !fixedId;
-  let kind = 'student';
+  const link = linkIntent();
+  if (info.google && link) return renderLinkGoogle(link);
+  if (info.google && sessionStorage.getItem('recover') === '1') return renderRecoverMiss();
+  const fixed = info.code_id ? { kind: 'number', key: info.code_id } : info.login_id ? { kind: 'id', key: info.login_id } : null;
+  const google = !!info.google && !fixed;
+  let kind = fixed?.kind === 'id' ? 'id' : 'student';
   const err = h('div.err', { role: 'alert' });
   const help = h('div.stack');
-  const sidIn = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, value: fixedId || info.school_id || '', disabled: !!fixedId });
+  const sidIn = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, value: info.school_id || '' });
+  const idIn = h('input', { placeholder: '아이디 (영문으로 시작, 4~16자)', autocapitalize: 'off', spellcheck: 'false', maxlength: 16 });
   const pwIn = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'new-password', maxlength: 72 });
   const nameIn = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, value: info.name || '', autocomplete: 'name' });
   const show = h('input', { type: 'checkbox', checked: true });
   const preview = h('b');
-  const sidRow = h('label.field', h('span', '고유번호 (학번)'), sidIn,
+  const sidRow = h('label.field', h('span', '고유번호'), sidIn,
     h('small', info.school_id ? '학교 계정에서 고유번호를 가져왔어요.' : '20~22기만 참여할 수 있어요. 22기 1번 → 022001'));
+  const idRow = h('label.field', h('span', '아이디'), idIn, h('small', '영문 소문자로 시작, 4~16자 (영문·숫자·_ )'));
   const pwRow = h('label.field', h('span', '비밀번호'), pwIn,
-    h('small', '처음 쓰는 번호면 지금 정하는 비밀번호가 돼요. 이미 있는 번호면 그 번호의 비밀번호를 넣어 주세요.'));
-  const oneNote = h('small.muted', '고유번호 하나 = 계정 하나예요. 다른 구글 계정으로 들어와도 같은 번호면 같은 계정으로 이어져요. 부계정을 만들고 싶다면 "외부인"으로 들어오세요.');
+    h('small', '처음 쓰는 번호·아이디면 지금 정하는 비밀번호가 돼요. 이미 있으면 그 비밀번호를 넣어 주세요.'));
+  const googleNote = h('small.muted', '이 구글 계정은 그 계정의 복구용으로 연결돼요. 다음부터 이 구글로 바로 들어올 수 있고, 비밀번호를 잊어도 이 구글로 다시 정할 수 있어요.');
   const seg = h('div.seg', { role: 'group', 'aria-label': '학생인가요' });
   const update = () => {
     seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === kind)));
-    sidRow.hidden = kind !== 'student' || !!fixedId;
-    pwRow.hidden = oneNote.hidden = kind !== 'student' || !google;
+    sidRow.hidden = !(kind === 'student' && !fixed);
+    idRow.hidden = !(kind === 'id' && google);
+    pwRow.hidden = googleNote.hidden = !google;
     const id = sidIn.value.replace(/\D/g, '');
     const gen = kind === 'student' && id.length >= 5 ? Number(id.padStart(6, '0').slice(0, 3)) : null;
     preview.textContent = gen && !GENS.includes(gen) ? `${gen}기는 참여할 수 없어요 (20~22기만)` : `${gen ? gen + '기 ' : ''}${maskName(nameIn.value)}`;
   };
-  if (!fixedId) {
+  if (!fixed) {
     seg.append(
       h('button', { type: 'button', 'data-k': 'student', onclick: () => { kind = 'student'; update(); } }, '학생'),
-      h('button', { type: 'button', 'data-k': 'guest', onclick: () => { kind = 'guest'; update(); } }, '외부인'));
+      h('button', { type: 'button', 'data-k': google ? 'id' : 'guest', onclick: () => { kind = google ? 'id' : 'guest'; update(); } }, '비학생'));
   }
   sidIn.oninput = update; nameIn.oninput = update;
   const start = h('button.btn.big.primary', { type: 'submit' }, '시작하기');
   const sid = () => sidIn.value.replace(/\D/g, '').padStart(6, '0');
 
-  // 구글 계정 → 고유번호 연결 (reset = 학교 계정으로 비밀번호 새로 정하기)
-  const link = async (reset = false) => {
+  // 구글 → 고유번호 연결 (reset = 학교 계정으로 비밀번호 새로 정하기)
+  const linkNumber = async (reset = false) => {
     const res = await rpc('link_number', { p_student_id: sid(), p_password: pwIn.value, p_name: nameIn.value.trim(), p_show: show.checked, p_reset: reset }, { retries: 0 });
     if (res.error === 'WRONG_PASSWORD') {
       err.textContent = '이 번호는 이미 계정이 있어요. 비밀번호가 맞지 않아요.';
@@ -2324,9 +2420,16 @@ function renderRegister(info) {
           if (!confirm('학교 계정으로 확인됐어요. 지금 입력한 비밀번호를 새 비밀번호로 정할까요? (다른 기기는 로그아웃되고, 이 번호에 연결된 다른 구글 계정은 풀려요)')) return;
           submit(true);
         } }, '학교 계정으로 비밀번호 새로 정하기'),
-        h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet(sid()) }, '비밀번호를 모르겠어요 (운영자에게 요청)'));
+        h('button.btn.small.ghost', { type: 'button', onclick: () => resetRequestSheet(sid()) }, '비밀번호를 모르겠어요 (운영자에게 요청)'));
       return false;
     }
+    if (res.mode === 'linked') await devLogin(res.email, pwIn.value);
+    return true;
+  };
+  // 구글 → 아이디 연결 (처음 쓰는 아이디면 이 구글이 그 아이디 계정이 된다)
+  const linkId = async () => {
+    const res = await rpc('link_id', { p_id: idIn.value.trim().toLowerCase(), p_password: pwIn.value, p_name: nameIn.value.trim(), p_show: show.checked }, { retries: 0 });
+    if (res.error === 'WRONG_PASSWORD') { err.textContent = '이미 있는 아이디예요. 비밀번호가 맞지 않아요.'; return false; }
     if (res.mode === 'linked') await devLogin(res.email, pwIn.value);
     return true;
   };
@@ -2335,38 +2438,85 @@ function renderRegister(info) {
     help.replaceChildren();
     const nm = nameIn.value.trim();
     if (!nm) { err.textContent = '이름을 입력해 주세요.'; return; }
-    if (kind === 'student' && !/^[0-9]{5,6}$/.test(sidIn.value.trim())) { err.textContent = '고유번호 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
-    if (kind === 'student' && google && pwIn.value.length < 6) { err.textContent = '비밀번호는 6자 이상이에요.'; return; }
+    if (kind === 'student' && !fixed && !/^[0-9]{5,6}$/.test(sidIn.value.trim())) { err.textContent = '고유번호 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
+    if (kind === 'id' && google && !/^[a-z][a-z0-9_]{3,15}$/.test(idIn.value.trim().toLowerCase())) { err.textContent = '아이디는 영문으로 시작하는 4~16자예요.'; return; }
+    if (google && pwIn.value.length < 6) { err.textContent = '비밀번호는 6자 이상이에요.'; return; }
     start.disabled = true;
     try {
-      if (kind === 'student' && google) { if (!(await link(reset))) return; }
-      else await rpc('register_profile', { p_kind: kind, p_student_id: sidIn.value.trim(), p_name: nm, p_show: show.checked }, { retries: 0 });
+      if (google) { if (!(await (kind === 'student' ? linkNumber(reset) : linkId()))) return; }
+      else await rpc('register_profile', { p_kind: fixed ? (fixed.kind === 'number' ? 'student' : 'id') : kind, p_student_id: fixed?.kind === 'number' ? fixed.key : sidIn.value.trim(), p_name: nm, p_show: show.checked }, { retries: 0 });
       await afterLogin();
     } catch (x) {
       err.textContent = errorText(x.message);
-      if (x.message === 'OLD_NUMBER_ACCOUNT') help.replaceChildren(h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet(sid()) }, '비밀번호 초기화 요청하기'));
+      if (x.message === 'OLD_NUMBER_ACCOUNT') help.replaceChildren(h('button.btn.small.ghost', { type: 'button', onclick: () => resetRequestSheet(sid()) }, '비밀번호 초기화 요청하기'));
     } finally { start.disabled = false; }
   };
   const form = h('form.register', { onsubmit: (e) => { e.preventDefault(); submit(); } },
     h('div.box.stack',
       h('b', '처음 왔구나! 누구인지 알려줘'),
-      fixedId ? h('p', `고유번호 ${fixedId}(으)로 로그인했어요. 이름만 적어 주세요.`) : [seg, h('small', '외부인 = 선생님·학부모·다른 학교 손님')],
+      fixed ? h('p', `${keyLabel(fixed)}(으)로 로그인했어요. 이름만 적어 주세요.`)
+        : [seg, h('small', '비학생 = 선생님·학부모·다른 학교 손님 (랭킹 제외)')],
       sidRow,
+      idRow,
       pwRow,
-      h('label.field', h('span', '이름'), nameIn, google && kind === 'student' ? h('small', '이미 있는 번호면 원래 이름이 그대로 쓰여요.') : null),
+      h('label.field', h('span', '이름'), nameIn, google ? h('small', '이미 있는 계정이면 원래 이름이 그대로 쓰여요.') : null),
       h('label.check', show, h('span', '랭킹·대형 화면에 이렇게 보여요: ', preview, h('br'), h('small', '(체크를 풀면 "익명 트레이너". 나중에 설정에서 바꿀 수 있어요)'))),
-      oneNote),
+      googleNote),
     h('div.box.stack.small-print',
       h('b', '저장하는 정보'),
-      h('span', '고유번호, 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요. 축제가 끝나고 2주 안에 모두 삭제해요. '),
+      h('span', '고유번호(또는 아이디), 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요. 축제가 끝나고 2주 안에 모두 삭제해요. '),
       h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침'),
-      h('span', '외부인은 랭킹(상품)에서 빠지고, 나머지는 똑같이 즐길 수 있어요.')),
+      h('span', '비학생은 랭킹(상품)에서 빠지고, 나머지는 똑같이 즐길 수 있어요.')),
     err,
     help,
     start,
-    h('button.btn.small.ghost', { type: 'button', onclick: async () => { await signOut(); await kv.clear(); S.snap = null; renderLogin(); } }, '다른 계정으로 로그인'));
+    h('button.btn.small.ghost', { type: 'button', onclick: async () => { clearGoogleIntents(); await signOut(); await kv.clear(); S.snap = null; renderLogin(); } }, '다른 계정으로 로그인'));
   app().replaceChildren(h('div.login.register-screen', h('div.logo.logo-small', CONFIG.GAME_TITLE), form));
   update();
+}
+
+// 설정 → "복구용 구글 연결" 다음: 새 구글로 들어왔으면, 그 계정의 비밀번호를 한 번 더 넣어서 연결
+function renderLinkGoogle(link) {
+  const pw = h('input', { type: 'password', placeholder: '그 계정의 비밀번호', autocomplete: 'current-password', maxlength: 72 });
+  const err = h('div.err', { role: 'alert' });
+  const go = h('button.btn.big.primary', { type: 'submit' }, '이 구글을 연결하기');
+  const cancel = async () => { clearGoogleIntents(); await signOut(); renderLogin(); };
+  app().replaceChildren(h('div.login.register-screen', h('div.logo.logo-small', CONFIG.GAME_TITLE),
+    h('form.register', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        if (pw.value.length < 6) { err.textContent = '비밀번호는 6자 이상이에요.'; return; }
+        go.disabled = true;
+        try {
+          const res = link.kind === 'number'
+            ? await rpc('link_number', { p_student_id: link.key, p_password: pw.value }, { retries: 0 })
+            : await rpc('link_id', { p_id: link.key, p_password: pw.value }, { retries: 0 });
+          if (res.error === 'WRONG_PASSWORD') { err.textContent = '비밀번호가 맞지 않아요.'; return; }
+          clearGoogleIntents();
+          if (res.email) await devLogin(res.email, pw.value);
+          toast('복구용 구글을 연결했어요! 다음부터 이 구글로도 들어올 수 있어요.', 4500);
+          await afterLogin();
+        } catch (x) { err.textContent = errorText(x.message); } finally { go.disabled = false; }
+      },
+    },
+    h('div.box.stack',
+      h('b', '복구용 구글 연결'),
+      h('p', `${keyLabel(link)} 계정의 비밀번호를 넣으면 지금 로그인한 구글이 그 계정에 연결돼요.`),
+      h('label.field', h('span', '비밀번호'), pw)),
+    err, go,
+    h('button.btn.small.ghost', { type: 'button', onclick: cancel }, '취소'))));
+}
+
+// "구글로 내 계정 찾기"를 했는데 이 구글은 아직 어떤 계정에도 연결돼 있지 않음
+function renderRecoverMiss() {
+  app().replaceChildren(h('div.login.register-screen', h('div.logo.logo-small', CONFIG.GAME_TITLE),
+    h('div.box.stack',
+      h('b', '이 구글 계정은 연결된 게임 계정이 없어요'),
+      h('p', '복구용으로 연결해 둔 다른 구글 계정이 있다면 그걸로 다시 해 보세요. 연결한 적이 없다면 학생은 운영자에게 초기화를 요청하고, 아이디 계정은 문의하기로 알려 주세요.'),
+      h('button.btn.primary', { onclick: async () => { await signOut(); renderLogin(); } }, '다른 구글로 다시 하기'),
+      h('button.btn', { onclick: async () => { clearGoogleIntents(); await signOut(); renderLogin(); resetRequestSheet(); } }, '학생: 초기화 요청'),
+      h('button.btn.small.ghost', { onclick: async () => { clearGoogleIntents(); await signOut(); renderLogin(); } }, '처음으로'))));
 }
 
 function renderInApp() {

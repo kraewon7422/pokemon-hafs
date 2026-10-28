@@ -364,8 +364,12 @@ console.log('\n[17] open login: register screen, 학번 code accounts, dev accou
   ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '022777', p_name: '<b>' })).error === 'BAD_NAME', 'bad name refused');
   ok((await t.rpc('register_profile', { p_kind: 'teacher', p_student_id: '', p_name: '가짜' })).error === 'BAD_KIND', 'unknown kind refused');
 
-  const sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-  const cc = (await anon.rpc('create_code_account', { p_student_id: sid })).data;
+  // pick a number no earlier run left behind
+  let sid, cc;
+  for (let i = 0; i < 20 && !cc; i++) {
+    sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+    cc = (await anon.rpc('create_code_account', { p_student_id: sid })).data;
+  }
   ok(cc?.id === sid && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(cc.code), 'student number alone creates a code account (code shown once)', cc);
   ok((await anon.rpc('create_code_account', { p_student_id: sid })).error === 'CODE_ACCOUNT_EXISTS', 'second request for the same number is refused');
   ok((await anon.rpc('create_code_account', { p_student_id: '022001' })).error === 'STUDENT_ID_TAKEN', 'code account for a registered number is refused');
@@ -802,6 +806,57 @@ console.log('\n[28] admin: delete student records (dummy data clean-up)');
   const c2 = client(await pwLogin(`${sids[0]}@code.local`, 'new123'));
   await c2.rpc('register_profile', { p_kind: 'student', p_student_id: sids[0], p_name: '더미다시' });
   await admin.rpc('admin_delete_students', { p_student_ids: [sids[0]], p_confirm: '삭제' });   // clean up
+}
+
+console.log('\n[29] 비학생 아이디 계정 · 운영진 아이디 · 복구용 구글 연결 (0018)');
+{
+  const rid = () => 'tid' + Math.random().toString(36).slice(2, 9);
+  const idLogin = async (id, pw) => pwLogin(`${id}@id.local`, pw);
+  ok((await anon.rpc('create_id_account', { p_id: 'ab', p_password: 'idpass1' })).error === 'BAD_ID', 'too-short id refused');
+  ok((await anon.rpc('create_id_account', { p_id: '1abc', p_password: 'idpass1' })).error === 'BAD_ID', 'id must start with a letter');
+  const id = rid();
+  ok((await anon.rpc('create_id_account', { p_id: id, p_password: 'idp' })).error === 'BAD_PASSWORD', 'short password refused');
+  ok((await anon.rpc('create_id_account', { p_id: id.toUpperCase(), p_password: 'idpass1' })).data?.email === `${id}@id.local`, 'id account created (lower-cased)');
+  ok((await anon.rpc('create_id_account', { p_id: id, p_password: 'other12' })).error === 'ID_TAKEN', 'same id again → taken');
+  ok(!(await idLogin(id, 'wrong-pw')), 'wrong password cannot log in');
+  const c = client(await idLogin(id, 'idpass1'));
+  const e0 = (await c.rpc('ensure_profile')).data;
+  ok(e0?.needs_register && e0.login_id === id, 'first login: asks for a name, knows the id', e0);
+  const reg = (await c.rpc('register_profile', { p_kind: 'student', p_student_id: '022001', p_name: '아이디손님' })).data;
+  ok(reg?.student_id === `g:${id}` && reg.in_ranking === false && reg.login === 'id' && reg.login_key === id && reg.google_linked === false,
+    'id account = non-student g:<id> (cannot claim a number), not ranked', reg);
+
+  // staff ids: only an admin can make them; self-made ids never become staff
+  ok((await c.rpc('admin_create_staff_login', { p_id: rid(), p_role: 'admin' })).error === 'NOT_ADMIN', 'non-admin cannot create staff logins');
+  ok((await c.rpc('booth_lookup', { p_payload: '022001' })).error === 'NOT_STAFF', 'self-made id is not staff');
+  ok((await anon.rpc('bootstrap_staff', { p_id: rid() })).error && (await c.rpc('bootstrap_staff', { p_id: rid() })).error, 'bootstrap_staff cannot be called from the app');
+  const sid = rid();
+  const st = (await admin.rpc('admin_create_staff_login', { p_id: sid, p_role: 'booth', p_name: '부스 도우미' })).data;
+  ok(st?.id === sid && /^[A-Za-z2-9]{12}$/.test(st.password || ''), 'admin creates a booth id with a 12-char random password', st?.id);
+  ok((await admin.rpc('admin_create_staff_login', { p_id: id, p_role: 'admin' })).error === 'ID_TAKEN', 'cannot turn an existing id into staff');
+  const sc = client(await idLogin(sid, st.password));
+  ok((await sc.rpc('ensure_profile')).data?.role === 'booth' && !(await sc.rpc('booth_lookup', { p_payload: '022001' })).error?.includes('NOT_STAFF'), 'staff id logs in as booth');
+  ok((await admin.rpc('admin_list_staff_logins')).data?.some((x) => x.id === sid && x.role === 'booth'), 'staff id listed for the admin');
+  const rs = (await admin.rpc('admin_reset_staff_password', { p_id: sid })).data;
+  ok(rs?.password && rs.password !== st.password && !(await idLogin(sid, st.password)) && !!(await idLogin(sid, rs.password)), 'admin resets a staff password (old one stops working)');
+  ok((await admin.rpc('admin_reset_staff_password', { p_id: id })).error === 'NOT_FOUND', 'password reset is only for staff ids');
+
+  // recovery Google: a Google login linked to the id lands in the same account
+  const g1 = await fakeGoogle(`${rid()}@gmail.com`);
+  ok((await g1.rpc('link_id', { p_id: id, p_password: 'nope123' })).data?.error === 'WRONG_PASSWORD', 'linking needs the id password');
+  const lk = (await g1.rpc('link_id', { p_id: id, p_password: 'idpass1' })).data;
+  ok(lk?.mode === 'linked' && lk.email === `${id}@id.local`, 'Google linked to the id account', lk);
+  ok((await client(await idLogin(id, 'idpass1')).rpc('ensure_profile')).data?.google_linked === true, 'settings show the recovery Google as linked');
+  const g2 = await fakeGoogle(`${rid()}@gmail.com`);
+  ok((await g2.rpc('link_id', { p_id: sid, p_password: rs.password })).error === 'STAFF_NO_LINK', 'staff ids cannot get a Google link');
+  const g3 = await fakeGoogle(`${rid()}@gmail.com`);
+  const nid = rid();
+  ok((await g3.rpc('link_id', { p_id: nid, p_password: 'newid12', p_name: '구글손님' })).data?.mode === 'new'
+     && !!(await idLogin(nid, 'newid12')), 'Google → new non-student id with its own password');
+
+  ok((await admin.rpc('admin_remove_staff_login', { p_id: sid })).data?.ok && !(await idLogin(sid, rs.password)), 'admin removes the staff id');
+  const del = (await admin.rpc('admin_delete_students', { p_student_ids: [`g:${id}`, `g:${nid}`], p_confirm: '삭제' })).data;
+  ok(del?.deleted === 2, 'test id accounts cleaned up', del);
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

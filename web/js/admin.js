@@ -3,7 +3,7 @@
 import { CONFIG } from './config.js';
 import { sb, rpc, errorText } from './sb.js';
 import { h, $, toast, timeAgo } from './ui.js';
-import { devLogin, renderGoogleButton, signOut } from './auth.js';
+import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
 import { spriteCanvas } from './sprites.js';
 
@@ -270,10 +270,23 @@ function showLogin(errMsg = '', withLogout = false) {
   S.view = 'login';
   const err = h('p.err', { role: 'alert' }, errMsg);
   const google = h('div');
+  const idIn = h('input.inp', { autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false', placeholder: '운영진 아이디', required: true });
+  const idPw = h('input.inp', { type: 'password', autocomplete: 'current-password', required: true });
+  const idBtn = h('button.btn.go', { type: 'submit' }, '아이디로 로그인');
+  const idForm = h('form.stack', {
+    onsubmit: async (e) => {
+      e.preventDefault();
+      err.textContent = '';
+      idBtn.disabled = true;
+      try { await idLogin(idIn.value, idPw.value); await boot(); } catch (x) { err.textContent = x.message; } finally { idBtn.disabled = false; }
+    },
+  }, field('운영진 아이디', idIn), field('비밀번호', idPw), idBtn);
   const box = h('div.box',
     h('h1', `${CONFIG.GAME_TITLE} 운영자`),
-    h('p.muted', '운영자 계정으로 로그인하세요.'),
+    h('p.muted', '운영자에게 받은 운영진 아이디로 로그인하세요.'),
     err,
+    idForm,
+    h('p.small-txt.muted', '구글 이메일로 등록된 운영진은 구글로 로그인해도 돼요.'),
     google);
   if (CONFIG.DEV_LOGIN) {
     const email = h('input.inp', { type: 'email', autocomplete: 'username', placeholder: 'admin@staff.test', required: true });
@@ -1584,10 +1597,10 @@ async function tabStaff() {
       });
     },
   },
-    h('h2', '운영진 초대'),
+    h('h2', '구글 이메일로 운영진 등록'),
     h('p.small-txt', '그 사람의 ', h('b', '구글 계정 이메일'), '을 적으면 끝이에요. 그 계정으로 이 사이트에 구글 로그인하면 바로 권한이 생겨요. 이미 로그인한 적이 있으면 지금 바로 바뀌어요.'),
     h('div.row', email, role, add),
-    h('p.small-txt.muted', '보안상 구글 로그인 계정만 권한을 받아요 (학번 코드·비밀번호 계정은 안 됨). 내 권한은 다른 운영자만 바꿀 수 있어요.'));
+    h('p.small-txt.muted', '구글 계정이 있는 운영진만 이 방법을 써요. 구글이 없으면 위의 운영진 아이디를 만들어 주세요. 내 권한은 다른 운영자만 바꿀 수 있어요.'));
 
   const site = new URL('.', location.href).href.replace(/\/$/, '');
   const links = h('div.box.stack',
@@ -1596,7 +1609,52 @@ async function tabStaff() {
     ...[['admin', '운영자 페이지'], ['booth', '부스 화면 (태블릿·노트북)'], ['screen', 'TV 대형 화면']].map(([p, t]) =>
       h('div', h('b', t, ': '), h('a.mono', { href: `${site}/${p}.html`, target: '_blank', rel: 'noopener' }, `${site}/${p}.html`))));
 
-  return [h('div.cols', form, links), h('div.box.stack', h('h2', '현재 운영진'), list)];
+  // ── 운영진 아이디 (0018): 운영자가 만들고, 비밀번호는 한 번만 보여 준다 ──
+  const ids = h('div');
+  const showPw = (title, r) => modal(title, h('div.stack',
+    h('p', '아래 아이디와 비밀번호를 그 사람에게 전해 주세요. ', h('b', '비밀번호는 지금만 보여요'), ' (잊으면 [비밀번호 새로 만들기]).'),
+    h('div.box.mono', { style: { fontSize: '20px' } }, `아이디: ${r.id}`, h('br'), `비밀번호: ${r.password}`),
+    h('p.small-txt.muted', '앱·운영자 페이지·부스·TV 화면 어디서든 "아이디로 로그인"에 넣으면 돼요.')), [{ label: '확인', value: true, cls: 'go' }]);
+  const drawIds = (rows) => ids.replaceChildren(rows.length ? h('div.tbl-wrap', h('table.tbl',
+    h('thead', h('tr', h('th', '아이디'), h('th', '이름'), h('th', '역할'), h('th', '마지막 로그인'), h('th', ''))),
+    h('tbody', rows.map((r) => {
+      const reset = h('button.btn.small', '비밀번호 새로 만들기');
+      reset.onclick = () => busy(reset, async () => {
+        if (!(await confirmBox('비밀번호 새로 만들기', [`${r.id} 의 비밀번호를 새로 만들까요? 지금 로그인된 기기는 모두 로그아웃돼요.`], { ok: '새로 만들기' }))) return;
+        showPw('새 비밀번호', await rpc('admin_reset_staff_password', { p_id: r.id }));
+      });
+      const del = h('button.btn.small.danger', { disabled: r.me, title: r.me ? '지금 로그인한 내 계정은 지울 수 없어요' : '' }, '삭제');
+      del.onclick = () => busy(del, async () => {
+        if (!(await confirmBox('운영진 아이디 삭제', [`${r.id} 아이디를 지울까요? 이 아이디로는 더 이상 로그인할 수 없어요.`], { ok: '삭제', danger: true }))) return;
+        await rpc('admin_remove_staff_login', { p_id: r.id });
+        drawIds(await rpc('admin_list_staff_logins')); toast('지웠어요.');
+      });
+      return h('tr', h('td.mono', r.id, r.me ? h('span.small-txt.muted', ' (나)') : null), h('td', r.name),
+        h('td', chip(ROLE[r.role] || r.role, r.role === 'admin' ? 'hot' : 'blue')),
+        h('td', r.last ? new Date(r.last).toLocaleString('ko-KR') : '–'), h('td', reset, ' ', del));
+    })))) : h('p.muted', '아직 운영진 아이디가 없어요.'));
+  drawIds(await rpc('admin_list_staff_logins'));
+  const nid = h('input.inp', { placeholder: '아이디 (영문으로 시작, 4~16자)', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false', required: true });
+  const nname = h('input.inp', { placeholder: '이름 (예: 김선생님)', maxlength: 20 });
+  const nrole = h('select.inp', h('option', { value: 'booth' }, '부스 스태프 (부스·TV 화면)'), h('option', { value: 'admin' }, '운영자 (이 페이지 전체)'));
+  const make = h('button.btn.go', { type: 'submit' }, '아이디 만들기');
+  const idMake = h('form.box.stack', {
+    onsubmit: (e) => {
+      e.preventDefault();
+      busy(make, async () => {
+        const r = await rpc('admin_create_staff_login', { p_id: nid.value, p_role: nrole.value, p_name: nname.value });
+        nid.value = ''; nname.value = '';
+        drawIds(await rpc('admin_list_staff_logins'));
+        await showPw('운영진 아이디를 만들었어요', r);
+      });
+    },
+  },
+    h('h2', '운영진 아이디 만들기'),
+    h('p.small-txt', '구글 계정이 없어도 돼요. 아이디를 정하면 서버가 12자리 비밀번호를 만들어 줘요. 학생이 스스로 만든 아이디는 운영진이 될 수 없어요.'),
+    h('div.row', nid, nname, nrole, make));
+
+  return [h('div.cols', idMake, links), h('div.box.stack', h('h2', '운영진 아이디'), ids),
+    h('div.cols', form, h('div.box.stack', h('h2', '구글로 등록된 운영진'), list))];
 }
 
 // 요청: 비밀번호 초기화 요청 (허용하면 학생이 고른 새 비밀번호로 바뀜) + 학생 문의함 (0011)

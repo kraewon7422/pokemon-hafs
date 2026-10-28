@@ -7,7 +7,7 @@ import { Scanner } from './scanner.js';
 import { spriteCanvas } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, sleep, pixelFontScale } from './ui.js';
-import { devLogin, renderGoogleButton, signOut } from './auth.js';
+import { idLogin, renderGoogleButton, signOut } from './auth.js';
 // names are shown masked everywhere outside the admin page (강래원 → 강*원)
 const maskName = (n = '') => { n = String(n || '').trim(); return n.length >= 3 ? n[0] + '*'.repeat(n.length - 2) + n.at(-1) : n.length === 2 ? n[0] + '*' : n || '트레이너'; };
 
@@ -54,15 +54,15 @@ async function start() {
 function renderLogin(msg = '') {
   const err = h('div.err', msg);
   const g = h('div');
-  const email = h('input', { type: 'email', placeholder: '부스 계정 이메일' });
-  const pw = h('input', { type: 'password', placeholder: '비밀번호' });
-  root.replaceChildren(h('div.login-card.box',
-    h('b', `${CONFIG.GAME_TITLE} · 메인 부스`), g,
-    CONFIG.DEV_LOGIN && h('form', { style: { display: 'grid', gap: '8px' }, onsubmit: async (e) => {
+  const id = h('input', { placeholder: '운영진 아이디', autocomplete: 'username', autocapitalize: 'off', spellcheck: 'false' });
+  const pw = h('input', { type: 'password', placeholder: '비밀번호', autocomplete: 'current-password' });
+  root.replaceChildren(h('div.login-card.box', h('b', `${CONFIG.GAME_TITLE} · 메인 부스`),
+    h('form', { style: { display: 'grid', gap: '8px' }, onsubmit: async (e) => {
       e.preventDefault();
-      try { await devLogin(email.value.trim(), pw.value); await start(); } catch (x) { err.textContent = x.message; }
-    } }, email, pw, h('button.btn', { type: 'submit' }, '로그인')),
-    err));
+      err.textContent = '';
+      try { await idLogin(id.value, pw.value); await start(); } catch (x) { err.textContent = x.message; }
+    } }, id, pw, h('button.btn', { type: 'submit' }, '아이디로 로그인')),
+    h('small', '구글 이메일로 등록된 운영진은 아래 구글로 로그인해도 돼요.'), g, err));
   renderGoogleButton(g, (m) => { err.textContent = m; }).catch(() => {});
   sb.auth.onAuthStateChange((evt) => { if (evt === 'SIGNED_IN') start(); });
 }
