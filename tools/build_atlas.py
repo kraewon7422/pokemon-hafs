@@ -4,7 +4,7 @@
   (운영자 페이지 몬스터 카드에 '그림 파일: 12-1.png' 로 표시됨. 앱 도감 번호 No.xxx 와는 다르니 주의)
 - 없으면 임시 몬스터를 그린다 (라인=과목마다 손으로 조정한 그리기 함수, 단계가 오를수록 커짐).
 - 칸 배치: 12열, 칸 하나 64x64, 칸 번호 = 도감번호-1.  (web/js/sprites.js 가 같은 규칙으로 읽는다)
-- 전설(35 교장몽, 36 교감몽)과 비밀(37 숨바꼭몽)은 1단계만 있음 → 도감 103, 106, 109. 나머지 빈 칸은 투명.
+- 전설(35 금관오스=교감, 36 학사쟈=교장)과 비밀(37 숨바꼬치)은 1단계만 있음 → 도감 103, 106, 109. 나머지 빈 칸은 투명.
 
 그리는 방식 (GBA 에메랄드 느낌):
   모양(타원/캡슐/다각형) → 부위마다 3단 명암(빛은 왼쪽 위) + 1px 외곽선(몸색보다 어두운 색, 검정 아님)
@@ -841,7 +841,7 @@ def line_chinese(st):
     return s
 
 
-# 35 교장몽 (전설) — 금빛 몸 + 왕관 + 흰 수염 + 홀 + 오라
+# 35 금관오스 (전설·교감) — 금빛 몸 + 왕관 + 흰 수염 + 홀 + 오라
 P16 = dict(body=ramp(.115, .52, 1.0), gold=ramp(.10, .80, 1.0), fur=hramp('6a5a6a', 'd8d0e0', 'f2eef6', 'fffff6'),
            gem=hexc('3ac8e8'), blush=hexc('ff9f8e'))
 
@@ -884,7 +884,7 @@ def line_principal(st):
     return s
 
 
-# 36 교감몽 (전설) — 보라 몸 + 학사모 + 은테 안경 + 출석부 + 오라
+# 36 학사쟈 (전설·교장) — 보라 몸 + 학사모 + 은테 안경 + 출석부 + 오라
 P17 = dict(body=ramp(.77, .48, .86), cap=hramp('140f26', '241c40', '362c5c', '4e4480'),
            silver=hramp('4a4e66', '9aa0b8', 'c8ccdc', 'eef0f8'), blush=hexc('ff9fbe'))
 
@@ -1847,8 +1847,8 @@ ROSTER = {
     34: T(subj='체육', name='볼', body=ramp(.975, .66, .88), acc=ramp(.62, .60, .72), m2=SHOE, m3=ramp(.13, .70, 1.0),
           motif=m_ball, mouth='open', blush=hexc('ffb0a0')),
     # 전설
-    35: T(subj='전설', name='교장', custom=lambda st: line_principal(st)),
-    36: T(subj='전설', name='교감', custom=lambda st: line_vice(st)),
+    35: T(subj='전설', name='금관오스(교감)', custom=lambda st: line_principal(st)),
+    36: T(subj='전설', name='학사쟈(교장)', custom=lambda st: line_vice(st)),
     37: T(subj='비밀', name='숨바꼭', custom=lambda st: line_secret(st)),
 }
 LEGENDARY = {35, 36, 37}
