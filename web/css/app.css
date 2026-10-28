@@ -327,3 +327,76 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .raid-preview > div { display: grid; justify-items: center; gap: 2px; }
 .type-cycle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .type-cycle .arrow { font-weight: bold; color: #586890; }
+
+/* special tickets (레이드·도감 보상): gold shimmer, not counted in the bag */
+.chip.special { background: linear-gradient(110deg, #f8d040, #fff4b0 40%, #f0b820 60%, #ffe680); background-size: 250% 100%; animation: shimmer 2.4s linear infinite;
+  border-color: #9a6a10; color: #3a2400; font-weight: bold; box-shadow: 0 0 8px rgba(248, 208, 72, .8); }
+.chip.special small { font-weight: normal; }
+.special-count { color: #b07800; }
+
+/* raid */
+.raid-banner { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; cursor: pointer; font: inherit;
+  background: linear-gradient(90deg, #402060, #803080); color: #fff; text-shadow: 1px 1px 0 #200a30; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 4px rgba(248, 120, 200, .5); } }
+.raid-row { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 6px; border: 2px solid var(--ink); border-radius: 8px; background: #fff; font: inherit; cursor: pointer; }
+.raid-row > div { flex: 1; min-width: 0; display: grid; gap: 3px; }
+.hpbar { height: 12px; border: 3px solid #182030; border-radius: 6px; background: #384050; overflow: hidden; }
+.hpbar.small { height: 8px; border-width: 2px; }
+.hpbar i { display: block; height: 100%; background: #48d048; transition: width .25s steps(6); }
+.hpbar i.yellow { background: #f8c830; } .hpbar i.red { background: #f04830; }
+.raid-overlay { background: radial-gradient(circle at 50% 35%, #50306a, #181028 70%); }
+.raid-stage { width: 100%; max-width: 560px; height: 100%; margin: 0 auto; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; gap: 8px;
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); color: #fff; text-shadow: 1px 1px 0 #101828; }
+.raid-top { display: flex; justify-content: space-between; align-items: center; font-size: var(--fs-l); }
+.raid-timer { font-variant-numeric: tabular-nums; }
+.raid-hp { display: grid; gap: 4px; }
+.raid-hp .hpbar { height: 18px; }
+.hp-num { justify-self: end; font-size: var(--fs-s); }
+.raid-arena { position: relative; display: grid; place-items: center; min-height: 200px; }
+.raid-boss { appearance: none; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent; filter: drop-shadow(0 8px 0 rgba(0,0,0,.35)); }
+.raid-boss canvas { animation: hover 1.6s ease-in-out infinite; }
+.raid-boss.hit canvas { animation: shake .12s steps(2); filter: brightness(1.8); }
+.raid-boss canvas.faint { animation: faint 1.2s steps(8) forwards; }
+@keyframes hover { 50% { transform: translateY(-6px); } }
+@keyframes shake { 0% { transform: translateX(-5px); } 100% { transform: translateX(5px); } }
+@keyframes faint { to { transform: translateY(40px); opacity: 0; } }
+.raid-fx { position: absolute; inset: 0; pointer-events: none; }
+.raid-fx .dmg { position: absolute; font-weight: bold; font-size: var(--fs-l); color: #fff8a0; text-shadow: 2px 2px 0 #a02020; animation: dmg .7s steps(7) forwards; }
+@keyframes dmg { to { transform: translateY(-40px); opacity: 0; } }
+.raid-info { display: flex; justify-content: space-between; gap: 8px; font-size: var(--fs-s); flex-wrap: wrap; }
+.raid-ctrl { display: flex; justify-content: space-between; gap: 8px; }
+.raid-ctrl .btn { color: var(--ink); }
+.raid-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 6px; max-height: 180px; overflow: auto; padding: 6px; background: rgba(0,0,0,.35); border-radius: 8px; }
+.raid-opt { appearance: none; display: grid; justify-items: center; gap: 2px; padding: 4px; border: 2px solid #182030; border-radius: 6px; background: #f8f8f0; color: var(--ink); font: inherit; font-size: 12px; cursor: pointer; text-shadow: none; }
+.raid-opt.on { background: #fff0a0; box-shadow: inset 0 0 0 2px #f8c030; }
+.raid-stage .textbox { color: var(--ink); text-shadow: none; }
+@media (prefers-reduced-motion: reduce) { .raid-boss canvas, .chip.special, .raid-banner { animation: none; } }
+
+/* title screen (login): gen-3 feel — sky, sun (소디포), drifting pixel clouds, school skyline, monsters hopping on grass */
+.login.title-screen { position: relative; overflow: hidden; align-content: start; padding-top: calc(env(safe-area-inset-top) + 88px); padding-bottom: calc(84px + env(safe-area-inset-bottom));
+  background: linear-gradient(#3878d0 0, #68b0f0 120px, #a8dcf8 230px, #c8ecf8 262px, #58a848 262px, #58a848 270px, var(--grass-1) 270px); }
+.title-sky { position: absolute; inset: 0 0 auto 0; height: 270px; pointer-events: none; }
+.title-sky .sun { position: absolute; right: 8%; top: calc(env(safe-area-inset-top) + 10px); animation: hover 3s ease-in-out infinite; filter: drop-shadow(0 0 12px rgba(255, 220, 80, .8)); }
+.title-sky .cloud { position: absolute; width: 8px; height: 8px; background: #fff; box-shadow:
+  8px 0 #fff, 16px 0 #fff, 24px 0 #fff, 32px 0 #fff, 8px -8px #fff, 16px -8px #fff, 24px -8px #fff, 16px -16px #fff, -8px 0 #fff, 40px 0 #e8f4fc, 0 8px #e8f4fc, 8px 8px #e8f4fc, 16px 8px #e8f4fc, 24px 8px #e8f4fc, 32px 8px #e8f4fc;
+  animation: drift linear infinite; opacity: .95; }
+.title-sky .c1 { top: 40px; left: -60px; animation-duration: 38s; }
+.title-sky .c2 { top: 92px; left: -60px; animation-duration: 55s; animation-delay: -20s; transform: scale(1.4); }
+.title-sky .c3 { top: 150px; left: -60px; animation-duration: 46s; animation-delay: -35s; }
+@keyframes drift { to { left: calc(100% + 60px); } }
+.title-sky .school { position: absolute; left: 0; right: 0; bottom: 8px; height: 60px; opacity: .9; }
+.title-sky .school svg { width: 100%; height: 100%; }
+.title-plate { position: relative; padding: 10px 18px 12px; background: rgba(24, 32, 48, .82); border: 4px solid #f8d048; border-radius: 12px;
+  box-shadow: 0 0 0 4px #182030, 0 6px 0 4px rgba(0,0,0,.25); }
+.title-plate .logo { font-size: calc(var(--fs-xxl) * 1.1); }
+.title-plate .logo-sub { color: #f8f8f0; text-shadow: 1px 1px 0 #101828; font-size: var(--fs-s); }
+.mons.hop { gap: 2px; margin-top: -4px; }
+.mons.hop span { animation: hop2 .9s steps(2) infinite alternate; }
+@keyframes hop2 { to { transform: translateY(-8px); } }
+.title-screen .press { color: #fff8a0; }
+.login-help { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: flex; justify-content: center; gap: 8px;
+  padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: #283048; border-top: 4px solid #182030; }
+.login-help .btn { flex: 1; max-width: 220px; white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .title-sky .cloud, .title-sky .sun, .mons.hop span { animation: none; } }
+
+.seg.rank-kinds button[aria-pressed="true"] { background: #f86840; color: #fff; text-shadow: 1px 1px 0 #802010; }
