@@ -269,15 +269,6 @@ const CAPSULE = `<svg viewBox="0 0 32 32" aria-hidden="true">
   <rect x="2" y="14.5" width="28" height="3" fill="#202838"/>
   <circle cx="16" cy="16" r="5" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
   <circle cx="16" cy="16" r="2" fill="#fff" stroke="#c8c8c8" stroke-width="1"/></svg>`;
-// 타이틀 화면의 학교 실루엣 (픽셀, crispEdges)
-const SCHOOL_SVG = `<svg viewBox="0 0 160 40" shape-rendering="crispEdges" aria-hidden="true">
-<rect x="0" y="22" width="34" height="18" fill="#5a78a8"/><rect x="34" y="12" width="44" height="28" fill="#4a6898"/>
-<rect x="78" y="18" width="30" height="22" fill="#5a78a8"/><rect x="108" y="8" width="26" height="32" fill="#4a6898"/>
-<rect x="134" y="24" width="26" height="16" fill="#5a78a8"/><rect x="52" y="4" width="8" height="8" fill="#4a6898"/>
-<rect x="55" y="0" width="2" height="4" fill="#f8d048"/>
-${[...Array(6)].map((_, i) => `<rect x="${38 + i * 6}" y="18" width="3" height="4" fill="#f8f0a0"/><rect x="${38 + i * 6}" y="28" width="3" height="4" fill="#f8f0a0"/>`).join('')}
-${[...Array(3)].map((_, i) => `<rect x="${112 + i * 7}" y="14" width="3" height="4" fill="#f8f0a0"/><rect x="${112 + i * 7}" y="24" width="3" height="4" fill="#f8f0a0"/>`).join('')}
-</svg>`;
 
 const TABS = [['home', '홈'], ['map', '지도'], ['raid', '레이드'], ['scan', 'QR'], ['battle', '배틀'], ['dex', '도감'], ['rank', '랭킹']];
 
@@ -2133,10 +2124,8 @@ function renderLogin(error = '') {
   const gbox = h('div.gbox');
   const mons = h('div.mons.hop', [1, 13, 25, 37, 49].map((d, i) => h('span', { style: { animationDelay: `${i * 0.18}s` } }, spriteCanvas(d, 52))));
   const pending = sessionStorage.getItem('pendingScan');
-  // 3세대 타이틀 화면 느낌: 하늘 + 해(소디포) + 구름 + 학교 실루엣 + 잔디 위 몬스터들
-  const sky = h('div.title-sky', { 'aria-hidden': 'true' },
-    h('span.sun', spriteCanvas(112, 64)), h('i.cloud.c1'), h('i.cloud.c2'), h('i.cloud.c3'),
-    h('div.school', { html: SCHOOL_SVG }));
+  // 3세대 타이틀 화면 느낌: 하늘·구름·나무·잔디 = 배경 그림 (web/img/title, CC0) + 해(소디포) + 잔디 위 몬스터들
+  const sky = h('div.title-sky', { 'aria-hidden': 'true' }, h('span.sun', spriteCanvas(112, 64)));
   const content = [
     sky,
     h('div.title-plate', h('div.logo', CONFIG.GAME_TITLE), h('div.logo-sub', '학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!')),
@@ -2156,9 +2145,9 @@ function renderLogin(error = '') {
     // 늘 맨 아래에: 만든 동아리 (Watson & Decfi) · 문의하기 · 비밀번호를 잊었어요
     h('nav.login-help', { 'aria-label': '도움' },
       h('div.clubs', { 'aria-label': '만든 동아리: Watson & Decfi' },
-        h('figure', h('img', { src: 'img/clubs/watson.png', alt: 'Watson 로고', width: 56, height: 48 }), h('figcaption', 'Watson')),
+        h('figure', h('img', { src: 'img/clubs/watson.png', alt: 'Watson 로고', width: 46, height: 45 }), h('figcaption', 'Watson')),
         h('span.amp', { 'aria-hidden': 'true' }, '&'),
-        h('figure', h('img', { src: 'img/clubs/decfi.png', alt: 'Decfi 로고', width: 123, height: 48 }), h('figcaption', 'Decfi'))),
+        h('figure', h('img', { src: 'img/clubs/decfi.png', alt: 'Decfi 로고', width: 39, height: 44 }), h('figcaption', 'Decfi'))),
       h('div.help-btns',
         h('button.btn.small', { type: 'button', onclick: () => inquiryPublicSheet() }, pix('memo'), '문의하기'),
         h('button.btn.small', { type: 'button', onclick: () => forgotSheet() }, pix('ticket'), '비밀번호를 잊었어요'))));

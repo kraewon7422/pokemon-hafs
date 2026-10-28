@@ -374,20 +374,13 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .raid-stage .textbox { color: var(--ink); text-shadow: none; }
 @media (prefers-reduced-motion: reduce) { .raid-boss canvas, .chip.special, .raid-banner { animation: none; } }
 
-/* title screen (login): gen-3 feel — sky, sun (소디포), drifting pixel clouds, school skyline, monsters hopping on grass */
+/* title screen (login): gen-3 feel — pixel sky with clouds + tree line (sky.png) over a grass field (grass.png), sun (소디포), monsters hopping.
+   그림: Sunny Land (ansimuz) + Tiny Town (Kenney), 둘 다 CC0 — web/img/title/CREDITS.txt */
 .login.title-screen { position: relative; overflow: hidden; align-content: start; padding-top: calc(env(safe-area-inset-top) + 88px); padding-bottom: calc(150px + env(safe-area-inset-bottom));
-  background: linear-gradient(#3878d0 0, #68b0f0 120px, #a8dcf8 230px, #c8ecf8 262px, #58a848 262px, #58a848 270px, var(--grass-1) 270px); }
+  background: url(../img/title/sky.png) top center / auto 270px no-repeat, url(../img/title/grass.png) center top / 256px repeat, #7cc864;
+  image-rendering: pixelated; }
 .title-sky { position: absolute; inset: 0 0 auto 0; height: 270px; pointer-events: none; }
 .title-sky .sun { position: absolute; right: 8%; top: calc(env(safe-area-inset-top) + 10px); animation: hover 3s ease-in-out infinite; filter: drop-shadow(0 0 12px rgba(255, 220, 80, .8)); }
-.title-sky .cloud { position: absolute; width: 8px; height: 8px; background: #fff; box-shadow:
-  8px 0 #fff, 16px 0 #fff, 24px 0 #fff, 32px 0 #fff, 8px -8px #fff, 16px -8px #fff, 24px -8px #fff, 16px -16px #fff, -8px 0 #fff, 40px 0 #e8f4fc, 0 8px #e8f4fc, 8px 8px #e8f4fc, 16px 8px #e8f4fc, 24px 8px #e8f4fc, 32px 8px #e8f4fc;
-  animation: drift linear infinite; opacity: .95; }
-.title-sky .c1 { top: 40px; left: -60px; animation-duration: 38s; }
-.title-sky .c2 { top: 92px; left: -60px; animation-duration: 55s; animation-delay: -20s; transform: scale(1.4); }
-.title-sky .c3 { top: 150px; left: -60px; animation-duration: 46s; animation-delay: -35s; }
-@keyframes drift { to { left: calc(100% + 60px); } }
-.title-sky .school { position: absolute; left: 0; right: 0; bottom: 8px; height: 60px; opacity: .9; }
-.title-sky .school svg { width: 100%; height: 100%; }
 .title-plate { position: relative; padding: 10px 18px 12px; background: rgba(24, 32, 48, .82); border: 4px solid #f8d048; border-radius: 12px;
   box-shadow: 0 0 0 4px #182030, 0 6px 0 4px rgba(0,0,0,.25); }
 .title-plate .logo { font-size: calc(var(--fs-xxl) * 1.1); }
@@ -403,10 +396,10 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 /* 만든 동아리: 이름 위에 각 로고 */
 .login-help .clubs { display: flex; align-items: flex-end; justify-content: center; gap: 10px; color: #fff; }
 .login-help .clubs figure { margin: 0; display: grid; justify-items: center; gap: 2px; }
-.login-help .clubs img { height: 40px; width: auto; border-radius: 6px; }
+.login-help .clubs img { height: 44px; width: auto; image-rendering: pixelated; }   /* 도트 로고 (배경 없음) */
 .login-help .clubs figcaption { font-weight: bold; font-size: 15px; letter-spacing: .5px; text-shadow: 2px 2px 0 #101828; }
 .login-help .clubs .amp { font-weight: bold; font-size: 18px; color: #f8d048; padding-bottom: 1px; text-shadow: 2px 2px 0 #101828; }
-@media (prefers-reduced-motion: reduce) { .title-sky .cloud, .title-sky .sun, .mons.hop span { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .title-sky .sun, .mons.hop span { animation: none; } }
 
 .seg.rank-kinds { grid-template-columns: repeat(3, 1fr); }
 .seg.rank-kinds button + button { border-left: 3px solid var(--ink); }

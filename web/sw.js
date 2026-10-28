@@ -9,7 +9,7 @@ const SHELL = [
   'js/sfx.js', 'js/ui.js', 'js/auth.js',
   'vendor/supabase.js', 'vendor/jsQR.js', 'vendor/qrcode.js',
   'fonts/Galmuri11.woff', 'fonts/Galmuri11-Bold.woff',
-  'sprites/atlas.png', 'img/map.webp', 'img/clubs/watson.png', 'img/clubs/decfi.png',
+  'sprites/atlas.png', 'img/map.webp', 'img/clubs/watson.png', 'img/clubs/decfi.png', 'img/title/sky.png', 'img/title/grass.png',
   ...['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'].map((n) => `img/battle/${n}.png`),
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
 ];

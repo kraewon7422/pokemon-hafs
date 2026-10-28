@@ -1,0 +1,4 @@
+Title screen background (sky.png, grass.png) is assembled from two public-domain (CC0) packs:
+- Sky and clouds: "Sunny Land" by Luis Zuno (ansimuz) — https://opengameart.org/content/sunny-land-2d-pixel-art-pack
+- Trees and grass tiles: "Tiny Town" by Kenney — https://kenney.nl/assets/tiny-town
+Both are CC0 (public domain). Credit is not required but given with thanks.
