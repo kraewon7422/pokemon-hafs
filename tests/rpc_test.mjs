@@ -623,5 +623,109 @@ console.log('\n[25] ranking kinds + inquiry before login');
   await admin.rpc('admin_set_inquiry', { p_id: iq.id, p_done: true });
 }
 
+console.log('\n[26] battles (engine on the server, CPU practice, friend team vs AI, live PvP)');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'batl12' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'batl12'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const A = await mk('배틀에이'), B = await mk('배틀비');
+  for (const l of [32, 17, 61]) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 3 });
+  await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: 4, p_stage: 1 });
+  for (const fn of ['_bt_move', '_bt_turn', '_bt_finish', '_bt_resolve', '_bt_ai', '_bt_new'])
+    ok((await A.c.rpc(fn, {})).error, `student cannot call internal ${fn}`);
+  ok((await anon.rpc('battle_start_cpu', { p_lines: [32] })).error, 'anon cannot battle');
+  ok((await A.c.rpc('battle_start_cpu', { p_lines: [4] })).error === 'BAD_TEAM', 'team must be my own monsters');
+  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 32] })).error === 'BAD_TEAM', 'no duplicates in a team');
+  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 1] })).error === 'BAD_TEAM', 'at most 3');
+
+  // play until the end: move 1 each turn, pick the next monster when one faints
+  const play = async (c, b, pick = () => ({ move: 1 })) => {
+    for (let i = 0; i < 120 && b?.status === 'active'; i++) {
+      const mine = b.sides[b.me];
+      const act = b.need ? { switch: mine.mons.findIndex((m, k) => m.hp > 0 && k !== mine.active) } : pick(b);
+      const r = await c.rpc('battle_act', { p_id: b.id, p_action: act });
+      if (r.error) return { error: r.error, b };
+      b = r.data;
+    }
+    return b;
+  };
+
+  // CPU practice
+  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61] })).data;
+  const foe = b?.sides?.[1];
+  ok(b?.mode === 'cpu' && b.status === 'active' && b.sides[0].mons.length === 3 && foe?.mons?.length === 3, 'CPU practice starts 3 vs 3', b);
+  ok(b?.sides[0].mons[0].moves?.length === 4 && b.sides[0].mons[0].hp === b.sides[0].mons[0].max && b.sides[0].mons[0].max > 100, 'my monsters: L50 HP + 4 moves');
+  ok(!foe?.mons?.[0]?.moves && foe?.mons?.[0]?.name && !foe?.mons?.[1]?.name, 'foe: only the active monster is shown, never its moves');
+  ok((await B.c.rpc('battle_state', { p_id: b.id })).error === 'BATTLE_NOT_FOUND', "others cannot read my battle");
+  ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 9 } })).error === 'BAD_ACTION', 'bad move slot refused');
+  ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { switch: 0 } })).error === 'BAD_ACTION', 'cannot switch to the monster already out');
+  let r = await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 1 } });
+  ok(r.data?.turn === 1 && r.data.seq === 1 && r.data.log.some(x => /^@0.+의 .+!$/.test(x.m || '')) && r.data.log.some(x => /^@1/.test(x.m || '')), 'one turn: both sides act, log uses @0/@1 tokens', r.data?.log);
+  ok(r.data.sides[0].mons[0].moves[0].pp === b.sides[0].mons[0].moves[0].pp - 1 || r.data.log.some(x => /잠들어|저려서/.test(x.m || '')), 'PP goes down');
+  b = await play(A.c, r.data);
+  ok(b?.status === 'over' && (b.winner === 0 || b.winner === 1) && b.reward?.ticket === false && ['practice', 'lost'].includes(b.reward?.why), 'CPU battle ends; practice gives no ticket', { st: b?.status, w: b?.winner, rw: b?.reward, err: b?.error });
+
+  // friend team vs AI (B's team = strongest monsters since no team saved)
+  const codeB = (await B.c.rpc('battle_code')).data;
+  ok(/^[a-z2-9]{8}$/.test(codeB || '') && (await B.c.rpc('battle_code')).data === codeB, 'battle QR code (stable)', codeB);
+  ok((await B.c.rpc('battle_start_team', { p_code: codeB, p_lines: [4] })).error === 'BATTLE_SELF', 'cannot battle myself');
+  ok((await A.c.rpc('battle_start_team', { p_code: 'zzzzzzzz', p_lines: [32] })).error === 'BATTLE_CODE_NOT_FOUND', 'unknown code');
+  const t0 = (await A.c.rpc('sync')).data.state.profile.evo_tickets;
+  let won = null;
+  for (let tries = 0; tries < 4 && !won; tries++) {
+    b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+    if (tries === 0) ok(b?.mode === 'team' && b.sides[1].mons.length === 1 && b.names[1], 'friend team vs AI starts (friend has 1 monster)', b?.sides?.[1]);
+    b = await play(A.c, b);
+    if (b?.winner === 0) won = b;
+  }
+  ok(won?.reward?.ticket === true, 'beating a friend team → 1 진화권', won?.reward);
+  const st1 = (await A.c.rpc('sync')).data.state.profile;
+  ok(st1.evo_tickets === t0 + 1, 'evo ticket +1', [t0, st1.evo_tickets]);
+  const rkA = (await A.c.rpc('get_ranking_by', { p_kind: 'battle' })).data;
+  ok(rkA?.me?.value === 1, 'battle win counts in the ranking', rkA?.me);
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+  b = await play(A.c, b);
+  ok(b?.winner !== 0 || b.reward?.why === 'same_opp', 'same friend again today → no 2nd ticket', b?.reward);
+
+  // live PvP: invite → home inbox → accept → both choose (hidden from each other)
+  await setS('battle_turn_sec', 3);
+  const codeA = (await A.c.rpc('battle_code')).data;
+  let inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
+  ok(inv?.status === 'invite' && inv.mode === 'pvp', 'B sends a live battle request', inv);
+  let box = (await A.c.rpc('battle_inbox')).data;
+  ok(box?.invites?.some(x => x.id === inv.id && x.from), 'A sees "배틀 신청!" in the inbox', box);
+  ok((await S[0].rpc('battle_accept', { p_id: inv.id, p_lines: [1] })).error, 'only the invited friend can accept');
+  let pa = (await A.c.rpc('battle_accept', { p_id: inv.id, p_lines: [32, 17] })).data;
+  ok(pa?.status === 'active' && pa.me === 1 && pa.sides[1].mons.length === 2 && pa.sides[0].mons.length === 1, 'A accepts → battle starts (A is side 1)', pa);
+  r = await B.c.rpc('battle_act', { p_id: inv.id, p_action: { move: 1 } });
+  ok(r.data?.chosen === true && r.data.turn === 0, 'B chose; waits for A');
+  const pa2 = (await A.c.rpc('battle_state', { p_id: inv.id })).data;
+  ok(pa2?.chosen === false && !JSON.stringify(pa2).includes('"acts"'), "A cannot see B's choice");
+  ok((await B.c.rpc('battle_act', { p_id: inv.id, p_action: { move: 2 } })).error === 'BATTLE_WAIT', 'cannot choose twice');
+  await new Promise(res => setTimeout(res, 3500));
+  const pa3 = (await A.c.rpc('battle_state', { p_id: inv.id })).data;
+  ok(pa3?.turn === 1 || pa3?.status === 'over', 'time up → AI chooses for A, the turn is played', pa3?.turn);
+  await setS('battle_turn_sec', 45);
+  await A.c.rpc('battle_forfeit', { p_id: inv.id });
+  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
+  await A.c.rpc('battle_accept', { p_id: inv.id, p_lines: [32] });
+  const tB = (await B.c.rpc('sync')).data.state.profile.evo_tickets;
+  r = await A.c.rpc('battle_forfeit', { p_id: inv.id });
+  ok(r.data?.status === 'over' && r.data.winner === 0, 'A gives up → B wins', r.data?.winner);
+  const rb = (await B.c.rpc('battle_state', { p_id: inv.id })).data;
+  ok(rb?.reward?.ticket === true && (await B.c.rpc('sync')).data.state.profile.evo_tickets === tB + 1, 'B gets the 진화권', rb?.reward);
+
+  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
+  await A.c.rpc('battle_decline', { p_id: inv.id });
+  ok((await B.c.rpc('battle_state', { p_id: inv.id })).data?.status === 'declined', 'declined request shows as declined');
+  ok((await A.c.rpc('battle_set_team', { p_lines: [61, 17] })).data?.ok && (await A.c.rpc('battle_today')).data?.team?.join() === '61,17', 'save my battle team');
+  ok((await A.c.rpc('battle_set_team', { p_lines: [99] })).error === 'BAD_TEAM', 'cannot save monsters I do not have');
+  ok((await A.c.rpc('battle_today')).data?.wins === 1, 'today: 1 rewarded win of 3');
+  await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
