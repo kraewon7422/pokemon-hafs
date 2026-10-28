@@ -45,9 +45,11 @@ input::placeholder, textarea::placeholder { color: #6a7490; }
 
 /* big screen (TV 1920x1080): everything fits in one screen, text on the 12px pixel grid */
 .screen { height: 100vh; overflow: hidden; padding: 24px 36px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 36px; font-size: 24px; }
-.screen > section { min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow: hidden; }
+/* 왼쪽 반·오른쪽 반이 따로 끝까지 스크롤 (레이드 카드가 여러 개 떠도 아래가 보이게) */
+.screen > section { min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #586890 transparent; padding-right: 6px; }
+.screen > section > * { flex-shrink: 0; }
 /* long lists scroll inside the screen (mouse wheel / touch) instead of being cut off */
-.screen .grow { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
+.screen .grow { flex: 1 0 auto; min-height: 60vh; display: flex; flex-direction: column; gap: 12px; }
 .screen .grow > .feed, .screen .top10 { flex: 1; min-height: 0; overflow-y: auto; align-content: start; scrollbar-width: thin; scrollbar-color: #586890 transparent; }
 .screen h2 { margin: 0; color: #f8d048; text-shadow: 3px 3px 0 #101828; font-size: 36px; }
 .screen .top10 { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }

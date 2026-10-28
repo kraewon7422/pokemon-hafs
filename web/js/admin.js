@@ -1651,16 +1651,24 @@ async function tabRaid() {
   sel.value = '3';
   const pic = h('div', spriteImg(3, 72));
   sel.onchange = () => pic.replaceChildren(spriteImg(Number(sel.value), 72));
-  const hp = h('select.inp',
-    h('option', { value: 3000 }, '작게 3,000 (5~10명)'), h('option', { value: 12000, selected: true }, '보통 12,000 (20~30명)'),
-    h('option', { value: 40000 }, '크게 40,000 (50~100명)'), h('option', { value: 100000 }, '아주 크게 100,000'));
-  const mins = h('select.inp', [5, 10, 15, 30, 60].map((m) => h('option', { value: m, selected: m === 10 }, `${m}분`)));
+  // 프리셋 고르기 + "직접 입력" → 숫자 칸
+  const preset = (opts, unit, min, max) => {
+    const own = h('input.inp', { type: 'number', inputmode: 'numeric', min, max, placeholder: `${min}~${max.toLocaleString()} ${unit}`, hidden: true });
+    const s = h('select.inp', opts.map(([v, t, on]) => h('option', { value: v, selected: on }, t)), h('option', { value: 'own' }, '직접 입력…'));
+    s.onchange = () => { own.hidden = s.value !== 'own'; if (!own.hidden) own.focus(); };
+    return { el: h('div.stack', s, own), get value() { return s.value === 'own' ? Number(own.value) : Number(s.value); }, min, max };
+  };
+  const hp = preset([[3000, '작게 3,000 (5~10명)'], [12000, '보통 12,000 (20~30명)', true], [40000, '크게 40,000 (50~100명)'], [100000, '아주 크게 100,000']], '체력', 10, 10000000);
+  const mins = preset([5, 10, 15, 30, 60].map((m) => [m, `${m}분`, m === 10]), '분', 1, 600);
   const mode = h('select.inp', h('option', { value: 'tv' }, 'TV 대형 화면 (30초마다 바뀌는 현장 QR)'), h('option', { value: 'print' }, '인쇄용 고정 QR (아무 데나 붙이기)'));
   const title = h('input.inp', { placeholder: '레이드 이름 (비우면 "몬스터 이름 레이드")', maxlength: 40 });
   const go = h('button.btn.go', { type: 'submit' }, '레이드 열기');
   const form = h('form.box.stack', {
     onsubmit: (e) => {
       e.preventDefault();
+      for (const [f, name] of [[hp, '보스 체력'], [mins, '시간']]) {
+        if (!Number.isInteger(f.value) || f.value < f.min || f.value > f.max) { toast(`${name}은(는) ${f.min}~${f.max.toLocaleString()} 사이 숫자로 넣어 주세요.`); return; }
+      }
       busy(go, async () => {
         const r = await rpc('admin_create_raid', { p_species: Number(sel.value), p_hp: Number(hp.value), p_minutes: Number(mins.value), p_tv: mode.value === 'tv', p_title: title.value });
         toast(`${r.title}을(를) 열었어요.`);
@@ -1673,7 +1681,7 @@ async function tabRaid() {
     h('h2', '레이드 열기'),
     h('p.small-txt', '아무 몬스터(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, 10번 이상 공격한 모두가 그 몬스터 특별 티켓을 받아요 (가방 5칸 제한 없음). 시간 안에 못 잡으면 실패.'),
     h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 몬스터'), sel)),
-    h('div.row', h('label.field', h('span', '보스 체력'), hp), h('label.field', h('span', '시간'), mins)),
+    h('div.row', h('label.field', h('span', '보스 체력'), hp.el), h('label.field', h('span', '시간'), mins.el)),
     h('label.field', h('span', 'QR 방식'), mode), title, go);
   const reload = h('button.btn.small', '새로 고침');
   reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_raids')));
