@@ -2153,10 +2153,15 @@ function renderLogin(error = '') {
   content.push(installButton('.small'),
     h('p.foot-note', '구글 계정 아무거나 로그인할 수 있어요. 처음 한 번만 학생/외부인을 고르고 이름을 적어요. ',
       h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')),
-    // 늘 맨 아래에: 문의하기 · 비밀번호를 잊었어요
+    // 늘 맨 아래에: 만든 동아리 (Watson & Decfi) · 문의하기 · 비밀번호를 잊었어요
     h('nav.login-help', { 'aria-label': '도움' },
-      h('button.btn.small', { type: 'button', onclick: () => inquiryPublicSheet() }, pix('memo'), '문의하기'),
-      h('button.btn.small', { type: 'button', onclick: () => forgotSheet() }, pix('ticket'), '비밀번호를 잊었어요')));
+      h('div.clubs', { 'aria-label': '만든 동아리: Watson & Decfi' },
+        h('figure', h('img', { src: 'img/clubs/watson.png', alt: 'Watson 로고', width: 56, height: 48 }), h('figcaption', 'Watson')),
+        h('span.amp', { 'aria-hidden': 'true' }, '&'),
+        h('figure', h('img', { src: 'img/clubs/decfi.png', alt: 'Decfi 로고', width: 123, height: 48 }), h('figcaption', 'Decfi'))),
+      h('div.help-btns',
+        h('button.btn.small', { type: 'button', onclick: () => inquiryPublicSheet() }, pix('memo'), '문의하기'),
+        h('button.btn.small', { type: 'button', onclick: () => forgotSheet() }, pix('ticket'), '비밀번호를 잊었어요'))));
   app().replaceChildren(h('div.login.title-screen', content));
   renderGoogleButton(gbox, (m) => { err.textContent = m; }).catch((e) => { err.textContent = e.message; });
 }
