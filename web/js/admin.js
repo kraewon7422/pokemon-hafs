@@ -354,6 +354,25 @@ async function tabDash() {
   return h('div#dash', dashBody());
 }
 
+// 전설 출현: rotating QRs appear on the TV (screen.html) only while switched on here
+function legendCard() {
+  const legs = (S.stats?.qrs || []).filter((q) => q.kind === 'rotating');
+  if (!legs.length) return null;
+  return h('div.box.stack',
+    h('h2', '⚡ 전설 출현 (TV 대형 화면)'),
+    h('p.small-txt.muted', '띄우면 TV 화면에 30초마다 바뀌는 전설 QR이 나타나고, 학생 앱 홈에 "전설 출현" 안내가 떠요. 끝나면 내리세요. (시간 예약은 QR 관리 → 그 QR 편집)'),
+    h('div.row', legs.map((q) => {
+      const btn = h(`button.btn${q.active ? '.danger' : '.go'}`, q.active ? `${q.name} 내리기` : `${q.name} 띄우기`);
+      btn.onclick = () => busy(btn, async () => {
+        const on = !q.active;
+        await tq(sb.from('qr_points').update(on ? { active: true, active_from: null, active_until: null } : { active: false }).eq('id', q.id));
+        toast(on ? `${q.name}: TV에 띄웠어요.` : `${q.name}: TV에서 내렸어요.`);
+        await refreshStats();
+      });
+      return h('div.stack', h('div', chip(q.active ? 'TV에 나오는 중' : '꺼짐', q.active ? 'hot' : 'off'), ' ', h('b', q.name)), btn);
+    })));
+}
+
 async function refreshStats(redraw = true) {
   try {
     S.stats = await rpc('admin_stats');
@@ -466,7 +485,7 @@ function dashBody() {
       ' — 이 QR로 받은 티켓은 부스에서 취소돼요. QR 관리 탭에서 몬스터 풀을 채우세요.') : null,
   ].filter(Boolean);
 
-  return [...notices, tiles, chart, h('div.cols', h('div', qrTable), h('div', staffBox, quizBox, errBox))];
+  return [...notices, legendCard(), tiles, chart, h('div.cols', h('div', qrTable), h('div', staffBox, quizBox, errBox))];
 }
 
 function chartSVG(series) {

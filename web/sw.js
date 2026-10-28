@@ -1,7 +1,7 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v17';
+const VERSION = 'hafsmon-v18';
 const SHELL = [
   './', 's/', 'manifest.webmanifest',   // not index.html: Cloudflare Pages redirects it, and a redirected response can't answer a navigation
   'css/pixel.css', 'css/types.css', 'css/app.css',

@@ -101,9 +101,10 @@ insert into public.qr_points (id, name, hint, map_x, map_y, daily_cap) values
  ('A22','야외극장','C·D홀 사이 1층 통로를 지나면',0.904,0.367,1),
  ('A23','지하주차장 입구','정문 앞에서 왼쪽',0.489,0.52,null),
  ('A24','붉은 벽돌 보행로','정문에서 본관까지 이어진 길',0.395,0.44,null);
-insert into public.qr_points (id, name, hint, kind, visible_on_map, daily_cap) values
- ('L01', '전설의 무대 Ⅰ', '대형 화면을 지켜보세요', 'rotating', false, 1),
- ('L02', '전설의 무대 Ⅱ', '대형 화면을 지켜보세요', 'rotating', false, 1);
+-- legendary QRs start OFF: an admin puts them on the TV (현황판 → 전설 출현)
+insert into public.qr_points (id, name, hint, kind, visible_on_map, daily_cap, active) values
+ ('L01', '전설의 무대 Ⅰ', '대형 화면을 지켜보세요', 'rotating', false, 1, false),
+ ('L02', '전설의 무대 Ⅱ', '대형 화면을 지켜보세요', 'rotating', false, 1, false);
 
 select public._new_secret(id) from public.qr_points;
 
