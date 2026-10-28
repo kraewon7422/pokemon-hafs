@@ -28,8 +28,11 @@ const SETTING_HELP = {
   token_grace_minutes: '토큰 교체 후 옛 토큰이 유효한 시간(분)',
   quiz_ticket_daily_cap: '하루에 퀴즈로 받을 수 있는 진화권 최대 수 (기본 30)',
   roulette_enabled: '진화권 룰렛 ON/OFF (true/false)',
-  code_self_signup: '학번만 넣으면 코드 계정을 만들어 주는 기능 ON/OFF (구글이 안 되는 학생용)',
+  code_self_signup: '구글 없이 고유번호 + 비밀번호로 새 계정을 만들 수 있게 할지 ON/OFF',
+  reset_requests_per_10min: '비밀번호 초기화 요청을 10분 동안 전체에서 최대 몇 개 받을지 (장난 방지, 기본 30)',
+  roulette_777_per_mille: '이스터에그: 룰렛 꽝 1000번 중 몇 번을 777(럭키 세븐 칭호)로 바꿀지 (기본 10 = 1%)',
   code_signup_per_10min: '학번 코드 계정을 10분 동안 전체에서 최대 몇 개 만들 수 있는지 (번호 선점 방지, 기본 60)',
+  allowed_gens: '참여할 수 있는 기수 목록 (예: [20, 21, 22]). 이 밖의 학번은 가입·코드 생성이 거절되고 TV 기수 대항전에도 안 나와요. 매년 바꿔 주세요',
   dev_login: '개발용 테스트 로그인(아무 이메일, 비밀번호 1234abcd!) — 실전 서버에서는 반드시 false',
   roulette_every_min: '룰렛을 한 번 돌린 뒤 다음까지 기다리는 시간(분, 기본 5)',
   roulette_daily_max: '한 사람이 하루에 돌릴 수 있는 룰렛 횟수 (기본 12)',
@@ -42,7 +45,7 @@ const SETTING_HELP = {
   min_client_version: '앱 최소 버전 숫자. 올리면 옛 버전 폰에 "업데이트" 배너가 떠요',
 };
 const TABS = [
-  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['staff', '운영진'], ['set', '설정'],
+  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['req', '요청'], ['staff', '운영진'], ['set', '설정'],
 ];
 const CODE_BATCH = 700;   // admin_make_login_codes accepts at most 700 ids per call
 
@@ -326,7 +329,7 @@ function setBanner(open, selfRedeem) {
   if (sr && selfRedeem !== undefined) sr.classList.toggle('on', isOn(selfRedeem));
 }
 
-const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, staff: tabStaff, set: tabSet };
+const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, req: tabReq, staff: tabStaff, set: tabSet };
 
 async function go(tab) {
   S.tab = tab;
@@ -1544,6 +1547,61 @@ async function tabStaff() {
       h('div', h('b', t, ': '), h('a.mono', { href: `${site}/${p}.html`, target: '_blank', rel: 'noopener' }, `${site}/${p}.html`))));
 
   return [h('div.cols', form, links), h('div.box.stack', h('h2', '현재 운영진'), list)];
+}
+
+// 요청: 비밀번호 초기화 요청 (허용하면 학생이 고른 새 비밀번호로 바뀜) + 학생 문의함 (0011)
+async function tabReq() {
+  const box = h('div.stack');
+  const draw = (d) => {
+    const pending = d.resets.filter((r) => r.status === 'pending');
+    const done = d.resets.filter((r) => r.status !== 'pending').slice(0, 30);
+    const open = d.inquiries.filter((q) => q.status === 'open');
+    const resetRow = (r) => {
+      const ok = h('button.btn.small.go', '허용');
+      const no = h('button.btn.small.danger', '거절');
+      ok.onclick = () => {
+        if (!confirm(`${r.student_id} 의 비밀번호를 학생이 요청한 새 비밀번호로 바꿀까요?\n\n학생증(또는 본인)을 확인했나요? 허용하면 이 번호에 연결된 구글 계정이 모두 풀리고 모든 기기에서 로그아웃돼요.`)) return;
+        busy(ok, async () => { draw(await rpc('admin_decide_reset', { p_id: r.id, p_approve: true })); toast(`${r.student_id}: 새 비밀번호로 바꿨어요.`); });
+      };
+      no.onclick = () => busy(no, async () => { draw(await rpc('admin_decide_reset', { p_id: r.id, p_approve: false })); toast('거절했어요.'); });
+      const same = r.account_name && r.account_name === r.name;
+      return h('tr',
+        h('td.mono', r.student_id),
+        h('td', r.account_name || h('span.muted', '(이름 없음)')),
+        h('td', r.name, ' ', same ? chip('이름 같음', 'ok') : chip('이름 다름', 'hot')),
+        h('td', r.note || '–'),
+        h('td', r.from_app ? '앱(로그인 상태)' : '로그인 화면'),
+        h('td.num', r.google_links),
+        h('td', timeAgo(r.created_at)),
+        h('td', r.status === 'pending' ? h('div.row', ok, no) : chip(r.status === 'approved' ? '허용함' : '거절함', r.status === 'approved' ? 'ok' : 'off')));
+    };
+    const resetTable = (rows) => h('div.tbl-wrap', h('table.tbl',
+      h('thead', h('tr', h('th', '고유번호'), h('th', '계정 이름'), h('th', '요청자가 적은 이름'), h('th', '메모'), h('th', '보낸 곳'), h('th.num', '연결된 구글'), h('th', '언제'), h('th', ''))),
+      h('tbody', rows.map(resetRow))));
+    const inqRow = (q) => {
+      const b = h('button.btn.small', q.status === 'open' ? '처리 완료' : '다시 열기');
+      b.onclick = () => busy(b, async () => draw(await rpc('admin_set_inquiry', { p_id: q.id, p_done: q.status === 'open' })));
+      return h('tr', h('td.mono', q.student_id || '–'), h('td', q.name || '–'), h('td', { style: { whiteSpace: 'pre-wrap', maxWidth: '520px' } }, q.body),
+        h('td', timeAgo(q.created_at)), h('td', q.status === 'open' ? chip('새 문의', 'hot') : chip('완료', 'off')), h('td', b));
+    };
+    box.replaceChildren(
+      h('div.box.stack',
+        h('h2', `비밀번호 초기화 요청 ${pending.length ? `(${pending.length})` : ''}`),
+        h('p.notice', h('b', '허용하기 전에 꼭 본인 확인! '), '이름은 친구도 알 수 있어요. 부스에서 학생증(또는 얼굴)을 보고 허용하세요. ',
+          '학교 구글 계정이 있는 학생은 운영자 없이 직접 초기화할 수 있어요 (학교 계정으로 로그인 → 고유번호 입력 → "학교 계정으로 비밀번호 새로 정하기"). 그쪽으로 안내하는 게 더 안전해요.'),
+        pending.length ? resetTable(pending) : h('p.muted', '기다리는 요청이 없어요.'),
+        done.length ? h('details', h('summary', `처리한 요청 ${done.length}개`), resetTable(done)) : null),
+      h('div.box.stack',
+        h('h2', `학생 문의 ${open.length ? `(새 문의 ${open.length})` : ''}`),
+        h('p.small-txt.muted', '학생 앱 ⚙ 설정 → "운영진에게 문의하기"로 들어온 내용이에요.'),
+        d.inquiries.length ? h('div.tbl-wrap', h('table.tbl',
+          h('thead', h('tr', h('th', '고유번호'), h('th', '이름'), h('th', '내용'), h('th', '언제'), h('th', '상태'), h('th', ''))),
+          h('tbody', d.inquiries.map(inqRow)))) : h('p.muted', '아직 문의가 없어요.')));
+  };
+  draw(await rpc('admin_list_requests'));
+  const reload = h('button.btn.small', '새로 고침');
+  reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_requests')));
+  return [h('div.row', reload), box];
 }
 
 async function tabSet() {

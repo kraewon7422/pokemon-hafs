@@ -4,7 +4,7 @@
   (운영자 페이지 몬스터 카드에 '그림 파일: 12-1.png' 로 표시됨. 앱 도감 번호 No.xxx 와는 다르니 주의)
 - 없으면 임시 몬스터를 그린다 (라인=과목마다 손으로 조정한 그리기 함수, 단계가 오를수록 커짐).
 - 칸 배치: 12열, 칸 하나 64x64, 칸 번호 = 도감번호-1.  (web/js/sprites.js 가 같은 규칙으로 읽는다)
-- 전설(16 교장몽, 17 교감몽)은 1단계만 있음 → 도감 46, 49. 나머지 빈 칸은 투명.
+- 전설(35 교장몽, 36 교감몽)과 비밀(37 숨바꼭몽)은 1단계만 있음 → 도감 103, 106, 109. 나머지 빈 칸은 투명.
 
 그리는 방식 (GBA 에메랄드 느낌):
   모양(타원/캡슐/다각형) → 부위마다 3단 명암(빛은 왼쪽 위) + 1px 외곽선(몸색보다 어두운 색, 검정 아님)
@@ -927,6 +927,37 @@ def line_vice(st):
     return s
 
 
+# 37 숨바꼭몽 (비밀) — 지도에 없는 비밀 QR 에서만. 반투명 느낌의 청록 유령 몸 + 배에 물음표 + 한쪽 눈 윙크
+P37 = dict(body=ramp(.50, .38, .93), mark=hramp('3a1858', '6a3aa0', '9a6ad0', 'd8c0f8'), blush=hexc('ff9fbe'))
+QMARK = ['.###.', '#...#', '....#', '...#.', '..#..', '.....', '..#..']
+
+
+def line_secret(st):
+    s, c = Spr(), P37
+    b = c['body']
+    aura(s, 32, 36, 30, 26, c['mark'][3], 9)
+    # 유령 몸: 둥근 머리 + 물결 치는 아래 자락
+    s.part(U(ell(32, 34, 20, 21), rect(13, 34, 51, 57), ellb(17, F, 5, 6), ellb(32, F, 6, 7), ellb(47, F, 5, 6)), b, shine=True, bulge=True)
+    s.part(ell(11, 40, 4, 6, -35), b)                       # 팔 (숨바꼭질: 한 손은 눈을 가리는 척)
+    s.part(ell(52, 31, 4, 6, 30), b)
+    # 배의 물음표
+    for yy, row in enumerate(QMARK):
+        for xx, ch in enumerate(row):
+            if ch == '#':
+                s.px(30 + xx, 39 + yy, c['mark'][1])
+    s.eyes(26, 5, 3, 4)
+    s.pxs([(36, 28), (37, 27), (38, 27), (39, 28)], EYE)     # 오른쪽 눈은 윙크 (덮어쓰기)
+    for y in range(26, 30):
+        for x in range(37, 40):
+            if (x, y) not in ((36, 28), (37, 27), (38, 27), (39, 28)):
+                s.px(x, y, b[2])
+    s.mouth(34, b[0], 'cat')
+    s.blush(32, 9, c['blush'])
+    s.sparkle(6, 10, WHITE, big=True)
+    s.sparkle(57, 52, c['mark'][3])
+    return s
+
+
 # ================================================================ 과목 가족 공통 몸 + 선생님별 모티프
 # 같은 과목 = 같은 몸 구조(plan) + 같은 색 계열.  선생님마다 귀/눈/강조색/모티프가 다르다.
 
@@ -1818,8 +1849,9 @@ ROSTER = {
     # 전설
     35: T(subj='전설', name='교장', custom=lambda st: line_principal(st)),
     36: T(subj='전설', name='교감', custom=lambda st: line_vice(st)),
+    37: T(subj='비밀', name='숨바꼭', custom=lambda st: line_secret(st)),
 }
-LEGENDARY = {35, 36}
+LEGENDARY = {35, 36, 37}
 RARE = {20, 21, 22, 23, 24}
 
 
@@ -1873,7 +1905,7 @@ def placeholder(dex):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--count', type=int, default=108)
+    ap.add_argument('--count', type=int, default=111)
     ap.add_argument('-v', '--verbose', action='store_true', help='스프라이트별 색 수/키 출력')
     a = ap.parse_args()
     rows = (a.count + COLS - 1) // COLS

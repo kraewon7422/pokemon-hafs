@@ -49,22 +49,23 @@ const admin = client(ADMIN_TOK);
 const patchSetting = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOK}` }, body: JSON.stringify({ value: v }) });
 const booth = client(await login('booth1@staff.test'));
 const S = [];
-for (const e of ['022001', '022002', '022003', '023004']) S.push(client(await login(`${e}@test.local`)));
+await client(null).rpc('dev_create_account', { p_email: '021004' });   // 4th test student (21기) is created on demand
+for (const e of ['022001', '022002', '022003', '021004']) S.push(client(await login(`${e}@test.local`)));
 const anon = client(null);
 
 console.log('\n[0] setup');
 await admin.rpc('ensure_profile'); await booth.rpc('ensure_profile');
 await admin.select('settings?key=eq.festival_open'); // warm
-for (const sid of ['022001', '022002', '022003', '023004']) await admin.rpc('admin_unlink', { p_student_id: sid });
+for (const sid of ['022001', '022002', '022003', '021004']) await admin.rpc('admin_unlink', { p_student_id: sid });
 const NAMES = ['김민준', '이서연', '박지윤', '최도우'];
 const fresh0 = (await S[0].rpc('ensure_profile')).data;
 ok(fresh0?.needs_register === true, 'first login asks to register (no profile yet)', fresh0);
 const profs = [];
-for (const [i, sid] of ['022001', '022002', '022003', '023004'].entries())
+for (const [i, sid] of ['022001', '022002', '022003', '021004'].entries())
   profs.push((await S[i].rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: NAMES[i], p_show: true })).data);
 ok(profs[0]?.student_id === '022001' && profs[0]?.gen === 22 && profs[0]?.role === 'student' && profs[0]?.consented === true, 'student registers with number + name', profs[0]);
 ok(profs[0]?.display === '22기 김*준', 'display name is masked like 김*준', profs[0]?.display);
-ok(profs[3]?.student_id === '023004' && profs[3]?.gen === 23, 'gen parsed', profs[3]);
+ok(profs[3]?.student_id === '021004' && profs[3]?.gen === 21, 'gen parsed', profs[3]);
 const me = (await admin.rpc('ensure_profile')).data;
 ok(me?.role === 'admin', 'admin role from settings', me);
 const secrets = (await admin.select('qr_secrets?select=qr_id,token,manual_code&revoked_at=is.null')).data;
@@ -82,9 +83,9 @@ ok(an.status >= 400 || (Array.isArray(an.data) && an.data.length === 0), 'anon c
 ok((await S[0].rpc('booth_redeem', { p_payload: '022001' })).error === 'NOT_STAFF', 'student cannot call booth_redeem');
 ok((await S[0].rpc('admin_stats')).error === 'NOT_ADMIN', 'student cannot call admin_stats');
 ok((await anon.rpc('sync', { p_scans: [] })).error, 'anon cannot call sync');
-for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette', 'register_profile', 'admin_invite_staff', 'admin_list_staff'])
+for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette', 'register_profile', 'admin_invite_staff', 'admin_list_staff', 'link_number', 'send_inquiry', 'admin_list_requests', 'admin_decide_reset'])
   ok((await anon.rpc(fn, {})).error, `anon cannot call ${fn}`);
-for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name'])
+for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name', '_attach_google', '_kick_number', '_set_number_account', '_number_owner', '_school_sid'])
   ok((await S[0].rpc(fn, {})).error, `student cannot call internal ${fn}`);
 
 console.log('\n[2] scan / sync / lock');
@@ -200,14 +201,14 @@ r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: 'abcdef1234' }
 ok(r.data?.acks?.[0]?.status !== 'ok', 'fake rotating token rejected', r.data?.acks);
 r = await S[2].rpc('sync', { p_scans: [{ n: nonce(), q: '_', t: T.L01.manual_code }] });
 ok(r.data?.acks?.[0]?.status === 'invalid_token', 'manual code can NOT unlock the legendary QR', r.data?.acks);
-await booth.rpc('booth_redeem', { p_payload: '023004' });
+await booth.rpc('booth_redeem', { p_payload: '021004' });
 const rt2 = await booth.rpc('screen_rotating_token', { p_qr: 'L01' });
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: rt2.data.token }] });
 ok(r.data?.acks?.[0]?.status === 'daily_cap', 'legendary QR: once per day', r.data?.acks);
 const leg = (await S[3].rpc('sync')).data.state.collection.find(c => c.line_id >= 35);
-await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: 1 });
+await admin.rpc('admin_adjust_tickets', { p_student_id: '021004', p_delta: 1 });
 ok(leg && (await S[3].rpc('evolve', { p_line: leg.line_id })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
-await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: -1 });
+await admin.rpc('admin_adjust_tickets', { p_student_id: '021004', p_delta: -1 });
 ok((await booth.rpc('screen_feed')).data?.rotating?.some(x => x.id === 'L01'), 'TV shows the legendary QR while it is on');
 await legendOn(false);
 
@@ -265,7 +266,7 @@ const adminTok = ADMIN_TOK;
 await kill(false);
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }] });
 ok(r.data?.acks?.[0]?.status === 'closed', 'festival closed → scans held (closed)');
-ok((await booth.rpc('booth_redeem', { p_payload: '023004' })).error === 'FESTIVAL_CLOSED', 'festival closed → booth stops');
+ok((await booth.rpc('booth_redeem', { p_payload: '021004' })).error === 'FESTIVAL_CLOSED', 'festival closed → booth stops');
 await kill(true);
 const stats = await admin.rpc('admin_stats');
 ok(stats.data?.students >= 4 && stats.data.qrs.length >= 25, 'admin stats work', { students: stats.data?.students });
@@ -333,7 +334,7 @@ S[2] = client(await login('022003@test.local'));
 await setS('festival_close_at', new Date(Date.now() - 60000).toISOString());
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }] });
 ok(r.data?.acks?.[0]?.status === 'closed' && r.data.state.rules.festival_ended === true, 'past festival_close_at → closed + ended flag', r.data?.acks);
-ok((await booth.rpc('booth_redeem', { p_payload: '023004' })).error === 'FESTIVAL_CLOSED', 'booth stops after close time');
+ok((await booth.rpc('booth_redeem', { p_payload: '021004' })).error === 'FESTIVAL_CLOSED', 'booth stops after close time');
 await setS('festival_close_at', null);
 
 console.log('\n[17] open login: register screen, 학번 code accounts, dev accounts');
@@ -354,10 +355,15 @@ console.log('\n[17] open login: register screen, 학번 code accounts, dev accou
   const t = await fresh('reg2@test.local');
   ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '022001', p_name: '가짜' })).error === 'STUDENT_ID_TAKEN', 'a taken student number is refused');
   ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '12', p_name: '가짜' })).error === 'BAD_STUDENT_ID', 'bad student number refused');
+  ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '023777', p_name: '미래' })).error === 'BAD_GEN', 'future 기수 (23기) refused');
+  ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '019777', p_name: '졸업' })).error === 'BAD_GEN', 'past 기수 (19기) refused');
+  ok((await anon.rpc('create_code_account', { p_student_id: '024777' })).error === 'BAD_GEN', 'no code account for a future 기수');
+  ok((await admin.rpc('admin_make_login_codes', { p_ids: ['025001'] })).error === 'BAD_GEN', 'admin codes refuse a future 기수');
+  ok((await booth.rpc('screen_feed')).data?.gens?.every(x => [20, 21, 22].includes(x.gen)), 'TV 기수 대항전 shows only 20~22기');
   ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '022777', p_name: '<b>' })).error === 'BAD_NAME', 'bad name refused');
   ok((await t.rpc('register_profile', { p_kind: 'teacher', p_student_id: '', p_name: '가짜' })).error === 'BAD_KIND', 'unknown kind refused');
 
-  const sid = '099' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+  const sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
   const cc = (await anon.rpc('create_code_account', { p_student_id: sid })).data;
   ok(cc?.id === sid && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(cc.code), 'student number alone creates a code account (code shown once)', cc);
   ok((await anon.rpc('create_code_account', { p_student_id: sid })).error === 'CODE_ACCOUNT_EXISTS', 'second request for the same number is refused');
@@ -398,6 +404,102 @@ console.log('\n[18] staff invite (admin page → 운영진)');
   ok(!r.data?.some(x => x.email === em), 'remove staff', r.data);
   const set = (await admin.select('settings?key=in.(admin_emails,booth_emails)&select=key,value')).data;
   ok(set?.find(x => x.key === 'admin_emails')?.value.includes('admin@staff.test') && set.find(x => x.key === 'booth_emails')?.value.includes('booth1@staff.test'), 'original staff lists intact', set);
+}
+
+console.log('\n[19] 고유번호 계정: 하나의 번호 = 하나의 계정, 구글 계정 여러 개 연결');
+const pwLogin = async (email, password) => (await (await fetch(`${URL_}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })).json()).access_token;
+const fakeGoogle = async (gmail) => { const nm = 'g' + nonce(); const d = (await anon.rpc('dev_fake_google', { p_name: nm, p_google_email: gmail })).data; return client(await login(d.email)); };
+const rnd3 = () => String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+const sidA = '020' + rnd3(); let sidB = '021' + rnd3(); while (sidB === sidA) sidB = '021' + rnd3();
+let NA, NB;
+{
+  ok((await anon.rpc('create_number_account', { p_student_id: '023111', p_password: 'abcdef' })).error === 'BAD_GEN', 'number account: future 기수 refused');
+  ok((await anon.rpc('create_number_account', { p_student_id: sidA, p_password: '123' })).error === 'BAD_PASSWORD', 'password needs 6+ characters');
+  const c = (await anon.rpc('create_number_account', { p_student_id: sidA, p_password: 'pw1234' })).data;
+  ok(c?.email === `${sidA}@code.local`, 'student number + own password creates the account', c);
+  ok((await anon.rpc('create_number_account', { p_student_id: sidA, p_password: 'other1' })).error === 'CODE_ACCOUNT_EXISTS', 'same number again → existing account (wrong password)');
+  NA = client(await pwLogin(`${sidA}@code.local`, 'pw1234'));
+  const need = (await NA.rpc('ensure_profile')).data;
+  ok(need?.needs_register && need.code_id === sidA && need.google === false, 'number login asks only for a name', need);
+  r = await NA.rpc('register_profile', { p_kind: 'guest', p_student_id: '', p_name: '번호학생' });
+  ok(r.data?.student_id === sidA && r.data.in_ranking === true, 'number account registers as that student', r.data);
+
+  const G1 = await fakeGoogle('someone' + nonce() + '@gmail.com');
+  const g1 = (await G1.rpc('ensure_profile')).data;
+  ok(g1?.needs_register && g1.google === true && !g1.school_id, 'google login → register screen (google, no school id)', g1);
+  ok((await G1.rpc('register_profile', { p_kind: 'student', p_student_id: sidA, p_name: 'x' })).error === 'USE_NUMBER_LOGIN', 'google student must use number + password');
+  r = await G1.rpc('link_number', { p_student_id: sidA, p_password: 'wrong1' });
+  ok(r.data?.error === 'WRONG_PASSWORD' && !r.data.school, 'wrong password → not linked', r.data);
+  r = await G1.rpc('link_number', { p_student_id: sidA, p_password: 'pw1234', p_name: '무시됨' });
+  ok(r.data?.mode === 'linked' && r.data.email === `${sidA}@code.local`, 'another google account links to the same number', r.data);
+  const again = client(await pwLogin(`${sidA}@code.local`, 'pw1234'));
+  ok((await again.rpc('ensure_profile')).data?.name === '번호학생', 'same game account (name kept)');
+
+  const G2 = await fakeGoogle('new' + nonce() + '@gmail.com');
+  r = await G2.rpc('link_number', { p_student_id: sidB, p_password: 'pwpwpw', p_name: '새학생' });
+  ok(r.data?.mode === 'new', 'google + unused number → new number account', r.data);
+  const g2p = (await G2.rpc('ensure_profile')).data;
+  ok(g2p?.student_id === sidB && g2p.name === '새학생', 'google session continues as that student', g2p);
+  NB = client(await pwLogin(`${sidB}@code.local`, 'pwpwpw'));
+  ok((await NB.rpc('ensure_profile')).data?.student_id === sidB, 'that number also works with number + password');
+  ok((await G2.rpc('link_number', { p_student_id: sidA, p_password: 'pw1234' })).error === 'ALREADY_REGISTERED', 'a registered account cannot link another number');
+
+  // 학교 계정 (이메일 속 학번) = 그 번호의 주인 → 비밀번호를 바로 다시 정할 수 있음
+  const G3 = await fakeGoogle(`${sidA}@test.local`);
+  const g3 = (await G3.rpc('ensure_profile')).data;
+  ok(g3?.school_id === sidA, 'school google account → student number prefilled', g3);
+  const G4 = await fakeGoogle('other' + nonce() + '@gmail.com');
+  ok((await G4.rpc('link_number', { p_student_id: sidA, p_password: 'hack12', p_reset: true })).error === 'NOT_YOUR_NUMBER', 'only the school account of that number can reset');
+  r = await G3.rpc('link_number', { p_student_id: sidA, p_password: 'school1', p_reset: true });
+  ok(r.data?.mode === 'linked', 'school account resets the password and links', r.data);
+  ok(!(await pwLogin(`${sidA}@code.local`, 'pw1234')) && !!(await pwLogin(`${sidA}@code.local`, 'school1')), 'old password stops working, new one works');
+
+  console.log('\n[20] 비밀번호 초기화 요청 → 운영자 허용/거절');
+  ok((await anon.rpc('request_password_reset', { p_student_id: '022777', p_password: 'abcdef', p_name: '없음' })).error === 'NO_ACCOUNT', 'no account → nothing to reset');
+  r = await anon.rpc('request_password_reset', { p_student_id: sidA, p_password: 'req123', p_name: '번호학생', p_note: '비밀번호를 잊었어요' });
+  ok(r.data?.ok, 'reset request from the login page', r);
+  ok((await S[0].rpc('admin_list_requests')).error === 'NOT_ADMIN', 'students cannot see requests');
+  let lst = (await admin.rpc('admin_list_requests')).data;
+  let rq = lst?.resets?.find(x => x.student_id === sidA && x.status === 'pending');
+  ok(rq && rq.account_name === '번호학생' && rq.name === '번호학생' && rq.google_links === 1, 'admin sees the request + account name + linked google count', rq);
+  lst = (await admin.rpc('admin_decide_reset', { p_id: rq.id, p_approve: true })).data;
+  ok(lst?.resets?.find(x => x.id === rq.id)?.status === 'approved', 'admin approves');
+  ok(!!(await pwLogin(`${sidA}@code.local`, 'req123')) && !(await pwLogin(`${sidA}@code.local`, 'school1')), 'approved: the requested password works');
+  ok((await admin.rpc('admin_list_requests')).data?.resets?.find(x => x.id === rq.id)?.google_links === 0, 'approved: linked google accounts released');
+  ok((await admin.rpc('admin_decide_reset', { p_id: rq.id, p_approve: true })).error === 'NOT_FOUND', 'cannot decide twice');
+  await anon.rpc('request_password_reset', { p_student_id: sidA, p_password: 'deny12', p_name: '장난' });
+  rq = (await admin.rpc('admin_list_requests')).data.resets.find(x => x.student_id === sidA && x.status === 'pending');
+  await admin.rpc('admin_decide_reset', { p_id: rq.id, p_approve: false });
+  ok(!(await pwLogin(`${sidA}@code.local`, 'deny12')) && !!(await pwLogin(`${sidA}@code.local`, 'req123')), 'denied: password unchanged');
+
+  console.log('\n[21] 문의함');
+  ok((await anon.rpc('send_inquiry', { p_body: 'hi there' })).error, 'anon cannot send inquiries');
+  ok((await S[0].rpc('send_inquiry', { p_body: ' ' })).error === 'BAD_INQUIRY', 'empty inquiry refused');
+  const body = '부스 줄이 너무 길어요 ' + nonce();
+  ok((await S[0].rpc('send_inquiry', { p_body: body })).data?.ok, 'student sends an inquiry');
+  const iq = (await admin.rpc('admin_list_requests')).data?.inquiries?.find(x => x.body === body);
+  ok(iq?.student_id === '022001' && iq.status === 'open', 'admin sees it with the student number', iq);
+  ok((await admin.rpc('admin_set_inquiry', { p_id: iq.id, p_done: true })).data?.inquiries?.find(x => x.id === iq.id)?.status === 'done', 'admin marks it done');
+
+  console.log('\n[22] easter eggs: secret QR + roulette 777');
+  ok(T.S01, 'secret QR S01 exists');
+  const cat = (await NB.select('qr_points?id=eq.S01&select=id,visible_on_map')).data?.[0];
+  ok(!cat || cat.visible_on_map === false, 'secret QR is not on the map (not even in the catalog)', cat);
+  const ln = (await NB.select('lines?id=eq.37&select=id,secret,max_stage')).data?.[0];
+  ok(ln?.secret === true && ln.max_stage === 1, 'secret monster line is flagged', ln);
+  const sn = nonce();
+  r = await NB.rpc('sync', { p_scans: [{ n: sn, q: 'S01', t: T.S01.token, at: new Date().toISOString() }] });
+  ok(r.data?.acks?.[0]?.status === 'ok', 'scan the secret QR', r.data?.acks);
+  const tk = r.data.state.tickets.filter(t => t.status === 'pending');
+  r = await booth.rpc('booth_redeem', { p_payload: bag(sidB, tk.map(t => ({ n: t.nonce, q: t.qr_id, t: t.token }))) });
+  ok(r.data?.results?.some(x => x.line_id === 37), 'secret QR always gives the secret monster', r.data);
+
+  await setS('roulette_every_min', 0); await setS('roulette_odds', [[0, 100]]); await setS('roulette_777_per_mille', 1000);
+  r = await NB.rpc('spin_roulette');
+  ok(r.data?.jackpot === true && r.data.prize === 0 && r.data.titles?.includes('럭키 세븐'), '777 turns a miss into the 럭키 세븐 title', r);
+  ok((await NB.rpc('ensure_profile')).data?.titles?.includes('럭키 세븐'), 'title stays on the profile');
+  await setS('roulette_777_per_mille', 10); await setS('roulette_every_min', 5); await setS('roulette_odds', [[0, 60], [1, 30], [3, 8], [5, 2]]);
+  await admin.rpc('admin_unlink', { p_student_id: sidA }); await admin.rpc('admin_unlink', { p_student_id: sidB });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

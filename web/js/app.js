@@ -46,6 +46,16 @@ const bag = () => [
 ];
 const evolvable = () => collection().filter((c) => c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id));
 const isWithdrawn = (line) => (S.snap?.rules?.withdrawn || []).includes(line) || !!lineOf(line)?.withdrawn;
+const isSecret = (line) => !!lineOf(line)?.secret;
+// 도감 완성 = 비밀 몬스터를 뺀 모든 몬스터 (비공개 계열 제외)
+function dexStats() {
+  const reached = (sp) => (owned(sp.line_id)?.stage || 0) >= sp.stage;
+  const main = S.catalog.species.filter((sp) => !isSecret(sp.line_id) && !isWithdrawn(sp.line_id));
+  const found = main.filter(reached).length;
+  return { found, total: main.length, complete: main.length > 0 && found === main.length,
+           secret: collection().some((c) => isSecret(c.line_id)) };
+}
+const titlesOf = (p, d = dexStats()) => [...(p.titles || []), d.complete && '도감 마스터', d.secret && '비밀 탐험가'].filter(Boolean);
 const vibrate = (p) => { try { navigator.vibrate?.(p); } catch { /* iOS: none */ } };
 
 // ───────────────────────── boot ─────────────────────────
@@ -156,7 +166,7 @@ function renderRetry(msg) {
 
 async function loadCatalog() {
   const [lines, species, qrs] = await Promise.all([
-    sb.from('lines').select('id,teacher,subject,rarity,active,max_stage,withdrawn').order('id'),
+    sb.from('lines').select('id,teacher,subject,rarity,active,max_stage,withdrawn,secret').order('id'),
     sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight').order('id'),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
   ]);
@@ -252,7 +262,7 @@ const TABS = [['home', '홈'], ['map', '지도'], ['scan', 'QR 찍기'], ['dex',
 
 function renderShell() {
   app().replaceChildren(
-    h('header.topbar', h('h1', CONFIG.GAME_TITLE),
+    h('header.topbar', h('h1', { onclick: logoTap }, CONFIG.GAME_TITLE),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         h('div.status#status', { role: 'status' }),
         h('button.gear', { 'aria-label': '설정', onclick: openSettings, html: ICON.gear }))),
@@ -265,6 +275,23 @@ function renderShell() {
   history.replaceState({ tab: S.tab }, '');
   renderStatus();
   go(S.tab, { push: false });
+}
+
+// 이스터에그 1: 제목을 빠르게 7번 누르면 몬스터가 화면을 가로질러 달려간다
+let logoTaps = [];
+function logoTap() {
+  const now = Date.now();
+  logoTaps = [...logoTaps.filter((t) => now - t < 2500), now];
+  if (logoTaps.length < 7) return;
+  logoTaps = [];
+  const mine = collection().filter((c) => !isWithdrawn(c.line_id));
+  const pick = mine.length ? mine[Math.floor(Math.random() * mine.length)] : null;
+  const dex = pick ? dexOf(pick.line_id, pick.stage) : S.catalog.species[Math.floor(Math.random() * S.catalog.species.length)].id;
+  const runner = h('div.parade', { 'aria-hidden': 'true' }, spriteCanvas(dex, 96, pick ? 'normal' : 'silhouette'));
+  document.body.append(runner);
+  sfx.catch(); vibrate([30, 40, 30, 40, 30]);
+  toast(pick ? `${speciesOf(dex)?.name || '몬스터'}이(가) 신나서 달려간다!` : '정체를 알 수 없는 그림자가 지나갔다…!');
+  setTimeout(() => runner.remove(), 3200);
 }
 
 function go(tab, { push = true } = {}) {
@@ -303,6 +330,8 @@ function renderTab() {
   const view = { home: viewHome, map: viewMap, dex: viewDex, rank: viewRank }[S.tab]();
   main.replaceChildren(...[view].flat().filter((x) => x != null && x !== false));
   renderStatus();
+  // monsters can also arrive without a catch scene (admin grant, another phone) → check 도감 완성 on the home tab
+  if (S.tab === 'home' && !S.overlay && !celebrating && dexStats().complete) maybeDexComplete();
 }
 
 // ───────────────────────── 홈 ─────────────────────────
@@ -325,7 +354,9 @@ function nextAction() {
 function viewHome() {
   const p = S.snap.profile;
   const R = rules();
-  const total = S.catalog.species.length;
+  const D = dexStats();
+  const total = D.total;
+  const titles = titlesOf(p, D);
   const partner = [...collection()].sort((a, b) => b.stage - a.stage || new Date(b.first_caught_at) - new Date(a.first_caught_at))[0];
   const items = bag();
   const visited = new Set((S.snap.tickets || []).map((t) => t.qr_id));
@@ -342,7 +373,7 @@ function viewHome() {
     R.notice && h('div.box.notice-box', pix('mega'), String(R.notice)),
     R.festival_ended && h('div.box.ended-box',
       h('div.big', pix('spark', 'l'), '축제 끝! 수고했어요'),
-      h('div', p.in_ranking === false ? '선생님·손님 계정은 랭킹에서 제외돼요.' : `최종 순위 ${p.rank ? '#' + p.rank : '-'} · 점수 ${p.score} · 도감 ${p.dex_count}/${total}`),
+      h('div', p.in_ranking === false ? '선생님·손님 계정은 랭킹에서 제외돼요.' : `최종 순위 ${p.rank ? '#' + p.rank : '-'} · 점수 ${p.score} · 도감 ${D.found}/${total}`),
       R.prize_note && h('div', String(R.prize_note))),
     !S.snap.festival_open && !R.festival_ended && h('div.box', pix('pause'), '지금은 게임 운영 시간이 아니에요. 찍은 QR은 저장해 두었다가 다시 열리면 보내요.'),
     (R.legend_schedule || []).length > 0 && !R.festival_ended && h('div.box.legend-box', pix('bolt', 'l'),
@@ -353,14 +384,15 @@ function viewHome() {
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
 
-    h('section.trainer', { 'aria-label': '트레이너 카드' },
+    h(`section.trainer${D.complete ? '.gold-card' : ''}`, { 'aria-label': '트레이너 카드' },
       h('div.idno', h('span', 'TRAINER CARD'), h('span', p.student_id.startsWith('g:') ? 'GUEST' : `ID No. ${p.student_id}`)),
-      h('div', h('div.name', p.name || '트레이너'), h('div', { style: { fontSize: '13px' } }, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너')),
+      h('div', h('div.name', p.name || '트레이너'), h('div', { style: { fontSize: '13px' } }, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너'),
+        titles.length ? h('div.titles', titles.map((t) => h('span.title-chip', t))) : null),
       h('div.partner', partner ? spriteCanvas(dexOf(partner.line_id, partner.stage), 88) : spriteCanvas(1, 88, 'silhouette')),
       h('div.stats',
-        h('span', '도감', h('b', `${p.dex_count}/${total}`)), h('span', '점수', h('b', p.score)),
+        h('span', '도감', h('b', `${D.found}/${total}`)), h('span', '점수', h('b', p.score)),
         h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화권', h('b', p.evo_tickets))),
-      h('div.badges', { title: '최종 진화시킨 쌤' }, S.catalog.lines.map((l) => {
+      h('div.badges', { title: '최종 진화시킨 쌤' }, S.catalog.lines.filter((l) => !l.secret).map((l) => {
         const done = (owned(l.id)?.stage || 0) >= (l.max_stage ?? 3);
         return h(`i${done ? '.on.t-' + l.subject : ''}`, { title: done ? `${l.subject} 완성` : '?' });
       }))),
@@ -427,7 +459,7 @@ async function spinRoulette() {
     res = await rpc('spin_roulette', {}, { retries: 0 });
   } catch (e) { S.spinning = false; sfx.error(); toast(errorText(e.message)); sync({ force: true }); return; }
   S.snap.roulette = res.roulette;
-  S.snap.profile = { ...S.snap.profile, evo_tickets: res.evo_tickets };
+  S.snap.profile = { ...S.snap.profile, evo_tickets: res.evo_tickets, titles: res.titles || S.snap.profile.titles };
   await kv.set('snap', S.snap);
   // the prize is already decided; the reel runs a fixed time so the wait never hints at the result
   const vals = (res.roulette.odds || []).map(([n]) => n);
@@ -448,8 +480,17 @@ async function spinRoulette() {
     }
   }
   cells.forEach((c, j) => c.classList.toggle('on', j === target));
-  if (res.prize > 0) { sfx.correct(); vibrate([40, 30, 80]); } else sfx.fail();
-  await typeText(text, res.prize > 0 ? `진화권 ${res.prize}장을 받았다! (지금 ${res.evo_tickets}장)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
+  if (res.jackpot) {                     // 이스터에그 5: 아주 드물게 꽝 대신 777
+    await sleep(reducedMotion() ? 0 : 500);
+    cells[target].textContent = '777';
+    cells[target].classList.add('jackpot');
+    S.overlay.querySelector('.scene')?.classList.add('golden');
+    sfx.catch(); vibrate([70, 50, 70, 50, 70, 50, 200]);
+    await typeText(text, '7 7 7 !!! 럭키 세븐!\n아주 드문 행운이에요. 칭호 「럭키 세븐」을 얻었다!');
+  } else {
+    if (res.prize > 0) { sfx.correct(); vibrate([40, 30, 80]); } else sfx.fail();
+    await typeText(text, res.prize > 0 ? `진화권 ${res.prize}장을 받았다! (지금 ${res.evo_tickets}장)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
+  }
   S.overlay.dataset.locked = '0';
   text.append(h('button.btn.big.primary', { style: { marginTop: '10px' }, onclick: () => closeOverlay() }, '확인'));
   S.spinning = false;
@@ -476,10 +517,54 @@ function openSettings() {
       h('button.btn', { onclick: (e) => { setMuted(!isMuted()); e.currentTarget.replaceChildren(...soundLabel()); } },
         ...soundLabel()),
       h('button.btn', { onclick: () => showOnboarding(true) }, pix('book'), '게임 방법 다시 보기'),
+      h('button.btn', { onclick: inquirySheet }, pix('memo'), '운영진에게 문의하기'),
+      /^[0-9]{6}$/.test(p.student_id) && h('button.btn', { onclick: passwordSheet }, pix('ticket'), '고유번호 비밀번호 바꾸기'),
       !isStandalone() && h('button.btn', { onclick: showInstall }, pix('phone'), '앱으로 설치하기'),
       h('button.btn', { onclick: confirmLogout }, pix('door'), '로그아웃')),
+    // 운영진: 운영자 페이지 (구글 운영진 계정만 들어갈 수 있음)
+    h('a.btn.small.ghost', { href: 'admin.html', target: '_blank', rel: 'noopener' }, pix('school'), '운영진 전용: 운영자 페이지 로그인'),
     h('small', { style: { textAlign: 'center' } }, `${p.student_id.replace(/^g:/, '')} · 버전 ${CONFIG.VERSION}`),
   ]);
+}
+
+// 불편한 점·문의 → 운영자 페이지 '요청' 탭
+function inquirySheet() {
+  const body = h('textarea.inp', { rows: 5, maxlength: 1000, placeholder: '예: QR이 안 찍혀요 / 부스 위치를 모르겠어요 / 버그 제보' });
+  const err = h('div.err', { role: 'alert' });
+  const send = h('button.btn.big.primary', { type: 'submit' }, '보내기');
+  closeOverlay({ replacing: true });
+  sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '운영진에게 문의하기'),
+    h('form.stack.box', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        send.disabled = true;
+        try { await rpc('send_inquiry', { p_body: body.value }, { retries: 0 }); closeOverlay(); toast('보냈어요! 운영진이 확인할게요.'); }
+        catch (x) { err.textContent = errorText(x.message); send.disabled = false; }
+      },
+    }, h('small', '불편한 점, 궁금한 점, 버그를 적어 주세요. 고유번호와 이름이 같이 전달돼요.'), body, err, send)]);
+}
+
+// 고유번호 계정의 비밀번호 바꾸기 (구글로 연결해 들어온 경우도 같은 계정)
+function passwordSheet() {
+  const pw = h('input', { type: 'password', placeholder: '새 비밀번호 (6자 이상)', autocomplete: 'new-password', maxlength: 72 });
+  const pw2 = h('input', { type: 'password', placeholder: '한 번 더', autocomplete: 'new-password', maxlength: 72 });
+  const err = h('div.err', { role: 'alert' });
+  const save = h('button.btn.big.primary', { type: 'submit' }, '바꾸기');
+  closeOverlay({ replacing: true });
+  sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '비밀번호 바꾸기'),
+    h('form.stack.box', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        if (pw.value.length < 6) { err.textContent = '6자 이상으로 정해 주세요.'; return; }
+        if (pw.value !== pw2.value) { err.textContent = '두 칸이 서로 달라요.'; return; }
+        save.disabled = true;
+        const { error } = await sb.auth.updateUser({ password: pw.value });
+        if (error) { err.textContent = '바꾸지 못했어요. 잠시 후 다시 해 주세요.'; save.disabled = false; return; }
+        closeOverlay();
+        toast('비밀번호를 바꿨어요. 다음에 고유번호로 로그인할 때 새 비밀번호를 쓰세요.', 4000);
+      },
+    }, h('small', `고유번호 ${S.snap.profile.student_id}의 비밀번호예요. 구글로 들어올 때는 필요 없어요.`), pw, pw2, err, save)]);
 }
 
 async function setPublic(show) {
@@ -605,15 +690,16 @@ const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour: '2-di
 
 function viewDex() {
   const { lines, species } = S.catalog;
-  const subjects = [...new Set(lines.map((l) => l.subject))];
+  const subjects = [...new Set(lines.filter((l) => !l.secret).map((l) => l.subject))];
   const reached = (sp) => (owned(sp.line_id)?.stage || 0) >= sp.stage;
-  const found = species.filter(reached).length;
-  const list = species.filter((sp) => S.dexFilter === 'all' || lineOf(sp.line_id)?.subject === S.dexFilter);
+  const { found, total } = dexStats();
+  const list = species.filter((sp) => (S.dexFilter === 'all' || lineOf(sp.line_id)?.subject === S.dexFilter)
+    && (!isSecret(sp.line_id) || S.dexFilter === 'all'));
   const p = S.snap.profile;
   return [
     h('div.box.dex-head',
-      h('div.banner', h('b', '몬스터 도감'), h('span', `발견 ${found} / ${species.length}`)),
-      h('div.bar', h('i', { style: { width: `${(found / species.length) * 100}%` } })),
+      h('div.banner', h('b', '몬스터 도감'), h('span', `발견 ${found} / ${total}`)),
+      h('div.bar', h('i', { style: { width: `${(found / total) * 100}%` } })),
       h('div.banner', { style: { fontSize: '13px' } }, h('span', h('i.ticket-icon'), ` 진화권 × ${p.evo_tickets}`),
         h('span', evolvable().length ? '몬스터를 누르면 진화시킬 수 있어요' : ''))),
     h('div.filters', { role: 'toolbar', 'aria-label': '타입' },
@@ -628,9 +714,9 @@ function viewDex() {
       const canEvo = ok && c.stage === sp.stage && sp.stage < maxStage(sp.line_id) && p.evo_tickets > 0;
       return h(`button.dex-cell${ok ? '.caught' : '.unknown'}`, {
         'aria-label': ok ? sp.name : '미발견',
-        onclick: () => (ok ? openDetail(sp) : toast('아직 발견하지 못했어요. 학교 곳곳을 찾아보세요!')),
+        onclick: () => (ok ? openDetail(sp) : toast(isSecret(sp.line_id) ? '지도에 없는 곳에 숨어 있다는 소문이… 학교를 구석구석 찾아보세요!' : '아직 발견하지 못했어요. 학교 곳곳을 찾아보세요!')),
       },
-      h('span.no', dexNo(sp)),
+      h('span.no', isSecret(sp.line_id) ? 'No.???' : dexNo(sp)),
       spriteCanvas(sp.id, 72, ok ? 'normal' : 'silhouette'),
       h('span.nm', ok ? sp.name : '???'),
       canEvo && h('span.evo-dot', '진화'));
@@ -700,6 +786,7 @@ async function doEvolve(c) {
   await kv.set('snap', S.snap);
   await evolutionScene(before, res.success ? res.species_id : before + 1, res.success, col);
   sync({ force: true });
+  if (res.success) maybeDexComplete();
 }
 
 async function evolutionScene(fromDex, toDex, success, col) {
@@ -892,6 +979,33 @@ async function openBag() {
 
 let celebrating = false;
 
+// 이스터에그 4: 정각(00분)이나 축제 마감 1분 전에 몬스터를 받으면 황금빛 연출
+function luckyMoment(now = new Date()) {
+  const close = rules().festival_close_at ? new Date(rules().festival_close_at) : null;
+  if (close && close - now > 0 && close - now <= 60_000) return '마지막 1분의 기적';
+  if (now.getMinutes() === 0) return '정각의 행운';
+  return null;
+}
+
+// 이스터에그 3: 도감 완성 → 한 번만 특별 화면 (트레이너 카드는 계속 금테)
+let dexDoneBusy = false;
+async function maybeDexComplete() {
+  if (dexDoneBusy || !dexStats().complete) return false;
+  dexDoneBusy = true;
+  if (await kv.get('dexDone')) return false;       // shown once per device (flag stays → never again)
+  await kv.set('dexDone', true);
+  const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
+  const ov = overlay(h('div.stage', h('div.scene.golden', h('div.rays'), h('span.spr', spriteCanvas(dexOf(35, 1), 200))), text), 'full');
+  sfx.catch(); vibrate([80, 60, 80, 60, 200]);
+  await typeText(text, `도감 완성!!\n${S.snap.profile.name || '트레이너'}, 학교의 모든 몬스터를 만났어요.\n칭호 「도감 마스터」를 얻었다! 트레이너 카드가 금빛으로 바뀌었어요.`);
+  text.append(h('span.more', '▼'));
+  await tapToContinue(ov);
+  closeOverlay();
+  renderTab();
+  return true;
+}
+
+
 async function celebrate(tickets, prevLines) {
   if (celebrating) return;
   celebrating = true;
@@ -902,15 +1016,18 @@ async function celebrate(tickets, prevLines) {
     const isNew = !prevLines.has(sp.line_id);
     prevLines.add(sp.line_id);
     const rare = lineOf(sp.line_id)?.rarity !== 'common';
+    const secret = isSecret(sp.line_id);
+    const lucky = luckyMoment();
     const canvas = spriteCanvas(sp.id, 200, 'white');
-    const scene = h('div.scene', h('div.rays'), h('span.spr', canvas, isNew && h('span.new-badge', 'NEW!')));
+    const scene = h(`div.scene${lucky ? '.golden' : ''}`, h('div.rays'), h('span.spr', canvas, isNew && h('span.new-badge', 'NEW!')));
     const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
     const ov = overlay(h('div.stage', scene, text), 'full');
     await sleep(reducedMotion() ? 0 : 500);
     scene.classList.add('flash');
     paint(canvas, sp.id, 200);
     sfx.catch(); vibrate([80, 60, 160]);
-    await typeText(text, `축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!${rare ? ' ★희귀★' : ''}\n(${t.qr_name})`);
+    if (lucky) sfx.correct();
+    await typeText(text, `${secret ? '★비밀 몬스터 발견★\n' : ''}축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!${rare && !secret ? ' ★희귀★' : ''}\n(${t.qr_name})${lucky ? `\n✦ ${lucky} ✦` : ''}`);
     text.append(h('span.more', '▼'));
     S.celebrated.add(t.nonce);
     await kv.set('celebrated', [...S.celebrated]);
@@ -919,6 +1036,7 @@ async function celebrate(tickets, prevLines) {
   }
   celebrating = false;
   renderTab();
+  if (await maybeDexComplete()) return;
   if (S.snap.quizzes?.length) openQuiz();
 }
 
@@ -1110,42 +1228,75 @@ function renderLogin(error = '') {
   renderGoogleButton(gbox, (m) => { err.textContent = m; }).catch((e) => { err.textContent = e.message; });
 }
 
-// 학번 로그인: 처음이면 서버가 코드를 만들어 한 번만 보여 주고, 이미 있으면 코드를 입력받는다
+// 고유번호 로그인 (구글 없이): 번호 + 내가 정한 비밀번호. 처음 쓰는 번호면 이 비밀번호로 계정이 만들어진다 (0011)
 function codeLogin(err) {
-  const cid = h('input', { placeholder: '학번 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, autocomplete: 'username' });
-  const ccode = h('input', { placeholder: '코드 (예: ABCD-EFGH)', autocomplete: 'current-password', autocapitalize: 'characters' });
-  const codeRow = h('div.stack', { hidden: true }, ccode, h('small', '처음 학번을 넣었을 때 받은 코드를 입력하세요. 잊었다면 메인 부스에 문의하세요.'));
-  const shown = h('div');
-  const go = h('button.btn', { type: 'submit' }, '다음');
+  const cid = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, autocomplete: 'username' });
+  const pw = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'current-password', maxlength: 72 });
+  const help = h('div');
+  const go = h('button.btn', { type: 'submit' }, '로그인 (처음이면 계정 만들기)');
   const sid = () => cid.value.replace(/\D/g, '').padStart(6, '0');
-  const loginWith = async (code) => {
-    try { await devLogin(`${sid()}@code.local`, code.replace(/[\s-]/g, '').toUpperCase()); }
-    catch { err.textContent = '코드가 맞지 않아요. 대문자·숫자 8자리를 다시 확인해 주세요.'; }
-  };
   const form = h('form.stack', {
     onsubmit: async (e) => {
       e.preventDefault();
       err.textContent = '';
-      if (!/^[0-9]{5,6}$/.test(cid.value.trim())) { err.textContent = '학번 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
-      if (!codeRow.hidden) return loginWith(ccode.value);
+      help.replaceChildren();
+      if (!/^[0-9]{5,6}$/.test(cid.value.trim())) { err.textContent = '고유번호 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
+      if (pw.value.length < 6) { err.textContent = '비밀번호는 6자 이상이에요.'; return; }
+      const email = `${sid()}@code.local`;
       go.disabled = true;
       try {
-        const res = await rpc('create_code_account', { p_student_id: sid() }, { retries: 0 });
-        cid.disabled = true;
-        go.hidden = true;
-        shown.replaceChildren(h('div.box.code-once',
-          h('div', '내 로그인 코드'),
-          h('div.code-big', res.code),
-          h('small', '이 코드는 지금 한 번만 보여 줘요. 다른 폰에서 로그인할 때 필요하니 꼭 적어 두거나 캡처해 두세요.'),
-          h('button.btn.primary', { type: 'button', onclick: () => loginWith(res.code) }, '이 코드로 시작하기')));
-      } catch (x) {
-        if (x.message === 'CODE_ACCOUNT_EXISTS') { codeRow.hidden = false; go.textContent = '코드로 로그인'; ccode.focus(); }
-        else err.textContent = errorText(x.message);
+        try { return await devLogin(email, pw.value); } catch { /* not yet / wrong → below */ }
+        // 예전에 받은 로그인 코드(ABCD-EFGH)도 그대로 비밀번호로 쓸 수 있다
+        const code = pw.value.replace(/[\s-]/g, '').toUpperCase();
+        if (/^[A-Z2-9]{8}$/.test(code) && code !== pw.value) { try { return await devLogin(email, code); } catch { /* no */ } }
+        try {
+          await rpc('create_number_account', { p_student_id: sid(), p_password: pw.value }, { retries: 0 });
+          await devLogin(email, pw.value);
+        } catch (x) {
+          if (x.message === 'CODE_ACCOUNT_EXISTS') {
+            err.textContent = '비밀번호가 맞지 않아요.';
+            help.replaceChildren(h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet(sid()) }, '비밀번호를 모르겠어요'));
+          } else err.textContent = errorText(x.message);
+        }
       } finally { go.disabled = false; }
     },
-  }, cid, codeRow, go, shown);
-  return h('details.code-login', h('summary', '구글 로그인이 안 되면: 학번으로 로그인'), form);
+  }, cid, pw, go, help,
+  h('small', '처음 쓰는 번호면 지금 적은 비밀번호로 계정이 만들어져요. 구글로 들어와도 같은 고유번호면 같은 계정이에요.'));
+  return h('details.code-login', h('summary', '구글 없이: 고유번호 + 비밀번호로 로그인'), form);
 }
+
+// 비밀번호를 모르겠어요 → 운영자에게 초기화 요청 (허용되면 여기서 고른 새 비밀번호가 된다)
+function forgotSheet(prefill = '') {
+  const err = h('div.err', { role: 'alert' });
+  const cid = h('input', { placeholder: '고유번호 6자리', inputmode: 'numeric', maxlength: 6, value: prefill });
+  const nm = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, autocomplete: 'name' });
+  const pw = h('input', { type: 'password', placeholder: '새 비밀번호 (6자 이상)', autocomplete: 'new-password', maxlength: 72 });
+  const note = h('input', { placeholder: '운영자에게 한마디 (선택)', maxlength: 300 });
+  const send = h('button.btn.big.primary', { type: 'submit' }, '초기화 요청 보내기');
+  sheet([
+    h('div.grab'),
+    h('h2', { style: { margin: '0 4px' } }, '비밀번호 초기화 요청'),
+    h('form.stack.box', {
+      onsubmit: async (e) => {
+        e.preventDefault();
+        err.textContent = '';
+        if (pw.value.length < 6) { err.textContent = '새 비밀번호는 6자 이상이에요.'; return; }
+        send.disabled = true;
+        try {
+          await rpc('request_password_reset', { p_student_id: cid.value.trim(), p_password: pw.value, p_name: nm.value, p_note: note.value }, { retries: 0 });
+          closeOverlay();
+          toast('요청을 보냈어요! 운영자가 허용하면 새 비밀번호로 로그인돼요. 메인 부스에 말하면 더 빨라요.', 6000);
+        } catch (x) { err.textContent = errorText(x.message); send.disabled = false; }
+      },
+    },
+    h('small', '운영자가 확인하고 허용하면, 지금 정한 새 비밀번호로 바뀌어요. 이 번호에 연결된 다른 구글 계정은 모두 풀려요.'),
+    h('label.field', h('span', '고유번호'), cid),
+    h('label.field', h('span', '이름'), nm),
+    h('label.field', h('span', '새 비밀번호'), pw),
+    note, err, send),
+  ]);
+}
+
 
 // 개발용: 아무 이메일 → 없으면 계정을 만들고, 비밀번호는 1234abcd! 고정 (테스트 서버의 dev_login 설정이 켜져 있을 때만)
 function devLoginBox(err) {
@@ -1162,24 +1313,35 @@ function devLoginBox(err) {
   }, email, h('small', '비밀번호는 1234abcd! 로 고정, 처음 쓰는 이메일이면 계정이 만들어져요.'), h('button.btn.small', { type: 'submit' }, '테스트 로그인')));
 }
 
-// 첫 로그인: 학생(고유번호 + 이름) / 외부인(이름만) + 동의
+const GENS = [20, 21, 22];   // hint only; the server setting allowed_gens decides (0010)
+
+// 첫 로그인: 학생(고유번호 + 비밀번호 + 이름) / 외부인(이름만) + 동의.
+// 구글 계정 → 학생: 고유번호 하나 = 계정 하나 (link_number). 처음이면 비밀번호를 정하고, 있으면 그 비밀번호를 넣는다.
 function renderRegister(info) {
   closeOverlay();
   const fixedId = info.code_id || '';
+  const google = !!info.google && !fixedId;
   let kind = 'student';
   const err = h('div.err', { role: 'alert' });
-  const sidIn = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, value: fixedId, disabled: !!fixedId });
+  const help = h('div.stack');
+  const sidIn = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, value: fixedId || info.school_id || '', disabled: !!fixedId });
+  const pwIn = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'new-password', maxlength: 72 });
   const nameIn = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, value: info.name || '', autocomplete: 'name' });
   const show = h('input', { type: 'checkbox', checked: true });
   const preview = h('b');
-  const sidRow = h('label.field', h('span', '고유번호 (학번)'), sidIn, h('small', '22기 1번 → 022001'));
+  const sidRow = h('label.field', h('span', '고유번호 (학번)'), sidIn,
+    h('small', info.school_id ? '학교 계정에서 고유번호를 가져왔어요.' : '20~22기만 참여할 수 있어요. 22기 1번 → 022001'));
+  const pwRow = h('label.field', h('span', '비밀번호'), pwIn,
+    h('small', '처음 쓰는 번호면 지금 정하는 비밀번호가 돼요. 이미 있는 번호면 그 번호의 비밀번호를 넣어 주세요.'));
+  const oneNote = h('small.muted', '고유번호 하나 = 계정 하나예요. 다른 구글 계정으로 들어와도 같은 번호면 같은 계정으로 이어져요. 부계정을 만들고 싶다면 "외부인"으로 들어오세요.');
   const seg = h('div.seg', { role: 'group', 'aria-label': '학생인가요' });
   const update = () => {
     seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === kind)));
     sidRow.hidden = kind !== 'student' || !!fixedId;
+    pwRow.hidden = oneNote.hidden = kind !== 'student' || !google;
     const id = sidIn.value.replace(/\D/g, '');
     const gen = kind === 'student' && id.length >= 5 ? Number(id.padStart(6, '0').slice(0, 3)) : null;
-    preview.textContent = `${gen ? gen + '기 ' : ''}${maskName(nameIn.value)}`;
+    preview.textContent = gen && !GENS.includes(gen) ? `${gen}기는 참여할 수 없어요 (20~22기만)` : `${gen ? gen + '기 ' : ''}${maskName(nameIn.value)}`;
   };
   if (!fixedId) {
     seg.append(
@@ -1188,32 +1350,58 @@ function renderRegister(info) {
   }
   sidIn.oninput = update; nameIn.oninput = update;
   const start = h('button.btn.big.primary', { type: 'submit' }, '시작하기');
-  const form = h('form.register', {
-    onsubmit: async (e) => {
-      e.preventDefault();
-      err.textContent = '';
-      const nm = nameIn.value.trim();
-      if (!nm) { err.textContent = '이름을 입력해 주세요.'; return; }
-      if (kind === 'student' && !/^[0-9]{5,6}$/.test(sidIn.value.trim())) { err.textContent = '고유번호 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
-      start.disabled = true;
-      try {
-        await rpc('register_profile', { p_kind: kind, p_student_id: sidIn.value.trim(), p_name: nm, p_show: show.checked }, { retries: 0 });
-        await afterLogin();
-      } catch (x) { err.textContent = errorText(x.message); start.disabled = false; }
-    },
-  },
+  const sid = () => sidIn.value.replace(/\D/g, '').padStart(6, '0');
+
+  // 구글 계정 → 고유번호 연결 (reset = 학교 계정으로 비밀번호 새로 정하기)
+  const link = async (reset = false) => {
+    const res = await rpc('link_number', { p_student_id: sid(), p_password: pwIn.value, p_name: nameIn.value.trim(), p_show: show.checked, p_reset: reset }, { retries: 0 });
+    if (res.error === 'WRONG_PASSWORD') {
+      err.textContent = '이 번호는 이미 계정이 있어요. 비밀번호가 맞지 않아요.';
+      help.replaceChildren(
+        res.school && h('button.btn.gold', { type: 'button', onclick: () => {
+          if (pwIn.value.length < 6) { err.textContent = '새 비밀번호를 6자 이상 적어 주세요.'; return; }
+          if (!confirm('학교 계정으로 확인됐어요. 지금 입력한 비밀번호를 새 비밀번호로 정할까요? (다른 기기는 로그아웃되고, 이 번호에 연결된 다른 구글 계정은 풀려요)')) return;
+          submit(true);
+        } }, '학교 계정으로 비밀번호 새로 정하기'),
+        h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet(sid()) }, '비밀번호를 모르겠어요 (운영자에게 요청)'));
+      return false;
+    }
+    if (res.mode === 'linked') await devLogin(res.email, pwIn.value);
+    return true;
+  };
+  const submit = async (reset = false) => {
+    err.textContent = '';
+    help.replaceChildren();
+    const nm = nameIn.value.trim();
+    if (!nm) { err.textContent = '이름을 입력해 주세요.'; return; }
+    if (kind === 'student' && !/^[0-9]{5,6}$/.test(sidIn.value.trim())) { err.textContent = '고유번호 6자리를 숫자로 입력해 주세요. (예: 022001)'; return; }
+    if (kind === 'student' && google && pwIn.value.length < 6) { err.textContent = '비밀번호는 6자 이상이에요.'; return; }
+    start.disabled = true;
+    try {
+      if (kind === 'student' && google) { if (!(await link(reset))) return; }
+      else await rpc('register_profile', { p_kind: kind, p_student_id: sidIn.value.trim(), p_name: nm, p_show: show.checked }, { retries: 0 });
+      await afterLogin();
+    } catch (x) {
+      err.textContent = errorText(x.message);
+      if (x.message === 'OLD_NUMBER_ACCOUNT') help.replaceChildren(h('button.btn.small.ghost', { type: 'button', onclick: () => forgotSheet(sid()) }, '비밀번호 초기화 요청하기'));
+    } finally { start.disabled = false; }
+  };
+  const form = h('form.register', { onsubmit: (e) => { e.preventDefault(); submit(); } },
     h('div.box.stack',
       h('b', '처음 왔구나! 누구인지 알려줘'),
-      fixedId ? h('p', `학번 ${fixedId}(으)로 로그인했어요. 이름만 적어 주세요.`) : [seg, h('small', '외부인 = 선생님·학부모·다른 학교 손님')],
+      fixedId ? h('p', `고유번호 ${fixedId}(으)로 로그인했어요. 이름만 적어 주세요.`) : [seg, h('small', '외부인 = 선생님·학부모·다른 학교 손님')],
       sidRow,
-      h('label.field', h('span', '이름'), nameIn),
-      h('label.check', show, h('span', '랭킹·대형 화면에 이렇게 보여요: ', preview, h('br'), h('small', '(체크를 풀면 "익명 트레이너". 나중에 설정에서 바꿀 수 있어요)')))),
+      pwRow,
+      h('label.field', h('span', '이름'), nameIn, google && kind === 'student' ? h('small', '이미 있는 번호면 원래 이름이 그대로 쓰여요.') : null),
+      h('label.check', show, h('span', '랭킹·대형 화면에 이렇게 보여요: ', preview, h('br'), h('small', '(체크를 풀면 "익명 트레이너". 나중에 설정에서 바꿀 수 있어요)'))),
+      oneNote),
     h('div.box.stack.small-print',
       h('b', '저장하는 정보'),
       h('span', '고유번호, 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요. 축제가 끝나고 2주 안에 모두 삭제해요. '),
       h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침'),
       h('span', '외부인은 랭킹(상품)에서 빠지고, 나머지는 똑같이 즐길 수 있어요.')),
     err,
+    help,
     start,
     h('button.btn.small.ghost', { type: 'button', onclick: async () => { await signOut(); await kv.clear(); S.snap = null; renderLogin(); } }, '다른 계정으로 로그인'));
   app().replaceChildren(h('div.login.register-screen', h('div.logo.logo-small', CONFIG.GAME_TITLE), form));
@@ -1230,7 +1418,7 @@ function renderInApp() {
       isIOS() && kind !== 'kakao' ? h('p', '오른쪽 아래(또는 위) ⋯ 버튼 → "Safari로 열기"를 눌러 주세요. ↘') : null),
     h('button.btn.big.primary', { onclick: () => { if (!escapeInApp()) toast('⋯ 메뉴에서 "Safari로 열기"를 눌러 주세요.', 5000); } }, '외부 브라우저로 열기'),
     h('button.btn.small.ghost', { onclick: () => navigator.clipboard?.writeText(location.href).then(() => toast('주소를 복사했어요. 브라우저에 붙여 넣으세요.')) }, '주소 복사'),
-    h('button.btn.small.ghost', { onclick: () => renderLogin() }, '그래도 여기서 학번·코드로 로그인')));
+    h('button.btn.small.ghost', { onclick: () => renderLogin() }, '그래도 여기서 고유번호로 로그인')));
 }
 
 boot();
