@@ -540,6 +540,8 @@ GLYPH = {
     'C': ['.##', '#..', '#..', '#..', '.##'],
     'H': ['#.#', '#.#', '###', '#.#', '#.#'],
     'i': ['#', '.', '#', '#', '#'],
+    'T': ['###', '.#.', '.#.', '.#.', '.#.'],
+    'U': ['#.#', '#.#', '#.#', '#.#', '###'],
     'あ': ['.#..', '####', '.##.', '#.##', '.##.'],
 }
 
@@ -955,6 +957,137 @@ def line_secret(st):
     s.blush(32, 9, c['blush'])
     s.sparkle(6, 10, WHITE, big=True)
     s.sparkle(57, 52, c['mark'][3])
+    return s
+
+
+# 38~42 탐구 활동 전설 (1단계, 레이드·도감 보상)
+P38 = dict(body=ramp(.10, .70, 1.0), ray=hramp('b04808', 'f08818', 'ffc030', 'fff0a0'), blush=hexc('ff7f6e'))
+
+
+def line_sodipo(st):
+    """38 소디포 — 아침 해: 둥근 주황 몸 + 머리 둘레 햇살 + 졸린 듯 웃는 눈."""
+    s, c = Spr(), P38
+    b = c['body']
+    for k in range(9):                                   # 위쪽 반원에 햇살 9개
+        a = math.radians(180 + 22.5 * k)
+        x0, y0 = 32 + math.cos(a) * 15, 30 + math.sin(a) * 15
+        x1, y1 = 32 + math.cos(a) * 26, 30 + math.sin(a) * 25
+        s.part(cap(x0, y0, x1, y1, 2.6, 1.0), c['ray'], edge=True)
+    body_feet(s, b, (24, 40), 5, 3.5)
+    s.part(cap(12, 44, 7, 38, 3.2, 2.6), b)
+    s.part(cap(52, 44, 57, 38, 3.2, 2.6), b)
+    s.part(U(ell(32, 40, 19, 18), ellb(32, 61, 17, 9)), b, shine=True, bulge=True)
+    s.part(ell(32, 47, 10, 8), c['ray'], edge=False, tone=3)            # 밝은 배
+    s.eyes(34, 5, 3, 4)
+    s.mouth(42, b[0], 'open', tongue=c['blush'])
+    s.blush(40, 10, c['blush'])
+    s.sparkle(6, 8, WHITE, big=True)
+    s.sparkle(58, 56, c['ray'][3])
+    return s
+
+
+P39 = dict(body=ramp(.33, .55, .85), leaf=hramp('1a5020', '38a040', '70d060', 'c8f0a0'),
+           glass=hramp('3a6a90', '88c8e8', 'c8ecf8', 'ffffff'), blush=hexc('ff9fbe'))
+
+
+def line_yurip(st):
+    """39 유리프 — 한낮의 잎 + 유리 날개: 연두 몸, 머리에 큰 잎, 반짝이는 유리 날개."""
+    s, c = Spr(), P39
+    b = c['body']
+    s.part(poly([(14, 34), (2, 18), (6, 40)]), c['glass'], shine=True)     # 유리 날개
+    s.part(poly([(50, 34), (62, 18), (58, 40)]), c['glass'], shine=True)
+    body_feet(s, b, (25, 39), 5, 3.5)
+    s.part(U(ell(32, 41, 17, 16), ellb(32, 61, 15, 9)), b, shine=True, bulge=True)
+    s.part(poly([(32, 26), (22, 12), (32, 2), (42, 12)]), c['leaf'], shine=True)   # 머리 위 큰 잎
+    s.pxs([(32, y) for y in range(5, 26)], c['leaf'][0])                            # 잎맥
+    s.pxs([(29, 13), (28, 12), (35, 13), (36, 12), (29, 19), (28, 18), (35, 19), (36, 18)], c['leaf'][0])
+    s.eyes(36, 5, 3, 4)
+    s.mouth(44, b[0], 'smile')
+    s.blush(42, 10, c['blush'])
+    s.sparkle(5, 52, WHITE, big=True)
+    s.sparkle(58, 8, c['glass'][2], big=True)
+    return s
+
+
+P40 = dict(body=ramp(.70, .45, .70), moon=hramp('8a6a10', 'e8c040', 'f8e080', 'fffbe0'),
+           dusk=hramp('8a2a18', 'e86030', 'f8a058', 'ffd8a0'), blush=hexc('ff9fbe'))
+
+
+def line_ttu(st):
+    """40 TTU — 노을: 보라 로봇 몸, 머리에 초승달, 가슴에 노을 띠와 T T U 글자."""
+    s, c = Spr(), P40
+    b = c['body']
+    moon = {k: v for k, v in ell(32, 10, 7, 7).items() if (k[0] - 35) ** 2 + (k[1] - 8) ** 2 > 30}
+    s.part(moon, c['moon'], shine=True)
+    s.part(cap(32, 16, 32, 19, 1.2), c['moon'], edge=False, tone=1)   # 안테나
+    body_feet(s, b, (21, 43), 6, 4)
+    s.part(cap(9, 40, 9, 50, 3.4), b)
+    s.part(cap(55, 40, 55, 50, 3.4), b)
+    s.part(sell(32, 40, 20, 22, 3.2), b, shine=True)
+    s.part(rect(14, 45, 50, 53), c['dusk'], edge=False)                   # 노을 띠
+    text(s, 21, 47, 'TTU', WHITE)
+    s.fx({(x, 26) for x in range(20, 45)} | {(x, 36) for x in range(20, 45)} | {(20, y) for y in range(26, 37)}
+         | {(44, y) for y in range(26, 37)}, b[0])                        # 얼굴 화면 테두리
+    s.eyes(29, 4, 3, 4, style='white')
+    s.mouth(34, b[0], 'tiny')
+    s.sparkle(6, 10, c['moon'][3], big=True)
+    s.sparkle(59, 22, WHITE)
+    return s
+
+
+P41 = dict(body=ramp(.07, .45, .70), belly=hramp('8a6a40', 'e8d0a0', 'f8ecd0', 'fffaf0'),
+           goggle=hramp('205868', '50b8d0', 'a0e8f0', 'ffffff'), glass=hramp('404858', 'a0a8b8', 'd8dce8', 'ffffff'))
+
+
+def line_gwayeon(st):
+    """41 과연기 — 과제연구: 갈색 부엉이 학자, 실험 고글, 돋보기."""
+    s, c = Spr(), P41
+    b = c['body']
+    s.part(poly([(14, 22), (16, 6), (24, 16)]), b)                         # 귀깃
+    s.part(poly([(50, 22), (48, 6), (40, 16)]), b)
+    body_feet(s, b, (24, 40), 5, 3.5)
+    s.part(U(ell(32, 36, 19, 20), ellb(32, 61, 18, 11)), b, shine=True, bulge=True)
+    s.part(U(ell(32, 47, 11, 12), ellb(32, 60, 9, 6)), c['belly'], edge=False)
+    for yy in (42, 47, 52):                                                 # 깃털 무늬
+        s.pxs([(29, yy), (32, yy + 1), (35, yy)], c['belly'][0])
+    s.part(rect(13, 25, 51, 27), c['goggle'], edge=False, tone=0)          # 고글 끈
+    for gx in (24, 40):
+        s.part(ell(gx, 28, 7, 6), c['goggle'], shine=True)
+        s.part(ell(gx, 28, 4, 3.5), (c['goggle'][0], WHITE, WHITE, WHITE), edge=False)
+        s.pxs([(gx, 28), (gx + 1, 28), (gx, 29), (gx + 1, 29)], EYE)
+    s.part(poly([(30, 34), (34, 34), (32, 38)]), c['goggle'], edge=False, tone=0)   # 부리
+    s.part(cap(52, 58, 57, 47, 1.3), c['glass'], edge=False, tone=0)       # 돋보기
+    s.part(ell(57, 42, 5.5, 5.5), c['glass'], shine=True)
+    s.part(ell(57, 42, 3.5, 3.5), c['goggle'], edge=False, tone=3)
+    s.sparkle(6, 52, c['goggle'][2], big=True)
+    return s
+
+
+P42 = dict(body=ramp(.58, .40, .92), frame=hramp('243660', '4a6aa8', '7a9ad0', 'c0d4f0'),
+           bulb=hramp('a07810', 'f8d040', 'fff090', 'ffffff'), blush=hexc('ff9fbe'))
+
+
+def line_changmun(st):
+    """42 창문기 — 창의적 문제해결: 창문 모양 몸(네 칸 유리), 머리 위 반짝이는 전구."""
+    s, c = Spr(), P42
+    b = c['body']
+    aura(s, 32, 30, 30, 28, c['bulb'][2], 10)
+    s.part(ell(32, 8, 6, 6), c['bulb'], shine=True)                       # 전구
+    s.part(rect(29, 13, 35, 16), c['frame'], edge=True)
+    for a in (200, 240, 300, 340):                                        # 전구 빛
+        r = math.radians(a)
+        s.px(round(32 + math.cos(r) * 10), round(8 + math.sin(r) * 10), c['bulb'][1])
+    body_feet(s, b, (22, 42), 6, 4)
+    s.part(cap(8, 36, 4, 28, 3.2, 2.6), b)                                # 손 들기 (아이디어!)
+    s.part(cap(56, 44, 60, 50, 3.2, 2.6), b)
+    s.part(sell(32, 40, 22, 22, 4), c['frame'], shine=True)               # 창틀 몸
+    s.part(sell(32, 42, 17, 16, 4), b, edge=False, shine=True)            # 유리
+    s.fx({(32, y) for y in range(26, 59)} | {(x, 42) for x in range(15, 50)}, c['frame'][1])   # 창살
+    s.pxs([(19, 30), (20, 29), (21, 28), (36, 31), (37, 30)], WHITE)     # 유리 반사
+    s.eyes(33, 5, 3, 4)
+    s.mouth(38, b[0], 'smile')
+    s.blush(37, 10, c['blush'])
+    s.sparkle(58, 10, WHITE, big=True)
     return s
 
 
@@ -1850,8 +1983,13 @@ ROSTER = {
     35: T(subj='전설', name='금관오스(교감)', custom=lambda st: line_principal(st)),
     36: T(subj='전설', name='학사쟈(교장)', custom=lambda st: line_vice(st)),
     37: T(subj='비밀', name='숨바꼭', custom=lambda st: line_secret(st)),
+    38: T(subj='전설', name='소디포', custom=lambda st: line_sodipo(st)),
+    39: T(subj='전설', name='유리프', custom=lambda st: line_yurip(st)),
+    40: T(subj='전설', name='TTU', custom=lambda st: line_ttu(st)),
+    41: T(subj='전설', name='과연기', custom=lambda st: line_gwayeon(st)),
+    42: T(subj='전설', name='창문기', custom=lambda st: line_changmun(st)),
 }
-LEGENDARY = {35, 36, 37}
+LEGENDARY = {35, 36, 37, 38, 39, 40, 41, 42}
 RARE = {20, 21, 22, 23, 24}
 
 
@@ -1905,7 +2043,7 @@ def placeholder(dex):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--count', type=int, default=111)
+    ap.add_argument('--count', type=int, default=126)
     ap.add_argument('-v', '--verbose', action='store_true', help='스프라이트별 색 수/키 출력')
     a = ap.parse_args()
     rows = (a.count + COLS - 1) // COLS
