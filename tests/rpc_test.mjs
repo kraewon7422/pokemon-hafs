@@ -700,6 +700,7 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok((await S[0].rpc('battle_accept', { p_id: inv.id, p_lines: [1] })).error, 'only the invited friend can accept');
   let pa = (await A.c.rpc('battle_accept', { p_id: inv.id, p_lines: [32, 17] })).data;
   ok(pa?.status === 'active' && pa.me === 1 && pa.sides[1].mons.length === 2 && pa.sides[0].mons.length === 1, 'A accepts → battle starts (A is side 1)', pa);
+  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32] })).error === 'IN_PVP_BATTLE' && (await B.c.rpc('battle_start_cpu', { p_lines: [4] })).error === 'IN_PVP_BATTLE', 'cannot start another battle during a live one (no silent forfeit)');
   r = await B.c.rpc('battle_act', { p_id: inv.id, p_action: { move: 1 } });
   ok(r.data?.chosen === true && r.data.turn === 0, 'B chose; waits for A');
   const pa2 = (await A.c.rpc('battle_state', { p_id: inv.id })).data;
@@ -725,6 +726,82 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok((await A.c.rpc('battle_set_team', { p_lines: [99] })).error === 'BAD_TEAM', 'cannot save monsters I do not have');
   ok((await A.c.rpc('battle_today')).data?.wins === 1, 'today: 1 rewarded win of 3');
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
+}
+
+console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'dbl123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'dbl123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const A = await mk('더블에이'), B = await mk('더블비');
+  for (const l of [32, 17, 61, 44]) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 3 });
+  for (const l of [4, 5]) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 1 });
+  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44] })).error === 'BAD_TEAM', '1 vs 1 takes at most 3');
+  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44], p_format: 'triple' })).error === 'BAD_FORMAT', 'unknown format refused');
+  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44], p_format: 'double' })).data;
+  ok(b?.format === 'double' && b.sides[0].act?.length === 2 && b.sides[1].act?.length === 2 && b.sides[0].mons.length === 4 && b.sides[1].mons.length === 4,
+    '2 vs 2 practice: 4 monsters each, 2 on the field', { f: b?.format, act: b?.sides?.map(x => x.act) });
+  const foe = b?.sides?.[1];
+  ok(foe?.act?.every(i => foe.mons[i].name) && foe.mons.filter(m => m.name).length === 2 && foe.mons.every(m => !m.moves), 'foe: both monsters on the field are shown, bench and moves hidden');
+  ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { slots: [{ move: 1, target: 0 }] } })).error === 'BAD_ACTION', 'both slots must choose');
+  ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { slots: [{ switch: 2 }, { switch: 2 }] } })).error === 'BAD_ACTION', 'cannot send the same monster to both slots');
+  let r = await A.c.rpc('battle_act', { p_id: b.id, p_action: { slots: [{ move: 1, target: 1 }, { move: 1, target: 0 }] } });
+  ok(r.data?.turn === 1 && r.data.log.filter(x => x.use).length >= 3, 'one doubles turn: up to 4 monsters act', r.data?.log?.filter(x => x.use).map(x => x.use[0]));
+  ok(r.data.log.some(x => x.use && x.use[0] >= 2), 'foe slots act too (slot 2/3)');
+  // play to the end: both slots attack the first foe; pick replacements when asked
+  b = r.data;
+  for (let i = 0; i < 150 && b?.status === 'active'; i++) {
+    const mine = b.sides[b.me];
+    const bench = mine.mons.map((m, k) => k).filter((k) => mine.mons[k].hp > 0 && !mine.act.includes(k));
+    let slots;
+    if (b.need) slots = mine.act.map((_, k) => (b.need_slots.includes(k) ? { switch: bench.shift() } : null));
+    else slots = mine.act.map((ix) => (mine.mons[ix].hp > 0 ? { move: 1 + (i % 2), target: 0 } : null));
+    const rr = await A.c.rpc('battle_act', { p_id: b.id, p_action: { slots } });
+    if (rr.error) { b = { error: rr.error, b }; break; }
+    b = rr.data;
+  }
+  ok(b?.status === 'over' && (b.winner === 0 || b.winner === 1), '2 vs 2 battle plays to the end', { st: b?.status, err: b?.error });
+
+  // the QR owner picks the format; the scanner gets that format
+  const codeB = (await B.c.rpc('battle_code', { p_format: 'double' })).data;
+  ok((await B.c.rpc('battle_today')).data?.format === 'double', 'QR owner chose 2 vs 2');
+  const pk = (await A.c.rpc('battle_peek', { p_code: codeB })).data;
+  ok(pk?.format === 'double' && pk.name, 'scanner sees the format before starting', pk);
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61, 44] })).data;
+  ok(b?.format === 'double' && b.sides[1].mons.length === 2 && b.sides[1].act.length === 2, 'friend team vs AI uses the friend\'s 2 vs 2 (friend has 2 monsters)', b?.sides?.[1]);
+  await A.c.rpc('battle_forfeit', { p_id: b.id });
+  await B.c.rpc('battle_code', { p_format: 'single' });
+  ok((await B.c.rpc('battle_code', { p_format: 'x' })).error === 'BAD_FORMAT', 'bad format refused');
+  ok((await A.c.rpc('battle_set_team', { p_lines: [44, 61, 17, 32] })).data?.ok, 'a battle team can hold 4 (first 3 used for 1 vs 1)');
+  await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
+}
+
+console.log('\n[28] admin: delete student records (dummy data clean-up)');
+{
+  const sids = [];
+  for (let i = 0; i < 2; i++) {
+    let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'del123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'del123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '더미' + i });
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 3, p_stage: 1 });
+    sids.push(sid);
+  }
+  ok((await S[0].rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '삭제' })).error === 'NOT_ADMIN', 'students cannot delete records');
+  ok((await admin.rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '네' })).error === 'CONFIRM_MISMATCH', 'partial delete needs the confirm word');
+  ok((await admin.rpc('admin_delete_students', { p_student_ids: null, p_confirm: '삭제' })).error === 'CONFIRM_MISMATCH', 'delete-all needs its own confirm word (nothing deleted)');
+  ok((await admin.rpc('admin_count_students')).data?.students > 0, 'student count for the delete-all warning');
+  const staffBefore = (await admin.select('profiles?select=student_id&role=neq.student')).data?.length;
+  const r = await admin.rpc('admin_delete_students', { p_student_ids: [...sids, 'staff-does-not-exist'], p_confirm: '삭제' });
+  ok(r.data?.deleted === 2 && r.data.logins === 2, 'checked students deleted, with their number logins', r);
+  ok(((await admin.select(`profiles?select=student_id&student_id=in.(${sids.join(',')})`)).data || []).length === 0, 'their profiles are gone');
+  ok((await admin.select('profiles?select=student_id&role=neq.student')).data?.length === staffBefore, 'staff accounts untouched');
+  ok(!(await anon.rpc('create_number_account', { p_student_id: sids[0], p_password: 'new123' })).error, 'the number can be signed up again from scratch');
+  const c2 = client(await pwLogin(`${sids[0]}@code.local`, 'new123'));
+  await c2.rpc('register_profile', { p_kind: 'student', p_student_id: sids[0], p_name: '더미다시' });
+  await admin.rpc('admin_delete_students', { p_student_ids: [sids[0]], p_confirm: '삭제' });   // clean up
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

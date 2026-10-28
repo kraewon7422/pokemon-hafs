@@ -36,6 +36,8 @@ const MESSAGES = {
   BATTLE_WAIT: '이미 골랐어요. 상대를 기다려 주세요.',
   BAD_ACTION: '지금은 그걸 할 수 없어요.',
   NO_PP: 'PP가 없는 기술이에요.',
+  IN_PVP_BATTLE: '실시간 배틀이 아직 진행 중이에요. 배틀 탭의 "하던 실시간 배틀 이어 하기"로 끝내거나 기권한 뒤에 시작해 주세요.',
+  BAD_FORMAT: '1 대 1 또는 2 대 2 중에서 골라 주세요.',
   RAID_BAD_TOKEN: '레이드 QR이 바뀌었어요. 대형 화면의 지금 QR을 다시 찍어 주세요.',
   RAID_OVER: '이미 끝난 레이드예요.',
   RAID_NOT_JOINED: '먼저 레이드 QR을 찍어 참가해 주세요.',

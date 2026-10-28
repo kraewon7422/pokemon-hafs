@@ -1075,12 +1075,26 @@ async function tabStu() {
       // name, or a guest/teacher login-code id typed without the 'g:' prefix (t01 → g:t01)
       else if (q) b = b.or(`name.ilike.*${q}*,student_id.like.g:${q.toLowerCase()}*`);
       const rows = await tq(b);
+      // 기록 삭제용 체크 (학생 계정만. 운영자·부스는 지울 수 없음)
+      S.stuChecked = new Set([...(S.stuChecked || [])].filter((x) => rows.some((r) => r.student_id === x)));
+      const delBtn = h('button.btn.small.danger', { type: 'button', onclick: () => deleteStudents([...S.stuChecked], search) });
+      const syncDel = () => { delBtn.textContent = `체크한 학생 기록 삭제 (${S.stuChecked.size}명)`; delBtn.disabled = !S.stuChecked.size; };
+      const students = rows.filter((r) => r.role === 'student');
+      const all = h('input', { type: 'checkbox', 'aria-label': '이 목록의 학생 모두 체크',
+        onclick: (e) => { e.stopPropagation(); students.forEach((r) => (e.target.checked ? S.stuChecked.add(r.student_id) : S.stuChecked.delete(r.student_id)));
+          results.querySelectorAll('td.chk input').forEach((c) => { c.checked = S.stuChecked.has(c.dataset.sid); }); syncDel(); } });
+      syncDel();
       results.replaceChildren(h('div.box',
-        h('h2', `검색 결과 (${rows.length}${rows.length === 50 ? '+' : ''}명)`),
+        h('div.row', h('h2', { style: { flex: 1 } }, `검색 결과 (${rows.length}${rows.length === 50 ? '+' : ''}명)`), rows.length ? delBtn : null),
         rows.length ? h('div.tbl-wrap.scroll-y', h('table.tbl',
-          h('thead', h('tr', h('th', '학번'), h('th', '이름'), h('th', '역할'), h('th.num', '점수'), h('th.num', '진화권'), h('th', '접속'))),
+          h('thead', h('tr', h('th.chk', all), h('th', '학번'), h('th', '이름'), h('th', '역할'), h('th.num', '점수'), h('th.num', '진화권'), h('th', '접속'))),
           h('tbody', rows.map((p) => {
+            const chk = p.role === 'student'
+              ? h('input', { type: 'checkbox', 'data-sid': p.student_id, checked: S.stuChecked.has(p.student_id), 'aria-label': `${p.student_id} 체크`,
+                onclick: (e) => { e.stopPropagation(); if (e.target.checked) S.stuChecked.add(p.student_id); else S.stuChecked.delete(p.student_id); syncDel(); } })
+              : '';
             const tr = h('tr.click', { tabindex: 0, onclick: () => open(p.student_id), onkeydown: (e) => { if (e.key === 'Enter') open(p.student_id); } },
+              h('td.chk', { onclick: (e) => e.stopPropagation() }, chk),
               h('td.mono', p.student_id), h('td', p.name || '–'), h('td', isGuest(p.student_id) ? '손님·선생님' : ROLE[p.role] || p.role),
               h('td.num', p.score), h('td.num', p.evo_tickets), h('td', p.last_seen ? timeAgo(p.last_seen) : '–'));
             if (p.student_id === S.stuSel) tr.classList.add('sel');
@@ -1091,7 +1105,7 @@ async function tabStu() {
   const open = async (sid) => {
     S.stuSel = sid;
     results.querySelectorAll('tr.sel').forEach((t) => t.classList.remove('sel'));
-    [...results.querySelectorAll('tbody tr')].find((t) => t.firstChild.textContent === sid)?.classList.add('sel');
+    [...results.querySelectorAll('tbody tr')].find((t) => t.children[1]?.textContent === sid)?.classList.add('sel');
     detail.replaceChildren(h('p.loading', '불러오는 중…'));
     try { detail.replaceChildren(...await studentDetail(sid, async () => { await search(); await open(sid); })); } catch (e) { detail.replaceChildren(h('div.box', h('p.warn-txt', msgOf(e)))); }
   };
@@ -1099,7 +1113,40 @@ async function tabStu() {
     h('div', { style: { flex: '1 1 240px' } }, input), h('button.btn.go', { type: 'submit' }, '검색'),
     h('button.btn', { type: 'button', onclick: () => { input.value = 'g:'; search(); } }, '손님·선생님만'));
   search().then(() => { if (S.stuSel) open(S.stuSel); });
-  return [form, rankingSection(), h('div.cols', results, detail)];
+  const wipe = h('div.box.stack.danger-zone',
+    h('h2', '기록 삭제 (테스트·더미 데이터 정리)'),
+    h('p.small-txt', '위 검색 결과에서 학생을 체크한 뒤 [체크한 학생 기록 삭제]를 누르면 그 학생들만 지워요. 아래 버튼은 학생 계정 전부를 지워요. 운영자·부스 계정은 지워지지 않아요.'),
+    h('button.btn.danger', { type: 'button', onclick: () => deleteStudents(null, search) }, '학생 기록 전체 삭제'));
+  return [form, rankingSection(), h('div.cols', results, detail), wipe];
+}
+
+// 기록 삭제: 1단계 경고 → 2단계 글자 입력. ids = null 이면 전체
+async function deleteStudents(ids, after) {
+  const allMode = ids == null;
+  let n = ids?.length || 0;
+  if (allMode) {
+    try { n = (await rpc('admin_count_students')).students; } catch (e) { fail(e); return; }
+  }
+  if (!n) { toast(allMode ? '지울 학생 기록이 없어요.' : '먼저 지울 학생을 체크하세요.'); return; }
+  const step1 = await confirmBox(allMode ? '학생 기록 전체 삭제 (1/2)' : `체크한 학생 기록 삭제 (1/2)`, [
+    h('p.warn-txt', allMode
+      ? `학생 계정 ${n}명의 기록을 전부 지워요. 도감·티켓·진화권·점수·배틀 기록이 모두 사라지고 되돌릴 수 없어요.`
+      : `${n}명의 기록을 지워요. 도감·티켓·진화권·점수·배틀 기록이 모두 사라지고 되돌릴 수 없어요.`),
+    allMode ? '축제 전에 테스트로 만든 데이터를 정리할 때만 쓰세요. 축제 중에는 절대 누르지 마세요!' : h('p.small-txt.mono', ids.slice(0, 30).join(', ') + (ids.length > 30 ? ` 외 ${ids.length - 30}명` : '')),
+    '고유번호로 만든 계정은 로그인도 같이 지워져서, 같은 번호로 처음부터 다시 가입할 수 있어요.',
+  ], { ok: '다음', danger: true });
+  if (!step1) return;
+  const word = allMode ? '전체 삭제' : '삭제';
+  const step2 = await confirmBox(`정말 지울까요? (2/2)`, [
+    h('p.warn-txt', `${n}명의 기록이 영구히 사라져요.`),
+  ], { ok: '영구 삭제', danger: true, typeToConfirm: word });
+  if (!step2) return;
+  try {
+    const r = await rpc('admin_delete_students', { p_student_ids: ids, p_confirm: word });
+    toast(`${r.deleted}명의 기록을 지웠어요.${r.logins ? ` (고유번호 로그인 ${r.logins}개 포함)` : ''}`);
+    S.stuChecked = new Set(); S.stuSel = null;
+    await after?.();
+  } catch (e) { fail(e); }
 }
 
 async function studentDetail(sid, reload) {
@@ -1651,16 +1698,24 @@ async function tabRaid() {
   sel.value = '3';
   const pic = h('div', spriteImg(3, 72));
   sel.onchange = () => pic.replaceChildren(spriteImg(Number(sel.value), 72));
-  const hp = h('select.inp',
-    h('option', { value: 3000 }, '작게 3,000 (5~10명)'), h('option', { value: 12000, selected: true }, '보통 12,000 (20~30명)'),
-    h('option', { value: 40000 }, '크게 40,000 (50~100명)'), h('option', { value: 100000 }, '아주 크게 100,000'));
-  const mins = h('select.inp', [5, 10, 15, 30, 60].map((m) => h('option', { value: m, selected: m === 10 }, `${m}분`)));
+  // 프리셋 고르기 + "직접 입력" → 숫자 칸
+  const preset = (opts, unit, min, max) => {
+    const own = h('input.inp', { type: 'number', inputmode: 'numeric', min, max, placeholder: `${min}~${max.toLocaleString()} ${unit}`, hidden: true });
+    const s = h('select.inp', opts.map(([v, t, on]) => h('option', { value: v, selected: on }, t)), h('option', { value: 'own' }, '직접 입력…'));
+    s.onchange = () => { own.hidden = s.value !== 'own'; if (!own.hidden) own.focus(); };
+    return { el: h('div.stack', s, own), get value() { return s.value === 'own' ? Number(own.value) : Number(s.value); }, min, max };
+  };
+  const hp = preset([[3000, '작게 3,000 (5~10명)'], [12000, '보통 12,000 (20~30명)', true], [40000, '크게 40,000 (50~100명)'], [100000, '아주 크게 100,000']], '체력', 10, 10000000);
+  const mins = preset([5, 10, 15, 30, 60].map((m) => [m, `${m}분`, m === 10]), '분', 1, 600);
   const mode = h('select.inp', h('option', { value: 'tv' }, 'TV 대형 화면 (30초마다 바뀌는 현장 QR)'), h('option', { value: 'print' }, '인쇄용 고정 QR (아무 데나 붙이기)'));
   const title = h('input.inp', { placeholder: '레이드 이름 (비우면 "몬스터 이름 레이드")', maxlength: 40 });
   const go = h('button.btn.go', { type: 'submit' }, '레이드 열기');
   const form = h('form.box.stack', {
     onsubmit: (e) => {
       e.preventDefault();
+      for (const [f, name] of [[hp, '보스 체력'], [mins, '시간']]) {
+        if (!Number.isInteger(f.value) || f.value < f.min || f.value > f.max) { toast(`${name}은(는) ${f.min}~${f.max.toLocaleString()} 사이 숫자로 넣어 주세요.`); return; }
+      }
       busy(go, async () => {
         const r = await rpc('admin_create_raid', { p_species: Number(sel.value), p_hp: Number(hp.value), p_minutes: Number(mins.value), p_tv: mode.value === 'tv', p_title: title.value });
         toast(`${r.title}을(를) 열었어요.`);
@@ -1673,7 +1728,7 @@ async function tabRaid() {
     h('h2', '레이드 열기'),
     h('p.small-txt', '아무 몬스터(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, 10번 이상 공격한 모두가 그 몬스터 특별 티켓을 받아요 (가방 5칸 제한 없음). 시간 안에 못 잡으면 실패.'),
     h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 몬스터'), sel)),
-    h('div.row', h('label.field', h('span', '보스 체력'), hp), h('label.field', h('span', '시간'), mins)),
+    h('div.row', h('label.field', h('span', '보스 체력'), hp.el), h('label.field', h('span', '시간'), mins.el)),
     h('label.field', h('span', 'QR 방식'), mode), title, go);
   const reload = h('button.btn.small', '새로 고침');
   reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_raids')));
