@@ -401,6 +401,8 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .login-help .btn { flex: 1; max-width: 220px; white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .title-sky .cloud, .title-sky .sun, .mons.hop span { animation: none; } }
 
+.seg.rank-kinds { grid-template-columns: repeat(3, 1fr); }
+.seg.rank-kinds button + button { border-left: 3px solid var(--ink); }
 .seg.rank-kinds button[aria-pressed="true"] { background: #f86840; color: #fff; text-shadow: 1px 1px 0 #802010; }
 
 /* 타입 상성표 (배틀 탭) */
@@ -435,51 +437,100 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bt-top { display: flex; justify-content: space-between; align-items: center; color: #fff; }
 .bt-timer { font-weight: bold; color: #fff; }
 .bt-timer.hot { color: #ff7060; }
-.bt-field { position: relative; height: 300px; border: 3px solid #0c1018; border-radius: 10px; overflow: hidden;
-  background: linear-gradient(#a8d8f8 0 42%, #c8e8a0 42% 100%); image-rendering: pixelated; }
-.bt-pad { position: absolute; border-radius: 50%; background: #90c068; border: 3px solid #6a9848; }
-.bt-pad.foe { right: 6%; top: 112px; width: 44%; height: 34px; }
-.bt-pad.me { left: 2%; bottom: 14px; width: 50%; height: 38px; }
-.bt-spr { position: absolute; z-index: 1; line-height: 0; }
-.bt-spr.foe { right: 13%; top: 22px; }
-.bt-spr.me { left: 7%; bottom: 24px; }
+.warn-txt { color: #b04020; }
+
+/* 배경: isaiah658 픽셀 팩 #2 (CC0) — 159×159 정사각 그림의 위쪽 134줄을 씀. 발판 위치가 그림에 그려져 있음 */
+.bt-field { position: relative; aspect-ratio: 159 / 134; border: 3px solid #0c1018; border-radius: 8px; overflow: hidden;
+  background: #a8d0f0 top center / 100% auto no-repeat; image-rendering: pixelated; }
+.bt-field.bg-plains { background-image: url(../img/battle/plains.png); }
+.bt-field.bg-forest { background-image: url(../img/battle/forest.png); }
+.bt-field.bg-beach { background-image: url(../img/battle/beach.png); }
+.bt-field.bg-desert { background-image: url(../img/battle/desert.png); }
+.bt-field.bg-snowy { background-image: url(../img/battle/snowy.png); }
+.bt-field.bg-underground { background-image: url(../img/battle/underground.png); }
+.bt-field.bg-underwater { background-image: url(../img/battle/underwater.png); }
+
+/* 몬스터: 발이 발판 가운데에 닿게 (translate = 자리, transform = 애니메이션 — 둘이 겹치지 않음) */
+.bt-spr { position: absolute; z-index: 1; translate: -50% -86%; line-height: 0; }
+.bt-spr canvas { width: 100% !important; height: auto !important; image-rendering: pixelated; }
+.bt-spr.foe { left: 79.5%; top: 42%; width: 27%; }
+.bt-spr.me { left: 21%; top: 89%; width: 34%; }
 .bt-spr.me canvas { transform: scaleX(-1); }
-.bt-spr.hide { visibility: hidden; }
-.bt-spr.enter { animation: bt-enter .45s steps(5); }
-.bt-spr.atk.me { animation: bt-atk-me .3s steps(3); }
-.bt-spr.atk.foe { animation: bt-atk-foe .3s steps(3); }
+.bt-field.dbl .bt-spr.foe { width: 21%; }
+.bt-field.dbl .bt-spr.foe.k0 { left: 70%; top: 40%; }
+.bt-field.dbl .bt-spr.foe.k1 { left: 89%; top: 44%; }
+.bt-field.dbl .bt-spr.me { width: 27%; }
+.bt-field.dbl .bt-spr.me.k0 { left: 16%; top: 87%; }
+.bt-field.dbl .bt-spr.me.k1 { left: 34%; top: 92%; }
+.bt-spr.hide, .bt-spr.gone, .bt-spr[hidden] { visibility: hidden; }
+/* 가만히 있을 때도 앞뒤로 살짝 움직임 */
+.bt-bob { animation: bt-idle 1.8s steps(6) infinite; }
+.bt-spr.foe .bt-bob { animation-duration: 2.1s; animation-delay: -.7s; }
+.bt-spr.k1 .bt-bob { animation-delay: -1.2s; }
+@keyframes bt-idle { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(4%, -2%); } 50% { transform: translate(0, -3%); } 75% { transform: translate(-4%, -1%); } }
+.bt-spr.enter { animation: bt-pop .4s steps(5); }
+.bt-spr.me.atk { animation: bt-atk-me .32s steps(3); }
+.bt-spr.foe.atk { animation: bt-atk-foe .32s steps(3); }
 .bt-spr.hit { animation: bt-hit .5s steps(2) 1; }
-.bt-spr.faint { animation: bt-faint .5s steps(5) forwards; }
-@keyframes bt-enter { from { transform: scale(.2); opacity: 0; } to { transform: none; opacity: 1; } }
-@keyframes bt-atk-me { 50% { transform: translate(18px, -8px); } }
-@keyframes bt-atk-foe { 50% { transform: translate(-18px, 8px); } }
+.bt-spr.faint { animation: bt-faint .55s steps(5) forwards; }
+@keyframes bt-pop { from { transform: scale(.15); filter: brightness(6); } to { transform: none; filter: none; } }
+@keyframes bt-atk-me { 50% { transform: translate(16%, -8%); } }
+@keyframes bt-atk-foe { 50% { transform: translate(-16%, 8%); } }
 @keyframes bt-hit { 0%, 50% { opacity: .15; } 25%, 75% { opacity: 1; } }
-@keyframes bt-faint { to { transform: translateY(60px); opacity: 0; } }
-.bt-box { position: absolute; z-index: 2; width: 52%; min-width: 170px; padding: 5px 8px; background: #f8f8e8; border: 3px solid #384050; border-radius: 10px 4px 10px 4px; box-shadow: 3px 3px 0 #0c101840; font-size: 14px; }
-.bt-box.foe { left: 6px; top: 8px; }
-.bt-box.me { right: 6px; bottom: 76px; }
-.bt-nm { display: flex; align-items: baseline; gap: 4px; white-space: nowrap; overflow: hidden; }
+@keyframes bt-faint { to { transform: translateY(45%); opacity: 0; } }
+
+/* 능력 변화: 빨간 줄이 올라가거나(좋음) 내려감(나쁨) */
+.bt-fx { position: absolute; inset: 8% 14% 0; pointer-events: none; opacity: 0;
+  background: repeating-linear-gradient(0deg, transparent 0 7px, rgba(240, 56, 40, .8) 7px 10px); }
+.bt-fx.up.run { animation: bt-fx-up .9s steps(9); }
+.bt-fx.down.run { animation: bt-fx-down .9s steps(9); }
+@keyframes bt-fx-up { 0% { opacity: 0; background-position: 0 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; background-position: 0 -60px; } }
+@keyframes bt-fx-down { 0% { opacity: 0; background-position: 0 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; background-position: 0 60px; } }
+
+/* 몬스터볼 + 열릴 때 번쩍 */
+.bt-ball { position: absolute; left: 0; top: 0; z-index: 3; line-height: 0; }
+.bt-ball svg { width: 16px; height: 16px; image-rendering: pixelated; }
+.bt-flash { position: absolute; z-index: 3; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: #fff;
+  box-shadow: 0 0 10px 6px #fff; animation: bt-flash .45s ease-out forwards; pointer-events: none; }
+@keyframes bt-flash { to { transform: scale(8); opacity: 0; } }
+
+/* HP 상자: 상대는 왼쪽 위, 나는 오른쪽 아래 (2 대 2 는 두 칸씩) */
+.bt-boxes { position: absolute; z-index: 2; display: grid; gap: 3px; }
+.bt-boxes.foe { left: 2.5%; top: 3%; width: 50%; }
+.bt-boxes.me { right: 2.5%; top: 60%; width: 52%; }
+.bt-field.dbl .bt-boxes.me { top: 54%; width: 48%; }
+.bt-box { padding: 3px 7px; background: #f8f8e8; border: 3px solid #384050; border-radius: 10px 3px 10px 3px; box-shadow: 2px 2px 0 #0c101850; font-size: 13px; min-width: 0; }
+.bt-box[hidden] { display: none; }
+.bt-nm { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; overflow: hidden; }
 .bt-nm b { overflow: hidden; text-overflow: ellipsis; }
-.bt-box .hpbar { height: 10px; margin: 3px 0; border-width: 2px; }
-.bt-row { display: flex; justify-content: space-between; align-items: center; }
+.bt-box .hpbar { height: 8px; margin: 2px 0; border-width: 2px; }
+.bt-row { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
 .bt-hpnum { font-weight: bold; }
-.bt-st { margin-left: auto; font-size: 11px; padding: 0 4px; border-radius: 4px; color: #fff; }
+.bt-st { margin-left: auto; font-size: 10px; padding: 0 3px; border-radius: 3px; color: #fff; }
 .bt-st.st-par { background: #c8a020; } .bt-st.st-brn { background: #e05030; } .bt-st.st-psn { background: #9040a0; } .bt-st.st-slp { background: #7080a0; }
-.bt-balls { display: flex; gap: 3px; }
-.bt-balls i { width: 10px; height: 10px; border-radius: 50%; background: linear-gradient(#e04030 0 45%, #182030 45% 55%, #fff 55%); border: 1px solid #182030; }
+.bt-balls { display: flex; gap: 2px; }
+.bt-balls i { width: 8px; height: 8px; border-radius: 50%; background: linear-gradient(#e04030 0 45%, #182030 45% 55%, #fff 55%); border: 1px solid #182030; }
 .bt-balls i.out { background: #8890a0; }
-.bt-text { min-height: 74px; white-space: pre-line; font-size: 16px; }
+
+/* 3세대 느낌 글 상자: 남색 바탕 · 금색 테두리 · 빨간 ▼ */
+.bt-textbox { position: relative; background: #2c4c6c; border: 4px solid #d8b850; box-shadow: inset 0 0 0 3px #1a2c40; border-radius: 8px; padding: 10px 30px 10px 14px; min-height: 74px; box-sizing: border-box; }
+.bt-text { color: #fff; font-size: 16px; line-height: 1.5; white-space: pre-line; text-shadow: 2px 2px 0 #10202c; }
+.bt-arrow { position: absolute; right: 12px; bottom: 10px; width: 0; height: 0; border: 7px solid transparent; border-top-color: #f04830; border-bottom: 0; animation: bt-arrow .7s steps(2) infinite; }
+.bt-arrow[hidden] { display: none; }
+@keyframes bt-arrow { 50% { transform: translateY(3px); } }
+
 .bt-menu { display: grid; gap: 6px; }
 .bt-main { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.bt-cmd { min-height: 52px; font: inherit; font-weight: bold; font-size: 17px; border: 3px solid #384050; border-radius: 8px; background: #f8f8e8; }
+.bt-cmd { min-height: 50px; font: inherit; font-weight: bold; font-size: 17px; border: 3px solid #384050; border-radius: 8px; background: #f8f8e8; }
 .bt-cmd.fight { background: #ffd8c8; border-color: #c03020; }
 .bt-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.bt-move { display: grid; gap: 2px; text-align: left; padding: 6px 8px; min-height: 58px; font: inherit; border: 3px solid #384050; border-radius: 8px; background: #fff; }
+.bt-move { display: grid; gap: 2px; text-align: left; padding: 6px 8px; min-height: 56px; font: inherit; border: 3px solid #384050; border-radius: 8px; background: #fff; }
 .bt-move:disabled { opacity: .45; }
 .bt-mv-info { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
 .bt-mv-info .type { font-size: 11px; padding: 0 4px; border-radius: 4px; }
+.bt-tgt { display: flex; align-items: center; gap: 6px; }
 .bt-party { display: grid; gap: 6px; }
 .bt-pmon { display: flex; align-items: center; gap: 8px; text-align: left; padding: 4px 8px; font: inherit; border: 3px solid #384050; border-radius: 8px; background: #fff; }
 .bt-pmon > span { flex: 1; min-width: 0; }
 .bt-pmon:disabled { opacity: .5; }
-@media (max-height: 640px) { .bt-field { height: 250px; } .bt-pad.foe { top: 92px; } .bt-box.me { bottom: 62px; } }
+@media (prefers-reduced-motion: reduce) { .bt-bob { animation: none; } }
