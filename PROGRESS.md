@@ -46,6 +46,7 @@
 | 0006 | **함수 권한 정리** — 이후 모든 마이그레이션 끝에 같은 블록 필수 |
 | 0007 | 진화권 룰렛 (`spin_roulette`, `roulette_spins`, 설정 4개) |
 | 0009 | 운영진 초대: 운영자 페이지 **운영진** 탭에서 구글 이메일로 운영자/부스 스태프 추가·해제 (`admin_invite_staff`, `admin_remove_staff`, `admin_list_staff`) |
+| 0012 | **배틀 데이터**: 과목 상성표(`type_chart`), 기술 66개(`moves`, 실제 포켓몬 기술 이름), 몬스터마다 기술 4개(`species_moves`: 공격2·상태1·방어1), 종족값 6개(`species.hp..spe`), 탐구 전설 5마리(38~42, `lines.bonus`). 데이터 = `seed_battle.sql` (`tools/gen_battle_data.py`) |
 | 0011 | **고유번호 계정**: 고유번호 하나 = 게임 계정 하나 (`<번호>@code.local`). 구글 계정 여러 개가 같은 번호에 연결(`link_number`, 비밀번호 필요), 학생이 비밀번호를 직접 정함(`create_number_account`), 학교 구글 계정은 자기 번호 비밀번호를 바로 재설정(`p_reset`), 비밀번호 초기화 요청(`request_password_reset`) → 운영자 **요청** 탭에서 허용/거절, 학생 문의함(`send_inquiry`). 이스터에그: 룰렛 777 칭호(`profiles.titles`, 설정 `roulette_777_per_mille`), 비밀 몬스터(`lines.secret`, 라인 37 + 지도에 없는 QR `S01`). 테스트용 `dev_fake_google` (dev_login 일 때만) |
 | 0010 | 참여 기수 제한: 설정 `allowed_gens` (기본 [20,21,22]). 다른 기수 학번은 가입·학번 코드·운영자 코드 생성 모두 `BAD_GEN`으로 거절 (profiles 트리거), TV 기수 대항전도 허용 기수만. 매년 설정에서 바꾸기 |
 | 0008 | 열린 로그인: 아무 구글 계정 + 등록 화면(`register_profile`), 학번 코드 자동 생성(`create_code_account`), 개발용 계정(`dev_create_account`), 이름 `강*원` |

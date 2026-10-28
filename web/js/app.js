@@ -47,10 +47,11 @@ const bag = () => [
 const evolvable = () => collection().filter((c) => c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id));
 const isWithdrawn = (line) => (S.snap?.rules?.withdrawn || []).includes(line) || !!lineOf(line)?.withdrawn;
 const isSecret = (line) => !!lineOf(line)?.secret;
+const isBonus = (line) => !!lineOf(line)?.bonus || isSecret(line);
 // 도감 완성 = 비밀 몬스터를 뺀 모든 몬스터 (비공개 계열 제외)
 function dexStats() {
   const reached = (sp) => (owned(sp.line_id)?.stage || 0) >= sp.stage;
-  const main = S.catalog.species.filter((sp) => !isSecret(sp.line_id) && !isWithdrawn(sp.line_id));
+  const main = S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id));
   const found = main.filter(reached).length;
   return { found, total: main.length, complete: main.length > 0 && found === main.length,
            secret: collection().some((c) => isSecret(c.line_id)) };
@@ -165,22 +166,27 @@ function renderRetry(msg) {
 }
 
 async function loadCatalog() {
-  const [lines, species, qrs] = await Promise.all([
-    sb.from('lines').select('id,teacher,subject,rarity,active,max_stage,withdrawn,secret').order('id'),
-    sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight').order('id'),
+  const [lines, species, qrs, moves, speciesMoves, typeChart] = await Promise.all([
+    sb.from('lines').select('id,teacher,subject,rarity,active,max_stage,withdrawn,secret,bonus').order('id'),
+    sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe').order('id'),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
+    sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
+    sb.from('species_moves').select('species_id,slot,move_id'),
+    sb.from('type_chart').select('atk,def,mult'),
   ]);
   if (lines.error || species.error || qrs.error) {
     if (S.catalog) return;
     throw Object.assign(new Error('OFFLINE'), { offline: true });
   }
-  S.catalog = { lines: lines.data, species: species.data, qrs: qrs.data, at: new Date().toISOString() };
+  S.catalog = { lines: lines.data, species: species.data, qrs: qrs.data, at: new Date().toISOString(),
+                moves: moves.data || [], speciesMoves: speciesMoves.data || [], typeChart: typeChart.data || [] };
   await kv.set('catalog', S.catalog);
 }
 
 // QR names/positions and monster texts can change during the festival (admin page) → refresh every 5 min
 function refreshCatalogIfOld() {
-  if (!S.catalog?.at || Date.now() - new Date(S.catalog.at).getTime() < 5 * 60_000) return;
+  // older cached catalogs have no battle data (moves) → refresh right away
+  if (!S.catalog?.at || (S.catalog.moves && Date.now() - new Date(S.catalog.at).getTime() < 5 * 60_000)) return;
   S.catalog.at = new Date().toISOString();          // don't start twice
   loadCatalog().then(() => { if (!S.overlay) renderTab(); }).catch(() => {});
 }
@@ -249,6 +255,8 @@ const ICONS = {
   map: '<path d="M3 6l7-2 8 3 7-2v18l-7 2-8-3-7 2zM10 4v18M18 7v18" fill="none" stroke="currentColor" stroke-width="3"/>',
   dex: '<path d="M5 3h16a2 2 0 0 1 2 2v19H7a2 2 0 0 1-2-2zM9 8h10M9 12h10M9 16h6" fill="none" stroke="currentColor" stroke-width="3"/>',
   rank: '<path d="M3 24V14h7v10zM11 24V6h6v18zM18 24V10h7v14z"/>',
+  raid: '<path d="M14 2l3 7 8-3-4 8 7 4-8 2 1 8-7-5-7 5 1-8-8-2 7-4-4-8 8 3z"/>',
+  battle: '<path d="M3 3h4l13 13-4 4L3 7zM25 3h-4L8 16l4 4L25 7zM5 19l4 4-3 3-4-4zM23 19l-4 4 3 3 4-4z"/>',
 };
 // red & white ball for the centre scan button (user's choice)
 const CAPSULE = `<svg viewBox="0 0 32 32" aria-hidden="true">
@@ -258,7 +266,7 @@ const CAPSULE = `<svg viewBox="0 0 32 32" aria-hidden="true">
   <rect x="2" y="14.5" width="28" height="3" fill="#202838"/>
   <circle cx="16" cy="16" r="5" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
   <circle cx="16" cy="16" r="2" fill="#fff" stroke="#c8c8c8" stroke-width="1"/></svg>`;
-const TABS = [['home', '홈'], ['map', '지도'], ['scan', 'QR 찍기'], ['dex', '도감'], ['rank', '랭킹']];
+const TABS = [['home', '홈'], ['map', '지도'], ['raid', '레이드'], ['scan', 'QR'], ['battle', '배틀'], ['dex', '도감'], ['rank', '랭킹']];
 
 function renderShell() {
   app().replaceChildren(
@@ -327,7 +335,7 @@ function renderStatus() {
 function renderTab() {
   const main = $('#main');
   if (!main || !S.catalog || !S.snap) return;
-  const view = { home: viewHome, map: viewMap, dex: viewDex, rank: viewRank }[S.tab]();
+  const view = ({ home: viewHome, map: viewMap, raid: viewRaid, battle: viewBattle, dex: viewDex, rank: viewRank }[S.tab] || viewHome)();
   main.replaceChildren(...[view].flat().filter((x) => x != null && x !== false));
   renderStatus();
   // monsters can also arrive without a catch scene (admin grant, another phone) → check 도감 완성 on the home tab
@@ -392,7 +400,7 @@ function viewHome() {
       h('div.stats',
         h('span', '도감', h('b', `${D.found}/${total}`)), h('span', '점수', h('b', p.score)),
         h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화권', h('b', p.evo_tickets))),
-      h('div.badges', { title: '최종 진화시킨 쌤' }, S.catalog.lines.filter((l) => !l.secret).map((l) => {
+      h('div.badges', { title: '최종 진화시킨 쌤' }, S.catalog.lines.filter((l) => !l.secret && !l.bonus).map((l) => {
         const done = (owned(l.id)?.stage || 0) >= (l.max_stage ?? 3);
         return h(`i${done ? '.on.t-' + l.subject : ''}`, { title: done ? `${l.subject} 완성` : '?' });
       }))),
@@ -767,9 +775,149 @@ function openDetail(sp) {
         !p.evo_tickets ? '진화권이 없어요 (퀴즈·룰렛으로 받아요)' : !S.online ? '진화는 인터넷이 필요해요' : '진화시키기!'),
       h('small', '실패해도 다음 확률이 올라가고, 몇 번 실패하면 다음엔 반드시 성공해요.')),
     top === 1 && h('div.box', '★ 전설의 몬스터는 진화하지 않아요.'),
+    h('button.btn.primary', { onclick: () => { closeOverlay({ replacing: true }); openSummary(sp); } }, pix('book'), '능력치 · 기술 보기'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기'),
   ]);
   typeText(flavor, sp.flavor);
+}
+
+// ───────── 요약 화면 (3세대 START → 요약 느낌): 정보 / 능력치 / 기술 ─────────
+const STAT_KEYS = [['hp', 'HP'], ['atk', '공격'], ['def', '방어'], ['spa', '특수공격'], ['spd', '특수방어'], ['spe', '스피드']];
+const CAT_LABEL = { physical: '물리', special: '특수', status: '변화' };
+const KIND_LABEL = { attack: '공격', status: '상태', defense: '방어' };
+const typeOf = (sp) => { const s = lineOf(sp.line_id)?.subject; return s === '비밀' ? '전설' : s; };
+// Lv.50 실제 능력치 (개체값 31, 노력치 0, 성격 보정 없음)
+const lv50 = (key, base) => (key === 'hp' ? Math.floor((2 * base + 31) / 2) + 60 : Math.floor((2 * base + 31) / 2) + 5);
+const movesOf = (sp) => (S.catalog.speciesMoves || []).filter((x) => x.species_id === sp.id).sort((a, b) => a.slot - b.slot)
+  .map((x) => (S.catalog.moves || []).find((m) => m.id === x.move_id)).filter(Boolean);
+function typeMatch(type) {
+  const chart = S.catalog.typeChart || [];
+  return {
+    strong: chart.filter((c) => c.atk === type && Number(c.mult) > 1).map((c) => c.def),
+    weak: chart.filter((c) => c.def === type && Number(c.mult) > 1).map((c) => c.atk),
+  };
+}
+function statNote(sp) {
+  const v = STAT_KEYS.map(([k, n]) => [n, sp[k] || 0]);
+  const hi = [...v].sort((a, b) => b[1] - a[1])[0];
+  const lo = [...v].sort((a, b) => a[1] - b[1])[0];
+  return `${josa(hi[0], '이', '가')} 높고 ${josa(lo[0], '이', '가')} 낮은 편`;
+}
+
+function openSummary(sp, page = 0) {
+  sfx.select();
+  if (!sp.hp || !(S.catalog.moves || []).length) { toast('능력치 정보를 불러오는 중이에요. 잠시 후 다시 열어 주세요.'); loadCatalog().catch(() => {}); return; }
+  const type = typeOf(sp);
+  const PAGES = ['정보', '능력치', '기술'];
+  const body = h('div.sum-body');
+  const tabs = h('div.sum-tabs', PAGES.map((t, i) => h('button', { type: 'button', 'aria-pressed': String(i === page), onclick: () => show(i) }, t)));
+  const show = (i) => {
+    page = (i + PAGES.length) % PAGES.length;
+    tabs.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === page)));
+    sfx.blip();
+    body.replaceChildren(...[sumInfo, sumStats, sumMoves][page](sp, type));
+  };
+  const ov = sheet([
+    h('div.summary',
+      h('div.sum-top', h('b', `${dexNo(sp)}`), h('span', sp.name), h(`span.type.t-${type}`, type), h('span.sum-lv', 'Lv.50')),
+      h('div.sum-main',
+        h(`div.sum-pic.t-bg-${type}`, spriteCanvas(sp.id, 112)),
+        h('div.sum-right', tabs, body)),
+      h('div.sum-nav',
+        h('button.btn.small', { type: 'button', onclick: () => show(page - 1), 'aria-label': '이전 페이지' }, '◀'),
+        h('span', '◀ ▶ 로 페이지 넘기기'),
+        h('button.btn.small', { type: 'button', onclick: () => show(page + 1), 'aria-label': '다음 페이지' }, '▶'))),
+    h('button.btn', { onclick: () => closeOverlay() }, '닫기'),
+  ]);
+  ov.classList.add('sum-overlay');
+  show(page);
+}
+
+function sumInfo(sp, type) {
+  const line = lineOf(sp.line_id);
+  const m = typeMatch(type);
+  const chips = (arr) => (arr.length ? arr.map((t) => h(`span.type.t-${t}`, t)) : [h('span', '없음')]);
+  return [
+    h('dl.sum-kv',
+      h('dt', '이름'), h('dd', sp.name),
+      h('dt', '타입'), h('dd', h(`span.type.t-${type}`, type)),
+      h('dt', '분류'), h('dd', sp.category),
+      h('dt', '정체'), h('dd', line?.teacher || '?'),
+      h('dt', '성향'), h('dd', statNote(sp))),
+    h('div.sum-match', h('small', '효과가 굉장한 상대'), h('div', ...chips(m.strong))),
+    h('div.sum-match', h('small', '조심해야 할 상대'), h('div', ...chips(m.weak))),
+  ];
+}
+
+function sumStats(sp) {
+  const vals = STAT_KEYS.map(([k]) => sp[k] || 0);
+  const hi = Math.max(...vals), lo = Math.min(...vals);
+  return [
+    h('div.sum-stats', STAT_KEYS.map(([k, name], i) => {
+      const b = vals[i];
+      const mark = b === hi ? h('i.up', '▲') : b === lo ? h('i.down', '▼') : h('i', '');
+      return h('div.stat-row',
+        h('span.stat-name', name, mark),
+        h('b.stat-val', String(lv50(k, b))),
+        h('span.stat-bar', h(`i${b === hi ? '.hi' : b === lo ? '.lo' : ''}`, { style: { width: `${Math.min(100, (b / 150) * 100)}%` } })));
+    })),
+    h('div.sum-total', h('span', '종족값 합계'), h('b', String(vals.reduce((a, b) => a + b, 0)))),
+    h('small.muted', '숫자 = Lv.50 능력치 · 막대 = 종족값 · ▲ 가장 높음 ▼ 가장 낮음'),
+  ];
+}
+
+function sumMoves(sp) {
+  const detail = h('div.move-detail');
+  const moves = movesOf(sp);
+  const pick = (m, btn) => {
+    sfx.blip();
+    detail.parentElement?.querySelectorAll('.move-row').forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+    detail.replaceChildren(
+      h('div.move-kv',
+        h('span', '분류'), h('b', `${CAT_LABEL[m.category]} · ${KIND_LABEL[m.kind]}`),
+        h('span', '위력'), h('b', m.power ? String(m.power) : '—'),
+        h('span', '명중'), h('b', m.accuracy == null ? '—' : String(m.accuracy)),
+        m.priority ? h('span', '우선도') : null, m.priority ? h('b', `+${m.priority}`) : null),
+      h('p', m.description));
+  };
+  const rows = moves.map((m) => {
+    const btn = h('button.move-row', { type: 'button', onclick: () => pick(m, btn) },
+      h(`span.type.t-${m.type}`, m.type),
+      h('b', m.name),
+      h(`span.kind.k-${m.kind}`, KIND_LABEL[m.kind]),
+      h('span.pp', `PP ${m.pp}/${m.pp}`));
+    return btn;
+  });
+  const wrap = [h('div.move-list', rows), detail];
+  if (moves[0]) setTimeout(() => pick(moves[0], rows[0]), 0);
+  return wrap;
+}
+
+// ───────── 레이드 / 배틀 탭 (PR B·C 에서 채움) ─────────
+function viewRaid() {
+  const slots = [[112, '아침'], [115, '점심'], [118, '저녁']];
+  return [
+    h('div.box.stack',
+      h('div.banner', h('b', pix('bolt'), ' 레이드'), h('span.chip', '곧 열려요')),
+      h('p', '대형 화면에 보스가 나타나면 QR을 찍고 다 같이 화면을 탭해서 보스 체력을 깎아요. 이기면 그 몬스터 티켓을 받아요.'),
+      h('div.raid-preview', slots.map(([id, t]) => h('div', spriteCanvas(id, 64, 'silhouette'), h('small', `${t} 전설`)))),
+      h('small.muted', '교장·교감 레이드, 시간대 전설(아침·점심·저녁), 운영진이 여는 특별 레이드가 있어요.')),
+  ];
+}
+
+function viewBattle() {
+  const cycle = ['국어', '한국사', '사회', '외국어', '영어', '정보', '수학', '과학', '체육', '음악'];
+  return [
+    h('div.box.stack',
+      h('div.banner', h('b', pix('spark'), ' 배틀'), h('span.chip', '곧 열려요')),
+      h('p', '내 몬스터 3마리로 팀을 만들어 친구 팀이나 선생님과 겨뤄요. 기술은 몬스터마다 4개 (공격 2 · 상태 1 · 방어 1).'),
+      h('small.muted', '도감에서 몬스터를 누르고 "능력치·기술"을 보면 미리 확인할 수 있어요.')),
+    h('div.box.stack',
+      h('b', '과목 상성'),
+      h('small', '화살표 방향으로 효과가 굉장해요 (×2). 거꾸로는 별로예요 (×0.5). 각 과목은 다음 두 과목에 강해요.'),
+      h('div.type-cycle', cycle.map((t, i) => [h(`span.type.t-${t}`, t), i < cycle.length - 1 ? h('span.arrow', '→') : h('span.arrow', '↺')]).flat()),
+      h('small.muted', '전설은 모두에게 보통이고, 전설끼리만 효과가 굉장해요.')),
+  ];
 }
 
 async function doEvolve(c) {

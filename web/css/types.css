@@ -11,5 +11,7 @@
 .t-음악 { background: #f4b8c8; color: #1e2433; }
 .t-체육 { background: #b82a22; color: #fff; }
 .t-미술 { background: #f8c030; color: #1e2433; }
+.t-보통 { background: #a8a090; color: #1e2433; }
+.t-비밀 { background: #5ab8c0; color: #1e2433; }
 .t-전설 { background: linear-gradient(90deg, #f8d048, #f0a040, #c8a0f0); color: #1e2433; }
 .type[class*='t-'] { text-shadow: none; }

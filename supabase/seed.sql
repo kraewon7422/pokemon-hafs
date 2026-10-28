@@ -20,7 +20,12 @@ from (values
   (35, '교장 선생님', '전설', 'legendary'), (36, '교감 선생님', '전설', 'legendary')
 ) v(id, teacher, subject, rarity);
 -- 이스터에그: 비밀 몬스터 (지도에 없는 비밀 QR S01 에서만, 도감 완성 조건에서 빠짐)
-insert into public.lines (id, teacher, subject, rarity, max_stage, secret) values (37, '비밀 몬스터', '비밀', 'legendary', 1, true);
+insert into public.lines (id, teacher, subject, rarity, max_stage, secret, bonus) values (37, '비밀 몬스터', '비밀', 'legendary', 1, true, true);
+-- 탐구 활동 전설 (도감 완성·% 계산에서 빠짐): 38~40 시간대 레이드 (아침·점심·저녁), 41 과연기 = 도감 50% 보상, 42 창문기 = 도감 100% 보상
+insert into public.lines (id, teacher, subject, rarity, max_stage, bonus) values
+ (38, '1학년 탐구 활동', '전설', 'legendary', 1, true), (39, '1학년 탐구 활동', '전설', 'legendary', 1, true),
+ (40, '1학년 탐구 활동', '전설', 'legendary', 1, true), (41, '2학년 과제연구기초', '전설', 'legendary', 1, true),
+ (42, '3학년 창의적문제해결기법', '전설', 'legendary', 1, true);
 
 -- species names: each line has its own 3 names (legendaries: 1 stage)
 insert into public.species (id, line_id, stage, name, category, flavor, height, weight)
@@ -67,7 +72,12 @@ from (values
 ) v(l, m, cat, f), generate_series(1, 3) s
 where s <= (select max_stage from public.lines where id = v.l);
 insert into public.species (id, line_id, stage, name, category, flavor, height, weight) values
- (109, 37, 1, '숨바꼬치', '비밀 몬스터', '학교 어딘가 지도에 없는 곳에 숨어 산다. 찾아낸 사람만 이 몬스터를 알 수 있다.', '??cm', '??kg');
+ (109, 37, 1, '숨바꼬치', '비밀 몬스터', '학교 어딘가 지도에 없는 곳에 숨어 산다. 찾아낸 사람만 이 몬스터를 알 수 있다.', '??cm', '??kg'),
+ (112, 38, 1, '소디포', '아침 전설 몬스터', '아침 햇살과 함께 깨어나는 1학년 탐구의 전설. 아침 시간에만 대형 화면에 나타난다.', '150cm', '48kg'),
+ (115, 39, 1, '유리프', '한낮 전설 몬스터', '한낮의 햇빛을 모으는 1학년 탐구의 전설. 점심시간에만 대형 화면에 나타난다.', '160cm', '52kg'),
+ (118, 40, 1, 'TTU', '노을 전설 몬스터', '노을이 질 무렵 나타나는 1학년 탐구의 전설. 저녁 시간에만 볼 수 있다.', '170cm', '80kg'),
+ (121, 41, 1, '과연기', '탐구 전설 몬스터', '2학년 과제연구기초의 전설. 도감을 절반 채운 트레이너 앞에 나타난다.', '180cm', '70kg'),
+ (124, 42, 1, '창문기', '창의 전설 몬스터', '창의적 문제해결의 전설. 도감을 모두 채운 트레이너에게만 모습을 보인다.', '200cm', '90kg');
 
 -- 3 placeholder quizzes per line (real festival: 8+ per teacher — a student never gets the same question twice)
 with q as (

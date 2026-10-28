@@ -50,7 +50,8 @@ const patchSetting = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { m
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 await client(null).rpc('dev_create_account', { p_email: '021004' });   // 4th test student (21기) is created on demand
-for (const e of ['022001', '022002', '022003', '021004']) S.push(client(await login(`${e}@test.local`)));
+const STOK = await login('022001@test.local');
+for (const e of ['022001', '022002', '022003', '021004']) S.push(client(e === '022001' ? STOK : await login(`${e}@test.local`)));
 const anon = client(null);
 
 console.log('\n[0] setup');
@@ -500,6 +501,29 @@ let NA, NB;
   ok((await NB.rpc('ensure_profile')).data?.titles?.includes('럭키 세븐'), 'title stays on the profile');
   await setS('roulette_777_per_mille', 10); await setS('roulette_every_min', 5); await setS('roulette_odds', [[0, 60], [1, 30], [3, 8], [5, 2]]);
   await admin.rpc('admin_unlink', { p_student_id: sidA }); await admin.rpc('admin_unlink', { p_student_id: sidB });
+}
+
+console.log('\n[23] battle data: types, moves, stats');
+{
+  const sp = (await S[0].select('species?select=id,line_id,hp,atk,def,spa,spd,spe&order=id')).data || [];
+  ok(sp.length >= 110 && sp.every(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].every(v => v > 0)), 'every species has 6 base stats', sp.filter(x => !x.hp).map(x => x.id));
+  const total = (x) => x.hp + x.atk + x.def + x.spa + x.spd + x.spe;
+  const by = Object.fromEntries(sp.map(x => [x.id, x]));
+  ok(total(by[1]) < total(by[2]) && total(by[2]) < total(by[3]), 'evolved forms are stronger (stage 1 < 2 < 3)', [total(by[1]), total(by[2]), total(by[3])]);
+  ok(by[94].atk > by[94].spa && by[13].spa > by[13].atk, 'subjects differ: 체육 = attack, 수학 = special attack');
+  const mv = (await S[0].select('moves?select=id,kind')).data || [];
+  const kind = Object.fromEntries(mv.map(m => [m.id, m.kind]));
+  const sm = (await S[0].select('species_moves?select=species_id,slot,move_id')).data || [];
+  const per = {};
+  for (const x of sm) (per[x.species_id] ||= []).push(kind[x.move_id]);
+  const bad = sp.filter(x => (per[x.id] || []).sort().join() !== 'attack,attack,defense,status').map(x => x.id);
+  ok(bad.length === 0, 'every species: 2 attack + 1 status + 1 defense move', bad);
+  const tc = (await S[0].select('type_chart?select=atk,def,mult')).data || [];
+  ok(tc.length === 41 && tc.some(c => c.atk === '정보' && c.def === '수학' && Number(c.mult) === 2) && tc.some(c => c.atk === '수학' && c.def === '정보' && Number(c.mult) === 0.5), 'type chart (과목 cycle)', tc.length);
+  const lg = (await S[0].select('lines?id=gte.37&select=id,bonus,max_stage&order=id')).data || [];
+  ok(lg.length === 6 && lg.every(l => l.bonus && l.max_stage === 1), 'secret + 5 탐구 legends are bonus 1-stage lines', lg);
+  const w = await fetch(`${URL_}/rest/v1/moves?id=eq.${mv[0].id}`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${STOK}`, Prefer: 'return=representation' }, body: JSON.stringify({ power: 999 }) });
+  ok(w.status >= 400 || (await w.json()).length === 0, 'students cannot change moves');
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
