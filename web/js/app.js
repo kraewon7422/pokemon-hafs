@@ -478,6 +478,8 @@ function openSettings() {
       h('button.btn', { onclick: () => showOnboarding(true) }, pix('book'), '게임 방법 다시 보기'),
       !isStandalone() && h('button.btn', { onclick: showInstall }, pix('phone'), '앱으로 설치하기'),
       h('button.btn', { onclick: confirmLogout }, pix('door'), '로그아웃')),
+    // 운영진: 운영자 페이지 (구글 운영진 계정만 들어갈 수 있음)
+    h('a.btn.small.ghost', { href: 'admin.html', target: '_blank', rel: 'noopener' }, pix('school'), '운영진 전용: 운영자 페이지 로그인'),
     h('small', { style: { textAlign: 'center' } }, `${p.student_id.replace(/^g:/, '')} · 버전 ${CONFIG.VERSION}`),
   ]);
 }
@@ -1162,6 +1164,8 @@ function devLoginBox(err) {
   }, email, h('small', '비밀번호는 1234abcd! 로 고정, 처음 쓰는 이메일이면 계정이 만들어져요.'), h('button.btn.small', { type: 'submit' }, '테스트 로그인')));
 }
 
+const GENS = [20, 21, 22];   // hint only; the server setting allowed_gens decides (0010)
+
 // 첫 로그인: 학생(고유번호 + 이름) / 외부인(이름만) + 동의
 function renderRegister(info) {
   closeOverlay();
@@ -1172,14 +1176,14 @@ function renderRegister(info) {
   const nameIn = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, value: info.name || '', autocomplete: 'name' });
   const show = h('input', { type: 'checkbox', checked: true });
   const preview = h('b');
-  const sidRow = h('label.field', h('span', '고유번호 (학번)'), sidIn, h('small', '22기 1번 → 022001'));
+  const sidRow = h('label.field', h('span', '고유번호 (학번)'), sidIn, h('small', '20~22기만 참여할 수 있어요. 22기 1번 → 022001'));
   const seg = h('div.seg', { role: 'group', 'aria-label': '학생인가요' });
   const update = () => {
     seg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.k === kind)));
     sidRow.hidden = kind !== 'student' || !!fixedId;
     const id = sidIn.value.replace(/\D/g, '');
     const gen = kind === 'student' && id.length >= 5 ? Number(id.padStart(6, '0').slice(0, 3)) : null;
-    preview.textContent = `${gen ? gen + '기 ' : ''}${maskName(nameIn.value)}`;
+    preview.textContent = gen && !GENS.includes(gen) ? `${gen}기는 참여할 수 없어요 (20~22기만)` : `${gen ? gen + '기 ' : ''}${maskName(nameIn.value)}`;
   };
   if (!fixedId) {
     seg.append(

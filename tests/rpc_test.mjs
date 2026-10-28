@@ -49,22 +49,23 @@ const admin = client(ADMIN_TOK);
 const patchSetting = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${ADMIN_TOK}` }, body: JSON.stringify({ value: v }) });
 const booth = client(await login('booth1@staff.test'));
 const S = [];
-for (const e of ['022001', '022002', '022003', '023004']) S.push(client(await login(`${e}@test.local`)));
+await client(null).rpc('dev_create_account', { p_email: '021004' });   // 4th test student (21기) is created on demand
+for (const e of ['022001', '022002', '022003', '021004']) S.push(client(await login(`${e}@test.local`)));
 const anon = client(null);
 
 console.log('\n[0] setup');
 await admin.rpc('ensure_profile'); await booth.rpc('ensure_profile');
 await admin.select('settings?key=eq.festival_open'); // warm
-for (const sid of ['022001', '022002', '022003', '023004']) await admin.rpc('admin_unlink', { p_student_id: sid });
+for (const sid of ['022001', '022002', '022003', '021004']) await admin.rpc('admin_unlink', { p_student_id: sid });
 const NAMES = ['김민준', '이서연', '박지윤', '최도우'];
 const fresh0 = (await S[0].rpc('ensure_profile')).data;
 ok(fresh0?.needs_register === true, 'first login asks to register (no profile yet)', fresh0);
 const profs = [];
-for (const [i, sid] of ['022001', '022002', '022003', '023004'].entries())
+for (const [i, sid] of ['022001', '022002', '022003', '021004'].entries())
   profs.push((await S[i].rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: NAMES[i], p_show: true })).data);
 ok(profs[0]?.student_id === '022001' && profs[0]?.gen === 22 && profs[0]?.role === 'student' && profs[0]?.consented === true, 'student registers with number + name', profs[0]);
 ok(profs[0]?.display === '22기 김*준', 'display name is masked like 김*준', profs[0]?.display);
-ok(profs[3]?.student_id === '023004' && profs[3]?.gen === 23, 'gen parsed', profs[3]);
+ok(profs[3]?.student_id === '021004' && profs[3]?.gen === 21, 'gen parsed', profs[3]);
 const me = (await admin.rpc('ensure_profile')).data;
 ok(me?.role === 'admin', 'admin role from settings', me);
 const secrets = (await admin.select('qr_secrets?select=qr_id,token,manual_code&revoked_at=is.null')).data;
@@ -200,14 +201,14 @@ r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: 'abcdef1234' }
 ok(r.data?.acks?.[0]?.status !== 'ok', 'fake rotating token rejected', r.data?.acks);
 r = await S[2].rpc('sync', { p_scans: [{ n: nonce(), q: '_', t: T.L01.manual_code }] });
 ok(r.data?.acks?.[0]?.status === 'invalid_token', 'manual code can NOT unlock the legendary QR', r.data?.acks);
-await booth.rpc('booth_redeem', { p_payload: '023004' });
+await booth.rpc('booth_redeem', { p_payload: '021004' });
 const rt2 = await booth.rpc('screen_rotating_token', { p_qr: 'L01' });
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: rt2.data.token }] });
 ok(r.data?.acks?.[0]?.status === 'daily_cap', 'legendary QR: once per day', r.data?.acks);
 const leg = (await S[3].rpc('sync')).data.state.collection.find(c => c.line_id >= 35);
-await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: 1 });
+await admin.rpc('admin_adjust_tickets', { p_student_id: '021004', p_delta: 1 });
 ok(leg && (await S[3].rpc('evolve', { p_line: leg.line_id })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
-await admin.rpc('admin_adjust_tickets', { p_student_id: '023004', p_delta: -1 });
+await admin.rpc('admin_adjust_tickets', { p_student_id: '021004', p_delta: -1 });
 ok((await booth.rpc('screen_feed')).data?.rotating?.some(x => x.id === 'L01'), 'TV shows the legendary QR while it is on');
 await legendOn(false);
 
@@ -265,7 +266,7 @@ const adminTok = ADMIN_TOK;
 await kill(false);
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }] });
 ok(r.data?.acks?.[0]?.status === 'closed', 'festival closed → scans held (closed)');
-ok((await booth.rpc('booth_redeem', { p_payload: '023004' })).error === 'FESTIVAL_CLOSED', 'festival closed → booth stops');
+ok((await booth.rpc('booth_redeem', { p_payload: '021004' })).error === 'FESTIVAL_CLOSED', 'festival closed → booth stops');
 await kill(true);
 const stats = await admin.rpc('admin_stats');
 ok(stats.data?.students >= 4 && stats.data.qrs.length >= 25, 'admin stats work', { students: stats.data?.students });
@@ -333,7 +334,7 @@ S[2] = client(await login('022003@test.local'));
 await setS('festival_close_at', new Date(Date.now() - 60000).toISOString());
 r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'A13', t: T.A13.token }] });
 ok(r.data?.acks?.[0]?.status === 'closed' && r.data.state.rules.festival_ended === true, 'past festival_close_at → closed + ended flag', r.data?.acks);
-ok((await booth.rpc('booth_redeem', { p_payload: '023004' })).error === 'FESTIVAL_CLOSED', 'booth stops after close time');
+ok((await booth.rpc('booth_redeem', { p_payload: '021004' })).error === 'FESTIVAL_CLOSED', 'booth stops after close time');
 await setS('festival_close_at', null);
 
 console.log('\n[17] open login: register screen, 학번 code accounts, dev accounts');
@@ -354,10 +355,15 @@ console.log('\n[17] open login: register screen, 학번 code accounts, dev accou
   const t = await fresh('reg2@test.local');
   ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '022001', p_name: '가짜' })).error === 'STUDENT_ID_TAKEN', 'a taken student number is refused');
   ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '12', p_name: '가짜' })).error === 'BAD_STUDENT_ID', 'bad student number refused');
+  ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '023777', p_name: '미래' })).error === 'BAD_GEN', 'future 기수 (23기) refused');
+  ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '019777', p_name: '졸업' })).error === 'BAD_GEN', 'past 기수 (19기) refused');
+  ok((await anon.rpc('create_code_account', { p_student_id: '024777' })).error === 'BAD_GEN', 'no code account for a future 기수');
+  ok((await admin.rpc('admin_make_login_codes', { p_ids: ['025001'] })).error === 'BAD_GEN', 'admin codes refuse a future 기수');
+  ok((await booth.rpc('screen_feed')).data?.gens?.every(x => [20, 21, 22].includes(x.gen)), 'TV 기수 대항전 shows only 20~22기');
   ok((await t.rpc('register_profile', { p_kind: 'student', p_student_id: '022777', p_name: '<b>' })).error === 'BAD_NAME', 'bad name refused');
   ok((await t.rpc('register_profile', { p_kind: 'teacher', p_student_id: '', p_name: '가짜' })).error === 'BAD_KIND', 'unknown kind refused');
 
-  const sid = '099' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
+  const sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0');
   const cc = (await anon.rpc('create_code_account', { p_student_id: sid })).data;
   ok(cc?.id === sid && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(cc.code), 'student number alone creates a code account (code shown once)', cc);
   ok((await anon.rpc('create_code_account', { p_student_id: sid })).error === 'CODE_ACCOUNT_EXISTS', 'second request for the same number is refused');

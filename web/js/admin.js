@@ -30,6 +30,7 @@ const SETTING_HELP = {
   roulette_enabled: '진화권 룰렛 ON/OFF (true/false)',
   code_self_signup: '학번만 넣으면 코드 계정을 만들어 주는 기능 ON/OFF (구글이 안 되는 학생용)',
   code_signup_per_10min: '학번 코드 계정을 10분 동안 전체에서 최대 몇 개 만들 수 있는지 (번호 선점 방지, 기본 60)',
+  allowed_gens: '참여할 수 있는 기수 목록 (예: [20, 21, 22]). 이 밖의 학번은 가입·코드 생성이 거절되고 TV 기수 대항전에도 안 나와요. 매년 바꿔 주세요',
   dev_login: '개발용 테스트 로그인(아무 이메일, 비밀번호 1234abcd!) — 실전 서버에서는 반드시 false',
   roulette_every_min: '룰렛을 한 번 돌린 뒤 다음까지 기다리는 시간(분, 기본 5)',
   roulette_daily_max: '한 사람이 하루에 돌릴 수 있는 룰렛 횟수 (기본 12)',
