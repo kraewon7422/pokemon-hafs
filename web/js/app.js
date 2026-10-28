@@ -24,6 +24,7 @@ const S = {
   overlay: null,        // currently open overlay element
   bagOpen: false,
   installEvt: null,
+  btSeen: new Set(),    // 배틀 신청 중 이미 알린 것
 };
 
 const app = () => $('#app');
@@ -404,6 +405,8 @@ function viewHome() {
     (S.snap.raids_live || []).length > 0 && !R.festival_ended && h('button.box.raid-banner', { onclick: () => go('raid') },
       spriteCanvas(S.snap.raids_live[0].species_id, 48),
       h('div', h('b', '레이드 보스 출현!'), h('br'), h('small', `${S.snap.raids_live.map((x) => x.title).join(' · ')} — 대형 화면의 QR을 찍어 참가해요`))),
+    (S.btInbox?.invites || []).length > 0 && h('button.box.raid-banner.bt-banner', { onclick: () => inviteSheet(S.btInbox.invites[0]) },
+      pix('spark', 'l'), h('div', h('b', '배틀 신청!'), h('br'), h('small', `${josa(S.btInbox.invites[0].from, '이', '가')} 실시간 배틀을 신청했어요 — 눌러서 수락`))),
     minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', pix('clock'), `마감까지 ${minsLeft}분! 가방 티켓은 마감 전에 부스에서 써 주세요.`),
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
@@ -911,7 +914,6 @@ function sumMoves(sp) {
   return wrap;
 }
 
-// ───────── 배틀 탭 (PR C 에서 채움) ─────────
 // ───────── 레이드: 큰 보스를 다 같이 탭해서 쓰러뜨리기 (0013) ─────────
 const isRaidQr = (q) => /^R\d{1,5}$/.test(q);
 const curSpecies = (line) => { const c = owned(line); return c ? speciesOf(dexOf(line, c.stage)) : null; };
@@ -1081,25 +1083,394 @@ function openRaid(r0) {
   if (r.status !== 'active') finish();
 }
 
-function viewBattle() {
+// ───────── 배틀 (0015): 계산은 전부 서버. 폰은 고른 기술만 보내고, 서버 기록(log)을 3세대 느낌으로 재생한다 ─────────
+const isBattleQr = (q) => q === 'BTL';
+const ST_LABEL = { par: '마비', brn: '화상', psn: '독', slp: '잠듦' };
+const moveOf = (id) => (S.catalog.moves || []).find((m) => m.id === id);
+const BT_WHY = {
+  practice: '연습 배틀이라 보상은 없어요.',
+  same_opp: '같은 친구에게는 하루 한 번만 보상이 있어요.',
+  daily_max: '오늘 받을 수 있는 배틀 보상은 다 받았어요.',
+};
+
+// 내 배틀 팀 = 저장한 팀 (아직 가지고 있는 것만), 없으면 가장 높은 단계 3마리
+function myTeam() {
+  const mine = collection().filter((c) => !isWithdrawn(c.line_id));
+  const have = new Set(mine.map((c) => c.line_id));
+  const t = (S.btTeam || []).filter((l) => have.has(l));
+  return t.length ? t : [...mine].sort((a, b) => b.stage - a.stage || b.catch_count - a.catch_count).slice(0, 3).map((c) => c.line_id);
+}
+
+async function loadBattleToday() {
+  S.btTodayAt = Date.now();
+  try {
+    S.btToday = await rpc('battle_today', {}, { retries: 0 });
+    if (!S.btTeam && S.btToday?.team) S.btTeam = S.btToday.team;
+    if (S.tab === 'battle' && !S.overlay) renderTab();
+  } catch { /* offline */ }
+}
+
+// 홈·배틀 탭: 8초마다 나에게 온 "배틀 신청!" 확인 (앱이 보일 때만)
+async function pollInbox() {
+  if (document.hidden || !$('nav.tabs') || !S.online || !S.snap) return;
+  if (S.overlay?.classList.contains('battle-overlay')) return;
+  try {
+    const box = await rpc('battle_inbox', {}, { retries: 0 });
+    const before = JSON.stringify(S.btInbox || null);
+    S.btInbox = box;
+    const fresh = (box.invites || []).filter((i) => !S.btSeen.has(i.id));
+    fresh.forEach((i) => S.btSeen.add(i.id));
+    if (fresh.length) {
+      sfx.scan(); vibrate([60, 40, 60]);
+      if (!S.overlay) inviteSheet(fresh[0]); else toast(`⚔ ${josa(fresh[0].from, '이', '가')} 배틀을 신청했어요!`);
+    }
+    if (before !== JSON.stringify(box) && ['home', 'battle'].includes(S.tab) && !S.overlay) renderTab();
+  } catch { /* offline */ }
+}
+setInterval(pollInbox, 8000);
+
+function teamStrip(team = myTeam(), size = 56) {
+  return team.length
+    ? h('div.bt-team', team.map((l) => {
+      const sp = curSpecies(l);
+      return h('div', spriteCanvas(sp.id, size), h('small', sp.name), h(`span.type.t-${typeOf(sp)}`, typeOf(sp)));
+    }))
+    : h('p', '아직 몬스터가 없어요. QR을 찍어 몬스터를 먼저 모아요!');
+}
+
+function typeTable() {
   const T = ['국어', '수학', '영어', '물리', '화학', '생명', '지구', '지리', '정치경제', '윤리', '역사', '외국어', '정보', '체육', '음악'];
   const chart = S.catalog.typeChart || [];
   const m = (a, d) => Number(chart.find((c) => c.atk === a && c.def === d)?.mult ?? 1);
   const cell = (v) => (v === 2 ? h('td.x2', '2') : v === 0.5 ? h('td.xh', '½') : v === 0 ? h('td.x0', '0') : h('td', ''));
   const short = (t) => ({ 정치경제: '정경' }[t] || t);
   return [
-    h('div.box.stack',
-      h('div.banner', h('b', pix('spark'), ' 배틀'), h('span.chip', '곧 열려요')),
-      h('p', '내 몬스터 3마리로 팀을 만들어 친구 팀이나 선생님과 겨뤄요. 기술은 몬스터마다 4개 (공격 2 · 상태 1 · 방어 1).'),
-      h('small.muted', '도감에서 몬스터를 누르고 "능력치·기술"을 보면 미리 확인할 수 있어요.')),
-    h('div.box.stack',
-      h('b', '타입 상성표'),
-      h('small', '왼쪽 = 공격하는 기술의 타입, 위 = 맞는 몬스터의 타입. 2 = 효과가 굉장했다 · ½ = 별로인 듯하다 · 0 = 효과가 없다'),
-      h('div.type-table-wrap', h('table.type-table',
-        h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, short(d))))),
-        h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, short(a)), T.map((d) => cell(m(a, d)))))))),
-      h('small.muted', '전설은 모두에게 보통이고, 전설끼리만 효과가 굉장해요. 효과 없음: 정치경제→음악, 역사→정보, 체육→수학.')),
+    h('small', '왼쪽 = 공격하는 기술의 타입, 위 = 맞는 몬스터의 타입. 2 = 효과가 굉장했다 · ½ = 별로인 듯하다 · 0 = 효과가 없다'),
+    h('div.type-table-wrap', h('table.type-table',
+      h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, short(d))))),
+      h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, short(a)), T.map((d) => cell(m(a, d)))))))),
+    h('small.muted', '전설은 모두에게 보통이고, 전설끼리만 효과가 굉장해요. 효과 없음: 정치경제→음악, 역사→정보, 체육→수학.'),
   ];
+}
+
+function viewBattle() {
+  if (S.online && (!S.btTodayAt || Date.now() - S.btTodayAt > 15000)) loadBattleToday();
+  const team = myTeam();
+  const today = S.btToday;
+  const act = S.btInbox?.active;
+  const invites = S.btInbox?.invites || [];
+  return [
+    h('div.box.stack',
+      h('div.banner', h('b', pix('spark'), ' 배틀'), today ? h('span.chip', `오늘 보상 ${today.wins}/${today.max}`) : null),
+      h('p', { style: { margin: 0 } }, '내 몬스터 3마리로 겨뤄요. 친구를 이기면 진화권 1장! (하루 3번 · 같은 친구는 하루 1번)'),
+      act && h('button.btn.big.gold', { onclick: () => resumeBattle(act.id) }, pix('spark'), act.status === 'invite' ? '보낸 배틀 신청 보기' : '하던 배틀 이어 하기'),
+      invites.map((inv) => h('div.bt-invite', h('b', `${josa(inv.from, '이', '가')} 배틀 신청!`),
+        h('button.btn.small.primary', { onclick: () => acceptInvite(inv) }, '수락'),
+        h('button.btn.small', { onclick: () => declineInvite(inv) }, '거절')))),
+    h('div.box.stack',
+      h('div.banner', h('b', '내 배틀 팀'), h('button.btn.small', { onclick: teamPicker, disabled: !collection().length }, '팀 바꾸기')),
+      teamStrip(team),
+      h('button.btn.big.primary', { disabled: !team.length, onclick: () => startBattle('cpu') }, pix('spark'), '연습 배틀 (보상 없음)'),
+      h('button.btn.big', { disabled: !team.length, onclick: openScanner }, pix('camera'), '친구 배틀 QR 찍기'),
+      h('button.btn.big', { onclick: showBattleQr }, '내 배틀 QR 보여주기'),
+      h('small.muted', '친구가 내 QR을 찍으면 실시간 배틀을 신청하거나, 내 팀을 AI가 조종하는 배틀을 할 수 있어요.')),
+    h('details.box.stack', h('summary', h('b', '타입 상성표')), typeTable()),
+  ];
+}
+
+function teamPicker() {
+  sfx.select();
+  let sel = myTeam();
+  const grid = h('div.bt-pick');
+  const draw = () => grid.replaceChildren(...collection().filter((c) => !isWithdrawn(c.line_id))
+    .sort((a, b) => b.stage - a.stage || a.line_id - b.line_id).map((c) => {
+      const sp = curSpecies(c.line_id); const n = sel.indexOf(c.line_id);
+      return h(`button.bt-opt${n >= 0 ? '.on' : ''}`, {
+        onclick: () => {
+          sfx.blip();
+          sel = n >= 0 ? sel.filter((x) => x !== c.line_id) : sel.length < 3 ? [...sel, c.line_id] : sel;
+          draw();
+        },
+      }, n >= 0 ? h('span.bt-num', String(n + 1)) : null, spriteCanvas(sp.id, 48), h('small', sp.name));
+    }));
+  draw();
+  const err = h('div.err');
+  sheet(h('div.stack',
+    h('b', '배틀 팀 고르기 (최대 3마리, 누른 순서대로 나가요)'),
+    grid, err,
+    h('button.btn.big.primary', {
+      onclick: async () => {
+        if (!sel.length) { err.textContent = '1마리 이상 골라 주세요.'; return; }
+        try {
+          await rpc('battle_set_team', { p_lines: sel }, { retries: 0 });
+          S.btTeam = sel; closeOverlay(); renderTab(); toast('배틀 팀을 저장했어요!');
+        } catch (e) { err.textContent = errorText(e.message); }
+      },
+    }, '저장'),
+    h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
+}
+
+async function showBattleQr() {
+  sfx.select();
+  let code = S.btToday?.code;
+  try { if (!code) code = await rpc('battle_code', {}, { retries: 0 }); } catch (e) { return say(errorText(e.message), true); }
+  if (S.btToday) S.btToday.code = code;
+  const canvas = h('canvas', { 'aria-label': '내 배틀 QR' });
+  drawQR(canvas, `BTL.${code.toUpperCase()}`, { cell: 6, margin: 4, ecc: 'L' });
+  sheet(h('div.stack',
+    h('div.bagqr', h('b', '내 배틀 QR'), canvas, h('small', '친구가 이 QR을 찍으면 나와 배틀할 수 있어요.')),
+    h('b', '내 배틀 팀'), teamStrip(myTeam(), 48),
+    h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
+}
+
+function friendBattleSheet(code) {
+  if (!myTeam().length) return say('배틀하려면 먼저 몬스터를 모아요!', true);
+  if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  sfx.scan(); vibrate(80);
+  sheet(h('div.stack',
+    h('b', pix('spark'), ' 친구 배틀 QR!'),
+    h('p', { style: { margin: 0 } }, '내 배틀 팀으로 어떻게 겨룰까요?'),
+    teamStrip(myTeam(), 48),
+    h('button.btn.big.primary', { onclick: () => startBattle('pvp', code) }, '실시간 배틀 신청 (친구가 수락하면 시작)'),
+    h('button.btn.big', { onclick: () => startBattle('team', code) }, '친구 팀과 AI 배틀 (바로 시작)'),
+    h('small.muted', '이기면 진화권 1장 (하루 3번 · 같은 친구는 하루 1번)'),
+    h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
+}
+
+function inviteSheet(inv) {
+  sheet(h('div.stack',
+    h('b.bt-alert', pix('spark'), ' 배틀 신청!'),
+    h('p', { style: { margin: 0 } }, `${josa(inv.from, '이', '가')} 실시간 배틀을 신청했어요. 1분 안에 수락해야 시작돼요.`),
+    teamStrip(myTeam(), 48),
+    h('button.btn.big.primary', { onclick: () => acceptInvite(inv), disabled: !myTeam().length }, '수락하고 배틀!'),
+    h('button.btn', { onclick: () => declineInvite(inv) }, '거절')));
+}
+
+async function acceptInvite(inv) {
+  try { openBattle(await rpc('battle_accept', { p_id: inv.id, p_lines: myTeam() }, { retries: 0 })); }
+  catch (e) { sfx.error(); say(errorText(e.message), true); pollInbox(); }
+}
+async function declineInvite(inv) {
+  try { await rpc('battle_decline', { p_id: inv.id }, { retries: 0 }); } catch { /* ignore */ }
+  if (S.overlay) closeOverlay();
+  if (S.btInbox) S.btInbox.invites = (S.btInbox.invites || []).filter((x) => x.id !== inv.id);
+  renderTab();
+}
+
+async function startBattle(mode, code) {
+  const team = myTeam();
+  if (!team.length) return say('배틀하려면 먼저 몬스터를 모아요!', true);
+  if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  try {
+    const fn = { cpu: 'battle_start_cpu', team: 'battle_start_team', pvp: 'battle_challenge' }[mode];
+    openBattle(await rpc(fn, mode === 'cpu' ? { p_lines: team } : { p_code: code, p_lines: team }, { retries: 0 }));
+  } catch (e) { sfx.error(); say(errorText(e.message), true); }
+}
+
+async function resumeBattle(id) {
+  try { openBattle(await rpc('battle_state', { p_id: id }, { retries: 0 })); } catch (e) { say(errorText(e.message), true); }
+}
+
+function openBattle(b0) {
+  unlockAudio();
+  let b = b0;
+  let shownSeq = b.status === 'active' && b.seq === 0 ? -1 : b.seq;   // -1 → 첫 화면에 등장 연출
+  let playing = false; let busy = false; let closed = false; let finished = false; let menuMode = 'main';
+  const skew = new Date(b.server_time || Date.now()) - Date.now();
+  const me = () => b.me; const fo = () => 1 - b.me;
+  const view = { act: [null, null], hp: [0, 0] };
+  const el = {
+    foeName: h('b'), foeSt: h('span.bt-st'), foeHp: h('i'), foeBalls: h('div.bt-balls'),
+    myName: h('b'), mySt: h('span.bt-st'), myHp: h('i'), myHpNum: h('small.bt-hpnum'), myBalls: h('div.bt-balls'),
+    foeSpr: h('div.bt-spr.foe'), mySpr: h('div.bt-spr.me'),
+    text: h('div.box.textbox.bt-text'), menu: h('div.bt-menu'), timer: h('span.bt-timer'),
+  };
+  const foeName = () => (b.mode === 'cpu' ? '연습 상대' : b.names?.[fo()] || '상대');
+  const tok = (s) => s.replace(/@([01])/g, (_, x) => (Number(x) === me() ? '' : '상대 '));
+  const monAt = (s, i) => b.sides?.[s]?.mons?.[i];
+  const sprOf = (s) => (s === me() ? el.mySpr : el.foeSpr);
+  const bump = (node, cls) => { node.classList.remove(cls); void node.offsetWidth; node.classList.add(cls); };
+
+  const setHp = (s, hp, max) => {
+    view.hp[s] = hp;
+    const m = max || monAt(s, view.act[s])?.max || 1;
+    const r = Math.max(0, hp) / m;
+    const fill = s === me() ? el.myHp : el.foeHp;
+    fill.style.width = `${r * 100}%`;
+    fill.className = r < 0.2 ? 'red' : r < 0.5 ? 'yellow' : '';
+    if (s === me()) el.myHpNum.textContent = `${Math.max(0, hp)} / ${m}`;
+  };
+  const showMon = (s, idx, hpNow) => {
+    view.act[s] = idx;
+    const m = monAt(s, idx);
+    const spr = sprOf(s);
+    spr.classList.remove('faint', 'hit', 'atk');
+    if (m?.sp && spr.dataset.sp !== String(m.sp)) { spr.dataset.sp = m.sp; spr.replaceChildren(spriteCanvas(m.sp, s === me() ? 120 : 104)); }
+    (s === me() ? el.myName : el.foeName).textContent = m?.name || '???';
+    setHp(s, hpNow ?? m?.hp ?? 0, m?.max);
+  };
+  const drawStatic = () => {
+    if (!b.sides?.length) return;
+    for (const s of [0, 1]) {
+      const sd = b.sides[s]; if (!sd) continue;
+      const m = monAt(s, sd.active);
+      showMon(s, sd.active);
+      if (m && m.hp <= 0) sprOf(s).classList.add('faint');
+      const st = m?.st ? ST_LABEL[m.st] : '';
+      const stEl = s === me() ? el.mySt : el.foeSt;
+      stEl.textContent = st; stEl.className = `bt-st${st ? ' st-' + m.st : ''}`;
+      (s === me() ? el.myBalls : el.foeBalls).replaceChildren(...sd.mons.map((x) => h(`i${x.hp > 0 ? '' : '.out'}`)));
+    }
+  };
+
+  const play = async (log, prev) => {
+    playing = true; el.menu.replaceChildren();
+    for (const e of log || []) {
+      if (closed) return;
+      if (e.sw) {
+        const [s, i] = e.sw;
+        showMon(s, i, prev?.sides?.[s]?.mons?.[i]?.hp);
+        bump(sprOf(s), 'enter');
+      }
+      if (e.use) bump(sprOf(e.use[0]), 'atk');
+      if (e.hp) {
+        const [s, v] = e.hp;
+        if (v < view.hp[s]) { bump(sprOf(s), 'hit'); sfx.blip(); vibrate(25); }
+        setHp(s, v);
+      }
+      if (e.faint != null) { sprOf(e.faint).classList.add('faint'); }
+      if (e.m) { await typeText(el.text, tok(e.m), 55); await sleep(reducedMotion() ? 120 : 520); }
+      else await sleep(reducedMotion() ? 60 : 320);
+    }
+    playing = false;
+  };
+
+  const finish = async () => {
+    if (finished) return;
+    finished = true;
+    clearInterval(S.btPoll);
+    const won = b.winner === me(); const rw = b.reward || {};
+    if (won) { sfx.catch(); vibrate([80, 60, 200]); } else sfx.fail();
+    const lines = [b.winner == null ? '무승부!' : won ? `${josa(foeName(), '과', '와')}의 승부에서 이겼다!` : `${josa(foeName(), '과', '와')}의 승부에서 졌다…`];
+    if (won && rw.ticket) lines.push(`★ 진화권 1장을 받았다! (오늘 ${rw.today}/${S.btToday?.max || 3})`);
+    else if (won && BT_WHY[rw.why]) lines.push(BT_WHY[rw.why]);
+    await typeText(el.text, lines.join('\n'));
+    el.menu.replaceChildren(h('button.btn.big.primary', { onclick: () => closeOverlay() }, '확인'));
+    sync({ force: true }); loadBattleToday();
+  };
+
+  const renderMenu = () => {
+    if (playing || closed) return;
+    const mine = b.sides?.[me()];
+    const cur = mine && monAt(me(), mine.active);
+    if (b.status === 'invite') {
+      el.text.textContent = `${foeName()}의 수락을 기다리는 중…\n(1분 안에 수락하지 않으면 취소돼요)`;
+      el.menu.replaceChildren(h('button.btn', { onclick: async () => { try { await rpc('battle_forfeit', { p_id: b.id }, { retries: 0 }); } catch { /* */ } closeOverlay(); pollInbox(); } }, '신청 취소'));
+      return;
+    }
+    if (b.status === 'declined' || b.status === 'cancelled') {
+      el.text.textContent = b.status === 'declined' ? `${josa(foeName(), '이', '가')} 배틀을 거절했어요.` : '배틀 신청이 취소됐어요. (시간이 지났거나 취소함)';
+      el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기'));
+      clearInterval(S.btPoll);
+      return;
+    }
+    if (b.status !== 'active' || !cur) return;
+    if (b.chosen) { el.text.textContent = '상대가 고르기를 기다리는 중…'; el.menu.replaceChildren(); return; }
+    if (b.phase === 'replace' && !b.need) { el.text.textContent = '상대가 다음 몬스터를 고르는 중…'; el.menu.replaceChildren(); return; }
+    const forced = b.need;
+    if (forced) menuMode = 'switch';
+    if (menuMode === 'fight') {
+      const all0 = cur.moves.every((x) => x.pp <= 0);
+      el.menu.replaceChildren(h('div.bt-moves', cur.moves.map((x, i) => {
+        const mv = moveOf(x.id) || {};
+        return h('button.bt-move', { disabled: x.pp <= 0 && !all0, onclick: () => send({ move: i + 1 }) },
+          h('b', mv.name || '?'), h('span.bt-mv-info', h(`span.type.t-${mv.type}`, mv.type), h('small', `PP ${x.pp}/${mv.pp}`)));
+      })), h('button.btn.small', { onclick: () => { menuMode = 'main'; renderMenu(); } }, '◀ 뒤로'));
+      el.text.textContent = all0 ? 'PP가 다 떨어졌다! 아무 기술이나 누르면 발버둥을 쓴다.' : '어떤 기술을 쓸까?';
+      return;
+    }
+    if (menuMode === 'switch') {
+      el.menu.replaceChildren(h('div.bt-party', mine.mons.map((x, i) => h('button.bt-pmon', {
+        disabled: x.hp <= 0 || i === mine.active, onclick: () => send({ switch: i }),
+      }, spriteCanvas(x.sp, 40), h('span', h('b', x.name), h('div.hpbar.small', h('i', { style: { width: `${(x.hp / x.max) * 100}%` }, class: x.hp / x.max < 0.2 ? 'red' : x.hp / x.max < 0.5 ? 'yellow' : '' })),
+        h('small', x.hp > 0 ? `${x.hp}/${x.max}${x.st ? ' · ' + ST_LABEL[x.st] : ''}${i === mine.active ? ' · 싸우는 중' : ''}` : '기절'))))),
+      ...(forced ? [] : [h('button.btn.small', { onclick: () => { menuMode = 'main'; renderMenu(); } }, '◀ 뒤로')]));
+      el.text.textContent = forced ? '다음 몬스터를 골라 주세요!' : '누구로 바꿀까?';
+      return;
+    }
+    el.text.textContent = `${josa(cur.name, '은', '는')} 무엇을 할까?`;
+    el.menu.replaceChildren(h('div.bt-main',
+      h('button.bt-cmd.fight', { onclick: () => { sfx.blip(); menuMode = 'fight'; renderMenu(); } }, '싸운다'),
+      h('button.bt-cmd', { onclick: () => { sfx.blip(); menuMode = 'switch'; renderMenu(); } }, '몬스터'),
+      h('button.bt-cmd', { onclick: giveUp }, b.mode === 'pvp' ? '기권' : '도망'),
+      h('button.bt-cmd', { onclick: () => { sfx.blip(); closeOverlay(); } }, '나중에')));
+  };
+
+  const apply = async (nb) => {
+    if (!nb || closed) return;
+    const prev = b; b = nb;
+    if (b.seq !== shownSeq && b.seq > 0) { shownSeq = b.seq; menuMode = 'main'; await play(b.log, prev); }
+    drawStatic(); renderMenu();
+    if (b.status === 'over') finish();
+  };
+  const send = async (action) => {
+    if (busy || playing) return;
+    busy = true; sfx.select(); el.menu.replaceChildren();
+    try { await apply(await rpc('battle_act', { p_id: b.id, p_action: action }, { retries: 0 })); }
+    catch (e) { toast(errorText(e.message)); try { await apply(await rpc('battle_state', { p_id: b.id }, { retries: 0 })); } catch { /* */ } }
+    busy = false; renderMenu();
+  };
+  const giveUp = () => {
+    sfx.blip();
+    el.text.textContent = b.mode === 'pvp' ? '정말 기권할까? (상대가 이긴 것이 돼요)' : '정말 도망칠까? (진 것이 돼요)';
+    el.menu.replaceChildren(h('div.bt-main',
+      h('button.bt-cmd', { onclick: async () => { busy = true; try { await apply(await rpc('battle_forfeit', { p_id: b.id }, { retries: 0 })); } catch (e) { toast(errorText(e.message)); } busy = false; } }, '네'),
+      h('button.bt-cmd', { onclick: () => { menuMode = 'main'; renderMenu(); } }, '아니요')));
+  };
+  const tick = () => {
+    if (b.mode !== 'pvp' || b.status !== 'active' || !b.deadline) { el.timer.textContent = ''; return; }
+    const s = Math.max(0, Math.ceil((new Date(b.deadline) - (Date.now() + skew)) / 1000));
+    el.timer.textContent = `⏱ ${s}초`;
+    el.timer.classList.toggle('hot', s <= 10);
+  };
+
+  const modeLabel = { cpu: '연습 배틀', team: '친구 팀 (AI)', pvp: '실시간 배틀' }[b.mode];
+  const ov = overlay(h('div.bt-stage',
+    h('div.bt-top', h('b', modeLabel), el.timer),
+    h('div.bt-field',
+      h('div.bt-box.foe', h('div.bt-nm', el.foeName, h('small', ' Lv50'), el.foeSt), h('div.hpbar', el.foeHp), el.foeBalls),
+      el.foeSpr, h('i.bt-pad.foe'),
+      el.mySpr, h('i.bt-pad.me'),
+      h('div.bt-box.me', h('div.bt-nm', el.myName, h('small', ' Lv50'), el.mySt), h('div.hpbar', el.myHp), h('div.bt-row', el.myBalls, el.myHpNum))),
+    el.text, el.menu), 'full');
+  ov.classList.add('battle-overlay');
+  for (const spr of [el.mySpr, el.foeSpr]) spr.addEventListener('animationend', (e) => { if (e.animationName !== 'bt-faint') spr.classList.remove('enter', 'atk', 'hit'); });
+  ov.onclose = () => { closed = true; clearInterval(S.btPoll); clearInterval(S.btTick); if (S.tab === 'battle' || S.tab === 'home') pollInbox(); };
+  clearInterval(S.btPoll); clearInterval(S.btTick);
+  // 실시간 대전·신청 대기 중에는 2초마다 상태 확인 (턴이 풀렸는지, 수락했는지)
+  S.btPoll = setInterval(async () => {
+    if (playing || busy || closed || (b.mode !== 'pvp')) return;
+    if (b.status === 'over' || b.status === 'declined' || b.status === 'cancelled') return;
+    try { await apply(await rpc('battle_state', { p_id: b.id }, { retries: 0 })); } catch { /* offline: try again */ }
+  }, 2000);
+  S.btTick = setInterval(tick, 500);
+  drawStatic(); tick();
+  if (b.status === 'active' && shownSeq === -1) {
+    shownSeq = b.seq;
+    (async () => {
+      playing = true;
+      el.mySpr.classList.add('hide'); el.foeSpr.classList.add('hide');
+      await sleep(200);
+      el.foeSpr.classList.remove('hide'); bump(el.foeSpr, 'enter');
+      await typeText(el.text, `${josa(foeName(), '이', '가')} 승부를 걸어왔다!`); await sleep(500);
+      el.mySpr.classList.remove('hide'); bump(el.mySpr, 'enter');
+      await typeText(el.text, `가랏! ${monAt(me(), b.sides[me()].active)?.name}!`); await sleep(450);
+      playing = false; renderMenu();
+    })();
+  } else {
+    renderMenu();
+    if (b.status === 'over') { finished = true; el.text.textContent = b.winner === me() ? '이긴 배틀이에요.' : '끝난 배틀이에요.'; el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기')); }
+  }
 }
 
 async function doEvolve(c) {
@@ -1255,6 +1626,7 @@ function manualEntry() {
 }
 
 async function handleScan({ q, t }) {
+  if (isBattleQr(q)) return friendBattleSheet(t);
   if (isRaidQr(q)) return joinRaid(q, t);
   const R = rules();
   const items = normalBag();
