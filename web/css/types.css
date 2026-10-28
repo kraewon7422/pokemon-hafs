@@ -13,5 +13,13 @@
 .t-미술 { background: #f8c030; color: #1e2433; }
 .t-보통 { background: #a8a090; color: #1e2433; }
 .t-비밀 { background: #5ab8c0; color: #1e2433; }
+.t-물리 { background: #5a7ab0; color: #fff; }
+.t-화학 { background: #e0682a; color: #fff; }
+.t-생명 { background: #3e9a48; color: #fff; }
+.t-지구 { background: #9a7044; color: #fff; }
+.t-지리 { background: #2f8fb8; color: #fff; }
+.t-정치경제 { background: #5a4a8a; color: #fff; }
+.t-윤리 { background: #e8b8e0; color: #1e2433; }
+.t-역사 { background: #6a5a7a; color: #fff; }
 .t-전설 { background: linear-gradient(90deg, #f8d048, #f0a040, #c8a0f0); color: #1e2433; }
 .type[class*='t-'] { text-shadow: none; }

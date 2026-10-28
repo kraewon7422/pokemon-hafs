@@ -1118,12 +1118,35 @@ def body_shape(plan, g):
     if plan == 'tri':          # 'A' 모양
         return U(poly([(32 - rx * 1.05, F - 1), (32 - rx * .35, cy - ry), (32 + rx * .35, cy - ry), (32 + rx * 1.05, F - 1)]),
                  ell(32, cy - ry * .45, rx * .5, ry * .55), ell(32, cy + ry * .35, rx * .95, ry * .65), base)
+    if plan == 'bean':         # 옆으로 넓적한 콩
+        return U(ell(32, cy + ry * .15, rx * 1.12, ry * .85), base)
+    if plan == 'tall':         # 길쭉한 캡슐
+        return U(sell(32, cy, rx * .78, ry * 1.0, 2.6), base)
+    if plan == 'twin':         # 머리 위 두 봉우리
+        return U(ell(32, cy + ry * .12, rx, ry * .88), ell(32 - rx * .45, cy - ry * .6, rx * .4, ry * .4),
+                 ell(32 + rx * .45, cy - ry * .6, rx * .4, ry * .4), base)
+    if plan == 'cone':         # 머리가 크고 아래가 좁은 몸
+        return U(ell(32, cy - ry * .12, rx * 1.05, ry * .88),
+                 poly([(32 - rx * .55, cy), (32 + rx * .55, cy), (32 + rx * .72, F - 1), (32 - rx * .72, F - 1)]), base)
+    if plan == 'cloud':        # 몽실몽실 구름
+        return U(*[ell(32 + dx * rx, cy + dy * ry, rx * .46, ry * .46)
+                   for (dx, dy) in ((-.5, -.25), (0, -.6), (.5, -.25), (-.55, .28), (.55, .28), (0, .2))], base)
     return U(ell(32, cy, rx, ry), base)
 
 
 def ears(s, kind, g, rp, inner):
     k, top, rx = g['k'], g['top'], g['rx']
     if not kind:
+        return
+    if kind == 'crest':        # 머리 위 뾰족 볏 3개
+        for dx, h in ((-1, 4), (0, 7), (1, 4)):
+            x = 32 + dx * 4 * k
+            s.part(poly([(x - 2.6 * k, top + 3), (x, top - h * k), (x + 2.6 * k, top + 3)]), rp)
+        return
+    if kind == 'bud':          # 새싹
+        s.part(cap(32, top + 2, 32, top - 5 * k, 1.0), inner, edge=False, tone=0)
+        s.part(ell(32 - 3 * k, top - 5 * k, 3 * k + .4, 1.8 * k + .4, -25), inner)
+        s.part(ell(32 + 3 * k, top - 6 * k, 3 * k + .4, 1.8 * k + .4, 25), inner)
         return
     for sg in (-1, 1):
         x = 32 + sg * rx * .55
@@ -1145,6 +1168,10 @@ def ears(s, kind, g, rp, inner):
             s.part(ell(32 + sg * rx * .45, top - 6 * k - 1, 2.4 * k + .4, 2.4 * k + .4), inner, shine=True)
         elif kind == 'horn':
             s.part(poly([(x - 2.5 * k, top + 3), (x + sg * 2.5 * k, top - 5 * k), (x + 2.5 * k, top + 3)]), inner)
+        elif kind == 'wing':
+            cy, ry = g['cy'], g['ry']
+            s.part(poly([(32 + sg * rx * .8, cy - 1), (32 + sg * (rx + 7 * k), cy - ry * .7), (32 + sg * (rx + 6 * k), cy + 1),
+                         (32 + sg * (rx + 2 * k), cy + 3)]), inner)
 
 
 def face(s, g, T, st):
@@ -1758,6 +1785,119 @@ def m_ball(s, st, g, T, ph):            # 공 + 머리띠 + 호루라기 + 삐�
             s.part(sell(32, g['my'] + 5, 2.5, 1.6, 3), T['m3'])
 
 
+# ---- 새 모티프 (라인 43~76)
+def m_pencil(s, st, g, T, ph):          # 연필 (문학·에세이)
+    if ph != 'front':
+        return
+    if st == 1:
+        s.part(cap(41, g['top'] - 3, 48, g['top'] + 5, 1.4), T['acc'])
+        s.part(ell(48, g['top'] + 6, 1.3, 1.3), T['m2'], edge=False, tone=0)
+        return
+    hx, hy = g['hands'][1]
+    L = 12 if st == 2 else 17
+    s.part(cap(hx - 2, hy - L, hx + 1, hy + 3, 1.7 if st == 2 else 2.1), T['acc'])
+    s.part(rect(hx - 3, hy - L - 3, hx - 1, hy - L - 1), T['m2'])
+    g['hand'](1)
+    if st == 3:
+        s.pxs([(x, int(g['cy'] + g['ry'] * .45)) for x in range(24, 41) if x % 3], T['acc'][1])
+
+
+def m_grid(s, st, g, T, ph):            # 행렬 [ ] (선형대수)
+    if ph != 'mid':
+        return
+    w, h = {1: (6, 5), 2: (8, 7), 3: (10, 9)}[st]
+    y0 = int(g['cy'] + g['ry'] * .05)
+    for x in (32 - w, 32 + w):
+        s.fx({(x, y) for y in range(y0, y0 + h)}, T['acc'][0])
+        s.fx({(x + (1 if x < 32 else -1), y0), (x + (1 if x < 32 else -1), y0 + h - 1)}, T['acc'][0])
+    for i in (0, 1):
+        for j in (0, 1):
+            s.px(32 - w // 2 + i * w, y0 + 1 + j * (h - 3), T['acc'][1])
+
+
+def m_sigma(s, st, g, T, ph):           # Σ (대수·수학 탐구)
+    if ph == 'mid':
+        k = {1: 1, 2: 1, 3: 2}[st]
+        x0, y0 = 32 - 3 * k, int(g['cy'] + g['ry'] * .1)
+        pts = [(x0 + i, y0) for i in range(6 * k)] + [(x0 + i, y0 + i) for i in range(3 * k)]
+        pts += [(x0 + 3 * k - 1 - i, y0 + 3 * k + i) for i in range(3 * k)] + [(x0 + i, y0 + 6 * k - 1) for i in range(6 * k)]
+        s.fx(set(pts), T['acc'][1])
+    elif ph == 'back' and st >= 2:
+        for sg in (-1, 1):
+            s.part(ell(32 + sg * (g['rx'] + 3), g['top'] + 6, 3, 3), T['m2'], shine=True)
+
+
+def m_magnet(s, st, g, T, ph):          # 말굽자석 (물리)
+    if ph != 'front':
+        return
+    if st == 1:
+        cx, cy, r = 32, g['top'] - 3, 4
+    else:
+        hx, hy = g['hands'][1]
+        cx, cy, r = hx + 1, hy - 7, 5 if st == 2 else 6
+    ring = minus(ell(cx, cy, r, r), ell(cx, cy, r - 2.2, r - 2.2))
+    s.part({q: v for q, v in ring.items() if q[1] <= cy}, T['acc'])
+    s.part(rect(int(cx - r), int(cy), int(cx - r + 2), int(cy + r)), T['acc'])
+    s.part(rect(int(cx + r - 2), int(cy), int(cx + r), int(cy + r)), T['acc'])
+    s.part(rect(int(cx - r), int(cy + r - 1), int(cx - r + 2), int(cy + r)), T['m2'], edge=False)
+    s.part(rect(int(cx + r - 2), int(cy + r - 1), int(cx + r), int(cy + r)), T['m2'], edge=False)
+    if st > 1:
+        g['hand'](1)
+
+
+def m_flask(s, st, g, T, ph):           # 둥근 플라스크 + 거품 (화학)
+    if ph == 'back' and st >= 2:
+        for (x, y, r) in ((12, 20, 2.2), (8, 28, 1.6), (54, 16, 2.0)):
+            s.part(ell(x, y, r, r), T['m2'], edge=True)
+    if ph != 'front':
+        return
+    if st == 1:
+        cx, cy, r = 32, g['top'] - 2, 4
+    else:
+        hx, hy = g['hands'][1]
+        cx, cy, r = hx + 1, hy - 6, 5 if st == 2 else 6
+    s.part(rect(int(cx - 1), int(cy - r - 4), int(cx + 1), int(cy - r + 1)), T['m2'])
+    s.part(ell(cx, cy, r, r), T['m2'], shine=True)
+    s.part({q: v for q, v in ell(cx, cy, r - 1, r - 1).items() if q[1] >= cy}, T['acc'], edge=False)
+    if st > 1:
+        g['hand'](1)
+
+
+def m_dna(s, st, g, T, ph):             # 이중 나선 (생명)
+    if ph != 'back':
+        return
+    h = {1: 20, 2: 30, 3: 40}[st]
+    y0 = F - h - 4
+    for x0 in ((10, 54) if st == 3 else (54,)):
+        for t in range(h):
+            dx = round(3.2 * math.sin(t / 3.2))
+            s.px(x0 + dx, y0 + t, T['acc'][1])
+            s.px(x0 - dx, y0 + t, T['m2'][1])
+            if t % 4 == 0:
+                for xx in range(min(x0 + dx, x0 - dx) + 1, max(x0 + dx, x0 - dx)):
+                    s.px(xx, y0 + t, T['m2'][2])
+
+
+def m_rock(s, st, g, T, ph):            # 어깨 위 수정 + 머리 위 작은 산 (지구)
+    if ph == 'back' and st >= 2:
+        for sg in (-1, 1):
+            crystal(s, 32 + sg * (g['rx'] * .8), g['cy'] - g['ry'] * .2, 4 if st == 2 else 5, 9 if st == 2 else 13, T['acc'], lean=sg * 4)
+    elif ph == 'front':
+        t = g['top']
+        s.part(poly([(32 - 6 * g['k'], t + 4), (32, t - 6 * g['k']), (32 + 6 * g['k'], t + 4)]), T['m2'])
+        s.part(poly([(32 - 2 * g['k'], t - 3 * g['k']), (32, t - 6 * g['k']), (32 + 2 * g['k'], t - 3 * g['k'])]), (T['m2'][0], WHITE, WHITE, WHITE), edge=False)
+
+
+def m_halo(s, st, g, T, ph):            # 머리 위 빛나는 고리 + 반짝 (윤리)
+    if ph == 'back':
+        t = g['top']
+        ring = minus(ell(32, t - 4, 8 * g['k'] + 2, 2.6), ell(32, t - 4, 8 * g['k'], 1.2))
+        s.part(ring, T['acc'], edge=False)
+    elif ph == 'front' and st >= 2:
+        s.sparkle(10, 18, T['acc'][3], big=st == 3)
+        s.sparkle(54, 22, T['acc'][3])
+
+
 # ---- 과학·물리 (파란 몸, 머리 위 사과 + 원자 궤도)
 def m_physics(s, st, g, T, ph):
     k = g['k']
@@ -1979,6 +2119,41 @@ ROSTER = {
           ears='long', inner=ramp(.02, .35, 1.0), eyes='happy', mouth='open', motif=m_rope),
     34: T(subj='체육', name='볼', body=ramp(.975, .66, .88), acc=ramp(.62, .60, .72), m2=SHOE, m3=ramp(.13, .70, 1.0),
           motif=m_ball, mouth='open', blush=hexc('ffb0a0')),
+    # 43~76: 선생님 명단에 맞춰 늘린 계열 (같은 과목이라도 몸 모양·귀·눈·입·소품이 다름)
+    43: T(subj='국어', name='독서', plan='tall', body=ramp(.92, .38, .97), acc=ramp(.60, .55, .70), m2=PAPER, ears='long', inner=ramp(.95, .30, 1.0), eyes='dot', motif=m_reading, blush=hexc('ff7f96')),
+    44: T(subj='국어', name='매체', plan='bean', body=ramp(.88, .45, .95), acc=hramp('2a2a3a', '4a4a5a', '6a6a7a', '9a9aaa'), m2=BUBBLE, m3=ramp(.55, .10, .85), ears='antenna', inner=ramp(.15, .70, 1.0), mouth='open', motif=m_speech),
+    45: T(subj='국어', name='고문', plan='cone', body=ramp(.02, .38, .92), acc=ramp(.06, .60, .62), m2=HANJI, ears='bud', inner=ramp(.30, .60, .75), eyes='sleepy', mouth='tiny', motif=m_classic),
+    46: T(subj='국어', name='문학', plan='cloud', body=ramp(.85, .35, .97), acc=ramp(.08, .70, .95), m2=hramp('3a2a2a', 'e8d8c0', 'f8f0e0', 'ffffff'), ears='wing', inner=ramp(.85, .20, 1.0), eyes='happy', motif=m_pencil, blush=hexc('ff8fb0')),
+    47: T(subj='국어', name='국어A', plan='twin', body=ramp(.97, .48, .98), acc=ramp(.90, .55, .58), m2=HANJI, ears='cat', inner=ramp(.0, .30, 1.0), motif=m_quote, mouth='cat', blush=hexc('ff6f8e')),
+    48: T(subj='국어', name='국어B', plan='round', body=ramp(.05, .45, .98), acc=ramp(.55, .55, .75), m2=hramp('3a2a2a', 'e8d8c0', 'f8f0e0', 'ffffff'), ears='crest', eyes='white', motif=m_pencil, blush=hexc('ff7f7a')),
+    49: T(subj='수학', name='통계', plan='bean', body=ramp(.60, .55, .90), acc=ramp(.0, .80, .90), m2=hramp('4a4a6a', 'c8ccdc', 'eef0f8', 'ffffff'), ears='horn', inner=ramp(.13, .70, 1.0), eyes='happy', mouth='open', motif=m_dice),
+    50: T(subj='수학', name='도형', plan='cone', body=ramp(.68, .50, .86), acc=ramp(.08, .75, 1.0), m2=hramp('3a3a4a', '8a8a9a', 'b8b8c6', 'e8e8f0'), ears='crest', motif=m_geometry, mouth='cat'),
+    51: T(subj='수학', name='행렬', plan='tall', body=ramp(.58, .50, .88), acc=hramp('1a2040', '30386a', '4a5490', '7078b8'), m2=PAPER, ears='antenna', inner=ramp(.40, .70, .95), eyes='dot', motif=m_grid),
+    52: T(subj='수학', name='극한', plan='twin', body=ramp(.72, .45, .84), acc=ramp(.13, .70, 1.0), m2=PAPER, ears='cat', inner=ramp(.13, .70, 1.0), eyes='white', motif=m_tangent, blush=hexc('ff9fc0')),
+    53: T(subj='수학', name='대수', plan='round', body=ramp(.64, .55, .92), acc=ramp(.95, .65, .95), m2=ramp(.95, .30, 1.0), ears='round', inner=ramp(.95, .40, 1.0), mouth='open', motif=m_sigma),
+    54: T(subj='수학', name='적분B', plan='cloud', body=ramp(.70, .40, .90), acc=ramp(.46, .55, .92), m2=PAPER, ears='wing', inner=ramp(.55, .30, 1.0), eyes='sleepy', motif=m_integral),
+    55: T(subj='수학', name='탐구', plan='square', body=ramp(.62, .60, .82), acc=ramp(.33, .65, .80), m2=ramp(.33, .30, 1.0), ears='bud', inner=ramp(.33, .65, .80), eyes='happy', mouth='grin', motif=m_sigma),
+    56: T(subj='영어', name='독해', plan='tall', body=ramp(.50, .45, .95), acc=ramp(.08, .60, .62), m2=PAPER, ears='round', inner=ramp(.08, .40, .95), eyes='dot', motif=m_reading),
+    57: T(subj='영어', name='연설', plan='bean', body=ramp(.47, .55, .90), acc=hramp('2a2a3a', '4a4a5a', '6a6a7a', '9a9aaa'), m2=BUBBLE, m3=ramp(.0, .10, .85), ears='crest', mouth='open', motif=m_speech, blush=hexc('ff9fb0')),
+    58: T(subj='영어', name='시인', plan='cloud', body=ramp(.55, .30, .98), acc=ramp(.75, .45, .70), m2=hramp('3a2a2a', 'e8d8c0', 'f8f0e0', 'ffffff'), ears='wing', inner=ramp(.75, .20, 1.0), eyes='sleepy', motif=m_pencil),
+    59: T(subj='영어', name='에세이', plan='cone', body=ramp(.53, .50, .92), acc=ramp(.58, .55, .58), m2=PAPER, ears='long', inner=ramp(.95, .35, 1.0), motif=m_quote, mouth='cat'),
+    60: T(subj='영어', name='단어', plan='twin', body=ramp(.45, .55, .94), acc=ramp(.98, .70, .90), m2=ramp(.14, .65, 1.0), ears='cat', inner=ramp(.98, .40, 1.0), eyes='happy', motif=m_blocks, mouth='open'),
+    61: T(subj='영어', name='토론', plan='square', body=ramp(.52, .45, .86), acc=hramp('2a2a3a', '4a4a5a', '6a6a7a', '9a9aaa'), m2=BUBBLE, m3=BUBBLE, ears='horn', inner=BUBBLE, eyes='white', motif=m_speech),
+    62: T(subj='영어', name='문법', plan='pear', body=ramp(.57, .45, .92), acc=ramp(.33, .60, .75), m2=ramp(.33, .25, 1.0), ears='antenna', inner=ramp(.0, .60, 1.0), motif=m_blocks, mouth='tiny'),
+    63: T(subj='과학·물리', name='역학', plan='square', body=ramp(.60, .60, .85), acc=APPLE, m2=(APPLE[0],) + ramp(.30, .70, .74)[1:], m3=ramp(.13, .55, 1.0), ears='horn', inner=ramp(.13, .55, 1.0), eyes='white', motif=m_physics),
+    64: T(subj='과학·물리', name='자석', plan='tall', body=ramp(.58, .40, .92), acc=ramp(.99, .75, .90), m2=hramp('4a4a5a', 'b8bcc8', 'e0e4ec', 'ffffff'), ears='antenna', inner=ramp(.99, .70, .95), motif=m_magnet, mouth='open'),
+    65: T(subj='과학·물리', name='전자기', plan='bean', body=ramp(.55, .50, .95), acc=ramp(.0, .70, .85), m2=hramp('4a4a5a', 'b8bcc8', 'e0e4ec', 'ffffff'), ears='crest', eyes='happy', motif=m_magnet, blush=hexc('ff9fb0')),
+    66: T(subj='과학·화학', name='유기', plan='round', body=ramp(.38, .45, .85), acc=ramp(.80, .60, .90), m2=hramp('3a5a6a', 'c8e8f0', 'e8f8fc', 'ffffff'), ears='bud', inner=ramp(.30, .70, .70), mouth='open', motif=m_flask),
+    67: T(subj='과학·화학', name='반응', plan='cone', body=ramp(.42, .55, .80), acc=ramp(.08, .80, 1.0), m2=hramp('3a5a6a', 'c8e8f0', 'e8f8fc', 'ffffff'), ears='round', inner=ramp(.42, .30, 1.0), eyes='dot', motif=m_flask, mouth='cat'),
+    68: T(subj='과학·생명', name='분자', plan='tall', body=ramp(.30, .50, .82), acc=ramp(.95, .60, .95), m2=ramp(.55, .55, .90), ears='leaf', inner=ramp(.25, .70, .80), eyes='white', motif=m_dna),
+    69: T(subj='과학·생명', name='생태', plan='cloud', body=ramp(.27, .45, .88), acc=ramp(.13, .70, .95), m2=ramp(.55, .45, .95), ears='bud', inner=ramp(.30, .75, .70), eyes='happy', motif=m_dna, blush=hexc('ff9fb0')),
+    70: T(subj='과학·생명', name='세포B', plan='twin', body=ramp(.33, .40, .92), acc=ramp(.85, .55, .90), m2=ramp(.12, .55, 1.0), ears='round', inner=ramp(.33, .25, 1.0), mouth='open', motif=m_dna),
+    71: T(subj='과학·지구', name='암석', plan='pear', body=ramp(.07, .35, .70), acc=ramp(.52, .45, .95), m2=hramp('3a3a3a', '7a7068', 'a89e92', 'd8d0c4'), ears='crest', eyes='sleepy', motif=m_rock),
+    72: T(subj='사회', name='지형', plan='cone', body=ramp(.42, .45, .80), acc=ramp(.56, .60, .92), m2=ramp(.31, .60, .78), m3=GOLD, ears='fin', motif=m_geography, mouth='open'),
+    73: T(subj='사회', name='윤리', plan='cloud', body=ramp(.80, .25, .98), acc=GOLD, m2=PAPER, ears='wing', inner=ramp(.13, .40, 1.0), eyes='sleepy', mouth='tiny', motif=m_halo, blush=hexc('ff9fbe')),
+    74: T(subj='사회', name='통합', plan='bean', body=ramp(.76, .45, .86), acc=ramp(.0, .75, .92), m2=hramp('3a2a2a', '7a5a4a', 'a07a5a', 'c8a07a'), m3=GOLD, ears='round', eyes='happy', motif=m_ballot),
+    75: T(subj='외국어', name='스페인어B', plan='twin', body=ramp(.02, .65, .98), acc=ramp(.14, .75, 1.0), m2=ramp(.07, .55, .78), m3=hramp('2a1a1a', '4a2a20', '6a4030', '8a6040'), motif=m_spanish, rare=True, mouth='open', blush=hexc('ff5a6a')),
+    76: T(subj='체육', name='스포츠', plan='tall', body=ramp(.03, .65, .95), acc=ramp(.33, .65, .80), m2=SHOE, m3=ramp(.55, .60, .85), ears='crest', inner=ramp(.02, .35, 1.0), eyes='white', mouth='grin', motif=m_rope),
     # 전설
     35: T(subj='전설', name='금관오스(교감)', custom=lambda st: line_principal(st)),
     36: T(subj='전설', name='학사쟈(교장)', custom=lambda st: line_vice(st)),
@@ -1990,7 +2165,7 @@ ROSTER = {
     42: T(subj='전설', name='창문기', custom=lambda st: line_changmun(st)),
 }
 LEGENDARY = {35, 36, 37, 38, 39, 40, 41, 42}
-RARE = {20, 21, 22, 23, 24}
+RARE = {20, 21, 22, 23, 24, 75}
 
 
 def merge_close(img, maxc=MAX_COLORS, limit=36):
@@ -2015,7 +2190,8 @@ def merge_close(img, maxc=MAX_COLORS, limit=36):
 
 def draw(line, stage):
     t = ROSTER[line]
-    return merge_close((t['custom'](stage) if 'custom' in t else critter(stage, t)).done())
+    # 43~ 새 계열은 소품이 많아 비슷한 색을 조금 더 넓게 합친다 (원래 계열 그림은 그대로)
+    return merge_close((t['custom'](stage) if 'custom' in t else critter(stage, t)).done(), limit=70 if line >= 43 else 36)
 
 
 def check(img, dex, line, stage):
@@ -2043,7 +2219,7 @@ def placeholder(dex):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--count', type=int, default=126)
+    ap.add_argument('--count', type=int, default=228)
     ap.add_argument('-v', '--verbose', action='store_true', help='스프라이트별 색 수/키 출력')
     a = ap.parse_args()
     rows = (a.count + COLS - 1) // COLS
