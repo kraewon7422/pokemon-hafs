@@ -41,6 +41,10 @@ function client(tok) {
       const body = t ? JSON.parse(t) : null;
       return r.ok ? { data: body } : { error: body?.message || String(r.status) };
     },
+    async patch(path, body) {
+      const r = await fetch(`${URL_}/rest/v1/${path}`, { method: 'PATCH', headers: { ...h, Prefer: 'return=minimal' }, body: JSON.stringify(body) });
+      return r.status;
+    },
     async select(path) {
       const r = await fetch(`${URL_}/rest/v1/${path}`, { headers: h });
       const t = await r.text();
@@ -989,6 +993,44 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 1 });
   ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 5 })).error === 'MAX_LEVEL', 'Lv.100 is the cap');
   await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid], p_confirm: '삭제' });
+}
+
+console.log('\n[32] 배틀 끝 (0021): 새 배틀이면 하던 배틀 취소 · 연습 경험치 하루 제한 · 영구 기술머신');
+{
+  let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'end123' })).error);
+  const C = client(await pwLogin(`${sid}@code.local`, 'end123'));
+  await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '끝테스트' });
+  for (const l of [12, 13, 5]) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l, p_stage: 3 });
+  const play2 = async (b) => {   // 2턴 (쓰러지면 다음 몬스터)
+    for (let t = 0; t < 2 && b.status === 'active'; t++) {
+      b = (await C.rpc('battle_act', { p_id: b.id, p_action: { move: 1 } })).data;
+      while (b.status === 'active' && b.phase === 'replace' && b.need) {
+        const i = b.sides[0].mons.findIndex((m, k) => m.hp > 0 && !b.sides[0].act.includes(k));
+        b = (await C.rpc('battle_act', { p_id: b.id, p_action: { switch: i } })).data;
+      }
+    }
+    if (b.status === 'active') await C.rpc('battle_forfeit', { p_id: b.id });
+    return (await C.rpc('battle_state', { p_id: b.id })).data;
+  };
+  const b1 = (await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data;
+  const b2 = (await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data;
+  const old = (await C.rpc('battle_state', { p_id: b1.id })).data;
+  ok(old.status === 'cancelled' && old.reward?.why === 'replaced' && old.winner == null, 'starting a new practice battle cancels the old one (no loss)', old.status);
+  ok(await admin.patch('settings?key=eq.practice_exp_daily', { value: 1 }) < 300, 'admin sets the practice EXP limit');
+  const e1 = await play2(b2);
+  ok(e1.reward?.practice_counted === true && e1.reward?.practice_left === 0, 'first practice battle of the day counts for EXP', e1.reward);
+  const e2 = await play2((await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data);
+  ok(e2.reward?.exp_why === 'practice_max' && !e2.reward?.exp, 'over the daily limit: practice gives no EXP', e2.reward);
+  await admin.patch('settings?key=eq.practice_exp_daily', { value: 10 });
+  // 영구 기술머신: 써도 그대로
+  const box = (await C.rpc('bag_state')).data.box;
+  const pmMove = (await C.select('items?key=eq.pm02&select=move_id')).data[0].move_id;
+  const lines = box.filter((m) => !m.known.includes(pmMove)).map((m) => m.line);
+  await admin.rpc('admin_give_item', { p_student_id: sid, p_item: 'pm02', p_qty: 1 });
+  ok(lines.length >= 2 && (await C.rpc('bag_use', { p_item: 'pm02', p_line: lines[0] })).data?.learned === pmMove
+     && (await C.rpc('bag_use', { p_item: 'pm02', p_line: lines[1] })).data?.learned === pmMove, 'permanent TM teaches two monsters', lines);
+  ok((await C.rpc('bag_state')).data.items.find((x) => x.key === 'pm02')?.qty === 1, 'permanent TM stays in the bag');
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

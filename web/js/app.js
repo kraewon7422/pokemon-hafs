@@ -187,9 +187,9 @@ export function refreshCatalogIfOld() {
 export const FINAL = new Set(['ok', 'invalid_token', 'already_pending', 'daily_cap', 'bag_full', 'nonce_conflict', 'bad_format', 'locked']);
 export const ACK_MSG = {
   invalid_token: '확인해 보니 인정되지 않는 QR이었어요 (교체된 QR이거나, 전설 QR을 너무 늦게 보냈어요).',
-  already_pending: '이미 가방에 그 장소 티켓이 있어요.',
+  already_pending: '이미 티켓 주머니에 그 장소 티켓이 있어요.',
   daily_cap: '오늘은 그 장소를 다 찍었어요.',
-  bag_full: '가방이 꽉 차서 티켓 하나를 담지 못했어요.',
+  bag_full: '티켓 주머니가 꽉 차서 티켓 하나를 담지 못했어요.',
   locked: '수동 코드를 너무 많이 틀렸어요. 10분 뒤에 다시 해 주세요.',
 };
 
@@ -343,7 +343,7 @@ export function nextAction() {
   const items = bag();
   const p = S.snap.profile;
   if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 진화권 100%`, 'gold', () => openQuiz()];
-  if (items.length) return [pix('ticket', 'l'), `가방에 티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
+  if (items.length) return [pix('ticket', 'l'), `티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
   const ev = evolvable();
   if (p.evo_tickets > 0 && ev.length) {
     return [pix('spark', 'l'), `진화권 ${p.evo_tickets}장 - 몬스터를 진화시켜요`, 'gold',
@@ -387,7 +387,7 @@ export function viewHome() {
       h('div', h('b', '레이드 보스 출현!'), h('br'), h('small', `${S.snap.raids_live.map((x) => x.title).join(' · ')} — 대형 화면의 QR을 찍어 참가해요`))),
     (S.btInbox?.invites || []).length > 0 && h('button.box.raid-banner.bt-banner', { onclick: () => inviteSheet(S.btInbox.invites[0]) },
       pix('spark', 'l'), h('div', h('b', '배틀 신청!'), h('br'), h('small', `${josa(S.btInbox.invites[0].from, '이', '가')} 실시간 배틀을 신청했어요 — 눌러서 수락`))),
-    minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', pix('clock'), `마감까지 ${minsLeft}분! 가방 티켓은 마감 전에 부스에서 써 주세요.`),
+    minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', pix('clock'), `마감까지 ${minsLeft}분! 티켓은 마감 전에 부스에서 써 주세요.`),
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
 
@@ -404,13 +404,13 @@ export function viewHome() {
         return h(`i${done ? '.on.t-' + l.subject : ''}`, { title: done ? `${l.subject} 완성` : '?' });
       }))),
 
-    h('section.box', { 'aria-label': '가방' },
-      h('div.banner', h('b', `티켓 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
+    h('section.box', { 'aria-label': '티켓 주머니' },
+      h('div.banner', h('b', `티켓 주머니 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
         h('span', { style: { fontSize: '13px' } }, items.length ? '메인 부스에서 몬스터로 바꿔요' : 'QR을 찍으면 티켓이 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => (t.special
         ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성' }[t.special.special] || ''}`))
         : h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name)))) : null,
-      h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '가방 QR 보여주기'),
+      h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '티켓 QR 보여주기'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
         pix('gift'), '지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
 
@@ -730,7 +730,7 @@ export function openScanner() {
           h('button.btn.small', { onclick: () => { closeOverlay(); manualEntry(); } }, '⌨ 코드 직접 입력'))))), 'full');
   ov.onclose = () => { scanner?.stop(); scanner = null; };
   scanner = new Scanner(video, (text) => {
-    if (isBag(text)) { tip.textContent = '이건 가방 QR이에요 (부스용). 장소 QR을 찍어 주세요.'; return; }
+    if (isBag(text)) { tip.textContent = '이건 티켓 QR이에요 (부스용). 장소 QR을 찍어 주세요.'; return; }
     const place = parsePlace(text);
     if (!place) { tip.textContent = '게임 QR이 아니에요.'; sfx.error(); return; }
     closeOverlay();
@@ -766,8 +766,8 @@ export async function handleScan({ q, t }) {
   const items = normalBag();
   const known = S.catalog?.qrs.find((x) => x.id === q);
   const name = q === '_' ? '수동 코드 장소' : known?.name || '숨겨진 장소';
-  if (items.length >= R.bag_max) return say(`가방이 꽉 찼어요! (${R.bag_max}장) 먼저 메인 부스에서 티켓을 써 주세요.`, true);
-  if (q !== '_' && items.some((i) => i.qr_id === q)) return say(`이미 가방에 "${name}" 티켓이 있어요. 부스에서 쓰고 나면 다시 찍을 수 있어요.`, true);
+  if (items.length >= R.bag_max) return say(`티켓 주머니가 꽉 찼어요! (${R.bag_max}장) 먼저 메인 부스에서 티켓을 써 주세요.`, true);
+  if (q !== '_' && items.some((i) => i.qr_id === q)) return say(`이미 티켓 주머니에 "${name}" 티켓이 있어요. 부스에서 쓰고 나면 다시 찍을 수 있어요.`, true);
   const cap = known?.daily_cap || R.qr_daily_cap;
   const todayN = (S.snap.today?.[q] || 0) + S.outbox.filter((o) => o.q === q).length;
   if (q !== '_' && todayN >= cap) return say(`오늘은 "${name}"을(를) ${cap}번 다 찍었어요. 다른 장소를 찾아보세요!`, true);
@@ -778,7 +778,7 @@ export async function handleScan({ q, t }) {
   renderTab();
   const offlineNote = S.online ? '' : (known ? '\n(오프라인이라 나중에 자동으로 보내요)'
     : '\n※ 숨은·전설 장소는 바로 인터넷에 연결해야 인정돼요!');
-  say(`${name}에서 티켓을 얻었다!\n가방 ${items.length + 1}/${R.bag_max} - 메인 부스에서 몬스터로 바꿔요.${offlineNote}`);
+  say(`${name}에서 티켓을 얻었다!\n티켓 주머니 ${items.length + 1}/${R.bag_max} - 메인 부스에서 몬스터로 바꿔요.${offlineNote}`);
   sync();
 }
 
@@ -798,14 +798,14 @@ export function say(msg, isError = false) {
   tapToContinue(ov).then(() => { if (S.overlay === ov) closeOverlay(); });
 }
 
-// ───────────────────────── 가방 QR (부스) ─────────────────────────
+// ───────────────────────── 티켓 QR (부스) ─────────────────────────
 
 export let wakeLock = null;
 
 export async function openBag() {
   sfx.select();
   const items = bag();
-  const canvas = h('canvas', { 'aria-label': '가방 QR' });
+  const canvas = h('canvas', { 'aria-label': '티켓 QR' });
   drawQR(canvas, bagPayload(S.snap.profile.student_id, items), { cell: 6, margin: 4, ecc: 'L' });
   const ov = overlay(h('div.sheet',
     h('div.grab'),
@@ -814,10 +814,10 @@ export async function openBag() {
       canvas,
       h('div.bright', pix('sun'), '화면 밝기를 최대로 올려 주세요'),
       h('small', S.online ? '부스에서 확인하면 자동으로 넘어가요…' : '오프라인이어도 부스에서 찍을 수 있어요.')),
-    h('div.box', h('b', `가방 ${items.filter((t) => !t.special).length}/${rules().bag_max}`),
+    h('div.box', h('b', `티켓 주머니 ${items.filter((t) => !t.special).length}/${rules().bag_max}`),
       items.length ? h('div.bag-row', items.map((t) => (t.special
         ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || t.name)
-        : h('span.chip', t.name)))) : h('p', '가방이 비었어요. 그래도 부스에서 고유번호로 확인할 수 있어요.')),
+        : h('span.chip', t.name)))) : h('p', '티켓 주머니가 비었어요. 그래도 부스에서 고유번호로 확인할 수 있어요.')),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
   S.bagOpen = true;
   try { wakeLock = await navigator.wakeLock?.request('screen'); } catch { /* best effort */ }
