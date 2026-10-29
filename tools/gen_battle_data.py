@@ -15,6 +15,7 @@
 사용법: python tools/gen_battle_data.py   (seed.sql 다음에 seed_battle.sql 실행)
 """
 import json
+import re
 import os
 import random
 import sys
@@ -256,6 +257,132 @@ DEFENSE_POOL = {
 }
 assert set(STATUS_POOL) == set(SUBJ) == set(DEFENSE_POOL)
 
+# ── 늘린 기술 (0020): tools/moves_extra.tsv = 실제 포켓몬 기술 (공식 한국어 이름, 9세대 수치, PokeAPI 자료).
+#    원래 타입 → 과목 타입. 엔진이 못 하는 기술(2턴 모으기·숨기·고정 데미지·일격필살·교체·나중에 맞히기 등)은 뺀다.
+#    파괴광선류(다음 턴 쉼) = recharge, 연속 공격 = hits (2 = 2번, 3 = 3번, 5 = 2~5번), 풀죽음 = flinch, 회피율 = eva.
+EN2SUBJ = {'normal': '보통', 'fire': '화학', 'water': '지리', 'grass': '생명', 'electric': '정보', 'ice': '수학', 'fighting': '체육',
+           'poison': '화학', 'ground': '지구', 'flying': '외국어', 'psychic': '영어', 'bug': '생명', 'rock': '지구', 'ghost': '역사',
+           'dragon': '전설', 'dark': '정치경제', 'steel': '물리', 'fairy': '윤리'}
+EN_WORD = {'normal': '온몸', 'fire': '불꽃', 'water': '물', 'grass': '풀', 'electric': '전기', 'ice': '얼음', 'fighting': '격투 기술',
+           'poison': '독', 'ground': '땅의 힘', 'flying': '바람', 'psychic': '염동력', 'bug': '벌레의 힘', 'rock': '바위', 'ghost': '그림자',
+           'dragon': '용의 힘', 'dark': '어둠의 힘', 'steel': '강철', 'fairy': '요정의 힘'}
+AIL = {'paralysis': 'par', 'burn': 'brn', 'poison': 'psn', 'sleep': 'slp', 'freeze': 'frz', 'confusion': 'cnf'}
+AIL_TXT = {'par': '마비시킨다', 'brn': '화상을 입힌다', 'psn': '독 상태로 만든다', 'slp': '재운다', 'frz': '얼린다', 'cnf': '혼란에 빠뜨린다'}
+STAT = {'attack': 'atk', 'defense': 'def', 'special-attack': 'spa', 'special-defense': 'spd', 'speed': 'spe', 'accuracy': 'acc', 'evasion': 'eva'}
+STAT_TXT = {'atk': '공격', 'def': '방어', 'spa': '특수공격', 'spd': '특수방어', 'spe': '스피드', 'acc': '명중률', 'eva': '회피율'}
+SKIP = ('requires a turn to charge', 'charges for one turn', 'one-hit ko', 'prevents the target from fleeing', 'switch out',
+        'two turns later', 'dodging all attacks', 'if the user faints', 'every turn for 2-3', 'equal to', 'points of damage',
+        'heavier', 'lower speed', 'half the target', 'causes damage when opposing', 'stealing hp')
+
+
+def josa(w, a, b):
+    c = w[-1]
+    return w + (a if '가' <= c <= '힣' and (ord(c) - 0xAC00) % 28 else b)
+
+
+def ro(w):   # (으)로: 받침 있으면 '으로' (ㄹ 받침은 '로')
+    c = w[-1]
+    j = (ord(c) - 0xAC00) % 28 if '가' <= c <= '힣' else 0
+    return w + ('으로' if j and j != 8 else '로')
+
+
+def stat_txt(ch, who):
+    ups = [k for k, v in ch.items() if v > 0]
+    dns = [k for k, v in ch.items() if v < 0]
+    out = []
+    for ks, up in ((ups, True), (dns, False)):
+        if not ks:
+            continue
+        big = any(abs(ch[k]) >= 2 for k in ks)
+        names = '·'.join(STAT_TXT[k] for k in ks)
+        out.append(f"{who} {josa(names, '이', '가')} {'크게 ' if big else ''}{'오른다' if up else '떨어진다'}.")
+    return ' '.join(out)
+
+
+def extra_moves():
+    import csv
+    rows = list(csv.DictReader(open(os.path.join(ROOT, 'tools', 'moves_extra.tsv'), encoding='utf-8'), delimiter='\t'))
+    have = {m['name'] for m in M}
+    alt = {'poison': 0, 'fairy': 0}
+    special = []
+    for r in rows:
+        e_en = r['effect_en'].lower()
+        if r['ko'] in have or any(k in e_en for k in SKIP):
+            continue
+        if r['ailment'] not in AIL and r['ailment'] not in ('', 'protect'):
+            continue
+        cat = r['class']
+        if cat != 'status' and r['power'] in ('', '-'):
+            continue
+        typ = EN2SUBJ[r['type']]
+        if r['type'] in alt:      # 독 → 화학/정치경제, 페어리 → 윤리/음악 번갈아
+            typ = [typ, '정치경제' if r['type'] == 'poison' else '음악'][alt[r['type']] % 2]
+            alt[r['type']] += 1
+        power = int(r['power']) if cat != 'status' else 0
+        acc = None if r['never_miss'] == 'Y' or r['acc'] in ('', '-') else int(r['acc'])
+        prio = int(r['priority'] or 0)
+        eff, txt = {}, []
+        if r['ailment'] == 'protect':
+            eff['protect'] = True
+        if r['ailment'] in AIL:
+            eff['foe_status'] = AIL[r['ailment']]
+            ch = int(r['ailment_chance'] or 100)
+            if cat != 'status' and ch < 100:
+                eff['chance'] = ch
+            txt.append(f"{'' if ch >= 100 else f'{ch}% 확률로 '}상대를 {AIL_TXT[eff['foe_status']]}.")
+        if r['flinch_chance']:
+            eff['flinch'] = int(r['flinch_chance'])
+            txt.append(f"{eff['flinch']}% 확률로 상대를 풀죽게 한다.")
+        if r['stat_changes']:
+            ch = {}
+            for part in r['stat_changes'].split():
+                k, v = re.match(r'([a-z-]+?)([+-]\d)$', part).groups()
+                ch[STAT[k]] = int(v)
+            sc = int(r['stat_chance'] or 100)
+            mine = (cat == 'status' and all(v > 0 for v in ch.values())) or (cat != 'status' and (all(v > 0 for v in ch.values()) or (sc >= 100 and power >= 100)))
+            eff['self' if mine else 'foe'] = ch
+            if cat != 'status':
+                eff['chance'] = sc if 'chance' not in eff else max(eff['chance'], sc)
+            txt.append(f"{'' if sc >= 100 else f'{sc}% 확률로 '}{stat_txt(ch, '자신의' if mine else '상대의')}")
+        if r['crit_stage']:
+            eff['always_crit' if int(r['crit_stage']) >= 3 else 'high_crit'] = True
+            txt.append('반드시 급소에 맞는다.' if int(r['crit_stage']) >= 3 else '급소에 잘 맞는다.')
+        if r['drain_pct']:
+            d = int(r['drain_pct'])
+            if d > 0:
+                eff['drain'] = d
+                txt.append(f"준 데미지의 {'절반' if d == 50 else str(d) + '%'}만큼 회복한다.")
+            else:
+                eff['recoil'] = round(100 / -d)
+                txt.append(f"준 데미지의 1/{eff['recoil']}을 자신도 받는다.")
+        if r['heal_pct']:
+            eff['heal'] = int(r['heal_pct'])
+            txt.append('HP를 최대 HP의 절반만큼 회복한다.')
+        if 'recharge' in e_en:
+            eff['recharge'] = True
+            txt.append('쓰고 나면 다음 턴에는 움직일 수 없다.')
+        if r['hits']:
+            eff['hits'] = 5 if r['hits'] == '2-5' else int(r['hits'])
+            txt.insert(0, '2~5번 연속으로 공격한다.' if eff['hits'] == 5 else f"{eff['hits']}번 연속으로 공격한다.")
+        if prio > 0:
+            txt.insert(0, '반드시 먼저 공격한다.')
+        if acc is None and cat != 'status':
+            txt.append('반드시 맞는다.')
+        if cat == 'status':
+            kind = 'defense' if eff.get('heal') or eff.get('protect') or ('self' in eff and set(eff['self']) <= {'def', 'spd', 'eva'}) else 'status'
+            desc = ' '.join(txt) or '특별한 기술을 쓴다.'
+        else:
+            kind = 'attack'
+            desc = ro(EN_WORD[r['type']]) + ' 공격한다. ' + ' '.join(txt)
+        mv(r['ko'], typ, cat, kind, power, acc, int(r['pp'] or 10), prio, eff, desc.strip())
+        if r['signature'] == 'Y':
+            special.append(r['ko'])
+    return special
+
+
+SIGNATURE = extra_moves()
+MOVE_ID = {m['name']: i + 1 for i, m in enumerate(M)}      # 고정 번호 (목록 뒤에만 덧붙이면 번호가 안 바뀜)
+
 # ── 능력치 성향 [hp, atk, def, spa, spd, spe]
 PROFILE = {
     '국어': [1.00, 0.80, 0.90, 1.20, 1.25, 0.85], '수학': [0.90, 0.70, 0.75, 1.45, 1.05, 1.15],
@@ -342,6 +469,120 @@ def species_rows():
     return out
 
 
+# ── 기술 배우기 (0020): 레벨로 배우는 기술 + 기술머신으로 배울 수 있는 기술 (계열마다)
+LV_STEPS = [7, 13, 19, 26, 33, 41, 49, 57, 66, 75, 85]
+
+
+def kind_of(name):
+    return next(m for m in M if m['name'] == name)
+
+
+def learnset_rows():
+    """(line, 기술 이름, 레벨) — 계열마다 11~13개. 약한 자속기 → 강한 자속기 순으로 레벨이 오르고, 상태기·커버 기술·보통 기술이 섞인다."""
+    out = []
+    for line in LINES:
+        rng = random.Random(line * 7741 + 3)
+        if line in LEGEND:
+            pool = [m['name'] for m in M if m['type'] == '전설' and m['name'] not in SIGNATURE]
+            pool += [m['name'] for m in M if m['kind'] == 'status' and m['type'] in ('보통', '전설')][:3]
+            for i, n in enumerate(sorted(set(pool), key=lambda n: (kind_of(n)['power'], n))):
+                out.append((line, n, LV_STEPS[min(i, len(LV_STEPS) - 1)] - 2 + rng.randint(0, 4)))
+            continue
+        t = BTYPE[line]
+        _, v, _ = next(r for r in species_rows() if r[0] == (line - 1) * 3 + 3)
+        phys = v[1] >= v[3]
+        own = [m for m in M if m['type'] == t and m['kind'] == 'attack' and m['name'] not in SIGNATURE]
+        main_cat = [m for m in own if (m['cat'] == 'physical') == phys]
+        other = [m for m in own if (m['cat'] == 'physical') != phys]
+        pick = sorted(rng.sample(main_cat, min(5, len(main_cat))) + rng.sample(other, min(2, len(other))), key=lambda m: (m['power'], m['name']))
+        names = [m['name'] for m in pick]
+        stat = [m['name'] for m in M if m['type'] == t and m['kind'] in ('status', 'defense')]
+        names += rng.sample(stat, min(2, len(stat)))
+        normal = [m['name'] for m in M if m['type'] == '보통' and m['name'] not in names]
+        names += rng.sample(normal, 2)
+        cov = cover_types(t)[line % 2]
+        cv = sorted((m for m in M if m['type'] == cov and m['kind'] == 'attack' and (m['cat'] == 'physical') == phys and 70 <= m['power'] <= 100),
+                    key=lambda m: m['name'])
+        if cv:
+            names.append(rng.choice(cv)['name'])
+        seen = set()
+        atk_i = 0
+        for n in names:
+            if n in seen:
+                continue
+            seen.add(n)
+            m = kind_of(n)
+            if m['kind'] == 'attack' and m['type'] == t:
+                lv = LV_STEPS[min(atk_i * 11 // max(1, len(pick)), 10)] + rng.randint(-2, 2)
+                atk_i += 1
+            elif m['kind'] == 'attack':          # 커버 기술은 늦게
+                lv = rng.randint(52, 70)
+            else:
+                lv = rng.randint(9, 48)
+            out.append((line, n, max(2, lv)))
+    return out
+
+
+# 기술머신: 과목마다 강한 공격 2개 + 누구나 쓰는 기술. 특별 기술머신(레이드 보상) = 전설의 고유 기술 (누구나 배움)
+TM_GENERAL = ['방어', '그림자분신', '칼춤', '나쁜음모', '고속이동', '명상', '잠자기', '리플렉터', '빛의장막', '스피드스타', '파괴광선', '기가임팩트',
+              '이판사판태클', '전기자석파', '도깨비불', '맹독']
+
+
+def tm_list():
+    out = []
+    for t in SUBJ:
+        atk = sorted((m for m in M if m['type'] == t and m['kind'] == 'attack' and m['name'] not in SIGNATURE and 80 <= m['power'] <= 120
+                      and (m['acc'] or 100) >= 85), key=lambda m: (-(m['power'] * (m['acc'] or 100)), m['name']))
+        phys = [m for m in atk if m['cat'] == 'physical'][:1]
+        spec = [m for m in atk if m['cat'] == 'special'][:1]
+        out += [m['name'] for m in phys + spec]
+    out += [n for n in TM_GENERAL if n in MOVE_ID]
+    return list(dict.fromkeys(out))       # 겹치는 기술은 한 번만
+
+
+def tm_compat(line, name):
+    if line in LEGEND or name in SIGNATURE:
+        return True
+    m = kind_of(name)
+    t = BTYPE[line]
+    return m['type'] in ('보통', t) or m['type'] in cover_types(t)[:4]
+
+
+# 가방 물건 (key, 이름, 주머니, 설명, 효과, 나오는 곳 가중치). 주머니: hold 지닌 물건 / med 회복약 (배틀 중) / tool 도구 / tm 기술머신
+BOOST_ITEM = {'국어': '맞춤법 사전', '수학': '공학용 계산기', '영어': '영어 단어장', '물리': '용수철저울', '화학': '실험 비커', '생명': '현미경',
+              '지구': '지구본', '지리': '나침반', '정치경제': '경제 신문', '윤리': '명언집', '역사': '역사 연표', '외국어': '회화 수첩', '정보': '노트북',
+              '체육': '운동화', '음악': '마이크'}
+
+
+def item_rows():
+    I = []
+    for i, (t, n) in enumerate(BOOST_ITEM.items()):
+        I.append((f'boost{i + 1:02d}', n, 'hold', f'지니게 하면 {t} 기술의 위력이 1.2배가 된다.', {'boost': t}, {'place': 3, 'battle': 2}))
+    I += [
+        ('glasses', '집중 안경', 'hold', '지니게 하면 기술이 잘 맞는다 (명중률 1.1배).', {'acc': 110}, {'place': 3, 'battle': 2}),
+        ('lucky', '행운 부적', 'hold', '지니게 하면 급소에 잘 맞는다.', {'crit': 1}, {'place': 2, 'battle': 2}),
+        ('choco', '초코우유', 'hold', 'HP가 절반 이하가 되면 마셔서 최대 HP의 1/4을 회복한다. 배틀마다 한 번.', {'pinch_heal': 25}, {'place': 4, 'battle': 2}),
+        ('cushion', '방석', 'hold', '턴이 끝날 때마다 최대 HP의 1/16을 회복한다.', {'leftovers': 16}, {'place': 2, 'battle': 2}),
+        ('clock', '알람시계', 'hold', '가끔(20%) 먼저 움직일 수 있다.', {'quick': 20}, {'place': 2, 'battle': 2}),
+        ('mask', '보건 마스크', 'hold', '독에 걸리지 않는다.', {'immune': 'psn'}, {'place': 2}),
+        ('hotpack', '핫팩', 'hold', '얼지 않는다.', {'immune': 'frz'}, {'place': 2}),
+        ('bandage', '반창고', 'med', '배틀 중에 쓰면 HP를 최대 HP의 30% 회복한다.', {'heal': 30}, {'place': 8, 'battle': 6, 'practice': 8, 'quiz': 3}),
+        ('ointment', '보건실 연고', 'med', '배틀 중에 쓰면 HP를 최대 HP의 60% 회복한다.', {'heal': 60}, {'place': 4, 'battle': 5, 'practice': 4, 'quiz': 2}),
+        ('iv', '링거', 'med', '배틀 중에 쓰면 HP와 상태 이상을 모두 회복한다.', {'heal': 100, 'cure': True}, {'place': 1, 'battle': 2, 'raid': 3}),
+        ('mint', '박하사탕', 'med', '배틀 중에 쓰면 상태 이상과 혼란을 고친다.', {'cure': True}, {'place': 5, 'battle': 3, 'practice': 4, 'quiz': 2}),
+        ('energy', '에너지 드링크', 'med', '배틀 중에 쓰면 모든 기술의 PP가 10씩 돌아온다.', {'pp': 10}, {'place': 3, 'battle': 3, 'practice': 2}),
+        ('firstaid', '구급상자', 'med', '배틀 중에 쓰면 쓰러진 몬스터가 HP 절반으로 다시 일어난다.', {'revive': 50}, {'place': 1, 'battle': 2, 'raid': 2}),
+        ('candy', '이상한사탕', 'tool', '몬스터 하나의 레벨이 1 오른다.', {'level': 1}, {'place': 1, 'battle': 2, 'quiz': 3, 'raid': 4}),
+    ]
+    for i, n in enumerate(tm_list()):
+        m = kind_of(n)
+        I.append((f'tm{i + 1:02d}', f'기술머신{i + 1:02d}', 'tm', m['desc'], {}, {'place': 1, 'quiz': 3, 'battle': 1}, n))
+    for i, n in enumerate(SIGNATURE):
+        m = kind_of(n)
+        I.append((f'sp{i + 1:02d}', f'특별 기술머신{i + 1:02d}', 'tm', m['desc'] + ' (전설의 기술 — 누구나 배울 수 있다)', {}, {'raid': 1}, n))
+    return [x if len(x) == 7 else x + (None,) for x in I]
+
+
 def chart_rows():
     rows = [(a, d, m) for a, row in CHART.items() for d, m in row.items()]
     rows.append(('전설', '전설', 2))
@@ -367,28 +608,50 @@ def main():
         assert len(moves) == 4 and all(x in names for x in moves), (sid, moves)
         kinds = sorted(next(m['kind'] for m in M if m['name'] == x) for x in moves)
         assert kinds == ['attack', 'attack', 'defense', 'status'], (sid, moves, kinds)
-    sql = ['-- GENERATED by tools/gen_battle_data.py — do not edit by hand. Run after seed.sql.',
+    learn = learnset_rows()
+    items = item_rows()
+    tms = [(k, mvn) for k, _, pk, _, _, _, mvn in items if pk == 'tm']
+    tm_rows = sorted({(line, MOVE_ID[mvn]) for line in LINES for _, mvn in tms if tm_compat(line, mvn)})
+    ids = ', '.join(str(MOVE_ID[m['name']]) for m in M)
+    # 기술 번호는 고정 (MOVE_ID) — 몬스터가 고른 기술·배운 기술(collection.moves/learned)이 번호로 저장되므로 다시 실행해도 안 바뀌어야 한다
+    sql = ['-- GENERATED by tools/gen_battle_data.py — do not edit by hand. Run after seed.sql (and after migration 0020).',
            'begin;',
-           'delete from public.species_moves; delete from public.moves; delete from public.type_chart; delete from public.types;',
+           'delete from public.species_moves; delete from public.learnset; delete from public.type_chart; delete from public.types;',
            'insert into public.types (name, sort) values ' + ', '.join(f'({q(t)}, {i})' for i, t in enumerate(TYPES)) + ';',
            'insert into public.type_chart (atk, def, mult) values ' + ', '.join(f'({q(a)}, {q(d)}, {m})' for a, d, m in chart_rows()) + ';',
            'update public.lines l set btype = v.t from (values ' + ', '.join(f'({l}, {q(t)})' for l, t in sorted(BTYPE.items())) + ') v(id, t) where l.id = v.id;',
-           'insert into public.moves (name, type, category, kind, power, accuracy, pp, priority, effect, description) values']
-    sql.append(',\n'.join(f" ({q(m['name'])}, {q(m['type'])}, {q(m['cat'])}, {q(m['kind'])}, {m['power']}, "
+           f'delete from public.moves where id not in ({ids});',
+           'insert into public.moves (id, name, type, category, kind, power, accuracy, pp, priority, effect, description) values']
+    sql.append(',\n'.join(f" ({MOVE_ID[m['name']]}, {q(m['name'])}, {q(m['type'])}, {q(m['cat'])}, {q(m['kind'])}, {m['power']}, "
                           f"{'null' if m['acc'] is None else m['acc']}, {m['pp']}, {m['prio']}, {q(json.dumps(m['effect'], ensure_ascii=False))}, {q(m['desc'])})"
-                          for m in M) + ';')
+                          for m in M))
+    sql.append('on conflict (id) do update set name = excluded.name, type = excluded.type, category = excluded.category, kind = excluded.kind, '
+               'power = excluded.power, accuracy = excluded.accuracy, pp = excluded.pp, priority = excluded.priority, effect = excluded.effect, '
+               'description = excluded.description;')
+    sql.append("select setval('public.moves_id_seq', (select max(id) from public.moves));")
     sql.append('update public.species s set hp = v.hp, atk = v.atk, def = v.def, spa = v.spa, spd = v.spd, spe = v.spe from (values')
     sql.append(',\n'.join(f' ({sid}, {", ".join(map(str, v))})' for sid, v, _ in rows))
     sql.append(') v(id, hp, atk, def, spa, spd, spe) where s.id = v.id;')
     sql.append('insert into public.species_moves (species_id, slot, move_id)')
-    sql.append('select v.sid, v.slot, m.id from (values')
-    sql.append(',\n'.join(f' ({sid}, {k + 1}, {q(x)})' for sid, _, moves in rows for k, x in enumerate(moves)))
-    sql.append(') v(sid, slot, name) join public.moves m on m.name = v.name where exists (select 1 from public.species s where s.id = v.sid);')
+    sql.append('select v.sid, v.slot, v.mid from (values')
+    sql.append(',\n'.join(f' ({sid}, {k + 1}, {MOVE_ID[x]})' for sid, _, moves in rows for k, x in enumerate(moves)))
+    sql.append(') v(sid, slot, mid) where exists (select 1 from public.species s where s.id = v.sid);')
+    sql.append('insert into public.learnset (line_id, move_id, lv, how)')
+    sql.append('select v.l, v.m, v.lv, v.how from (values')
+    sql.append(',\n'.join([f" ({l}, {MOVE_ID[n]}, {lv}, 'level')" for l, n, lv in learn] + [f" ({l}, {m}, 0, 'tm')" for l, m in tm_rows]))
+    sql.append(') v(l, m, lv, how) where exists (select 1 from public.lines x where x.id = v.l);')
+    sql.append('insert into public.items (key, name, pocket, description, effect, drops, move_id, sort) values')
+    sql.append(',\n'.join(f" ({q(k)}, {q(n)}, {q(pk)}, {q(d)}, {q(json.dumps(e, ensure_ascii=False))}, {q(json.dumps(dr))}, "
+                          f"{MOVE_ID[mvn] if mvn else 'null'}, {i})" for i, (k, n, pk, d, e, dr, mvn) in enumerate(items)))
+    sql.append('on conflict (key) do update set name = excluded.name, pocket = excluded.pocket, description = excluded.description, '
+               'effect = excluded.effect, drops = excluded.drops, move_id = excluded.move_id, sort = excluded.sort;')
+    sql.append('delete from public.items where key not in (' + ', '.join(q(x[0]) for x in items) + ');')
     sql.append('commit;')
     out = os.path.join(ROOT, 'supabase', 'seed_battle.sql')
     open(out, 'w', encoding='utf-8', newline='\n').write('\n'.join(sql) + '\n')
     zero = [(a, d) for a, d, m in chart_rows() if m == 0]
     print(f'{out}: {len(M)} moves, {len(rows)} species, {len(chart_rows())} chart cells, x0: {zero}')
+    print(f'  learnset {len(learn)} level rows ({len(learn) / len(LINES):.1f}/line) + {len(tm_rows)} TM rows; items {len(items)} ({len(tms)} TMs)')
     for t in SUBJ:
         print(f'  {t:5s} 공격 ×2 {sum(mult(t, d) > 1 for d in SUBJ)} · ×.5 {sum(0 < mult(t, d) < 1 for d in SUBJ)} · ×0 {sum(mult(t, d) == 0 for d in SUBJ)}'
               f' | 방어 약점 {sum(mult(a, t) > 1 for a in SUBJ)} · 반감 {sum(0 < mult(a, t) < 1 for a in SUBJ)} · 무효 {sum(mult(a, t) == 0 for a in SUBJ)} | 커버 {cover_type(t)}')

@@ -1,0 +1,218 @@
+ko	en	type	type_ko	class	power	acc	pp	priority	hits	ailment	ailment_chance	flinch_chance	stat_changes	stat_chance	crit_stage	drain_pct	heal_pct	never_miss	signature	effect_en
+몸통박치기	Tackle	normal	노말	physical	40	100	35	0												Inflicts regular damage with no additional effect.
+할퀴기	Scratch	normal	노말	physical	40	100	35	0												Inflicts regular damage with no additional effect.
+막치기	Pound	normal	노말	physical	40	100	35	0												Inflicts regular damage with no additional effect.
+전광석화	Quick Attack	normal	노말	physical	40	100	30	1												Inflicts regular damage with no additional effect.
+누르기	Body Slam	normal	노말	physical	85	100	15	0		paralysis	30									Has a chance to paralyze the target.
+이판사판태클	Double-Edge	normal	노말	physical	120	100	15	0								-33				User receives 1/3 the damage inflicted in recoil.
+돌진	Take Down	normal	노말	physical	90	85	20	0								-25				User receives 1/4 the damage it inflicts in recoil.
+박치기	Headbutt	normal	노말	physical	70	100	15	0				30								Has a chance to make the target flinch.
+베어가르기	Slash	normal	노말	physical	70	100	20	0							1					Has an increased chance for a critical hit.
+파괴광선	Hyper Beam	normal	노말	special	150	90	5	0												User foregoes its next turn to recharge.
+기가임팩트	Giga Impact	normal	노말	physical	150	90	5	0												User foregoes its next turn to recharge.
+신속	Extreme Speed	normal	노말	physical	80	100	5	2												Inflicts regular damage with no additional effect.
+스피드스타	Swift	normal	노말	special	60	-	20	0										Y		Never misses.
+하이퍼보이스	Hyper Voice	normal	노말	special	90	100	10	0												Inflicts regular damage with no additional effect.
+속이기	Fake Out	normal	노말	physical	40	100	10	3				100								Can only be used as the first move after the user enters battle.  Causes the target to flinch.
+분노의앞니	Super Fang	normal	노말	physical	-	90	10	0												Inflicts damage equal to half the target’s HP.
+마구찌르기	Fury Attack	normal	노말	physical	15	85	20	0	2-5											Hits 2-5 times in one turn.
+연속펀치	Comet Punch	normal	노말	physical	18	85	15	0	2-5											Hits 2-5 times in one turn.
+대폭발	Explosion	normal	노말	physical	250	100	5	0												User faints.
+그림자분신	Double Team	normal	노말	status	-	-	15	0					evasion+1							Raises the user’s evasion by one stage.
+작아지기	Minimize	normal	노말	status	-	-	10	0					evasion+2							Raises the user’s evasion by two stages.
+울음소리	Growl	normal	노말	status	-	100	40	0					attack-1							Lowers the target’s Attack by one stage.
+째려보기	Leer	normal	노말	status	-	100	30	0					defense-1	100						Lowers the target’s Defense by one stage.
+꼬리흔들기	Tail Whip	normal	노말	status	-	100	30	0					defense-1							Lowers the target’s Defense by one stage.
+연막	Smokescreen	normal	노말	status	-	100	20	0					accuracy-1							Lowers the target’s accuracy by one stage.
+플래시	Flash	normal	노말	status	-	100	20	0					accuracy-1							Lowers the target’s accuracy by one stage.
+노래하기	Sing	normal	노말	status	-	55	15	0		sleep										Puts the target to sleep.
+칼춤	Swords Dance	normal	노말	status	-	-	20	0					attack+2							Raises the user’s Attack by two stages.
+방어	Protect	normal	노말	status	-	-	10	4		protect										Prevents any moves from hitting the user this turn.
+HP회복	Recover	normal	노말	status	-	-	5	0									50			Heals the user by half its max HP.
+불꽃세례	Ember	fire	불꽃	special	40	100	25	0		burn	10									Has a chance to burn the target.
+불꽃펀치	Fire Punch	fire	불꽃	physical	75	100	15	0		burn	10									Has a chance to burn the target.
+화염바퀴	Flame Wheel	fire	불꽃	physical	60	100	25	0		burn	10									Has a chance to burn the target.  Lets frozen Pokémon thaw themselves.
+화염방사	Flamethrower	fire	불꽃	special	90	100	15	0		burn	10									Has a chance to burn the target.
+불대문자	Fire Blast	fire	불꽃	special	110	85	5	0		burn	10									Has a chance to burn the target.
+열풍	Heat Wave	fire	불꽃	special	95	90	10	0		burn	10									Has a chance to burn the target.
+오버히트	Overheat	fire	불꽃	special	130	90	5	0					special-attack-2	100						Lowers the user’s Special Attack by two stages after inflicting damage.
+플레어드라이브	Flare Blitz	fire	불꽃	physical	120	100	15	0		burn	10					-33				User takes 1/3 the damage inflicted in recoil.  Has a chance to burn the target.
+회오리불꽃	Fire Spin	fire	불꽃	special	35	85	15	0		trap	100									Prevents the target from fleeing and inflicts damage for 2-5 turns.
+도깨비불	Will-O-Wisp	fire	불꽃	status	-	85	15	0		burn										Burns the target.
+성스러운불꽃	Sacred Fire	fire	불꽃	physical	100	95	5	0		burn	50								Y	Has a chance to burn the target.  Lets frozen Pokémon thaw themselves.
+푸른불꽃	Blue Flare	fire	불꽃	special	130	85	5	0		burn	20								Y	Has a chance to burn the target.
+V제너레이트	V-create	fire	불꽃	physical	180	95	5	0					defense-1 special-defense-1 speed-1	100					Y	Lowers the user’s Defense, Special Defense, and Speed by one stage each.
+물대포	Water Gun	water	물	special	40	100	25	0												Inflicts regular damage with no additional effect.
+거품광선	Bubble Beam	water	물	special	65	100	20	0					speed-1	10						Has a chance to lower the target’s Speed by one stage.
+물의파동	Water Pulse	water	물	special	60	100	20	0		confusion	20									Has a chance to confuse the target.
+파도타기	Surf	water	물	special	90	100	15	0												Inflicts regular damage and can hit Dive users.
+하이드로펌프	Hydro Pump	water	물	special	110	80	5	0												Inflicts regular damage with no additional effect.
+폭포오르기	Waterfall	water	물	physical	80	100	15	0				20								Has a chance to make the target flinch.
+아쿠아제트	Aqua Jet	water	물	physical	40	100	20	1												Inflicts regular damage with no additional effect.
+열탕	Scald	water	물	special	80	100	15	0		burn	30									Has a chance to burn the target.
+집게해머	Crabhammer	water	물	physical	100	90	10	0							1					Has an increased chance for a critical hit.
+대포무노포	Octazooka	water	물	special	65	85	10	0					accuracy-1	50						Has a chance to lower the target’s accuracy by one stage.
+탁류	Muddy Water	water	물	special	90	85	10	0					accuracy-1	30						Has a chance to lower the target’s accuracy by one stage.
+근원의파동	Origin Pulse	water	물	special	110	85	10	0											Y	Inflicts regular damage with no additional effect.
+덩굴채찍	Vine Whip	grass	풀	physical	45	100	25	0												Inflicts regular damage with no additional effect.
+잎날가르기	Razor Leaf	grass	풀	physical	55	95	25	0							1					Has an increased chance for a critical hit.
+리프블레이드	Leaf Blade	grass	풀	physical	90	100	15	0							1					Has an increased chance for a critical hit.
+씨기관총	Bullet Seed	grass	풀	physical	25	100	30	0	2-5											Hits 2-5 times in one turn.
+기가드레인	Giga Drain	grass	풀	special	75	100	10	0								50				Drains half the damage inflicted to heal the user.
+에너지볼	Energy Ball	grass	풀	special	90	100	10	0					special-defense-1	10						Has a chance to lower the target’s Special Defense by one stage.
+솔라빔	Solar Beam	grass	풀	special	120	100	10	0												Requires a turn to charge before attacking.
+우드해머	Wood Hammer	grass	풀	physical	120	100	15	0								-33				User receives 1/3 the damage inflicted in recoil.
+수면가루	Sleep Powder	grass	풀	status	-	75	15	0		sleep										Puts the target to sleep.
+저리가루	Stun Spore	grass	풀	status	-	75	30	0		paralysis										Paralyzes the target.
+버섯포자	Spore	grass	풀	status	-	100	15	0		sleep										Puts the target to sleep.
+씨뿌리기	Leech Seed	grass	풀	status	-	90	10	0		leech-seed										Seeds the target, stealing HP from it every turn.
+시드플레어	Seed Flare	grass	풀	special	120	85	5	0					special-defense-2	40					Y	Has a chance to lower the target’s Special Defense by two stages.
+전기쇼크	Thunder Shock	electric	전기	special	40	100	30	0		paralysis	10									Has a chance to paralyze the target.
+스파크	Spark	electric	전기	physical	65	100	20	0		paralysis	30									Has a chance to paralyze the target.
+전격파	Shock Wave	electric	전기	special	60	-	20	0										Y		Never misses.
+10만볼트	Thunderbolt	electric	전기	special	90	100	15	0		paralysis	10									Has a chance to paralyze the target.
+방전	Discharge	electric	전기	special	80	100	15	0		paralysis	30									Has a chance to paralyze the target.
+번개	Thunder	electric	전기	special	110	70	10	0		paralysis	30									Has a chance to paralyze the target.
+와일드볼트	Wild Charge	electric	전기	physical	90	100	15	0								-25				User receives 1/4 the damage it inflicts in recoil.
+전자포	Zap Cannon	electric	전기	special	120	50	5	0		paralysis	100									Has a chance to paralyze the target.
+전기자석파	Thunder Wave	electric	전기	status	-	90	20	0		paralysis										Paralyzes the target.
+볼트태클	Volt Tackle	electric	전기	physical	120	100	15	0		paralysis	10					-33			Y	User takes 1/3 the damage inflicted in recoil.  Has a chance to paralyze the target.
+뇌격	Bolt Strike	electric	전기	physical	130	85	5	0		paralysis	20								Y	Has a chance to paralyze the target.
+눈싸라기	Powder Snow	ice	얼음	special	40	100	25	0		freeze	10									Has a chance to freeze the target.
+얼음뭉치	Ice Shard	ice	얼음	physical	40	100	30	1												Inflicts regular damage with no additional effect.
+냉동펀치	Ice Punch	ice	얼음	physical	75	100	15	0		freeze	10									Has a chance to freeze the target.
+오로라빔	Aurora Beam	ice	얼음	special	65	100	20	0					attack-1	10						Has a chance to lower the target’s Attack by one stage.
+냉동빔	Ice Beam	ice	얼음	special	90	100	10	0		freeze	10									Has a chance to freeze the target.
+눈보라	Blizzard	ice	얼음	special	110	70	5	0		freeze	10									Has a chance to freeze the target.
+고드름떨구기	Icicle Crash	ice	얼음	physical	85	90	10	0				30								Has a chance to make the target flinch.
+프리즈드라이	Freeze-Dry	ice	얼음	special	70	100	20	0		freeze	10									Super-effective against Water.
+얼음숨결	Frost Breath	ice	얼음	special	60	90	10	0							6					Always scores a critical hit.
+절대영도	Sheer Cold	ice	얼음	special	-	30	5	0												Causes a one-hit KO.
+태권당수	Karate Chop	fighting	격투	physical	50	100	25	0							1					Has an increased chance for a critical hit.
+두번차기	Double Kick	fighting	격투	physical	30	100	30	0	2											Hits twice in one turn.
+마하펀치	Mach Punch	fighting	격투	physical	40	100	30	1												Inflicts regular damage with no additional effect.
+안다리걸기	Low Kick	fighting	격투	physical	-	100	20	0												Inflicts more damage to heavier targets, with a maximum of 120 power.
+깨뜨리다	Brick Break	fighting	격투	physical	75	100	15	0												Destroys Reflect and Light Screen.
+드레인펀치	Drain Punch	fighting	격투	physical	75	100	10	0								50				Drains half the damage inflicted to heal the user.
+크로스촙	Cross Chop	fighting	격투	physical	100	80	5	0							1					Has an increased chance for a critical hit.
+인파이트	Close Combat	fighting	격투	physical	120	100	5	0					defense-1 special-defense-1	100						Lowers the user’s Defense and Special Defense by one stage after inflicting damage.
+무릎차기	High Jump Kick	fighting	격투	physical	130	90	10	0												If the user misses, it takes half the damage it would have inflicted in recoil.
+폭발펀치	Dynamic Punch	fighting	격투	physical	100	50	5	0		confusion	100									Has a chance to confuse the target.
+기합구슬	Focus Blast	fighting	격투	special	120	70	5	0					special-defense-1	10						Has a chance to lower the target’s Special Defense by one stage.
+파동탄	Aura Sphere	fighting	격투	special	80	-	20	0										Y		Never misses.
+힘껏펀치	Focus Punch	fighting	격투	physical	150	100	20	-3												If the user takes damage before attacking, the attack is canceled.
+벌크업	Bulk Up	fighting	격투	status	-	-	20	0					attack+1 defense+1							Raises the user’s Attack and Defense by one stage.
+독침	Poison Sting	poison	독	physical	15	100	35	0		poison	30									Has a chance to poison the target.
+용해액	Acid	poison	독	special	40	100	30	0					special-defense-1	10						Has a chance to lower the target’s Special Defense by one stage.
+스모그	Smog	poison	독	special	30	70	20	0		poison	40									Has a chance to poison the target.
+독찌르기	Poison Jab	poison	독	physical	80	100	20	0		poison	30									Has a chance to poison the target.
+크로스포이즌	Cross Poison	poison	독	physical	70	100	20	0		poison	10				1					Has an increased chance for a critical hit and a chance to poison the target.
+오물폭탄	Sludge Bomb	poison	독	special	90	100	10	0		poison	30									Has a chance to poison the target.
+오물웨이브	Sludge Wave	poison	독	special	95	100	10	0		poison	10									Has a chance to poison the target.
+더스트슈트	Gunk Shot	poison	독	physical	120	80	5	0		poison	30									Has a chance to poison the target.
+독가루	Poison Powder	poison	독	status	-	75	35	0		poison										Poisons the target.
+맹독	Toxic	poison	독	status	-	90	10	0		poison										Badly poisons the target, inflicting more damage every turn.
+진흙뿌리기	Mud-Slap	ground	땅	special	20	100	10	0					accuracy-1	100						Has a chance to lower the target’s accuracy by one stage.
+머드샷	Mud Shot	ground	땅	special	55	95	15	0					speed-1	100						Has a chance to lower the target’s Speed by one stage.
+본러시	Bone Rush	ground	땅	physical	25	90	10	0	2-5											Hits 2-5 times in one turn.
+땅고르기	Bulldoze	ground	땅	physical	60	100	20	0					speed-1	100						Has a chance to lower the target’s Speed by one stage.
+구멍파기	Dig	ground	땅	physical	80	100	10	0												User digs underground, dodging all attacks, and hits next turn.
+대지의힘	Earth Power	ground	땅	special	90	100	10	0					special-defense-1	10						Has a chance to lower the target’s Special Defense by one stage.
+지진	Earthquake	ground	땅	physical	100	100	10	0												Inflicts regular damage and can hit Dig users.
+땅가르기	Fissure	ground	땅	physical	-	30	5	0												Causes a one-hit KO.
+모래뿌리기	Sand Attack	ground	땅	status	-	100	15	0					accuracy-1							Lowers the target’s accuracy by one stage.
+단애의칼	Precipice Blades	ground	땅	physical	120	85	10	0											Y	Inflicts regular damage with no additional effect.
+바람일으키기	Gust	flying	비행	special	40	100	35	0												Inflicts regular damage and can hit Pokémon in the air.
+쪼기	Peck	flying	비행	physical	35	100	35	0												Inflicts regular damage with no additional effect.
+날개치기	Wing Attack	flying	비행	physical	60	100	35	0												Inflicts regular damage with no additional effect.
+제비반환	Aerial Ace	flying	비행	physical	60	-	20	0										Y		Never misses.
+에어슬래시	Air Slash	flying	비행	special	75	95	15	0				30								Has a chance to make the target flinch.
+회전부리	Drill Peck	flying	비행	physical	80	100	20	0												Inflicts regular damage with no additional effect.
+공중날기	Fly	flying	비행	physical	90	95	15	0												User flies high into the air, dodging all attacks, and hits next turn.
+브레이브버드	Brave Bird	flying	비행	physical	120	100	15	0								-33				User receives 1/3 the damage inflicted in recoil.
+폭풍	Hurricane	flying	비행	special	110	70	10	0		confusion	30									Has a chance to confuse the target.
+불새	Sky Attack	flying	비행	physical	140	90	5	0				30			1					User charges for one turn before attacking.  Has a chance to make the target flinch.
+날개쉬기	Roost	flying	비행	status	-	-	5	0									50			Heals the user by half its max HP.
+에어로블라스트	Aeroblast	flying	비행	special	100	95	5	0							1				Y	Has an increased chance for a critical hit.
+염동력	Confusion	psychic	에스퍼	special	50	100	25	0		confusion	10									Has a chance to confuse the target.
+환상빔	Psybeam	psychic	에스퍼	special	65	100	20	0		confusion	10									Has a chance to confuse the target.
+신통력	Extrasensory	psychic	에스퍼	special	80	100	20	0				10								Has a chance to make the target flinch.
+사념의박치기	Zen Headbutt	psychic	에스퍼	physical	80	90	15	0				20								Has a chance to make the target flinch.
+사이코쇼크	Psyshock	psychic	에스퍼	special	80	100	10	0												Inflicts damage based on the target’s Defense, not Special Defense.
+사이코키네시스	Psychic	psychic	에스퍼	special	90	100	10	0					special-defense-1	10						Has a chance to lower the target’s Special Defense by one stage.
+미래예지	Future Sight	psychic	에스퍼	special	120	100	10	0												Hits the target two turns later.
+최면술	Hypnosis	psychic	에스퍼	status	-	60	20	0		sleep										Puts the target to sleep.
+명상	Calm Mind	psychic	에스퍼	status	-	-	20	0					special-attack+1 special-defense+1							Raises the user’s Special Attack and Special Defense by one stage.
+빛의장막	Light Screen	psychic	에스퍼	status	-	-	30	0												Reduces damage from special attacks by 50% for five turns.
+잠자기	Rest	psychic	에스퍼	status	-	-	5	0												User sleeps for two turns, completely healing itself.
+사이코부스트	Psycho Boost	psychic	에스퍼	special	140	90	5	0					special-attack-2	100					Y	Lowers the user’s Special Attack by two stages after inflicting damage.
+실뿜기	String Shot	bug	벌레	status	-	95	40	0					speed-2							Lowers the target’s Speed by two stages.
+흡혈	Leech Life	bug	벌레	physical	80	100	10	0								50				Drains half the damage inflicted to heal the user.
+바늘미사일	Pin Missile	bug	벌레	physical	25	95	20	0	2-5											Hits 2-5 times in one turn.
+벌레먹기	Bug Bite	bug	벌레	physical	60	100	20	0												If target has a berry, inflicts double damage and uses the berry.
+시그널빔	Signal Beam	bug	벌레	special	75	100	15	0		confusion	10									Has a chance to confuse the target.
+유턴	U-turn	bug	벌레	physical	70	100	20	0												User must switch out after attacking.
+시저크로스	X-Scissor	bug	벌레	physical	80	100	15	0												Inflicts regular damage with no additional effect.
+벌레의야단법석	Bug Buzz	bug	벌레	special	90	100	10	0					special-defense-1	10						Has a chance to lower the target’s Special Defense by one stage.
+메가혼	Megahorn	bug	벌레	physical	120	85	10	0												Inflicts regular damage with no additional effect.
+나비춤	Quiver Dance	bug	벌레	status	-	-	20	0					special-attack+1 special-defense+1 speed+1							Raises the user’s Special Attack, Special Defense, and Speed by one stage each.
+돌떨구기	Rock Throw	rock	바위	physical	50	90	15	0												Inflicts regular damage with no additional effect.
+암석봉인	Rock Tomb	rock	바위	physical	60	95	15	0					speed-1	100						Has a chance to lower the target’s Speed by one stage.
+록블라스트	Rock Blast	rock	바위	physical	25	90	10	0	2-5											Hits 2-5 times in one turn.
+원시의힘	Ancient Power	rock	바위	special	60	100	5	0					attack+1 defense+1 special-attack+1 special-defense+1 speed+1	10						Has a chance to raise all of the user’s stats by one stage.
+스톤샤워	Rock Slide	rock	바위	physical	75	90	10	0				30								Has a chance to make the target flinch.
+파워젬	Power Gem	rock	바위	special	80	100	20	0												Inflicts regular damage with no additional effect.
+스톤에지	Stone Edge	rock	바위	physical	100	80	5	0							1					Has an increased chance for a critical hit.
+양날박치기	Head Smash	rock	바위	physical	150	80	5	0								-50				User receives 1/2 the damage inflicted in recoil.
+스텔스록	Stealth Rock	rock	바위	status	-	-	20	0												Causes damage when opposing Pokémon switch in.
+핥기	Lick	ghost	고스트	physical	30	100	30	0		paralysis	30									Has a chance to paralyze the target.
+나이트헤드	Night Shade	ghost	고스트	special	-	100	15	0												Inflicts damage equal to the user’s level.
+야습	Shadow Sneak	ghost	고스트	physical	40	100	30	1												Inflicts regular damage with no additional effect.
+섀도클로	Shadow Claw	ghost	고스트	physical	70	100	15	0							1					Has an increased chance for a critical hit.
+병상첨병	Hex	ghost	고스트	special	65	100	10	0												Has double power if the target has a major status ailment.
+섀도볼	Shadow Ball	ghost	고스트	special	80	100	15	0					special-defense-1	20						Has a chance to lower the target’s Special Defense by one stage.
+고스트다이브	Phantom Force	ghost	고스트	physical	90	100	10	0												User vanishes, dodging all attacks, and hits next turn.  Hits through Protect and Detect.
+이상한빛	Confuse Ray	ghost	고스트	status	-	100	10	0		confusion										Confuses the target.
+길동무	Destiny Bond	ghost	고스트	status	-	-	5	0												If the user faints this turn, the target automatically will, too.
+섀도다이브	Shadow Force	ghost	고스트	physical	120	100	5	0											Y	User vanishes, dodging all attacks, and hits next turn.  Hits through Protect and Detect.
+용의분노	Dragon Rage	dragon	드래곤	special	-	100	10	0												Inflicts 40 points of damage.
+회오리	Twister	dragon	드래곤	special	40	100	20	0				20								Has a chance to make the target flinch.
+용의숨결	Dragon Breath	dragon	드래곤	special	60	100	20	0		paralysis	30									Has a chance to paralyze the target.
+드래곤클로	Dragon Claw	dragon	드래곤	physical	80	100	15	0												Inflicts regular damage with no additional effect.
+용의파동	Dragon Pulse	dragon	드래곤	special	85	100	10	0												Inflicts regular damage with no additional effect.
+드래곤다이브	Dragon Rush	dragon	드래곤	physical	100	75	10	0				20								Has a chance to make the target flinch.
+역린	Outrage	dragon	드래곤	physical	120	100	10	0												Hits every turn for 2-3 turns, then confuses the user.
+용성군	Draco Meteor	dragon	드래곤	special	130	90	5	0					special-attack-2	100						Lowers the user’s Special Attack by two stages after inflicting damage.
+용의춤	Dragon Dance	dragon	드래곤	status	-	-	20	0					attack+1 speed+1							Raises the user’s Attack and Speed by one stage.
+시간의포효	Roar of Time	dragon	드래곤	special	150	90	5	0											Y	User foregoes its next turn to recharge.
+공간절단	Spacial Rend	dragon	드래곤	special	100	95	5	0							1				Y	Has an increased chance for a critical hit.
+물기	Bite	dark	악	physical	60	100	25	0				30								Has a chance to make the target flinch.
+속여때리기	Feint Attack	dark	악	physical	60	-	20	0										Y		Never misses.
+바크아웃	Snarl	dark	악	special	55	95	15	0					special-attack-1	100						Has a chance to lower the target’s Special Attack by one stage.
+기습	Sucker Punch	dark	악	physical	70	100	5	1												Only works if the target is about to use a damaging move.
+탁쳐서떨구기	Knock Off	dark	악	physical	65	100	20	0												Target drops its held item.
+깜짝베기	Night Slash	dark	악	physical	70	100	15	0							1					Has an increased chance for a critical hit.
+깨물어부수기	Crunch	dark	악	physical	80	100	15	0					defense-1	20						Has a chance to lower the target’s Defense by one stage.
+악의파동	Dark Pulse	dark	악	special	80	100	15	0				20								Has a chance to make the target flinch.
+속임수	Foul Play	dark	악	physical	95	100	15	0												Calculates damage with the target’s attacking stat.
+나쁜음모	Nasty Plot	dark	악	status	-	-	20	0					special-attack+2							Raises the user’s Special Attack by two stages.
+메탈클로	Metal Claw	steel	강철	physical	50	95	35	0					attack+1	10						Has a chance to raise the user’s Attack by one stage.
+불릿펀치	Bullet Punch	steel	강철	physical	40	100	30	1												Inflicts regular damage with no additional effect.
+강철날개	Steel Wing	steel	강철	physical	70	90	25	0					defense+1	10						Has a chance to raise the user’s Defense by one stage.
+아이언테일	Iron Tail	steel	강철	physical	100	75	15	0					defense-1	30						Has a chance to lower the target’s Defense by one stage.
+아이언헤드	Iron Head	steel	강철	physical	80	100	15	0				30								Has a chance to make the target flinch.
+러스터캐논	Flash Cannon	steel	강철	special	80	100	10	0					special-defense-1	10						Has a chance to lower the target’s Special Defense by one stage.
+코멧펀치	Meteor Mash	steel	강철	physical	90	90	10	0					attack+1	20						Has a chance to raise the user’s Attack by one stage.
+자이로볼	Gyro Ball	steel	강철	physical	-	100	5	0												Power raises when the user has lower Speed, up to a maximum of 150.
+철벽	Iron Defense	steel	강철	status	-	-	15	0					defense+2							Raises the user’s Defense by two stages.
+파멸의소원	Doom Desire	steel	강철	special	140	100	5	0											Y	Hits the target two turns later.
+요정의바람	Fairy Wind	fairy	페어리	special	40	100	30	0												Inflicts regular damage with no additional effect.
+차밍보이스	Disarming Voice	fairy	페어리	special	40	-	15	0										Y		Never misses.
+드레인키스	Draining Kiss	fairy	페어리	special	50	100	10	0								75				Drains 75% of the damage inflicted to heal the user.
+매지컬샤인	Dazzling Gleam	fairy	페어리	special	80	100	10	0												Inflicts regular damage with no additional effect.
+치근거리기	Play Rough	fairy	페어리	physical	90	90	10	0					attack-1	10						Has a chance to lower the target’s Attack by one stage.
+문포스	Moonblast	fairy	페어리	special	95	100	15	0					special-attack-1	30						Has a chance to lower the target’s Special Attack by one stage.
+천사의키스	Sweet Kiss	fairy	페어리	status	-	75	10	0		confusion										Confuses the target.
+애교부리기	Charm	fairy	페어리	status	-	100	20	0					attack-2							Lowers the target’s Attack by two stages.
+파멸의빛	Light of Ruin	fairy	페어리	special	140	90	5	0								-50			Y	User receives 1/2 the damage inflicted in recoil.
+플뢰르캐논	Fleur Cannon	fairy	페어리	special	130	90	5	0					special-attack-2	100					Y	Lowers the user’s Special Attack by two stages after inflicting damage.
