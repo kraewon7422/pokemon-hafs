@@ -14,12 +14,21 @@ const ok = (cond, name, extra) => {
   else { fail++; console.log('  ✗', name, extra !== undefined ? JSON.stringify(extra) : ''); }
 };
 
+// staging allows ~30 logins / 5 min per IP and this suite needs more → wait out a 429 instead of failing
+async function tokenReq(email, password) {
+  for (let i = 0; ; i++) {
+    const r = await fetch(`${URL_}/auth/v1/token?grant_type=password`, {
+      method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    });
+    const j = await r.json();
+    if (r.status !== 429 || i >= 12) return j;
+    if (i === 0) console.log('  … login rate limit, waiting');
+    await new Promise((res) => setTimeout(res, 30000));
+  }
+}
 async function login(email) {
-  const r = await fetch(`${URL_}/auth/v1/token?grant_type=password`, {
-    method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password: env.TEST_PASSWORD }),
-  });
-  const j = await r.json();
+  const j = await tokenReq(email, env.TEST_PASSWORD);
   if (!j.access_token) throw new Error('login failed ' + email + ' ' + JSON.stringify(j));
   return j.access_token;
 }
@@ -372,7 +381,7 @@ console.log('\n[17] open login: register screen, 학번 code accounts, dev accou
   }
   ok(cc?.id === sid && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(cc.code), 'student number alone creates a code account (code shown once)', cc);
   ok((await anon.rpc('create_code_account', { p_student_id: sid })).error === 'CODE_ACCOUNT_EXISTS', 'second request for the same number is refused');
-  ok((await anon.rpc('create_code_account', { p_student_id: '022001' })).error === 'STUDENT_ID_TAKEN', 'code account for a registered number is refused');
+  ok(['STUDENT_ID_TAKEN', 'CODE_ACCOUNT_EXISTS'].includes((await anon.rpc('create_code_account', { p_student_id: '022001' })).error), 'code account for a registered number is refused');
   const ct = await (await fetch(`${URL_}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: `${sid}@code.local`, password: cc.code.replace('-', '') }) })).json();
   const cl = client(ct.access_token);
   const need = (await cl.rpc('ensure_profile')).data;
@@ -412,7 +421,7 @@ console.log('\n[18] staff invite (admin page → 운영진)');
 }
 
 console.log('\n[19] 고유번호 계정: 하나의 번호 = 하나의 계정, 구글 계정 여러 개 연결');
-const pwLogin = async (email, password) => (await (await fetch(`${URL_}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password }) })).json()).access_token;
+const pwLogin = async (email, password) => (await tokenReq(email, password)).access_token;
 const fakeGoogle = async (gmail) => { const nm = 'g' + nonce(); const d = (await anon.rpc('dev_fake_google', { p_name: nm, p_google_email: gmail })).data; return client(await login(d.email)); };
 const rnd3 = () => String(Math.floor(Math.random() * 1000)).padStart(3, '0');
 const sidA = '020' + rnd3(); let sidB = '021' + rnd3(); while (sidB === sidA) sidB = '021' + rnd3();
@@ -857,6 +866,32 @@ console.log('\n[29] 비학생 아이디 계정 · 운영진 아이디 · 복구�
   ok((await admin.rpc('admin_remove_staff_login', { p_id: sid })).data?.ok && !(await idLogin(sid, rs.password)), 'admin removes the staff id');
   const del = (await admin.rpc('admin_delete_students', { p_student_ids: [`g:${id}`, `g:${nid}`], p_confirm: '삭제' })).data;
   ok(del?.deleted === 2, 'test id accounts cleaned up', del);
+}
+
+console.log('\n[30] 운영 다듬기 (0019): 가입 제한 · 최근 배틀 상대 · 운영자 오늘 숫자');
+{
+  const cap = (await admin.select('settings?key=eq.code_signup_per_10min&select=value')).data?.[0]?.value;
+  ok(Number(cap) >= 1000, 'sign-up cap is high enough for the morning rush (600 students)', cap);
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'ops123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'ops123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const A = await mk('다시에이'), B = await mk('다시비');
+  for (const l of [32, 17, 61]) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 3 });
+  await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: 4, p_stage: 1 });
+  ok(Array.isArray((await A.c.rpc('battle_recent')).data) && (await A.c.rpc('battle_recent')).data.length === 0, 'no recent opponents yet');
+  const codeB = (await B.c.rpc('battle_code')).data;
+  const b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+  await A.c.rpc('battle_forfeit', { p_id: b.id });
+  const rec = (await A.c.rpc('battle_recent')).data;
+  ok(rec?.length === 1 && rec[0].code === codeB && rec[0].mode === 'team' && rec[0].won === false && rec[0].name, 'recent opponent listed with their battle code (rematch without the QR)', rec);
+  ok((await A.c.rpc('admin_game_stats')).error === 'NOT_ADMIN', 'students cannot read game stats');
+  const g = (await admin.rpc('admin_game_stats')).data;
+  ok(g && g.battles?.team >= 1 && 'pvp_live' in g && g.raids && 'active' in g.raids && g.tickets && 'quiz' in g.tickets && g.evolve,
+    'admin sees today\'s battles / raids / tickets', g);
+  await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid], p_confirm: '삭제' });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

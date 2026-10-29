@@ -70,6 +70,22 @@ const vibrate = (p) => { try { navigator.vibrate?.(p); } catch { /* iOS: none */
 
 // ───────────────────────── boot ─────────────────────────
 
+// 첫 화면을 그리기 전에 잠깐 기다린다 (LOADING 화면 그대로): 픽셀 글꼴 + 새 버전 확인.
+// → 바뀌기 전 글꼴로 글자가 흔들리거나, 옛 버전 화면이 보였다가 새로고침되는 일이 없게. 오래 걸려도 3.5초면 그냥 연다
+async function readyToShow() {
+  const fonts = document.fonts
+    ? Promise.all(['16px Galmuri11', 'bold 16px Galmuri11'].map((f) => document.fonts.load(f))).catch(() => {}) : null;
+  const fresh = (async () => {
+    if (!('serviceWorker' in navigator) || !navigator.serviceWorker.controller || !navigator.onLine) return;
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg) return;
+    await reg.update().catch(() => {});
+    // 새 버전이 있으면 아래 offer() 가 바로 적용하고 새로고침한다 → 그동안 LOADING 화면에서 기다림
+    if (reg.installing || reg.waiting) await sleep(3000);
+  })().catch(() => {});
+  await Promise.race([Promise.all([fonts, fresh]), sleep(3500)]);
+}
+
 async function boot() {
   pixelFontScale();
   window.addEventListener('error', (e) => reportError(`${e.message} @${e.filename}:${e.lineno}`));
@@ -101,6 +117,8 @@ async function boot() {
       setInterval(() => reg.update().catch(() => {}), 10 * 60_000);
     }).catch(() => {});
   }
+
+  await readyToShow();
 
   // QR scanned with the phone's own camera → /s#ID.TOKEN → ./?q=ID.TOKEN
   const params = new URLSearchParams(location.search);
@@ -1171,7 +1189,7 @@ function myTeam(n = 3) {
 async function loadBattleToday() {
   S.btTodayAt = Date.now();
   try {
-    S.btToday = await rpc('battle_today', {}, { retries: 0 });
+    [S.btToday, S.btRecent] = await Promise.all([rpc('battle_today', {}, { retries: 0 }), rpc('battle_recent', {}, { retries: 0 }).catch(() => [])]);
     if (!S.btTeam && S.btToday?.team) S.btTeam = S.btToday.team;
     if (S.tab === 'battle' && !S.overlay) renderTab();
   } catch { /* offline */ }
@@ -1254,6 +1272,13 @@ function viewBattle() {
       h('button.btn.big', { disabled: !team.length || !!pvp, onclick: openScanner }, pix('camera'), '친구 배틀 QR 찍기'),
       h('button.btn.big', { onclick: showBattleQr }, '내 배틀 QR 보여주기'),
       h('small.muted', '친구가 내 QR을 찍으면 실시간 배틀을 신청하거나, 내 팀을 AI가 조종하는 배틀을 할 수 있어요. 1 대 1인지 2 대 2인지는 QR을 보여주는 사람이 정해요.')),
+    (S.btRecent || []).length > 0 && h('div.box.stack',
+      h('b', '최근 배틀한 친구'),
+      h('small.muted', 'QR 없이 바로 다시 붙을 수 있어요. 형식은 친구가 정해 둔 대로예요.'),
+      S.btRecent.map((r) => h('div.bt-recent',
+        h('span', h('b', r.name), h('small', ` ${FMT[r.format]?.label || ''} · ${r.won ? '이김' : '짐'}`)),
+        h('button.btn.small.primary', { disabled: !!pvp, onclick: () => { S.btPeekFmt = r.format; startBattle('pvp', r.code); } }, '실시간 신청'),
+        h('button.btn.small', { disabled: !!pvp, onclick: () => { S.btPeekFmt = r.format; startBattle('team', r.code); } }, 'AI 팀과')))),
     h('details.box.stack', h('summary', h('b', '타입 상성표')), typeTable()),
   ];
 }
@@ -1533,7 +1558,19 @@ function openBattle(b0) {
       await say2('나에게는 싸울 수 있는 몬스터가 없다!');
       await say2('눈앞이 캄캄해졌다!');
     }
-    el.menu.replaceChildren(h('button.btn.big.primary', { onclick: () => closeOverlay() }, '확인'));
+    // 다시 하기: 연습은 같은 형식으로, 친구와는 방금 그 친구에게 (최근 상대 목록의 맨 앞 = 이 배틀)
+    const again = h('div.bt-main');
+    const ok = h('button.bt-cmd', { onclick: () => closeOverlay() }, '확인');
+    again.append(...(b.mode === 'cpu' ? [h('button.bt-cmd.fight', { onclick: () => startBattle('cpu', null, b.format) }, '다시 하기'), ok] : [ok]));
+    el.menu.replaceChildren(again);
+    if (b.mode !== 'cpu') {
+      rpc('battle_recent', {}, { retries: 0 }).then((rs) => {
+        const r = rs?.[0];
+        if (!r || closed) return;
+        S.btPeekFmt = r.format;
+        again.prepend(h('button.bt-cmd.fight', { onclick: () => startBattle(b.mode, r.code) }, b.mode === 'pvp' ? '다시 신청' : '다시 하기'));
+      }).catch(() => {});
+    }
     sync({ force: true }); loadBattleToday();
   };
 
@@ -2109,6 +2146,8 @@ function showOnboarding(again = false) {
     ['ticket', '가방에 티켓', '찍으면 티켓이 가방에 들어가요 (최대 5장). 인터넷이 없어도 저장돼요.'],
     ['school', '메인 부스로!', '부스에서 "가방 QR"을 보여주면 선생님 몬스터를 받아요. 그 장소는 다시 찍을 수 있어요.'],
     ['spark', '퀴즈 → 진화', '몬스터를 받으면 쌤 퀴즈! 맞히면 진화권. 도감에서 몬스터를 눌러 진화시켜요.'],
+    ['bolt', '레이드', '대형 화면에 보스가 나타나면 레이드 QR을 찍고 다 같이 마구 탭! 시간 안에 쓰러뜨리면 그 보스 몬스터 티켓을 받아요.'],
+    ['spark', '배틀', '배틀 탭에서 내 팀으로 겨뤄요. 친구 배틀 QR을 찍어 실시간 대결! 친구를 이기면 진화권 1장 (하루 3번).'],
   ];
   let i = 0;
   const icon = h('div', { style: { fontSize: '56px', textAlign: 'center' } });
@@ -2229,7 +2268,7 @@ function renderLogin(error = '') {
     // 늘 맨 아래에: 만든 동아리 (Watson & Decfi) · 문의하기 · 비밀번호를 잊었어요
     h('nav.login-help', { 'aria-label': '도움' },
       h('div.clubs', { 'aria-label': '만든 동아리: Watson & Decfi' },
-        h('figure', h('img', { src: 'img/clubs/watson.png', alt: 'Watson 로고', width: 46, height: 45 }), h('figcaption', 'Watson')),
+        h('figure', h('img', { src: 'img/clubs/watson.png', alt: 'Watson 로고', width: 56, height: 56 }), h('figcaption', 'Watson')),
         h('span.amp', { 'aria-hidden': 'true' }, '&'),
         h('figure', h('img', { src: 'img/clubs/decfi.png', alt: 'Decfi 로고', width: 39, height: 44 }), h('figcaption', 'Decfi'))),
       h('div.help-btns',
