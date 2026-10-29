@@ -406,7 +406,7 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .login-help .btn { flex: 1; max-width: 220px; white-space: nowrap; }
 /* 만든 동아리: 이름 위에 각 로고 */
 .login-help .clubs { display: flex; align-items: flex-end; justify-content: center; gap: 10px; color: #fff; }
-.login-help .clubs figure { margin: 0; display: grid; justify-items: center; gap: 2px; }
+.login-help .clubs figure { margin: 0; display: grid; grid-template-rows: 56px auto; justify-items: center; align-items: center; gap: 2px; }   /* 로고 칸 높이를 같게 → 두 로고 가운데·이름 줄이 맞음 */
 .login-help .clubs img { width: auto; height: auto; image-rendering: pixelated; }   /* 도트 로고: 원래 크기 그대로 (선명하게) */
 .login-help .clubs figcaption { font-weight: bold; font-size: 15px; letter-spacing: .5px; text-shadow: 2px 2px 0 #101828; }
 .login-help .clubs .amp { font-weight: bold; font-size: 18px; color: #f8d048; padding-bottom: 1px; text-shadow: 2px 2px 0 #101828; }
