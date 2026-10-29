@@ -13,6 +13,7 @@ import { S, app, bag, collection, dexOf, dexStats, evolvable, isSecret, isWithdr
 import { fmtTime, openDetail, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
+import { loadBag, openBagScreen } from './bag.js';
 import { clearGoogleIntents, linkIntent, maskName, maybeOnboard, renderConsent, renderInApp, renderLogin, renderRegister, showOnboarding, withEye } from './login.js';
 
 // ───────────────────────── boot ─────────────────────────
@@ -154,20 +155,21 @@ export function renderRetry(msg) {
 }
 
 export async function loadCatalog() {
-  const [lines, species, qrs, moves, speciesMoves, typeChart] = await Promise.all([
+  const [lines, species, qrs, moves, speciesMoves, typeChart, items] = await Promise.all([
     sb.from('lines').select('id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus').order('id'),
     sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe').order('id'),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
     sb.from('species_moves').select('species_id,slot,move_id'),
     sb.from('type_chart').select('atk,def,mult'),
+    sb.from('items').select('key,name,pocket,description,effect,move_id,sort').order('sort'),
   ]);
   if (lines.error || species.error || qrs.error) {
     if (S.catalog) return;
     throw Object.assign(new Error('OFFLINE'), { offline: true });
   }
   S.catalog = { lines: lines.data, species: species.data, qrs: qrs.data, at: new Date().toISOString(),
-                moves: moves.data || [], speciesMoves: speciesMoves.data || [], typeChart: typeChart.data || [] };
+                moves: moves.data || [], speciesMoves: speciesMoves.data || [], typeChart: typeChart.data || [], items: items.data || [] };
   sortDex(S.catalog);
   await kv.set('catalog', S.catalog);
 }
@@ -214,6 +216,7 @@ export function sync(opts = {}) {
       S.snap = { ...res.state, ver: res.ver, synced_at: new Date().toISOString() };
       refreshCatalogIfOld();
       await kv.set('snap', S.snap);
+      loadBag().catch(() => {});                   // 장소 QR·퀴즈·배틀에서 주운 물건 알림 (0020)
 
       // new redemptions → celebrate
       const fresh = S.snap.tickets.filter((t) => t.status === 'redeemed' && t.species_id && !S.celebrated.has(t.nonce));
@@ -402,7 +405,7 @@ export function viewHome() {
       }))),
 
     h('section.box', { 'aria-label': '가방' },
-      h('div.banner', h('b', `가방 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
+      h('div.banner', h('b', `티켓 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
         h('span', { style: { fontSize: '13px' } }, items.length ? '메인 부스에서 몬스터로 바꿔요' : 'QR을 찍으면 티켓이 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => (t.special
         ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성' }[t.special.special] || ''}`))
@@ -410,6 +413,8 @@ export function viewHome() {
       h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '가방 QR 보여주기'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
         pix('gift'), '지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
+
+    h('button.btn.big.bag-btn', { onclick: () => openBagScreen() }, pix('bag', 'l'), '가방', h('small', ' 몬스터 박스 · 도구 · 회복약 · 기술머신')),
 
     rouletteBox(),
 

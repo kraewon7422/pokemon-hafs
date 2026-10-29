@@ -47,6 +47,21 @@ const SETTING_HELP = {
   self_redeem: '셀프 지급 모드 (위 스위치로 바꾸세요)',
   festival_close_at: '축제 종료 시각 — 예: "2026-11-07T16:00:00+09:00" (따옴표 포함), 없으면 null',
   min_client_version: '앱 최소 버전 숫자. 올리면 옛 버전 폰에 "업데이트" 배너가 떠요',
+  lv_from_battle: '레벨: 배틀 경험치로 레벨이 오르게 할지 ON/OFF (true/false)',
+  lv_from_raid: '레벨: 레이드에 참가하면 쓴 몬스터 레벨이 오르게 할지 ON/OFF',
+  lv_from_places: '레벨: 하루에 서로 다른 장소 QR을 여러 곳 찍으면 배틀 팀 레벨 +1 ON/OFF',
+  lv_places_n: '레벨: 서로 다른 장소 몇 곳마다 배틀 팀 +1 할지 (기본 3)',
+  lv_from_catch: '레벨: 같은 선생님 몬스터를 또 잡으면 +1 ON/OFF',
+  raid_levels: '레벨: 레이드 한 판 참가로 오르는 레벨 수 (기본 1)',
+  exp_need_mul: '경험치: 레벨 L → L+1 에 필요한 경험치 = 이 값 × L (기본 8, 크면 레벨이 느리게 오름)',
+  exp_battle_mul: '경험치: 배틀 한 판 = 이 값 × 상대 평균 레벨 (기본 4)',
+  exp_practice: '경험치: 연습 배틀 배율 (기본 0.5)', exp_lose: '경험치: 졌을 때 배율 (기본 0.4)',
+  drop_place: '물건: 장소 QR을 찍으면 물건이 나올 확률 (기본 0.3 = 30%)', drop_quiz: '물건: 퀴즈 정답 때 확률 (기본 0.4)',
+  drop_battle: '물건: 친구·실시간 배틀 승리 때 확률 (기본 0.5)', drop_practice: '물건: 연습 배틀 승리 때 확률 (기본 0.15)',
+  drop_raid_tm: '물건: 레이드 승리 때 특별 기술머신 확률 (기본 0.3, 이상한사탕은 항상)',
+  battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20)',
+  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","types":["음악","체육"]}, …] — 그 시간에 시작한 배틀은 그 타입 기술이 강해져요',
+  battle_field_mult: '배틀 시간표: 강해지는 배율 (기본 1.3)',
 };
 const TABS = [
   ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['raid', '레이드'], ['req', '요청'], ['staff', '운영진'], ['set', '설정'],
@@ -1343,7 +1358,31 @@ async function studentDetail(sid, reload) {
         h('td', chip(EVENT_KIND[e.kind] || e.kind, e.kind === 'admin' ? 'warn' : '')),
         h('td.small-txt', eventText(e))))))) : h('p.muted', '기록이 없어요.'));
 
-  return [info, relinkBox, grantBox, tBox, cBox, eBox, dangerBox];
+  // 가방 물건 주기 · 레벨 정하기 (0020)
+  const itemSel = h('select.inp', { 'aria-label': '물건' }, h('option', { value: '' }, '물건 불러오는 중…'));
+  sb.from('items').select('key,name,pocket').order('sort').then(({ data }) => {
+    itemSel.replaceChildren(...(data || []).map((x) => h('option', { value: x.key }, `${x.name} (${{ hold: '지닌 물건', med: '회복약', tool: '도구', tm: '기술머신' }[x.pocket]})`)));
+  });
+  const itemQty = h('input.inp', { type: 'number', min: 1, max: 99, value: 1, style: { width: '72px' }, 'aria-label': '개수' });
+  const itemBtn = h('button.btn.go', '주기');
+  itemBtn.onclick = () => busy(itemBtn, async () => {
+    const r = await rpc('admin_give_item', { p_student_id: sid, p_item: itemSel.value, p_qty: Number(itemQty.value) });
+    toast(`물건을 줬어요. (이제 ${r.qty}개)`);
+  });
+  const lvLine = lineSelect(S.lines.filter((l) => !l.withdrawn));
+  const lvInp = h('input.inp', { type: 'number', min: 1, max: 100, value: 50, style: { width: '72px' }, 'aria-label': '레벨' });
+  const lvBtn = h('button.btn', '레벨 정하기');
+  lvBtn.onclick = () => busy(lvBtn, async () => {
+    await rpc('admin_set_level', { p_student_id: sid, p_line: Number(lvLine.value), p_level: Number(lvInp.value) });
+    toast('레벨을 바꿨어요.');
+  });
+  const growBox = h('div.box.stack',
+    h('h3', '가방 물건 주기 · 레벨 정하기'),
+    h('p.small-txt.muted', '이벤트 상품이나 오류 보상용. 학생 앱에서 가방을 열면 바로 보여요.'),
+    h('div.row', h('div', { style: { flex: '1 1 220px' } }, itemSel), itemQty, itemBtn),
+    h('div.row', h('div', { style: { flex: '1 1 220px' } }, lvLine), lvInp, lvBtn));
+
+  return [info, relinkBox, grantBox, growBox, tBox, cBox, eBox, dangerBox];
 }
 
 const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자' };

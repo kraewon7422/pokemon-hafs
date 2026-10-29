@@ -1,0 +1,4 @@
+web/img/fx/status.png — status effect sprites (tools/draw_fx.py)
+- Sleep (Zzz, recoloured white), confusion (stars) and flinch (drops): Kenney "Emotes Pack" — CC0 1.0 (public domain), https://kenney.nl/assets/emotes-pack
+- Paralysis, burn, poison, freeze and heal frames: drawn for this project.
+web/img/items.png — bag item icons, drawn for this project (tools/draw_fx.py).

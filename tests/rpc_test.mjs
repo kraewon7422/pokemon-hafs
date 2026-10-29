@@ -895,5 +895,101 @@ console.log('\n[30] 운영 다듬기 (0019): 가입 제한 · 최근 배틀 상�
   await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid], p_confirm: '삭제' });
 }
 
+console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 물건 · 배틀 회복약 · 공정 모드 · 시너지 · 경험치');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(Math.floor(Math.random() * 1000)).padStart(3, '0'); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'grow12' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'grow12'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const A = await mk('성장에이'), B = await mk('성장비');
+  for (const l of [12, 13, 5]) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 3 });
+  for (const l of [1, 9, 25]) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 3 });
+  let bag = (await A.c.rpc('bag_state')).data;
+  const m12 = () => bag.box.find((x) => x.line === 12);
+  ok(m12()?.level === 35 && m12().need === 280 && m12().moves.length === 4 && m12().known.length >= 4, 'new stage-3 catch starts at Lv.35 with 4 moves', m12());
+  await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: 12, p_stage: 3 });
+  bag = (await A.c.rpc('bag_state')).data;
+  ok(m12().level === 36, 'catching the same teacher again: +1 level', m12()?.level);
+  // 이상한사탕
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 12 })).error === 'NO_ITEM', 'cannot use an item you do not have');
+  ok((await A.c.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 1 })).error === 'NOT_ADMIN', 'students cannot give items');
+  await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 2 });
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 12 })).data?.level === 37, 'rare candy: +1 level');
+  // 기술머신: 맞는 몬스터만, 한 번 배우면 끝
+  const tms = (await A.c.select('items?pocket=eq.tm&select=key,move_id')).data;
+  const ok12 = new Set((await A.c.select('learnset?line_id=eq.12&how=eq.tm&select=move_id')).data.map((x) => x.move_id));
+  const tmOk = tms.find((t) => ok12.has(t.move_id) && !m12().known.includes(t.move_id));
+  const tmNo = tms.find((t) => !ok12.has(t.move_id));
+  await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: tmOk.key, p_qty: 2 });
+  if (tmNo) {
+    await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: tmNo.key, p_qty: 1 });
+    ok((await A.c.rpc('bag_use', { p_item: tmNo.key, p_line: 12 })).error === 'TM_NOT_COMPATIBLE', 'TM the monster cannot learn is refused');
+  }
+  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_line: 12 })).data?.learned === tmOk.move_id, 'TM teaches the move (kept in the monster\'s move list)');
+  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_line: 12 })).error === 'ALREADY_KNOWN', 'cannot learn the same move twice');
+  bag = (await A.c.rpc('bag_state')).data;
+  ok(bag.items.find((x) => x.key === tmOk.key)?.qty === 1, 'TM is one-use (second copy still in the bag)');
+  // 기술 고르기
+  const cur = m12().moves;
+  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [cur[0], cur[0]] })).error === 'BAD_MOVES', 'duplicate moves refused');
+  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [999999] })).error === 'MOVE_NOT_KNOWN', 'unknown move refused');
+  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [tmOk.move_id, cur[0], cur[1], cur[2]] })).data?.moves?.[0] === tmOk.move_id, 'forget a move and use the TM move instead');
+  // 지닌 물건
+  await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'cushion', p_qty: 1 });
+  ok((await A.c.rpc('bag_set_held', { p_line: 13, p_item: 'cushion' })).data?.held === 'cushion', 'give a held item');
+  bag = (await A.c.rpc('bag_state')).data;
+  ok(!bag.items.find((x) => x.key === 'cushion') && bag.box.find((x) => x.line === 13).held === 'cushion', 'held item leaves the bag');
+  ok((await A.c.rpc('bag_set_held', { p_line: 13, p_item: 'bandage' })).error === 'BAD_ITEM', 'medicine cannot be held');
+  // 회복약: 배틀 중에만
+  await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'bandage', p_qty: 3 });
+  ok((await A.c.rpc('bag_use', { p_item: 'bandage', p_line: 12 })).error === 'BATTLE_ONLY', 'medicine only in battle');
+  // 연습 배틀: 상대 레벨 = 내 팀 평균, 내 기술·지닌 물건·시너지가 들어감
+  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [12, 13, 5], p_format: 'single' })).data;
+  const me = b.sides[0], foe = b.sides[1];
+  ok(me.mons[0].lv === 37 && me.mons[0].moves[0].id === tmOk.move_id, 'battle uses my level and my chosen moves', me.mons[0].lv);
+  ok(me.mons[1].held === 'cushion' && foe.mons[0].lv === Math.round((37 + 35 + 35) / 3), 'held item in battle; practice foe level = my team average', foe.mons[0].lv);
+  ok(me.mons[0].syn === 'def' && me.mons[1].syn === 'def' && !me.mons[2].syn && me.mons[0].stg?.def === 1, 'same-subject synergy (2 science): defense +1 on entry', me.mons[0].stg);
+  ok(b.items_left === 2 && 'field' in b, 'battle shows items left and the timetable field', b.field);
+  const settle = async (x) => {   // 내 몬스터가 쓰러졌으면 다음 몬스터를 내보냄 (상대가 랜덤이라 한 방에 쓰러질 수도 있음)
+    while (x.status === 'active' && x.phase === 'replace' && x.need) {
+      const i = x.sides[0].mons.findIndex((m, k) => m.hp > 0 && !x.sides[0].act.includes(k));
+      x = (await A.c.rpc('battle_act', { p_id: x.id, p_action: { switch: i } })).data;
+    }
+    return x;
+  };
+  b = await settle((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).data);
+  ok(b.log.some((e) => /반창고를 사용했다/.test(e.m || '')) && b.items_left === 1, 'use a bandage in battle (turn used, 1 left)', b.items_left);
+  bag = (await A.c.rpc('bag_state')).data;
+  ok(bag.items.find((x) => x.key === 'bandage')?.qty === 2, 'bandage consumed from the bag');
+  ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'mint', target: b.sides[0].act[0] } })).error === 'NO_ITEM', 'cannot use medicine you do not have');
+  const bid = b.id;
+  r = await A.c.rpc('battle_act', { p_id: bid, p_action: { item: 'bandage', target: b.sides[0].act[0] } });
+  ok(!r.error, 'second medicine in the same battle', r.error);
+  b = await settle(r.data || (await A.c.rpc('battle_state', { p_id: bid })).data);
+  ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: b.sides[0].act[0] } })).error === 'ITEM_LIMIT', 'at most 2 medicines per battle');
+  const lv0 = (await A.c.rpc('bag_state')).data.box.find((x) => x.line === 12);
+  await A.c.rpc('battle_forfeit', { p_id: b.id });
+  b = (await A.c.rpc('battle_state', { p_id: b.id })).data;
+  const ex = b.reward?.exp?.['0'];
+  ok(Array.isArray(ex) && ex.length >= 1 && ex[0].exp > 0, 'battle gives EXP to the monsters that came out (even when losing, after 2+ turns)', b.reward);
+  const lv1 = (await A.c.rpc('bag_state')).data.box.find((x) => x.line === 12);
+  ok(lv1.level > lv0.level || lv1.exp > lv0.exp, 'EXP is saved on the monster', [lv0.level, lv0.exp, lv1.level, lv1.exp]);
+  // 공정 모드: QR 보여주는 사람이 정함 → 모두 Lv.50, 회복약 금지
+  const codeB = (await B.c.rpc('battle_code', { p_format: 'single', p_fair: true })).data;
+  ok((await A.c.rpc('battle_peek', { p_code: codeB })).data?.fair === true, 'friend QR says fair mode');
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [12, 13, 5] })).data;
+  ok(b.fair && b.sides[0].mons.every((m) => m.lv === 50) && b.sides[1].mons.filter((m) => m.seen).every((m) => m.lv === 50) && b.items_left === 0, 'fair mode: everyone Lv.50, no medicine', { fair: b.fair, me: b.sides?.[0]?.mons?.map((m) => m.lv), foe: b.sides?.[1]?.mons?.map((m) => m.lv), left: b.items_left });
+  ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).error === 'NO_ITEMS_FAIR', 'medicine refused in fair mode');
+  await A.c.rpc('battle_forfeit', { p_id: b.id });
+  await B.c.rpc('battle_code', { p_format: 'single', p_fair: false });
+  // 운영자: 레벨 정하기
+  ok((await admin.rpc('admin_set_level', { p_student_id: A.sid, p_line: 5, p_level: 100 })).data?.level === 100, 'admin sets a level');
+  await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 1 });
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 5 })).error === 'MAX_LEVEL', 'Lv.100 is the cap');
+  await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid], p_confirm: '삭제' });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

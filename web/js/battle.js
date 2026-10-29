@@ -8,11 +8,22 @@ import { S, collection, isWithdrawn, vibrate } from './state.js';
 import { closeOverlay, openScanner, overlay, renderTab, say, sheet, sync } from './app.js';
 import { typeOf } from './dex.js';
 import { curSpecies } from './raid.js';
+import { itemIcon, itemOf, loadBag } from './bag.js';
 
 // ───────── 배틀 (0015·0016): 계산은 전부 서버. 폰은 고른 것만 보내고, 서버 기록(log)을 3세대 느낌으로 재생한다 ─────────
 // 자리(slot) u = 쪽×2 + 자리 번호. 1 대 1 은 자리 0·2 만, 2 대 2 는 0~3 모두.
 export const isBattleQr = (q) => q === 'BTL';
-export const ST_LABEL = { par: '마비', brn: '화상', psn: '독', slp: '잠듦' };
+export const ST_LABEL = { par: '마비', brn: '화상', psn: '독', slp: '잠듦', frz: '얼음' };
+const stText = (m) => [m?.st ? ST_LABEL[m.st] : '', m?.cnf > 0 ? '혼란' : ''].filter(Boolean).join(' ');
+// 상성 (서버 _bt_tm 과 같음): 전설은 모두 ×1, 전설끼리 ×2
+export function effOf(atk, def) {
+  if (atk === '전설' || def === '전설') return atk === def ? 2 : 1;
+  const c = (S.catalog.typeChart || []).find((x) => x.atk === atk && x.def === def);
+  return c ? Number(c.mult) : 1;
+}
+export const effTag = (mult) => (mult > 1 ? h('span.eff.up', '효과가 굉장하다!') : mult === 0 ? h('span.eff.zero', '효과가 없다') : mult < 1 ? h('span.eff.down', '효과가 별로인 듯하다') : null);
+const FX_ROW = { par: 0, brn: 1, psn: 2, frz: 3, heal: 4, slp: 5, cnf: 6, flinch: 7 };   // web/img/fx/status.png 줄 순서 (tools/draw_fx.py)
+
 export const FMT = { single: { n: 3, label: '1 대 1', long: '1 대 1 (3마리)' }, double: { n: 4, label: '2 대 2', long: '2 대 2 (4마리)' } };
 // 배경: isaiah658 의 픽셀 팩 #2 (CC0, web/img/battle/CREDITS.txt). 배틀마다 다르게
 export const BT_BG = ['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'];
@@ -67,7 +78,8 @@ export function teamStrip(team, size = 56) {
   return team.length
     ? h('div.bt-team', team.map((l) => {
       const sp = curSpecies(l);
-      return h('div', spriteCanvas(sp.id, size), h('small', sp.name), h(`span.type.t-${typeOf(sp)}`, typeOf(sp)));
+      const lv = (S.bag?.box || []).find((x) => x.line === l)?.level;
+      return h('div', spriteCanvas(sp.id, size), h('small', sp.name, lv ? ` Lv.${lv}` : ''), h(`span.type.t-${typeOf(sp)}`, typeOf(sp)));
     }))
     : h('p', '아직 몬스터가 없어요. QR을 찍어 몬스터를 먼저 모아요!');
 }
@@ -165,7 +177,7 @@ export function teamPicker() {
 
 export async function showBattleQr() {
   sfx.select();
-  let code = S.btToday?.code; let fmt = S.btToday?.format || 'single';
+  let code = S.btToday?.code; let fmt = S.btToday?.format || 'single'; let fair = !!S.btToday?.fair;
   try { if (!code) code = await rpc('battle_code', {}, { retries: 0 }); } catch (e) { return say(errorText(e.message), true); }
   if (S.btToday) S.btToday.code = code;
   const canvas = h('canvas', { 'aria-label': '내 배틀 QR' });
@@ -175,7 +187,12 @@ export async function showBattleQr() {
     segBox.replaceChildren(fmtSeg(fmt, async (k) => {
       try { await rpc('battle_code', { p_format: k }, { retries: 0 }); fmt = k; if (S.btToday) S.btToday.format = k; draw(); }
       catch (e) { toast(errorText(e.message)); }
-    }));
+    }), h('div.seg.bt-fmt', { role: 'group', 'aria-label': '레벨' }, [[false, '내 레벨 그대로'], [true, '공정 모드 (모두 Lv.50)']].map(([v, t]) =>
+      h('button', { 'aria-pressed': String(fair === v), onclick: async () => {
+        try { sfx.blip(); await rpc('battle_code', { p_fair: v }, { retries: 0 }); fair = v; if (S.btToday) S.btToday.fair = v; draw(); }
+        catch (e) { toast(errorText(e.message)); }
+      } }, t))),
+    fair ? h('small.muted', '공정 모드: 양쪽 모두 Lv.50, 회복약을 쓸 수 없어요.') : '');
     teamBox.replaceChildren(teamStrip(myTeam(FMT[fmt].n), 44));
   };
   draw();
@@ -195,7 +212,7 @@ export async function friendBattleSheet(code) {
   sfx.scan(); vibrate(80);
   sheet(h('div.stack',
     h('b', pix('spark'), ` ${josa(pk.name, '의', '의').slice(0, -1)}의 배틀 QR!`),
-    h('p', { style: { margin: 0 } }, h('b', f.long), ' 배틀이에요. 내 배틀 팀으로 어떻게 겨룰까요?'),
+    h('p', { style: { margin: 0 } }, h('b', f.long), pk.fair ? h('b', ' · 공정 모드 (모두 Lv.50)') : null, ' 배틀이에요. 내 배틀 팀으로 어떻게 겨룰까요?'),
     teamStrip(myTeam(f.n), 44),
     h('button.btn.big.primary', { onclick: () => startBattle('pvp', code) }, '실시간 배틀 신청 (친구가 수락하면 시작)'),
     h('button.btn.big', { onclick: () => startBattle('team', code) }, '친구 팀과 AI 배틀 (바로 시작)'),
@@ -245,6 +262,7 @@ export const BALL_SVG = '<svg viewBox="0 0 8 8" width="16" height="16" shape-ren
 
 export function openBattle(b0) {
   unlockAudio();
+  loadBag({ notify: false }).catch(() => {});
   let b = b0;
   let shownSeq = b.status === 'active' && b.seq === 0 ? -1 : b.seq;   // -1 → 첫 화면에 등장 연출
   let playing = false; let busy = false; let closed = false; let finished = false;
@@ -257,13 +275,13 @@ export function openBattle(b0) {
     const bob = h('div.bt-bob'); const fx = h('div.bt-fx');
     return {
       spr: h('div.bt-spr', bob, fx), bob, fx,
-      name: h('b'), st: h('span.bt-st'), hp: h('i'), hpNum: h('small.bt-hpnum'), balls: h('div.bt-balls'), box: null, u,
+      name: h('b'), lv: h('small'), st: h('span.bt-st'), hp: h('i'), hpNum: h('small.bt-hpnum'), balls: h('div.bt-balls'), box: null, u,
     };
   };
   const SL = [0, 1, 2, 3].map(mk);
   for (const x of SL) {
     const mine = (x.u >> 1) === me();
-    x.box = h(`div.bt-box${mine ? '.me' : '.foe'}`, h('div.bt-nm', x.name, h('small', ' Lv50'), x.st), h('div.hpbar', x.hp),
+    x.box = h(`div.bt-box${mine ? '.me' : '.foe'}`, h('div.bt-nm', x.name, x.lv, x.st), h('div.hpbar', x.hp),
       mine ? h('div.bt-row', x.balls, x.hpNum) : x.balls);
     x.spr.classList.add(mine ? 'me' : 'foe', `k${x.u & 1}`);
     x.box.classList.add(`k${x.u & 1}`);
@@ -294,7 +312,7 @@ export function openBattle(b0) {
     SL[u].hp.className = r < 0.2 ? 'red' : r < 0.5 ? 'yellow' : '';
     if (s === me()) SL[u].hpNum.textContent = `${Math.max(0, hp)}/${m}`;
   };
-  const showMon = (u, idx, { hp, sp, name, max } = {}) => {
+  const showMon = (u, idx, { hp, sp, name, max, lv } = {}) => {
     view.act[u] = idx;
     const s = u >> 1; const m = monAt(s, idx) || {};
     const x = SL[u];
@@ -302,6 +320,7 @@ export function openBattle(b0) {
     x.spr.classList.remove('faint', 'hit', 'atk', 'gone');
     if (spId && x.bob.dataset.sp !== String(spId)) { x.bob.dataset.sp = spId; x.bob.replaceChildren(spriteCanvas(spId, 128)); }
     x.name.textContent = name || m.name || '???';
+    x.lv.textContent = ` Lv${lv ?? m.lv ?? 50}`;
     setHp(u, hp ?? m.hp ?? 0, max ?? m.max);
   };
   const drawStatic = () => {
@@ -315,8 +334,8 @@ export function openBattle(b0) {
       const m = monAt(s, idx);
       showMon(x.u, idx);
       if (m && m.hp <= 0) x.spr.classList.add('gone');
-      const st = m?.st ? ST_LABEL[m.st] : '';
-      x.st.textContent = st; x.st.className = `bt-st${st ? ' st-' + m.st : ''}`;
+      const st = stText(m);
+      x.st.textContent = st; x.st.className = `bt-st${st ? ' st-' + (m.st || 'cnf') : ''}`;
       x.balls.replaceChildren(...(k === 0 ? side(s).mons.map((y) => h(`i${y.hp > 0 ? '' : '.out'}`)) : []));
     }
   };
@@ -353,6 +372,15 @@ export function openBattle(b0) {
     (dir > 0 ? sfx.statUp : sfx.statDown)();
   };
 
+  // 상태 효과 그림: 몬스터 위에 1초쯤 (마비 번개 · 화상 불꽃 · 독 거품 · 얼음 · 회복 · 잠듦 Zzz · 혼란 별 · 풀죽음 땀)
+  const statusFx = (u, kind) => {
+    const r = FX_ROW[kind];
+    if (r == null) return;
+    const fx = h('i.bt-sfx', { style: { '--r': r } });
+    SL[u].spr.append(fx);
+    setTimeout(() => fx.remove(), reducedMotion() ? 400 : 1100);
+  };
+
   const play = async (log, prev) => {
     playing = true; el.menu.replaceChildren();
     for (const e of log || []) {
@@ -365,7 +393,7 @@ export function openBattle(b0) {
       }
       if (e.sw) {
         const [u, i] = e.sw;
-        showMon(u, i, { hp: prev?.sides?.[u >> 1]?.mons?.[i]?.hp, sp: e.sp, name: e.name, max: prev?.sides?.[u >> 1]?.mons?.[i]?.max });
+        showMon(u, i, { hp: prev?.sides?.[u >> 1]?.mons?.[i]?.hp, sp: e.sp, name: e.name, max: prev?.sides?.[u >> 1]?.mons?.[i]?.max, lv: e.lv });
         await say2(mineSide(u) ? `가랏! ${e.name}!` : `${josa(foeName(), '은', '는')} ${josa(e.name, '을', '를')} 내보냈다!`, 100);
         await throwBall(u);
         continue;
@@ -380,6 +408,8 @@ export function openBattle(b0) {
         const [u, st] = e.st; const lbl = st ? ST_LABEL[st] : '';
         SL[u].st.textContent = lbl; SL[u].st.className = `bt-st${lbl ? ' st-' + st : ''}`;
       }
+      if (e.fx) statusFx(e.fx[0], e.fx[1]);
+      if (e.item) { sfx.select(); statusFx(e.item[0], 'heal'); }
       if (e.stat) statFx(e.stat[0], e.stat[1]);
       if (e.faint != null) { SL[e.faint].spr.classList.add('faint'); sfx.faint(); }
       if (e.m) await say2(tok(e.m));
@@ -404,6 +434,15 @@ export function openBattle(b0) {
       await say2('나에게는 싸울 수 있는 몬스터가 없다!');
       await say2('눈앞이 캄캄해졌다!');
     }
+    // 경험치 (나온 몬스터마다) · 레벨 업 · 주운 물건 (0020)
+    for (const x of rw.exp?.[me()] || []) {
+      if (closed) return;
+      await say2(`${josa(x.name, '은', '는')} ${x.exp} 경험치를 얻었다!`, 300);
+      if (x.up > 0) { sfx.catch(); await say2(`${x.name}의 레벨이 ${x.lv}${/[013678]$/.test(String(x.lv)) ? '으로' : '로'} 올랐다!`); }
+    }
+    const got = rw.item?.[me()];
+    if (got && itemOf(got)) { sfx.catch(); await say2(`${josa(itemOf(got).name, '을', '를')} 주웠다!`); }
+    loadBag({ notify: false }).catch(() => {});
     // 다시 하기: 연습은 같은 형식으로, 친구와는 방금 그 친구에게 (최근 상대 목록의 맨 앞 = 이 배틀)
     const again = h('div.bt-main');
     const ok = h('button.bt-cmd', { onclick: () => closeOverlay() }, '확인');
@@ -486,29 +525,59 @@ export function openBattle(b0) {
     if (!cur) return;
     const who = slots.length > 1 ? `${menu.k === 0 ? '(왼쪽) ' : '(오른쪽) '}` : '';
     if (menu.mode === 'fight') {
-      const all0 = cur.moves.every((x) => x.pp <= 0);
+      // PP 가 모두 0 이면 기술 대신 "발버둥" 버튼 하나 (눌러야 씀)
+      if (cur.moves.every((x) => x.pp <= 0)) {
+        el.menu.replaceChildren(h('div.bt-moves', h('button.bt-move.struggle', { onclick: () => choose({ move: 1, target: liveFoes()[0] ?? 0 }) },
+          h('b', '발버둥'), h('span.bt-mv-info', h('span.type.t-보통', '보통'), h('small', '자신도 다친다')))), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
+        el.text.textContent = 'PP가 다 떨어졌다! 발버둥을 쓸 수밖에 없다.';
+        return;
+      }
+      const foes = liveFoes();
+      // 1 대 1 (또는 남은 상대가 하나) → 기술마다 상성을 바로 보여줌. 2 대 2 는 상대를 고르는 화면에서
+      const only = foes.length === 1 ? monAt(fo(), side(fo()).act[foes[0]]) : null;
       el.menu.replaceChildren(h('div.bt-moves', cur.moves.map((x, i) => {
         const mv = moveOf(x.id) || {};
         return h('button.bt-move', {
-          disabled: x.pp <= 0 && !all0,
+          disabled: x.pp <= 0,
           onclick: () => {
-            const foes = liveFoes();
             const targets = mv.kind === 'attack' || mv.effect?.foe_status || mv.effect?.foe;
             if (targets && foes.length > 1) { menu.mode = 'target'; menu.move = i + 1; return renderMenu(); }
             choose({ move: i + 1, target: foes[0] ?? 0 });
           },
-        }, h('b', mv.name || '?'), h('span.bt-mv-info', h(`span.type.t-${mv.type}`, mv.type), h('small', `PP ${x.pp}/${mv.pp}`)));
+        }, h('b', mv.name || '?'), h('span.bt-mv-info', h(`span.type.t-${mv.type}`, mv.type), h('small', `PP ${x.pp}/${mv.pp}`)),
+        only && mv.kind === 'attack' ? effTag(effOf(mv.type, only.type)) : null);
       })), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
-      el.text.textContent = all0 ? 'PP가 다 떨어졌다! 아무 기술이나 누르면 발버둥을 쓴다.' : `${who}어떤 기술을 쓸까?`;
+      el.text.textContent = `${who}어떤 기술을 쓸까?`;
       return;
     }
     if (menu.mode === 'target') {
+      const mv = moveOf(cur.moves[menu.move - 1]?.id) || {};
       el.menu.replaceChildren(h('div.bt-moves', liveFoes().map((k) => {
         const m = monAt(fo(), side(fo()).act[k]);
         return h('button.bt-move.bt-target', { onclick: () => choose({ move: menu.move, target: k }) },
-          h('span.bt-tgt', spriteCanvas(m.sp, 32), h('b', m.name)), h('small', `상대 ${k === 0 ? '왼쪽' : '오른쪽'}`));
+          h('span.bt-tgt', spriteCanvas(m.sp, 32), h('b', m.name)), h('small', `상대 ${k === 0 ? '왼쪽' : '오른쪽'}`),
+          mv.kind === 'attack' ? effTag(effOf(mv.type, m.type)) : null);
       })), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
-      el.text.textContent = '누구를 공격할까?';
+      el.text.textContent = `${mv.name || '기술'} — 누구에게 쓸까?`;
+      return;
+    }
+    if (menu.mode === 'bag') {
+      const used = menu.picks.filter((p) => p?.item).length;
+      const left = (b.items_left ?? 0) - used;
+      const meds = (S.bag?.items || []).filter((x) => itemOf(x.key)?.pocket === 'med')
+        .map((x) => ({ ...x, qty: x.qty - menu.picks.filter((p) => p?.item === x.key).length })).filter((x) => x.qty > 0);
+      el.menu.replaceChildren(h('div.bt-party', meds.length ? meds.map((x) => h('button.bt-pmon', {
+        disabled: left <= 0, onclick: () => { sfx.blip(); menu.mode = 'itemtgt'; menu.item = x.key; renderMenu(); },
+      }, itemIcon(x.key, 32), h('span', h('b', itemOf(x.key).name), h('small', ` ×${x.qty}`), h('br'), h('small', itemOf(x.key).description)))) : [h('p', '쓸 수 있는 회복약이 없어요.')]),
+      h('button.btn.small', { onclick: back }, '◀ 뒤로'));
+      el.text.textContent = b.fair ? '공정 모드에서는 회복약을 쓸 수 없어요.' : left > 0 ? `회복약은 이번 배틀에서 ${left}개 더 쓸 수 있어요.` : '이번 배틀에서는 더 쓸 수 없어요.';
+      return;
+    }
+    if (menu.mode === 'itemtgt') {
+      const it = itemOf(menu.item); const revive = !!it?.effect?.revive;
+      el.menu.replaceChildren(partyList(mine, (i) => (revive ? mine.mons[i].hp <= 0 : mine.mons[i].hp > 0), (i) => choose({ item: menu.item, target: i }), revive),
+        h('button.btn.small', { onclick: back }, '◀ 뒤로'));
+      el.text.textContent = `${josa(it?.name || '', '을', '를')} 누구에게 쓸까?`;
       return;
     }
     if (menu.mode === 'switch') {
@@ -521,16 +590,17 @@ export function openBattle(b0) {
     el.text.textContent = `${who}${josa(cur.name, '은', '는')} 무엇을 할까?`;
     el.menu.replaceChildren(h('div.bt-main',
       h('button.bt-cmd.fight', { onclick: () => { sfx.blip(); menu.mode = 'fight'; renderMenu(); } }, '싸운다'),
+      h('button.bt-cmd', { disabled: !!b.fair, onclick: () => { sfx.blip(); menu.mode = 'bag'; renderMenu(); } }, '가방'),
       h('button.bt-cmd', { onclick: () => { sfx.blip(); menu.mode = 'switch'; renderMenu(); } }, '몬스터'),
       menu.k > 0 && slots.slice(0, menu.k).some((s) => s.m?.hp > 0)
         ? h('button.bt-cmd', { onclick: back }, '◀ 앞 자리')
-        : h('button.bt-cmd', { onclick: giveUp }, b.mode === 'pvp' ? '기권' : '도망'),
-      h('button.bt-cmd', { onclick: () => { sfx.blip(); closeOverlay(); } }, b.mode === 'pvp' ? '잠시 나가기' : '나중에')));
+        : h('button.bt-cmd', { onclick: giveUp }, b.mode === 'pvp' ? '기권' : '도망')),
+    h('button.btn.small.bt-later', { onclick: () => { sfx.blip(); closeOverlay(); } }, b.mode === 'pvp' ? '잠시 나가기' : '나중에 이어 하기'));
   };
-  const partyList = (mine, ok, pick) => h('div.bt-party', mine.mons.map((x, i) => h('button.bt-pmon', {
-    disabled: x.hp <= 0 || !ok(i), onclick: () => pick(i),
+  const partyList = (mine, ok, pick, fainted = false) => h('div.bt-party', mine.mons.map((x, i) => h('button.bt-pmon', {
+    disabled: (x.hp <= 0 && !fainted) || !ok(i), onclick: () => pick(i),
   }, spriteCanvas(x.sp, 40), h('span', h('b', x.name), h('div.hpbar.small', h('i', { style: { width: `${(x.hp / x.max) * 100}%` }, class: x.hp / x.max < 0.2 ? 'red' : x.hp / x.max < 0.5 ? 'yellow' : '' })),
-    h('small', x.hp > 0 ? `${x.hp}/${x.max}${x.st ? ' · ' + ST_LABEL[x.st] : ''}${mine.act.includes(i) ? ' · 싸우는 중' : ''}` : '기절')))));
+    h('small', x.hp > 0 ? `Lv${x.lv ?? 50} · ${x.hp}/${x.max}${stText(x) ? ' · ' + stText(x) : ''}${mine.act.includes(i) ? ' · 싸우는 중' : ''}` : '기절')))));
 
   const apply = async (nb) => {
     if (!nb || closed) return;
@@ -596,10 +666,18 @@ export function openBattle(b0) {
       const names = (xs) => xs.map((x) => x.name.textContent);
       const join = (ns) => (ns.length > 1 ? `${josa(ns[0], '과', '와')} ${ns[1]}` : ns[0]);
       await say2(`${josa(foeName(), '이', '가')} 승부를 걸어왔다!`, 450);
+      if (b.field) await say2(`지금은 ${b.field.name}! ${(b.field.types || []).join('·')} 기술의 위력이 올라간다!`, 450);
+      if (b.fair) await say2('공정 모드! 모두 Lv.50으로 싸운다. (회복약 없음)', 450);
       await say2(`${josa(foeName(), '은', '는')} ${josa(join(names(foeSlots)), '을', '를')} 내보냈다!`, 100);
       for (const x of foeSlots) await throwBall(x.u);
       await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
       for (const x of mySlotsEl) await throwBall(x.u);
+      // 같은 과 시너지 (0020): 나온 몬스터의 능력 +1
+      const SYN = { atk: '공격이', def: '방어가', spa: '특수공격이', spd: '특수방어가', spe: '스피드가' };
+      for (const x of [...foeSlots, ...mySlotsEl]) {
+        const m = monAt(x.u >> 1, side(x.u >> 1).act[x.u & 1]);
+        if (m?.syn) { statFx(x.u, 1); await say2(tok(`@${x.u >> 1}${m.name}의 ${m.synname} 시너지! ${SYN[m.syn]} 올라갔다!`), 300); }
+      }
       playing = false; startPicks(); renderMenu();
     })();
   } else {
