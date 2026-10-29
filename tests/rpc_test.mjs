@@ -952,7 +952,14 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   ok(me.mons[1].held === 'cushion' && foe.mons[0].lv === Math.round((37 + 35 + 35) / 3), 'held item in battle; practice foe level = my team average', foe.mons[0].lv);
   ok(me.mons[0].syn === 'def' && me.mons[1].syn === 'def' && !me.mons[2].syn && me.mons[0].stg?.def === 1, 'same-subject synergy (2 science): defense +1 on entry', me.mons[0].stg);
   ok(b.items_left === 2 && 'field' in b, 'battle shows items left and the timetable field', b.field);
-  b = (await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).data;
+  const settle = async (x) => {   // 내 몬스터가 쓰러졌으면 다음 몬스터를 내보냄 (상대가 랜덤이라 한 방에 쓰러질 수도 있음)
+    while (x.status === 'active' && x.phase === 'replace' && x.need) {
+      const i = x.sides[0].mons.findIndex((m, k) => m.hp > 0 && !x.sides[0].act.includes(k));
+      x = (await A.c.rpc('battle_act', { p_id: x.id, p_action: { switch: i } })).data;
+    }
+    return x;
+  };
+  b = await settle((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).data);
   ok(b.log.some((e) => /반창고를 사용했다/.test(e.m || '')) && b.items_left === 1, 'use a bandage in battle (turn used, 1 left)', b.items_left);
   bag = (await A.c.rpc('bag_state')).data;
   ok(bag.items.find((x) => x.key === 'bandage')?.qty === 2, 'bandage consumed from the bag');
@@ -960,7 +967,7 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   const bid = b.id;
   r = await A.c.rpc('battle_act', { p_id: bid, p_action: { item: 'bandage', target: b.sides[0].act[0] } });
   ok(!r.error, 'second medicine in the same battle', r.error);
-  b = r.data || (await A.c.rpc('battle_state', { p_id: bid })).data;
+  b = await settle(r.data || (await A.c.rpc('battle_state', { p_id: bid })).data);
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: b.sides[0].act[0] } })).error === 'ITEM_LIMIT', 'at most 2 medicines per battle');
   const lv0 = (await A.c.rpc('bag_state')).data.box.find((x) => x.line === 12);
   await A.c.rpc('battle_forfeit', { p_id: b.id });
