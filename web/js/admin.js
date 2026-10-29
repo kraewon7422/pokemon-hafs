@@ -395,6 +395,7 @@ function legendCard() {
 async function refreshStats(redraw = true) {
   try {
     S.stats = await rpc('admin_stats');
+    S.game = await rpc('admin_game_stats').catch(() => S.game);   // 오늘 배틀·레이드·진화권 (0019)
     S.statsFailed = false;
   } catch (e) {
     if (!S.statsFailed) fail(e);               // toast once per failure streak
@@ -504,7 +505,23 @@ function dashBody() {
       ' — 이 QR로 받은 티켓은 부스에서 취소돼요. QR 관리 탭에서 몬스터 풀을 채우세요.') : null,
   ].filter(Boolean);
 
-  return [...notices, legendCard(), tiles, chart, h('div.cols', h('div', qrTable), h('div', staffBox, quizBox, errBox))];
+  // 오늘(한국 시간)의 게임 숫자 (0019 admin_game_stats)
+  const g = S.game;
+  const game = g && h('div.box.stack',
+    h('h2', '오늘의 게임'),
+    h('div.tiles',
+      tile('배틀', (g.battles.cpu || 0) + (g.battles.team || 0) + (g.battles.pvp || 0),
+        `연습 ${g.battles.cpu} · 친구팀 ${g.battles.team} · 실시간 ${g.battles.pvp} · 2대2 ${g.battles.double}`),
+      tile('배틀한 학생', g.battles.players),
+      tile('지금 실시간 대전', g.pvp_live),
+      tile('배틀 승리 보상', g.battle_wins, '진화권 1장씩'),
+      tile('레이드', g.raids.active, `진행 중 · 오늘 승리 ${g.raids.won} · 실패 ${g.raids.failed}`, g.raids.active ? 'good' : ''),
+      tile('레이드 참가', g.raids.players, '오늘 참가한 학생'),
+      tile('나간 진화권', (g.tickets.quiz || 0) + (g.tickets.roulette || 0) + (g.tickets.battle || 0),
+        `퀴즈 ${g.tickets.quiz} · 룰렛 ${g.tickets.roulette} · 배틀 ${g.tickets.battle}`),
+      tile('오늘 진화', g.evolve.success, `${g.evolve.tries}번 시도`)));
+
+  return [...notices, legendCard(), tiles, game, chart, h('div.cols', h('div', qrTable), h('div', staffBox, quizBox, errBox))];
 }
 
 function chartSVG(series) {

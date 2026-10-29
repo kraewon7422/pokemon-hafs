@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0018 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함)
+1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0019 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함)
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
