@@ -98,8 +98,8 @@ function pocketList(cur, sel, pick, redraw) {
   if (cur === 'key') {
     const p = S.snap?.profile || {};
     return [h('div.stack',
-      h('div.bag-row', pix('ticket', 'l'), h('span', h('b', '진화권'), h('br'), h('small', '도감에서 몬스터를 눌러 진화시켜요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
-      h('div.bag-row', pix('ticket', 'l'), h('span', h('b', '부스 티켓'), h('br'), h('small', '메인 부스에서 몬스터로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
+      h('div.bag-row', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '진화권'), h('br'), h('small', '도감에서 진화에 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
+      h('div.bag-row', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '부스 티켓'), h('br'), h('small', '부스에서 몬스터로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
       h('button.btn.big.primary', { onclick: () => { closeOverlay(); openBag(); } }, '가방 QR 보여주기 (부스용)'))];
   }
   const want = cur === 'tool' ? ['hold', 'tool'] : [cur];
@@ -116,8 +116,8 @@ function pocketList(cur, sel, pick, redraw) {
     const mv = x.it.pocket === 'tm' ? moveOf(x.it.move_id) : null;
     return h(`button.bag-row${sel === x.key ? '.on' : ''}`, { onclick: () => pick(x.key) },
       itemIcon(x.key),
-      mv ? h('span', h('b', `${x.it.name.replace('기술머신', 'No.')} ${mv.name}`), ' ', h(`span.type.t-${mv.type}`, mv.type), h('br'),
-        h('small', `위력 ${mv.power || '—'} · 명중 ${mv.accuracy ?? '—'} · PP ${mv.pp}`))
+      mv ? h('span.tm-line', h('b', h('small.tm-no', x.it.name.replace('특별 기술머신', '특별 No.').replace('기술머신', 'No.')), ` ${mv.name}`),
+        h('small', h(`span.type.t-${mv.type}`, mv.type), ...[`위력 ${mv.power || '—'}`, `명중 ${mv.accuracy ?? '—'}`, `PP ${mv.pp}`].map((t, i) => h('span.nw', `${i ? ' · ' : ''}${t}`))))
         : h('span', h('b', x.it.name), h('br'), h('small', { hold: '지니게 하는 물건', tool: '쓰는 물건', med: '배틀 중에 사용' }[x.it.pocket])),
       h('b.qty', `×${x.qty}`));
   });
@@ -171,8 +171,9 @@ function pocketPanel(cur, sel, redraw) {
       }, spriteCanvas(sp.id, 40), h('small', tag));
     }));
   }).catch(() => strip.replaceChildren(h('small', '인터넷이 필요해요.')));
-  return [h('div.bag-pi', itemIcon(it.key, 48), h('div', h('b', mv.name), ' ', h(`span.type.t-${mv.type}`, mv.type),
-    h('small', ` ${CAT_LABEL[mv.category]} · 위력 ${mv.power || '—'} · 명중 ${mv.accuracy ?? '—'} · PP ${mv.pp}`), desc)),
+  return [h('div.bag-pi', itemIcon(it.key, 48), h('div.tm-line',
+    h('b', mv.name, ' ', h(`span.type.t-${mv.type}`, mv.type)),
+    h('small', `${CAT_LABEL[mv.category]} · 위력 ${mv.power || '—'} · 명중 ${mv.accuracy ?? '반드시'} · PP ${mv.pp}`), desc)),
   h('small.muted', '가능한 몬스터를 눌러 가르쳐요.'), strip];
 }
 

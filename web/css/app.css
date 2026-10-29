@@ -559,7 +559,8 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bag-head { display: flex; align-items: center; justify-content: space-between; }
 .bag-head b { font-size: 20px; }
 .bag-tabs { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; flex: none; }
-.bag-tabs button { flex: 1 1 0; min-width: 0; padding: 0 2px; min-height: 40px; font: inherit; font-weight: bold; border: 3px solid #384050; border-radius: 8px 8px 0 0; background: #d8d0b8; }
+.bag-tabs button { flex: 1 1 0; min-width: 0; height: 40px; padding: 0 2px; font: inherit; font-size: 14px; font-weight: bold; letter-spacing: -.5px;
+  white-space: nowrap; overflow: hidden; border: 3px solid #384050; border-radius: 8px 8px 0 0; background: #d8d0b8; color: #182030; }
 .bag-tabs button[aria-selected="true"] { background: #f86840; color: #fff; text-shadow: 1px 1px 0 #802010; }
 .bag-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; padding: 2px; }
 .bag-row { appearance: none; display: flex; align-items: center; gap: 10px; min-height: 48px; padding: 6px 10px; text-align: left; font: inherit;
@@ -606,3 +607,14 @@ details.box[open] > summary::after { content: ' ▴'; }
 .mon-view .sum-main { grid-template-columns: 1fr; }
 .mon-view .sum-pic { border-right: 0; border-bottom: 3px solid #182030; min-height: 0; padding: 4px 0; }
 .mon-view .sum-pic canvas { width: 88px !important; height: 88px !important; }
+.tm-line { display: grid; gap: 2px; min-width: 0; }
+.tm-line b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tm-line .tm-no { font-size: 12px; color: #586890; }
+.bag-panel .tm-line .tm-no { color: #c8d0e0; }
+.tm-line > small { display: block; line-height: 1.6; }
+.tm-line > small .type { margin-right: 4px; vertical-align: 1px; }
+.tm-line .tm-no { display: inline; }
+.bag-row > .key-ico { flex: none; width: 32px; display: grid; place-items: center; }
+.tm-line .type { font-size: 11px; }
+.bag-pi > div { flex: 1; min-width: 0; }
+.nw { white-space: nowrap; }
