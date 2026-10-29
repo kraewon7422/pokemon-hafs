@@ -424,12 +424,13 @@ console.log('\n[19] 고유번호 계정: 하나의 번호 = 하나의 계정, �
 const pwLogin = async (email, password) => (await tokenReq(email, password)).access_token;
 const fakeGoogle = async (gmail) => { const nm = 'g' + nonce(); const d = (await anon.rpc('dev_fake_google', { p_name: nm, p_google_email: gmail })).data; return client(await login(d.email)); };
 const rnd3 = () => String(Math.floor(Math.random() * 1000)).padStart(3, '0');
-const sidA = '020' + rnd3(); let sidB = '021' + rnd3(); while (sidB === sidA) sidB = '021' + rnd3();
+// staging keeps old test accounts, so a random number can already be taken → retry on CODE_ACCOUNT_EXISTS / an existing account
+let sidA = '020' + rnd3(), sidB;
 let NA, NB;
 {
   ok((await anon.rpc('create_number_account', { p_student_id: '023111', p_password: 'abcdef' })).error === 'BAD_GEN', 'number account: future 기수 refused');
   ok((await anon.rpc('create_number_account', { p_student_id: sidA, p_password: '123' })).error === 'BAD_PASSWORD', 'password needs 6+ characters');
-  const c = (await anon.rpc('create_number_account', { p_student_id: sidA, p_password: 'pw1234' })).data;
+  let c; for (;;) { const r0 = await anon.rpc('create_number_account', { p_student_id: sidA, p_password: 'pw1234' }); c = r0.data; if (r0.error !== 'CODE_ACCOUNT_EXISTS') break; sidA = '020' + rnd3(); }
   ok(c?.email === `${sidA}@code.local`, 'student number + own password creates the account', c);
   ok((await anon.rpc('create_number_account', { p_student_id: sidA, p_password: 'other1' })).error === 'CODE_ACCOUNT_EXISTS', 'same number again → existing account (wrong password)');
   NA = client(await pwLogin(`${sidA}@code.local`, 'pw1234'));
@@ -450,7 +451,7 @@ let NA, NB;
   ok((await again.rpc('ensure_profile')).data?.name === '번호학생', 'same game account (name kept)');
 
   const G2 = await fakeGoogle('new' + nonce() + '@gmail.com');
-  r = await G2.rpc('link_number', { p_student_id: sidB, p_password: 'pwpwpw', p_name: '새학생' });
+  do { sidB = '021' + rnd3(); r = await G2.rpc('link_number', { p_student_id: sidB, p_password: 'pwpwpw', p_name: '새학생' }); } while (r.data?.error === 'WRONG_PASSWORD');
   ok(r.data?.mode === 'new', 'google + unused number → new number account', r.data);
   const g2p = (await G2.rpc('ensure_profile')).data;
   ok(g2p?.student_id === sidB && g2p.name === '새학생', 'google session continues as that student', g2p);
