@@ -99,6 +99,7 @@ export const ICON = {
 const PX_PAL = { k: '#283048', w: '#ffffff', y: '#f8d048', o: '#f09030', r: '#e04040', s: '#b0b8c8', n: '#a06830', b: '#4878d8', g: '#48b060', c: '#c87838' };
 const PX = {
   bag: ['..kkkk..', '.k....k.', 'kkkkkkkk', 'knnnnnnk', 'knyyyynk', 'knnnnnnk', 'knnnnnnk', 'kkkkkkkk'],
+  pencil: ['......kk', '.....krk', '....kyk.', '...kyk..', '..kyk...', '.kok....', '.kk.....', 'k.......'],
   spark: ['...k....', '..kyk...', '.kyyyk..', 'kyywyyk.', '.kyyyk..', '..kyk.k.', '...k.kyk', '......k.'],
   ticket: ['........', 'kkkkkkkk', 'kooooook', '.koowok.', '.kowook.', 'kooooook', 'kkkkkkkk', '........'],
   camera: ['........', '..kkk...', 'kkkkkkkk', 'ksskkssk', 'kskwwksk', 'kskwwksk', 'ksskkssk', 'kkkkkkkk'],

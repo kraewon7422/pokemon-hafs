@@ -9,11 +9,12 @@ import { spriteCanvas, paint } from './sprites.js';
 import { sfx, unlockAudio, isMuted, setMuted } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
-import { S, app, bag, collection, dexOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, normalBag, owned, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
+import { S, app, bag, collection, dexOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
 import { fmtTime, openDetail, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
 import { loadBag, openBagScreen } from './bag.js';
+import { minigameButton } from './games/hub.js';
 import { clearGoogleIntents, linkIntent, maskName, maybeOnboard, renderConsent, renderInApp, renderLogin, renderRegister, showOnboarding, withEye } from './login.js';
 
 // ───────────────────────── boot ─────────────────────────
@@ -156,7 +157,7 @@ export function renderRetry(msg) {
 
 export async function loadCatalog() {
   const [lines, species, qrs, moves, speciesMoves, typeChart, items] = await Promise.all([
-    sb.from('lines').select('id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus').order('id'),
+    sb.from('lines').select('id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic').order('id'),
     sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe').order('id'),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
@@ -358,7 +359,7 @@ export function viewHome() {
   const D = dexStats();
   const total = D.total;
   const titles = titlesOf(p, D);
-  const partner = [...collection()].sort((a, b) => b.stage - a.stage || new Date(b.first_caught_at) - new Date(a.first_caught_at))[0];
+  const partner = partnerMon();
   const items = bag();
   const normal = items.filter((t) => !t.special);
   const visited = new Set((S.snap.tickets || []).map((t) => t.qr_id));
@@ -395,7 +396,8 @@ export function viewHome() {
       h('div.idno', h('span', 'TRAINER CARD'), h('span', p.student_id.startsWith('g:') ? 'GUEST' : `ID No. ${p.student_id}`)),
       h('div', h('div.name', p.name || '트레이너'), h('div', { style: { fontSize: '13px' } }, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너'),
         titles.length ? h('div.titles', titles.map((t) => h('span.title-chip', t))) : null),
-      h('div.partner', partner ? spriteCanvas(dexOf(partner.line_id, partner.stage), 88) : spriteCanvas(1, 88, 'silhouette')),
+      h('div.partner', { onclick: () => eggTap('card') }, partner ? spriteCanvas(dexOf(partner.line_id, partner.stage), 88) : spriteCanvas(1, 88, 'silhouette'),
+        partner && h('button.partner-edit', { 'aria-label': '카드 몬스터 바꾸기', onclick: (e) => { e.stopPropagation(); pickPartner(); } }, pix('pencil'))),
       h('div.stats',
         h('span', '도감', h('b', `${D.found}/${total}`)), h('span', '점수', h('b', p.score)),
         h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화권', h('b', p.evo_tickets))),
@@ -408,13 +410,14 @@ export function viewHome() {
       h('div.banner', h('b', `티켓 주머니 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
         h('span', { style: { fontSize: '13px' } }, items.length ? '부스에서 몬스터로 바꿔요' : 'QR을 찍으면 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => (t.special
-        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성' }[t.special.special] || ''}`))
+        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성', egg: '숨은 선물' }[t.special.special] || ''}`))
         : h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name)))) : null,
       h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '티켓 QR 보여주기'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
         pix('gift'), '지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
 
     h('button.btn.big.bag-btn', { onclick: () => openBagScreen() }, pix('bag', 'l'), '가방', h('small', ' 몬스터 박스 · 도구 · 회복약 · 기술머신')),
+    minigameButton(),
 
     rouletteBox(),
 
@@ -609,6 +612,30 @@ export function startGoogleLink() {
       }, '계속'))));
 }
 
+// 트레이너 카드에 띄울 몬스터 고르기 (0024 set_partner — 서버에 저장되어 다른 폰에서도 같음)
+function pickPartner() {
+  sfx.select();
+  const cur = partnerMon()?.line_id;
+  const choose = async (line) => {
+    try {
+      const prof = await rpc('set_partner', { p_line: line });
+      S.snap.profile = { ...S.snap.profile, ...prof };
+      await kv.set('snap', S.snap);
+      sfx.blip(); closeOverlay(); renderTab();
+    } catch (e) { toast(errorText(e.message)); }
+  };
+  const mons = [...collection()].sort((a, b) => b.stage - a.stage || a.line_id - b.line_id);
+  sheet(h('div.stack',
+    h('div.grab'),
+    h('b', '트레이너 카드에 띄울 몬스터'),
+    h('div.partner-grid', mons.map((c) => {
+      const sp = speciesOf(dexOf(c.line_id, c.stage));
+      return h(`button.partner-pick${c.line_id === cur ? '.on' : ''}`, { 'aria-pressed': String(c.line_id === cur), onclick: () => choose(c.line_id) },
+        spriteCanvas(sp.id, 56), h('small', sp.name));
+    })),
+    h('button.btn', { onclick: () => choose(null) }, S.snap.profile.partner ? '자동으로 (가장 많이 진화한 몬스터)' : '지금은 자동 — 위에서 골라 주세요')));
+}
+
 export async function setPublic(show) {
   if (!!S.snap.profile.show_on_board === show) return;
   try {
@@ -788,6 +815,24 @@ export function handlePendingScan() {
   sessionStorage.removeItem('pendingScan');
   const place = parsePlace(q);
   if (place) handleScan(place);
+}
+
+// 이스터에그 (0024): 숨은 곳을 7번 연달아 누르면 환상 몬스터 특별 티켓 (계정당 한 번씩, 서버 claim_egg 가 판정)
+//   card = 트레이너 카드 몬스터 사진 / chart = 타입 상성표 지리×지리 칸 / map = 학교 지도 오른쪽 위 숲 모서리
+const eggTaps = {};
+export async function eggTap(key) {
+  const now = Date.now();
+  const e = eggTaps[key] = now - (eggTaps[key]?.at || 0) < 1500 ? { n: eggTaps[key].n + 1, at: now } : { n: 1, at: now };
+  if (e.n < 7) return;
+  eggTaps[key] = null;
+  if (!S.online) return;
+  try {
+    const r = await rpc('claim_egg', { p_key: key }, { retries: 0 });
+    if (!r?.granted) { sfx.blip(); return; }
+    sfx.catch(); vibrate([60, 40, 120]);
+    say('……어디선가 신비한 기운이 느껴진다!\n티켓 주머니에 ★특별 티켓이 들어왔어요.\n부스에서 몬스터로 바꿔 보세요.');
+    sync();
+  } catch { /* 조용히 무시 — 이스터에그는 티 나지 않게 */ }
 }
 
 export function say(msg, isError = false) {

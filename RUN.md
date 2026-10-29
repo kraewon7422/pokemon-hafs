@@ -16,7 +16,7 @@ supabase/
   (계열 목록 = tools/roster.py. 43~76 계열 SQL = `python tools/gen_roster_sql.py` → seed.sql 의 '명단에 맞춰 늘린 계열' 블록)
 tests/rpc_test.mjs           서버 규칙 자동 테스트 (63개)
 tools/pixelize.py            AI 그림 → 64x64 도트
-tools/build_atlas.py         art/sprites/*.png → web/sprites/atlas.png
+tools/build_atlas.py         art/sprites/*.png → web/sprites/atlas.png (그림 없는 칸은 코드로 그림, 77~82 야자 전설·환상 포함, --count 244)
 web/img/map.webp             학교 지도 (숲속 캠퍼스 항공 지도 그림, 90° 회전). 건물 이름표는 dex.js MAP_LABELS, 핀은 운영자 페이지 QR 관리
 tools/draw_map.py            예전 도트 지도(v1) → tools/map_v1.png
 docs/DESIGN.md               설계 (먼저 읽기)
@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0022 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
+1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0024 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소

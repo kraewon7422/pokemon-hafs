@@ -622,3 +622,58 @@ details.box[open] > summary::after { content: ' ▴'; }
 section[aria-label="티켓 주머니"] .banner { gap: 8px; }
 section[aria-label="티켓 주머니"] .banner > b { white-space: nowrap; }
 section[aria-label="티켓 주머니"] .banner > span { text-align: right; }
+
+/* ───────── 0023 미니게임 ───────── */
+.mg-btn { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; background: #d8f0e0; border-color: #2a8040; }
+.mg-btn small { font-weight: normal; font-size: var(--fs-s); }
+.mg-btn.locked { background: #c8ccd8; border-color: #586078; color: #384050; }
+.mg-lock { position: absolute; inset: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; padding-right: 14px; border-radius: inherit;
+  background: repeating-linear-gradient(45deg, rgba(24,32,48,.10) 0 6px, transparent 6px 12px); pointer-events: none; }
+.mg-lock small { font-weight: bold; }
+.mg-lock-ico { width: 20px; height: 22px; background:
+  linear-gradient(#384050, #384050) 3px 10px / 14px 12px no-repeat,
+  radial-gradient(circle at 10px 10px, transparent 4px, #384050 4px 6px, transparent 6px) 0 0 / 20px 20px no-repeat; image-rendering: pixelated; }
+.mg-screen, .mg-play { box-sizing: border-box; position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); background: #e4ecd8; overflow-y: auto; }
+.mg-list { display: flex; flex-direction: column; gap: 8px; }
+.mg-card { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 4px 10px; padding: 10px; border: 3px solid #384050; border-radius: 10px; background: #fffdf4; }
+.mg-pic { grid-row: span 2; display: grid; place-items: center; }
+.mg-pic canvas { image-rendering: pixelated; }
+.mg-info { display: grid; gap: 2px; }
+.mg-info small { font-size: var(--fs-s); color: #384050; }
+.mg-best { color: #2a8040 !important; font-weight: bold; }
+.mg-btns { display: flex; gap: 6px; justify-content: flex-end; }
+.mg-top { display: flex; align-items: center; justify-content: space-between; }
+.mg-top b { font-size: 18px; }
+.mg-stage { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 8px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.mg-canvas { image-rendering: pixelated; border: 3px solid #182030; border-radius: 6px; background: #101828; touch-action: none; }
+.mg-result { display: flex; align-items: center; gap: 12px; }
+.mg-result .big { display: block; font-size: 28px; }
+.mg-result canvas { image-rendering: pixelated; }
+.mg-rank { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; max-height: 40vh; overflow-y: auto; }
+.mg-rank li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 6px; padding: 4px 8px; border-radius: 6px; background: #f0f2f6; }
+.mg-rank li.me { background: #fff4c8; box-shadow: inset 0 0 0 2px #f8c030; }
+.mg-rank .rk { font-weight: bold; text-align: right; }
+.mg-rank .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 이스터에그 (0024): 지도 오른쪽 위 숲 모서리 — 보이지 않는 누름 칸 */
+.map-egg { position: absolute; right: 0; top: 0; width: 16%; height: 9%; z-index: 1; -webkit-tap-highlight-color: transparent; }
+
+/* 미니게임: 화면 아래 랭킹 보기 (펼치면 그 자리에서 목록) */
+.mg-rank-panel { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 560px; margin: 8px auto 0; }
+.mg-rank-btn { width: 100%; }
+.mg-rank-box { background: var(--paper, #fff); border: 3px solid #182030; border-radius: 8px; padding: 8px; max-height: 42vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.mg-rank-box > * { flex-shrink: 0; }
+.mg-rank-box .mg-rank { max-height: none; overflow: visible; }
+.mg-rank li.muted { display: block; background: none; }
+.mg-rank-box[hidden] { display: none; }
+.mg-rank-tabs { display: flex; gap: 4px; }
+.mg-rank-tabs button { flex: 1; min-width: 0; font-size: 13px; }
+
+/* 트레이너 카드 몬스터 바꾸기 (0024): 사진 오른쪽 위 작은 동그라미 */
+.trainer .partner { position: relative; }
+.partner-edit { position: absolute; top: -10px; right: -10px; width: 30px; height: 30px; padding: 0; border-radius: 50%; border: 2px solid #c8a048; background: #fffaf0; display: grid; place-items: center; cursor: pointer; box-shadow: 0 2px 0 rgba(0,0,0,.15); }
+.partner-edit::before { content: ''; position: absolute; inset: -8px; }   /* 누르기 쉽게 (보이는 것보다 넓게) */
+.partner-edit svg { width: 16px; height: 16px; }
+.partner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; max-height: 50vh; overflow-y: auto; }
+.partner-pick { display: grid; justify-items: center; gap: 2px; padding: 6px 2px; border: 2px solid #d8dce4; border-radius: 8px; background: #fff; cursor: pointer; }
+.partner-pick small { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.partner-pick.on { border-color: #f8c030; background: #fff4c8; }

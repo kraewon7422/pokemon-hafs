@@ -7,10 +7,11 @@ const atlas = new Image();
 const ready = new Promise((resolve) => { atlas.onload = resolve; atlas.onerror = resolve; });
 atlas.src = new URL('../sprites/atlas.png', import.meta.url).href;
 export const spritesReady = ready;
+export const atlasImage = atlas;   // 미니게임 캔버스에 직접 그릴 때 (web/js/games/common.js)
 
 const SIL = new Map();  // silhouette cache: dex → canvas
 
-function cellOf(dex) {
+export function cellOf(dex) {
   const i = dex - 1;
   return [(i % CONFIG.ATLAS_COLS) * 64, Math.floor(i / CONFIG.ATLAS_COLS) * 64];
 }

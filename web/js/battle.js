@@ -5,7 +5,7 @@ import { spriteCanvas } from './sprites.js';
 import { sfx, unlockAudio, startBgm, stopBgm } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
 import { S, collection, isWithdrawn, vibrate } from './state.js';
-import { closeOverlay, openScanner, overlay, renderTab, say, sheet, sync } from './app.js';
+import { closeOverlay, eggTap, openScanner, overlay, renderTab, say, sheet, sync } from './app.js';
 import { typeOf } from './dex.js';
 import { curSpecies } from './raid.js';
 import { itemIcon, itemOf, loadBag } from './bag.js';
@@ -99,7 +99,11 @@ export function typeTable() {
     h('small', '왼쪽 = 공격하는 기술의 타입, 위 = 맞는 몬스터의 타입. 2 = 효과가 굉장했다 · ½ = 별로인 듯하다 · 0 = 효과가 없다'),
     h('div.type-table-wrap', h('table.type-table',
       h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, short(d))))),
-      h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, short(a)), T.map((d) => cell(m(a, d)))))))),
+      h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, short(a)), T.map((d) => {
+        const td = cell(m(a, d));
+        if (a === '지리' && d === '지리') td.onclick = () => eggTap('chart');   // 정중앙 칸 (이스터에그)
+        return td;
+      })))))),
     h('small.muted', '전설은 모두에게 보통이고, 전설끼리만 효과가 굉장해요. 효과 없음: 정치경제→음악, 역사→정보, 체육→수학.'),
   ];
 }

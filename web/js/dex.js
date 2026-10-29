@@ -4,8 +4,8 @@ import { kv } from './db.js';
 import { spriteCanvas, paint } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, bag, dexNo, dexOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, maxStage, owned, rules, speciesOf, vibrate } from './state.js';
-import { closeOverlay, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
+import { S, bag, dexNo, dexOf, dexStats, evolvable, isMythic, isSecret, isWithdrawn, lineOf, maxStage, owned, rules, speciesOf, vibrate } from './state.js';
+import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
 
 // ───────────────────────── 지도 ─────────────────────────
 
@@ -45,6 +45,7 @@ export function viewMap() {
         h('button.btn.small', { disabled: zoom >= 3, onclick: () => setZoom(zoom + 1), 'aria-label': '확대' }, '+'))),
     h(`div.map-scroll${zoom > 1 ? '.zoomed' : ''}`,
       h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.webp', alt: '학교 지도', draggable: 'false' }),
+        h('span.map-egg', { onclick: () => eggTap('map'), 'aria-hidden': 'true' }),   // 오른쪽 위 숲 모서리 (이스터에그)
         MAP_LABELS.map(([t, x, y]) => h('span.map-label', { style: { left: `${x * 100}%`, top: `${y * 100}%` }, 'aria-hidden': 'true' }, t)), pins)),
     zoom > 1 && h('small', { style: { textAlign: 'center' } }, '손가락으로 끌어서 지도를 움직여요'),
     h('div.legend',
@@ -79,7 +80,7 @@ export function viewDex() {
   const reached = (sp) => (owned(sp.line_id)?.stage || 0) >= sp.stage;
   const { found, total } = dexStats();
   const list = species.filter((sp) => (S.dexFilter === 'all' || lineOf(sp.line_id)?.subject === S.dexFilter)
-    && (!isSecret(sp.line_id) || S.dexFilter === 'all'));
+    && (!isSecret(sp.line_id) || S.dexFilter === 'all') && (!isMythic(sp.line_id) || owned(sp.line_id)));   // 환상 = 잡기 전엔 도감에 없음
   const p = S.snap.profile;
   return [
     h('div.box.dex-head',

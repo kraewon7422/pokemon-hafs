@@ -10,7 +10,7 @@
   모양(타원/캡슐/다각형) → 부위마다 3단 명암(빛은 왼쪽 위) + 1px 외곽선(몸색보다 어두운 색, 검정 아님)
   → 눈/입/볼 같은 점 찍기. 스프라이트마다 15색 이하인지, 단계별 키가 맞는지 assert 로 검사한다.
 
-사용법:  python tools/build_atlas.py [--count 51]
+사용법:  python tools/build_atlas.py [--count 244]
 """
 import argparse
 import colorsys
@@ -2163,6 +2163,213 @@ def T(**kw):
     return kw
 
 
+# ── 77~82: 야자 전설 둘 (야1 노을등 · 야2 자정냥) + 학교 로고 환상 넷 (HAFS · 국제 · 인문 · 국내) ──
+FLOAT_SHADOW = hexc('1c2236')
+
+
+def float_shadow(s, w=11):
+    """떠 있는 몬스터: 바닥에 작은 그림자 (몸은 안 닿음)."""
+    s.fx({(x, y) for x in range(32 - w, 33 + w) for y in (F - 1, F) if ((x - 32) / (w + .5)) ** 2 + ((y - F + .5) / 1.6) ** 2 <= 1}, FLOAT_SHADOW)
+
+
+# 77 노을등 — 야자1 (이른 밤): 위는 보랏빛·아래는 주황 노을 몸 + 둥근 초록 스탠드 갓 (불빛) + 연필
+P77 = dict(body=hramp('4a1a50', '9a4a8a', 'd07898', 'ffb8b8'), belly=hramp('a04030', 'f09048', 'ffc070', 'fff0c0'),
+           shade=hramp('103828', '24704a', '3ea060', '90e0a0'), lamp=hramp('b07010', 'f8c838', 'fff090', 'ffffff'),
+           pen=hramp('703818', 'e8a030', 'f8d060', 'fff0b0'), blush=hexc('ff7f8e'))
+
+
+def line_noeul(st):
+    """77 노을등 — 야자1: 노을빛 몸, 머리 위 둥근 초록 스탠드 갓에서 불빛, 연필."""
+    s, c = Spr(), P77
+    b = c['body']
+    body_feet(s, b, (24, 40), 5, 3.5)
+    s.part(cap(16, 45, 10, 51, 3.2, 2.6), b)
+    s.part(U(ell(32, 42, 18, 16), ellb(32, 61, 16, 9)), b, shine=True, bulge=True)
+    s.part(ell(32, 52, 14, 9), c['belly'], edge=False, tone=2)              # 노을빛 아랫배
+    s.part(ell(32, 50, 8, 5), c['belly'], edge=False, tone=3)
+    s.part({k: v for k, v in ell(32, 26, 15, 11).items() if k[1] <= 26}, c['shade'], shine=True)   # 둥근 갓
+    s.fx({(x, 27) for x in range(19, 46)}, c['lamp'][2])                    # 갓 아래 불빛
+    s.fx({(x, 28) for x in range(22, 43) if x % 2}, c['lamp'][1])
+    s.part(rect(30, 12, 34, 15), c['pen'], edge=True)
+    s.part(ell(32, 11, 2.5, 2), c['lamp'], edge=True)
+    s.part(cap(53, 47, 58, 36, 1.6, 1.6), c['pen'])                         # 연필
+    s.pxs([(58, 35), (59, 34)], c['body'][0])
+    s.part(cap(47, 45, 53, 49, 3.0, 2.6), b)
+    s.eyes(35, 5, 3, 4)
+    s.mouth(42, b[0], 'smile')
+    s.blush(40, 10, c['blush'])
+    s.sparkle(7, 12, c['lamp'][2], big=True)
+    s.sparkle(57, 18, WHITE)
+    return s
+
+
+# 78 자정냥 — 야자2 (깊은 밤): 남색 고양이, 이마의 초승달, 졸린 눈, 별 꼬리
+P78 = dict(body=hramp('101838', '2a3c7c', '4460b0', '8098e0'), moon=hramp('b08010', 'f0c840', 'fff0a0', 'ffffff'),
+           inner=hramp('2a3c7c', 'c070b0', 'f0a0d0', 'ffd0f0'), blush=hexc('c890ff'))
+
+
+def line_jajeong(st):
+    """78 자정냥 — 야자2: 남색 고양이, 이마에 초승달, 졸린 눈, 끝이 별인 꼬리."""
+    s, c = Spr(), P78
+    b = c['body']
+    s.part(cap(48, 55, 56, 47, 2.6, 2.0), b)
+    s.part(cap(56, 47, 57, 38, 2.0, 1.8), b)
+    star = {(57 + dx, 34 + dy) for dx in range(-3, 4) for dy in range(-3, 4)
+            if (dx == 0 and abs(dy) <= 3) or (dy == 0 and abs(dx) <= 3) or (abs(dx) <= 1 and abs(dy) <= 1)}
+    s.part({k: None for k in star}, c['moon'], shine=True)
+    for sx, sg in ((20, -1), (44, 1)):                                       # 고양이 귀
+        s.part(poly([(sx - 7, 30), (sx + sg * 2, 14), (sx + 7, 30)]), b, shine=True)
+        s.part(poly([(sx - 3, 28), (sx + sg * 2, 19), (sx + 3, 28)]), c['inner'], edge=False, tone=2)
+    body_feet(s, b, (24, 40), 5, 3.5)
+    s.part(U(ell(32, 41, 18, 16), ellb(32, 61, 16, 9)), b, shine=True, bulge=True)
+    moon = {k for k in ell(32, 30, 3.6, 3.6) if (k[0] - 34) ** 2 + (k[1] - 29) ** 2 > 9}   # 이마 초승달
+    s.fx(moon, c['moon'][2])
+    s.pxs([(24, 53), (40, 52), (37, 57), (27, 57)], c['moon'][2])
+    for ex in (24, 37):                                                     # 졸린 눈
+        s.pxs([(ex, 37), (ex + 1, 38), (ex + 2, 38), (ex + 3, 37)], EYE)
+    s.mouth(42, b[0], 'cat')
+    s.blush(40, 10, c['blush'])
+    s.sparkle(8, 12, c['moon'][2], big=True)
+    s.sparkle(6, 42, WHITE)
+    s.pxs([(14, 6), (50, 10), (60, 22)], c['moon'][2])
+    return s
+
+
+# 79 하프레임 — HAFS 로고 환상: 파란 물방울 몸 + 왼쪽으로 휘는 주황 횃불 + 몸을 감아 오르는 S자 물결 + 가슴 방패(H)
+P79 = dict(body=hramp('0c2a6a', '1e58b8', '3c8ce4', 'a8d8ff'), flame=hramp('a03810', 'f07020', 'ffa040', 'ffe8b0'),
+           shield=hramp('0c2a6a', 'd8e4f8', 'ffffff', 'ffffff'), aura=hexc('a8d8ff'), blush=hexc('ff9fbe'))
+
+
+def line_hafs(st):
+    """79 하프레임 — HAFS 로고 환상: 파란 물결과 주황 횃불, 가슴에 H 방패."""
+    s, c = Spr(), P79
+    b = c['body']
+    aura(s, 32, 32, 28, 26, c['aura'], 9)
+    float_shadow(s, 9)
+    tail = {}
+    for k in range(24):                                                     # S자 물결 꼬리 (이어진 띠)
+        t = k / 23
+        tail.update(ell(34 + 16 * math.sin(t * math.pi * .95), 56 - 26 * t, 3.4 - 2.2 * t, 3.4 - 2.2 * t))
+    s.part(tail, b, shine=True)
+    s.part(U(ell(30, 36, 14, 13), poly([(17, 39), (43, 39), (32, 56), (29, 56)])), b, shine=True, bulge=True)
+    s.part(ell(17, 43, 3, 4, .5), b, shine=True)                             # 지느러미 손
+    fl = U(ell(29, 21, 6, 6), poly([(23, 21), (35, 21), (27, 9), (23, 6), (26, 13)]))
+    s.part(fl, c['flame'], shine=True)                                      # 횃불
+    s.part(U(ell(29, 21, 3, 3), poly([(26, 21), (32, 21), (26, 12)])), c['flame'], edge=False, tone=3)
+    s.part(U(rect(26, 41, 34, 46), poly([(26, 46), (34, 46), (30, 51)])), c['shield'], edge=True)
+    s.fx({(28, 43), (28, 44), (28, 45), (32, 43), (32, 44), (32, 45), (29, 44), (30, 44), (31, 44)}, b[1])
+    s.eyes(31, 4, 3, 4, cx=30)
+    s.mouth(37, b[0], 'smile', cx=30)
+    s.blush(36, 9, c['blush'], cx=30)
+    s.sparkle(9, 12, WHITE, big=True)
+    s.sparkle(56, 12, c['flame'][2])
+    return s
+
+
+# 80 등대리온 — 국제 환상: 빨간 등대 몸 (흰 띠 하나), 등불 + 짧은 햇살, 돛 날개, 물결 꼬리
+P80 = dict(body=hramp('6a1018', 'b82830', 'e04848', 'ff9090'), white=hramp('8a5a6a', 'e8dcd8', 'fffaf4', 'ffffff'),
+           lamp=hramp('b07010', 'f8c838', 'fff090', 'ffffff'), sea=hramp('0c3a6a', '2a78c8', '58b0f0', 'b0e4ff'),
+           aura=hexc('ffd890'), blush=hexc('ff9fbe'))
+
+
+def line_intl(st):
+    """80 등대리온 — 국제 환상: 등대 몸, 등불과 햇살, 돛 날개, 바다 물결 꼬리."""
+    s, c = Spr(), P80
+    aura(s, 32, 34, 27, 23, c['aura'], 10)
+    for k in range(5):
+        a = math.radians(225 + 22.5 * k)
+        s.fx({(round(32 + math.cos(a) * r), round(17 + math.sin(a) * r)) for r in (9, 10, 11)}, c['lamp'][2])
+    float_shadow(s, 9)
+    s.part(poly([(17, 30), (5, 43), (17, 45)]), c['white'], shine=True)
+    s.part(poly([(47, 30), (59, 43), (47, 45)]), c['white'], shine=True)
+    s.part(cap(30, 56, 23, 59, 2.4, 1.6), c['sea'])
+    s.part(cap(23, 59, 19, 56, 1.6, 1.2), c['sea'])
+    k = s.part(U(sell(32, 43, 14, 13, 2.4), poly([(22, 34), (42, 34), (39, 27), (25, 27)])), c['body'], shine=True, bulge=True)
+    s.part({p: None for p in k if 47 <= p[1] <= 50}, c['white'], edge=False)
+    s.part(rect(27, 18, 37, 25), c['lamp'], shine=True)
+    s.part(poly([(25, 19), (39, 19), (32, 12)]), c['body'], edge=True)
+    s.fx({(x, 22) for x in range(28, 37)}, c['lamp'][0])
+    s.eyes(37, 4, 3, 4)
+    s.mouth(43, c['body'][0], 'smile')
+    s.blush(42, 9, c['blush'])
+    s.sparkle(8, 14, c['lamp'][2], big=True)
+    s.sparkle(57, 56, WHITE)
+    return s
+
+
+# 81 책갈피아 — 인문 환상: 밝은 금빛 몸, 펼친 책 날개, 두 잎 새싹, 빨간 책갈피 꼬리
+P81 = dict(body=hramp('8a5a08', 'e0a820', 'ffd448', 'fff4b0'), page=hramp('8a7048', 'e8dcc0', 'fffaf0', 'ffffff'),
+           leaf=hramp('1a5020', '389040', '68c058', 'c0f0a0'), ribbon=hramp('701020', 'c83040', 'f06070', 'ffb0b8'),
+           aura=hexc('fff0a0'), blush=hexc('ff9f8e'))
+
+
+def line_human(st):
+    """81 책갈피아 — 인문 환상: 펼친 책 날개, 두 잎 새싹, 책갈피 꼬리."""
+    s, c = Spr(), P81
+    aura(s, 32, 32, 28, 26, c['aura'], 9)
+    float_shadow(s, 9)
+    for sg in (-1, 1):
+        wing = poly([(32 + sg * 10, 34), (32 + sg * 28, 22), (32 + sg * 29, 42), (32 + sg * 12, 46)])
+        k = s.part(wing, c['page'], shine=True)
+        for yy in (30, 34, 38):
+            s.fx({(x, y) for (x, y) in k if y == yy + round((abs(x - 32) - 12) * -.25) and 14 < abs(x - 32) < 26}, c['page'][1])
+        s.part(cap(32 + sg * 10, 34, 32 + sg * 28, 22, .8, .8), c['body'], edge=False, tone=1)
+    s.part(poly([(30, 50), (34, 50), (35, 60), (32, 57), (29, 60)]), c['ribbon'], shine=True)
+    s.part(U(ell(32, 38, 13, 13), ellb(32, 52, 11, 7)), c['body'], shine=True, bulge=True)
+    s.part(cap(32, 26, 32, 20, 1.0, .8), c['leaf'], edge=False, tone=1)
+    s.part(ell(27, 18, 5, 3, -.45), c['leaf'], shine=True)
+    s.part(ell(37, 18, 5, 3, .45), c['leaf'], shine=True)
+    s.eyes(36, 4, 3, 4)
+    s.mouth(42, c['body'][0], 'smile')
+    s.blush(41, 9, c['blush'])
+    s.sparkle(10, 12, WHITE, big=True)
+    s.sparkle(55, 10, c['leaf'][3])
+    return s
+
+
+# 82 아토키 — 국내(자연과학) 환상: 남색 몸, 뒤를 도는 원자 궤도 + 앞쪽 호 + 전자, 열쇠 꼬리, 물결 배
+P82 = dict(body=hramp('0a1a48', '22489a', '3a6cc8', '98bcf4'), orbit=hramp('407090', '78d8f0', 'c0f4ff', 'ffffff'),
+           key=hramp('8a5a08', 'd8a020', 'f8d050', 'fff4b0'), belly=hramp('1c3a80', '5890d8', '9cc8f8', 'e0f0ff'),
+           blush=hexc('ff9fbe'))
+
+
+def line_atom(st):
+    """82 아토키 — 국내(자연과학) 환상: 원자 궤도, 열쇠 꼬리, 물결 무늬 배."""
+    s, c = Spr(), P82
+    b = c['body']
+    float_shadow(s, 9)
+    ring = []
+    for ang in (.42, -.42):
+        for t in range(0, 360, 2):
+            a = math.radians(t)
+            x = 32 + math.cos(a) * 25 * math.cos(ang) - math.sin(a) * 8 * math.sin(ang)
+            y = 38 + math.cos(a) * 25 * math.sin(ang) + math.sin(a) * 8 * math.cos(ang)
+            ring.append((round(x), round(y), math.sin(a) > 0))
+    for x, y, front in ring:                                                 # 뒤쪽 궤도 먼저
+        if not front:
+            s.px(x, y, c['orbit'][1])
+    s.part(cap(42, 50, 53, 56, 1.4, 1.4), c['key'])
+    s.fx({(51, 58), (51, 59), (49, 58), (49, 59)}, c['key'][1])
+    s.part(ell(55, 52, 3.6, 3.6), c['key'], shine=True)
+    s.px(55, 52, b[0])
+    s.part(U(ell(32, 37, 14, 14), ellb(32, 53, 12, 7)), b, shine=True, bulge=True)
+    s.part(ell(32, 47, 8, 5), c['belly'], edge=False, tone=2)
+    s.fx({(x, 47 + (1 if (x // 2) % 2 else 0)) for x in range(26, 39)}, c['belly'][1])
+    for x, y, front in ring:                                                 # 앞쪽 궤도 (얼굴 아래만)
+        if front and y >= 42:
+            s.px(x, y, c['orbit'][2])
+    for ex, ey in ((8, 30), (56, 46), (14, 50)):
+        s.part(ell(ex, ey, 2.2, 2.2), c['orbit'], shine=True)
+    s.part(ell(32, 21, 2.4, 2.4), c['orbit'], shine=True)                    # 머리 위 전자 (안테나)
+    s.fx({(32, 24), (32, 23)}, c['orbit'][1])
+    s.eyes(33, 4, 3, 4)
+    s.mouth(39, b[0], 'smile')
+    s.blush(38, 9, c['blush'])
+    s.sparkle(9, 10, WHITE, big=True)
+    s.sparkle(55, 12, c['orbit'][2])
+    return s
+
+
 ROSTER = {
     # 국어 — 분홍 물방울 몸
     1: T(subj='국어', name='문장', plan='drop', body=ramp(.95, .40, .99), acc=ramp(.90, .55, .58), m2=HANJI,
@@ -2293,7 +2500,15 @@ for _plan, _lines in NEW_SHAPES.items():
         ROSTER[_l]['plan'] = _plan
         if _plan in EARS_FOR:
             ROSTER[_l]['ears'] = EARS_FOR[_plan]
-LEGENDARY = {35, 36, 37, 38, 39, 40, 41, 42}
+ROSTER.update({
+    77: T(subj='전설', name='노을등(야1)', custom=lambda st: line_noeul(st)),
+    78: T(subj='전설', name='자정냥(야2)', custom=lambda st: line_jajeong(st)),
+    79: T(subj='환상', name='하프레임(HAFS)', custom=lambda st: line_hafs(st)),
+    80: T(subj='환상', name='등대리온(국제)', custom=lambda st: line_intl(st)),
+    81: T(subj='환상', name='책갈피아(인문)', custom=lambda st: line_human(st)),
+    82: T(subj='환상', name='아토키(국내)', custom=lambda st: line_atom(st)),
+})
+LEGENDARY = {35, 36, 37, 38, 39, 40, 41, 42, 77, 78, 79, 80, 81, 82}
 RARE = {20, 21, 22, 23, 24, 75}
 
 
@@ -2349,7 +2564,7 @@ def placeholder(dex):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('--count', type=int, default=228)
+    ap.add_argument('--count', type=int, default=244)
     ap.add_argument('-v', '--verbose', action='store_true', help='스프라이트별 색 수/키 출력')
     a = ap.parse_args()
     rows = (a.count + COLS - 1) // COLS
