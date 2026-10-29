@@ -242,15 +242,19 @@ export async function declineInvite(inv) {
   renderTab();
 }
 
+let starting = false;
 export async function startBattle(mode, code, fmt) {
+  if (starting) return;   // 두 번 눌러서 배틀이 두 개 만들어지지 않게
   const n = FMT[mode === 'cpu' ? fmt : S.btPeekFmt || 'single']?.n || 3;
   const team = myTeam(n);
   if (!team.length) return say('배틀하려면 먼저 몬스터를 모아요!', true);
   if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  starting = true;
   try {
     const args = mode === 'cpu' ? { p_lines: team, p_format: fmt } : { p_code: code, p_lines: team };
     openBattle(await rpc({ cpu: 'battle_start_cpu', team: 'battle_start_team', pvp: 'battle_challenge' }[mode], args, { retries: 0 }));
   } catch (e) { sfx.error(); say(errorText(e.message), true); if (e.message === 'IN_PVP_BATTLE') pollInbox(true); }
+  finally { starting = false; }
 }
 
 export async function resumeBattle(id) {
@@ -430,10 +434,14 @@ export function openBattle(b0) {
       await say2(`${josa(foeName(), '과', '와')}의 승부에서 이겼다!`);
       if (rw.ticket) await say2(`★ 진화권 1장을 받았다! (오늘 ${rw.today}/${S.btToday?.max || 3})`);
       else if (BT_WHY[rw.why]) await say2(BT_WHY[rw.why]);
+    } else if ((side(me())?.mons || []).some((m) => m.hp > 0)) {
+      await say2(b.mode === 'pvp' ? '기권했다… (진 것으로 판정)' : '무사히 도망쳤다! (진 것으로 판정)');
     } else {
       await say2('나에게는 싸울 수 있는 몬스터가 없다!');
       await say2('눈앞이 캄캄해졌다!');
     }
+    if (rw.exp_why === 'practice_max') await say2(`오늘 연습 배틀 경험치는 다 받았다! (하루 ${rw.practice_max}판) 친구 배틀은 계속 경험치를 받을 수 있다.`);
+    else if (rw.practice_counted && rw.practice_left <= 3) await say2(`오늘 경험치를 받을 수 있는 연습 배틀이 ${rw.practice_left}판 남았다.`, 300);
     // 경험치 (나온 몬스터마다) · 레벨 업 · 주운 물건 (0020)
     for (const x of rw.exp?.[me()] || []) {
       if (closed) return;
@@ -494,7 +502,8 @@ export function openBattle(b0) {
       return;
     }
     if (b.status === 'declined' || b.status === 'cancelled') {
-      el.text.textContent = b.status === 'declined' ? `${josa(foeName(), '이', '가')} 배틀을 거절했어요.` : '배틀 신청이 취소됐어요. (시간이 지났거나 취소함)';
+      el.text.textContent = b.status === 'declined' ? `${josa(foeName(), '이', '가')} 배틀을 거절했어요.`
+        : b.reward?.why === 'replaced' ? '새 배틀을 시작해서 이 배틀은 취소됐어요. (승패 없음)' : '배틀 신청이 취소됐어요. (시간이 지났거나 취소함)';
       el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기'));
       clearInterval(S.btPoll);
       return;
@@ -620,7 +629,7 @@ export function openBattle(b0) {
   };
   const giveUp = () => {
     sfx.blip();
-    el.text.textContent = b.mode === 'pvp' ? '정말 기권할까? (상대가 이긴 것이 돼요)' : '정말 도망칠까? (진 것이 돼요)';
+    el.text.textContent = b.mode === 'pvp' ? '정말 기권할까? (진 것으로 판정)' : '정말 도망칠까? (진 것으로 판정)';
     el.menu.replaceChildren(h('div.bt-main',
       h('button.bt-cmd', { onclick: async () => { busy = true; try { await apply(await rpc('battle_forfeit', { p_id: b.id }, { retries: 0 })); } catch (e) { toast(errorText(e.message)); } busy = false; } }, '네'),
       h('button.bt-cmd', { onclick: () => { menu.mode = 'main'; renderMenu(); } }, '아니요')));

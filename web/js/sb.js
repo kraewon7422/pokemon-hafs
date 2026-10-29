@@ -73,7 +73,7 @@ const MESSAGES = {
   NOT_STAFF: '부스 스태프 계정이 아니에요.',
   NOT_ADMIN: '운영자 계정이 아니에요.',
   NO_STUDENT: '등록되지 않은 고유번호예요.',
-  BAD_PAYLOAD: '가방 QR이 아니에요.',
+  BAD_PAYLOAD: '티켓 QR이 아니에요.',
   OFFLINE: '인터넷 연결이 필요해요.',
   SELF_REDEEM_OFF: '지금은 부스에서만 받을 수 있어요.',
   TOO_MANY: '한 번에 700개까지만 만들 수 있어요.',

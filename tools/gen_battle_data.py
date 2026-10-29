@@ -524,6 +524,7 @@ def learnset_rows():
 
 
 # 기술머신: 과목마다 강한 공격 2개 + 누구나 쓰는 기술. 특별 기술머신(레이드 보상) = 전설의 고유 기술 (누구나 배움)
+PERMANENT_TM = ['방어', '스피드스타', '그림자분신']     # 보통 타입이라 누구나 배움
 TM_GENERAL = ['방어', '그림자분신', '칼춤', '나쁜음모', '고속이동', '명상', '잠자기', '리플렉터', '빛의장막', '스피드스타', '파괴광선', '기가임팩트',
               '이판사판태클', '전기자석파', '도깨비불', '맹독']
 
@@ -580,6 +581,11 @@ def item_rows():
     for i, n in enumerate(SIGNATURE):
         m = kind_of(n)
         I.append((f'sp{i + 1:02d}', f'특별 기술머신{i + 1:02d}', 'tm', m['desc'] + ' (전설의 기술 — 누구나 배울 수 있다)', {}, {'raid': 1}, n))
+    # 영구 기술머신: 써도 없어지지 않음 (여러 몬스터에게). 아주 드물게 — 레이드 승리 · 친구 배틀 승리에서만
+    for i, n in enumerate(PERMANENT_TM):
+        m = kind_of(n)
+        I.append((f'pm{i + 1:02d}', f'영구 기술머신{i + 1:02d}', 'tm', m['desc'] + ' (써도 없어지지 않는다 — 여러 몬스터에게 가르칠 수 있다)',
+                  {'permanent': True}, {'raid': 0.4, 'battle': 0.15}, n))
     return [x if len(x) == 7 else x + (None,) for x in I]
 
 

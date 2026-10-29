@@ -24,7 +24,7 @@ export function viewMap() {
         document.querySelectorAll('.pin.sel').forEach((x) => x.classList.remove('sel'));
         e.currentTarget.classList.add('sel');
         info.replaceChildren(h('b', q.name), h('br'), q.hint || '', h('br'),
-          h('small', inBag.has(q.id) ? [pix('ticket'), '가방에 티켓 있음 - 부스에서 쓰면 다시 찍을 수 있어요'] : `오늘 ${n}/${capOf(q)}번 찍음`));
+          h('small', inBag.has(q.id) ? [pix('ticket'), '티켓 주머니에 있음 - 부스에서 쓰면 다시 찍을 수 있어요'] : `오늘 ${n}/${capOf(q)}번 찍음`));
       },
     }, h('span', q.id.replace(/^A0?/, '')));
   });
@@ -49,7 +49,7 @@ export function viewMap() {
     zoom > 1 && h('small', { style: { textAlign: 'center' } }, '손가락으로 끌어서 지도를 움직여요'),
     h('div.legend',
       h('span', h('i', { style: { background: 'var(--red)' } }), '아직 안 찍음'),
-      h('span', h('i', { style: { background: 'var(--gold)' } }), '가방에 있음'),
+      h('span', h('i', { style: { background: 'var(--gold)' } }), '티켓 주머니에 있음'),
       h('span', h('i', { style: { background: 'var(--green)' } }), '오늘 찍음'),
       h('span', h('i', { style: { background: 'var(--gray)' } }), '오늘 끝')),
     info,

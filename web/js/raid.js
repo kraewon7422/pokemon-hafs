@@ -126,7 +126,7 @@ export function openRaid(r0) {
       boss.classList.add('faint');
       sfx.catch(); vibrate([80, 60, 80, 60, 200]);
       await typeText(text, r.me?.rewarded
-        ? `${josa(sp.name, '을', '를')} 쓰러뜨렸다!!\n★ 레이드 보상: ${sp.name} 티켓이 가방에 들어왔어요!\n메인 부스에서 몬스터로 바꿔요. (가방 칸은 안 차지해요)`
+        ? `${josa(sp.name, '을', '를')} 쓰러뜨렸다!!\n★ 레이드 보상: ${sp.name} 티켓이 티켓 주머니에 들어왔어요!\n메인 부스에서 몬스터로 바꿔요. (가방 칸은 안 차지해요)`
         : `${josa(sp.name, '을', '를')} 쓰러뜨렸다!\n하지만 공격이 조금 부족해서 보상은 못 받았어요. 다음엔 더 많이 탭해요!`);
       sync({ force: true });
     } else {

@@ -23,7 +23,7 @@ const STATUS = {
   new: ['받을 수 있음', 'st-new'], pending: ['받을 수 있음', 'st-pending'], redeemed: ['이미 받음', 'st-done'],
   invalid_token: ['가짜·교체된 QR', 'st-bad'], nonce_conflict: ['다른 학생의 티켓', 'st-bad'], expired: ['만료됨', 'st-bad'],
   cancelled: ['취소됨', 'st-bad'], already_pending: ['같은 장소 중복', 'st-bad'], daily_cap: ['오늘 횟수 초과', 'st-bad'],
-  bag_full: ['가방 초과', 'st-bad'], empty_pool: ['QR에 몬스터 미설정(운영자 확인)', 'st-bad'], bad_format: ['형식 오류', 'st-bad'],
+  bag_full: ['티켓 주머니 초과', 'st-bad'], empty_pool: ['QR에 몬스터 미설정(운영자 확인)', 'st-bad'], bad_format: ['형식 오류', 'st-bad'],
 };
 
 let pendingConfirm = null;   // the student card waiting for 확인 (Enter/Space also confirms → one-key booth)
@@ -94,7 +94,7 @@ function renderBooth(p) {
   document.addEventListener('keydown', (e) => { if (e.key === ' ' && pendingConfirm && document.activeElement !== input) { e.preventDefault(); pendingConfirm(); } });
 }
 
-const idle = () => h('div.box', h('b', '다음 학생을 기다리는 중…'), h('p', '학생 폰의 "가방 QR"을 찍어 주세요. 폰이 오프라인이어도 괜찮아요.'));
+const idle = () => h('div.box', h('b', '다음 학생을 기다리는 중…'), h('p', '학생 폰의 "티켓 QR"을 찍어 주세요. 폰이 오프라인이어도 괜찮아요.'));
 
 async function toggleCam(box, btn) {
   if (scanner) { scanner.stop(); scanner = null; btn.textContent = '📷 카메라 시작'; box.replaceChildren(h('div.off', '카메라 꺼짐')); return; }
@@ -107,7 +107,7 @@ async function toggleCam(box, btn) {
 async function onPayload(text) {
   text = fixKoreanIME(String(text || '').trim());   // USB scanner typing into 한글 mode
   if (busy || !text) return;
-  if (!isBag(text) && !/^[0-9]{5,6}$/.test(text)) { sfx.error(); toast('가방 QR 또는 학번이 아니에요'); return; }
+  if (!isBag(text) && !/^[0-9]{5,6}$/.test(text)) { sfx.error(); toast('티켓 QR 또는 학번이 아니에요'); return; }
   busy = true;
   const area = $('#result');
   area.replaceChildren(h('div.box', '확인 중…'));
@@ -139,7 +139,7 @@ function card(look, extra) {
     h('div.student-big', `${maskName(look.name)} `, h('small', `${look.gen}기 · ${look.student_id}`)),
     h('ul.ticket-list', look.items.map((i) => {
       const [label, cls] = STATUS[i.status] || [i.status, 'st-bad'];
-      const special = String(i.qr_name || '').startsWith('★');   // 레이드·도감 보상 (가방 칸 밖)
+      const special = String(i.qr_name || '').startsWith('★');   // 레이드·도감 보상 (티켓 주머니 칸 밖)
       return h(`li${special ? '.special' : ''}`, h('span', i.qr_name || '알 수 없는 장소'), h(`span.${cls}`, label));
     })),
     extra);
