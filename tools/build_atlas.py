@@ -1131,6 +1131,22 @@ def body_shape(plan, g):
     if plan == 'cloud':        # 몽실몽실 구름
         return U(*[ell(32 + dx * rx, cy + dy * ry, rx * .46, ry * .46)
                    for (dx, dy) in ((-.5, -.25), (0, -.6), (.5, -.25), (-.55, .28), (.55, .28), (0, .2))], base)
+    # ── 실루엣이 확 다른 몸 (plan_back / plan_front 와 같이 쓴다) ──
+    if plan == 'quad':         # 네 발 짐승: 위에 머리, 아래에 옆으로 긴 몸통 (다리 4개·꼬리·주둥이는 따로, 바닥 덩어리 없음)
+        return U(ell(32, cy - ry * .3, rx * .78, ry * .64), ell(32, cy + ry * .5, rx * 1.12, ry * .47))
+    if plan == 'bird':         # 새: 동그란 몸 (날개·부리·꼬리깃은 따로)
+        return U(ell(32, cy + ry * .04, rx * .94, ry * .97), base)
+    if plan == 'ghost':        # 유령: 둥근 머리 → 아래로 가늘어지며 한쪽으로 휘는 꼬리 (발 없음, 떠 있음)
+        return U(sell(32, cy - ry * .2, rx * .9, ry * .74, 2.3),
+                 poly([(32 - rx * .88, cy - ry * .1), (32 + rx * .88, cy - ry * .1), (32 + rx * .5, cy + ry * .55),
+                       (32 + rx * .05, cy + ry * .9), (32 - rx * .45, cy + ry * 1.0), (32 - rx * .2, cy + ry * .7),
+                       (32 - rx * .55, cy + ry * .45)]))
+    if plan == 'serpent':      # 뱀·용: 머리만 (똬리 몸은 plan_back)
+        return ell(32, cy - ry * .2, rx * .8, ry * .7)
+    if plan == 'mushroom':     # 버섯: 짧은 줄기 몸 (갓은 plan_front)
+        return U(sell(32, cy + ry * .34, rx * .74, ry * .68, 2.6), ellb(32, F - 1, g['brx'] * .8, g['bry'] * .8))
+    if plan == 'fish':         # 물고기: 옆으로 납작하고 긴 몸 (꼬리·지느러미는 따로, 떠 있음)
+        return ell(32 - rx * .14, cy + ry * .16, rx * 1.02, ry * .68)
     return U(ell(32, cy, rx, ry), base)
 
 
@@ -1195,9 +1211,100 @@ def face(s, g, T, st):
         for sx, d in ((32 - gap - 5, 1), (32 + gap + 1, -1)):
             pts = [(sx + i, ey - 3 + (1 if (i == 0 and d > 0) or (i == 3 and d < 0) else 0)) for i in range(4)]
             s.pxs(pts, rp[0])
-    s.mouth(g['my'], rp[0], T.get('mouth', 'smile'), tongue=T.get('blush'))
+    if T.get('plan') == 'bird':     # 부리
+        w = 1 + st
+        s.part(poly([(32 - w, g['my'] - 1), (32 + w, g['my'] - 1), (32, g['my'] + w + .5)]), BEAK, edge=True)
+    else:
+        s.mouth(g['my'], rp[0], T.get('mouth', 'smile'), tongue=T.get('blush'))
     if T.get('blush'):
         s.blush(g['my'] - 1, gap + 3 + (1 if st == 3 else 0), T['blush'])
+
+
+# ---- 새 몸 모양 도우미
+FLOATING = {'ghost', 'fish'}               # 발 없이 둥둥 → 다 그린 뒤 위로 올리고 바닥에 그림자
+NO_FEET = {'ghost', 'fish', 'serpent', 'quad'}
+NO_ARMS = {'fish', 'serpent', 'bird', 'quad'}
+BEAK = hramp('7a3a10', 'c87818', 'f0a828', 'ffd870')
+SPOTS = hramp('9890a8', 'd8d0e0', 'f4f0f8', 'ffffff')
+SHADOW = hexc('3c4658')
+
+
+def plan_geom(plan, g):
+    if plan == 'mushroom':     # 얼굴은 갓 아래 줄기에
+        g['ey'] = round(g['ey'] + g['ry'] * .34)
+        g['my'] = round(g['my'] + g['ry'] * .34)
+    if plan == 'serpent':
+        g['ey'] = round(g['ey'] - g['ry'] * .1)
+        g['my'] = round(g['my'] - g['ry'] * .1)
+    if plan == 'quad':         # 얼굴은 위쪽 머리에
+        g['ey'] = round(g['cy'] - g['ry'] * .5)
+        g['my'] = round(g['cy'] - g['ry'] * .14)
+        g['top'] = g['cy'] - g['ry'] * .9
+    if plan == 'ghost':
+        g['top'] = g['cy'] - g['ry'] * .92
+    if plan == 'mushroom':
+        g['top'] = g['cy'] - g['ry'] * 1.15
+
+
+def plan_back(s, plan, g, T, rp, st):
+    cy, rx, ry, k = g['cy'], g['rx'], g['ry'], g['k']
+    acc = T.get('inner', T['acc'])
+    if plan == 'quad':         # 뒷다리 (몸통 양 끝 아래) + 위로 말린 꼬리
+        for sg in (-1, 1):
+            x = 32 + sg * rx * .78
+            s.part(cap(x, cy + ry * .6, x + sg * rx * .06, F - 2.5 * k, 3.4 * k + .6, 3.2 * k + .5), rp)
+            s.part(ellb(x + sg * rx * .06, F, 3.6 * k + .6, 2.2 * k + .4), T.get('feet', rp))
+        s.part(cap(32 + rx * .95, cy + ry * .35, 32 + rx * 1.36, cy - ry * .35, 1.7 * k + .5, 1.1 * k + .4), rp)
+        s.part(ell(32 + rx * 1.38, cy - ry * .48, 2.4 * k + .6, 2.8 * k + .6), acc)
+    elif plan == 'bird':       # 꼬리깃 (몸 아래로 부채꼴)
+        for dx, ang in ((-.32, 25), (0, 0), (.32, -25)):
+            s.part(ell(32 + rx * dx, F - ry * .3, rx * .22, ry * .36, ang), acc)
+    elif plan == 'serpent':    # 똬리 두 겹 + 꼬리 끝
+        s.part(cap(32 - rx * 1.05, F - ry * .32, 32 - rx * 1.42, F - ry * 1.05, 1.6 * k + .5, .6), rp)
+        s.part(ellb(32, F, rx * 1.22, ry * .4), rp)
+        s.part(ell(32 + rx * .08, cy + ry * .52, rx * .98, ry * .34), rp)
+        s.part(ell(32, F - ry * .38, rx * .6, ry * .14), T.get('belly') or acc, edge=False)
+    elif plan == 'fish':       # 꼬리지느러미 + 등지느러미
+        s.part(poly([(32 + rx * .7, cy + ry * .1), (32 + rx * 1.36, cy - ry * .55), (32 + rx * 1.18, cy + ry * .1),
+                     (32 + rx * 1.36, cy + ry * .72)]), acc)
+        s.part(poly([(32 - rx * .4, cy - ry * .55), (32 - rx * .02, cy - ry * 1.12), (32 + rx * .42, cy - ry * .52)]), acc)
+
+
+def plan_front(s, plan, g, T, rp, st):
+    cy, rx, ry, k = g['cy'], g['rx'], g['ry'], g['k']
+    acc = T.get('inner', T['acc'])
+    if plan == 'quad':         # 앞다리 2개 (몸통 앞) + 밝은 주둥이
+        for sg in (-1, 1):
+            x = 32 + sg * rx * .3
+            s.part(cap(x, cy + ry * .7, x, F - 2.5 * k, 3.5 * k + .6, 3.3 * k + .5), rp)
+            s.part(ellb(x, F, 3.8 * k + .6, 2.3 * k + .4), T.get('feet', rp))
+        s.part(ell(32, g['my'] - .5, 4.2 * k + .6, 2.6 * k + .6), T.get('belly') or LIGHT(rp), edge=False)
+    elif plan == 'bird':       # 양쪽 날개
+        for sg in (-1, 1):
+            s.part(ell(32 + sg * rx * .9, cy + ry * .16, rx * .36, ry * .58, sg * 24), acc)
+    elif plan == 'mushroom':   # 큰 갓 (아래가 평평) + 흰 점
+        c = ell(32, cy - ry * .48, rx * 1.4, ry * .68)
+        flat = cy - ry * .02
+        s.part({q: v for q, v in c.items() if q[1] <= flat}, T['acc'], shine=True)
+        for dx, dy, r in ((-.72, -.62, .2), (.08, -.92, .17), (.66, -.5, .22), (-.2, -.36, .12)):
+            s.part(ell(32 + rx * dx, cy + ry * dy, rx * r, ry * r * .8), SPOTS, edge=False)
+    elif plan == 'fish':       # 옆지느러미 + 물방울
+        s.part(ell(32 - rx * .5, cy + ry * .48, rx * .26, ry * .16, -28), acc)
+        for i, (bx, by) in enumerate(((-.95, -.55), (-1.15, -.95), (-1.0, -1.3))[:st]):
+            x, y = round(32 + rx * bx), round(cy + ry * by)
+            s.pxs([(x, y - 1), (x - 1, y), (x + 1, y), (x, y + 1)], hexc('cfefff'))
+
+
+def float_up(s, d):
+    """그림 전체를 d 픽셀 올리고 바닥에 납작한 그림자. (머리 위 소품이 높으면 덜 올린다: 키 제한 61px)"""
+    d = max(0, min(d, min(y for (x, y) in s.c) - 2))
+    s.c = {(x, y - d): c for (x, y), c in s.c.items()}
+    s.m = {(x, y - d): m for (x, y), m in s.m.items()}
+    xs = [x for (x, y) in s.c]
+    w = (max(xs) - min(xs)) * .32
+    for (x, y) in ell(32, F - 1, w, 1.6):
+        if (x, y) not in s.c:
+            s.px(x, y, SHADOW)
 
 
 def critter(st, T):
@@ -1206,6 +1313,8 @@ def critter(st, T):
     g['top'] = g['cy'] - g['ry']
     rp, acc = T['body'], T['acc']
     m = T.get('motif') or (lambda *a: None)
+    plan = T.get('plan', 'round')
+    plan_geom(plan, g)
 
     def hand(i):
         x, y = g['hands'][i]
@@ -1213,16 +1322,19 @@ def critter(st, T):
         s.part(ell(x, y, r, r), T.get('hand', rp))
     g['hand'] = hand
     m(s, st, g, T, 'back')
+    plan_back(s, plan, g, T, rp, st)
     ears(s, T.get('ears'), g, rp, T.get('inner', acc))
-    fx0, fx1, frx, fry = g['feet']
-    for x in (fx0, fx1):
-        s.part(ellb(x, F, frx, fry), T.get('feet', rp))
-    if g['arms'] and T.get('arms', True):
+    if plan not in NO_FEET:
+        fx0, fx1, frx, fry = g['feet']
+        for x in (fx0, fx1):
+            s.part(ellb(x, F, frx, fry), BEAK if plan == 'bird' else T.get('feet', rp))
+    if g['arms'] and T.get('arms', True) and plan not in NO_ARMS:
         for (x0, y0, x1, y1) in g['arms']:
             s.part(cap(x0, y0, x1, y1, 2.4 * g['k'] + .6, 2.0 * g['k'] + .5), rp)
-    s.part(body_shape(T.get('plan', 'round'), g), rp, shine=True, bulge=True)
-    if T.get('belly'):
+    s.part(body_shape(plan, g), rp, shine=True, bulge=True)
+    if T.get('belly') and plan not in ('serpent', 'mushroom'):
         s.part(ell(32, g['cy'] + g['ry'] * .55, g['rx'] * .55, g['ry'] * .38), T['belly'], edge=False)
+    plan_front(s, plan, g, T, rp, st)
     m(s, st, g, T, 'mid')
     face(s, g, T, st)
     m(s, st, g, T, 'front')
@@ -1232,6 +1344,8 @@ def critter(st, T):
                             3: ((5, 8, True), (59, 12, True), (4, 58, False))}[st]:
             if not s.has(x, y):
                 s.sparkle(x, y, sp, big)
+    if plan in FLOATING:
+        float_up(s, {1: 2, 2: 3, 3: 3}[st])
     return s
 
 
@@ -2164,6 +2278,21 @@ ROSTER = {
     41: T(subj='전설', name='과연기', custom=lambda st: line_gwayeon(st)),
     42: T(subj='전설', name='창문기', custom=lambda st: line_changmun(st)),
 }
+# 실루엣이 다른 몸 (기본 알 모양에서 벗어나게): 과목 성격에 맞춰 21계열
+NEW_SHAPES = {
+    'quad': (76, 17, 60, 47, 52),        # 네 발 짐승: 스포츠·경제·단어·국어A·극한
+    'bird': (46, 58, 73, 54, 11),        # 새: 문학·시인·윤리·적분B·스피치
+    'ghost': (29, 45, 4),                # 유령: 사관·고문·고전
+    'serpent': (30, 6, 59),              # 뱀·용: 왕조·적분(∫)·에세이
+    'mushroom': (66, 69, 70),            # 버섯: 유기·생태·세포B
+    'fish': (72, 18),                    # 물고기: 지형·지리
+}
+EARS_FOR = {'bird': 'crest', 'serpent': 'horn', 'mushroom': None, 'fish': None, 'ghost': None}
+for _plan, _lines in NEW_SHAPES.items():
+    for _l in _lines:
+        ROSTER[_l]['plan'] = _plan
+        if _plan in EARS_FOR:
+            ROSTER[_l]['ears'] = EARS_FOR[_plan]
 LEGENDARY = {35, 36, 37, 38, 39, 40, 41, 42}
 RARE = {20, 21, 22, 23, 24, 75}
 
@@ -2191,7 +2320,8 @@ def merge_close(img, maxc=MAX_COLORS, limit=36):
 def draw(line, stage):
     t = ROSTER[line]
     # 43~ 새 계열은 소품이 많아 비슷한 색을 조금 더 넓게 합친다 (원래 계열 그림은 그대로)
-    return merge_close((t['custom'](stage) if 'custom' in t else critter(stage, t)).done(), limit=70 if line >= 43 else 36)
+    reshaped = t.get('plan') in NEW_SHAPES   # 새 몸 모양은 부리·지느러미 같은 색이 더 생겨서 넓게 합침
+    return merge_close((t['custom'](stage) if 'custom' in t else critter(stage, t)).done(), limit=70 if line >= 43 or reshaped else 36)
 
 
 def check(img, dex, line, stage):

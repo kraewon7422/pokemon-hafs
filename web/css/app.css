@@ -66,6 +66,12 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .evo-panel { display: grid; gap: 8px; }
 .chain.n2 { grid-template-columns: 1fr auto 1fr; }
 /* 로그인 화면 (0018): 학생 카드 · 비학생 카드 · 맨 아래 구글(복구용) */
+.pw-wrap { position: relative; display: block; }
+.pw-wrap input { width: 100%; padding-right: 48px; box-sizing: border-box; }
+.pw-eye { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); width: 40px; height: 40px; display: grid; place-items: center;
+  border: 0; border-radius: 8px; background: transparent; color: #4a5878; cursor: pointer; }
+.pw-eye[aria-pressed='true'] { color: #c03020; }
+.pw-eye:focus-visible { outline: 3px solid #f8d048; }
 .login-card { width: min(100%, 360px); text-align: left; display: grid; gap: 8px; }
 .login-card .lc-title { font-size: var(--fs-l); color: #283048; }
 .login-card form { display: grid; gap: 8px; }
