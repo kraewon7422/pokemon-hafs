@@ -32,3 +32,5 @@ art-src/
 
 # downloaded reveal GIF (copyright) — keep local only
 web/img/booth-ball.gif
+# 미니게임 개발용 시험 페이지 (로그인 없이 게임 하나만 띄움)
+web/.dev-mg.html

@@ -1,11 +1,11 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v38';
+const VERSION = 'hafsmon-v40';
 const SHELL = [
   './', 's/', 'manifest.webmanifest',   // not index.html: Cloudflare Pages redirects it, and a redirected response can't answer a navigation
   'css/pixel.css', 'css/types.css', 'css/app.css',
-  'js/app.js', 'js/state.js', 'js/dex.js', 'js/raid.js', 'js/battle.js', 'js/login.js', 'js/bag.js', 'js/config.js', 'js/sb.js', 'js/db.js', 'js/qrfmt.js', 'js/scanner.js', 'js/sprites.js',
+  'js/app.js', 'js/state.js', 'js/dex.js', 'js/raid.js', 'js/battle.js', 'js/login.js', 'js/bag.js', 'js/games/hub.js', 'js/games/common.js', 'js/games/yacht.js', 'js/games/dodge.js', 'js/games/maze.js', 'js/config.js', 'js/sb.js', 'js/db.js', 'js/qrfmt.js', 'js/scanner.js', 'js/sprites.js',
   'js/sfx.js', 'js/ui.js', 'js/auth.js',
   'vendor/supabase.js', 'vendor/jsQR.js', 'vendor/qrcode.js',
   'fonts/Galmuri11.woff', 'fonts/Galmuri11-Bold.woff',

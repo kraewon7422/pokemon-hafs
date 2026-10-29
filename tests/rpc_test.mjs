@@ -606,6 +606,7 @@ console.log('\n[24] raids + special tickets');
 
   // time-slot raid: TV spawns it inside the window, only one at a time, cooldown after
   await setS('raid_cooldown_min', 0);   // an earlier run may have just ended one
+  const slotsBefore = (await admin.select('settings?key=eq.raid_slots&select=value')).data[0].value;   // 운영자가 고친 시간 그대로 되돌림
   await setS('raid_slots', [{ line: 38, from: '00:00', until: '23:59' }]);
   await booth.rpc('screen_raids');
   let slots = (await booth.rpc('screen_raids')).data?.raids?.filter(x => x.kind === 'slot' && x.species_id === 112 && x.status === 'active');
@@ -614,7 +615,7 @@ console.log('\n[24] raids + special tickets');
   await setS('raid_cooldown_min', 5);
   slots = (await booth.rpc('screen_raids')).data?.raids?.filter(x => x.kind === 'slot' && x.species_id === 112 && x.status === 'active');
   ok(slots?.length === 0, 'cooldown before the next time-slot raid');
-  await setS('raid_slots', [{ line: 38, from: '09:00', until: '11:00' }, { line: 39, from: '12:00', until: '13:30' }, { line: 40, from: '16:00', until: '18:00' }]);
+  await setS('raid_slots', slotsBefore);
 
   // dex rewards: 50 % → 과연기, 100 % → 창문기 (special tickets, no raid)
   for (let l = 1; l <= 36; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: l >= 35 ? 1 : 3 });   // 104 of 206 = 50 %
@@ -1049,6 +1050,54 @@ console.log('\n[33] QR 없이 참가하는 레이드 (0022)');
   ok(((await admin.rpc('admin_list_raids')).data || []).find((x) => x.id === rr.id)?.open === true, 'admin list shows it open');
   await admin.rpc('admin_end_raid', { p_id: rr.id });
   ok((await S[0].rpc('raid_join_open', { p_raid: rr.id })).error === 'RAID_OVER', 'cannot join after it ends');
+}
+
+console.log('\n[34] 미니게임 (0023) · 야자 전설 · 환상 이스터에그 (0024)');
+{
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'mg1234' })).error);
+  const C = client(await pwLogin(`${sid}@code.local`, 'mg1234'));
+  await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '미니테스트' });
+  for (let l = 1; l <= 9; l++) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l, p_stage: 1 });
+  ok((await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 120, p_ms: 60000 })).error === 'MINIGAME_LOCKED', 'minigames locked under 10 monsters');
+  await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 10, p_stage: 1 });
+  ok((await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 400, p_ms: 60000 })).error === 'BAD_SCORE', 'impossible yacht score rejected');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'dodge', p_score: 900, p_ms: 5000 })).error === 'BAD_SCORE', 'dodge score too high for the time rejected');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'chess', p_score: 1, p_ms: 9000 })).error === 'BAD_GAME', 'unknown game rejected');
+  const y = (await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 150, p_ms: 60000 })).data;
+  ok(y?.me?.score === 150 && y.me.rank >= 1, 'yacht score saved, my rank returned', y?.me);
+  ok((await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 160, p_ms: 60000 })).error === 'TRY_LATER', 'one submit per 5 s per game');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 50000, p_ms: 90000 })).error === 'BAD_SCORE', 'maze time must match real time');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 50000, p_ms: 50500 })).data?.me?.score === 50000, 'maze time saved');
+  await new Promise((r) => setTimeout(r, 5200));
+  const m2 = (await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 40000, p_ms: 40100 })).data;
+  ok(m2?.me?.score === 40000, 'maze: faster time becomes my best (lower is better)', m2?.me);
+  const rk = (await C.rpc('minigame_ranking', { p_game: 'yacht' })).data;
+  ok(rk?.top?.some((x) => x.me && x.score === 150) && rk.unlock === 10, 'ranking lists me with my best', rk?.me);
+  ok((await anon.rpc('minigame_ranking', { p_game: 'yacht' })).error, 'anon cannot read minigame ranking');
+
+  // 0024: 새 몬스터 6마리 + 환상 표시
+  const ln = (await C.select('lines?id=gte.77&id=lte.82&select=id,mythic,bonus,btype&order=id')).data;
+  ok(ln.length === 6 && ln.every((l) => l.bonus && l.btype === '전설') && ln.filter((l) => l.mythic).map((l) => l.id).join() === '79,80,81,82',
+     'lines 77~82: bonus legends, 79~82 mythic', ln);
+  const sm = (await C.select('species_moves?species_id=in.(229,232,235,238,241,244)&select=species_id')).data;
+  ok(sm.length === 24, 'each new monster has 4 moves', sm.length);
+  const slots = (await admin.select('settings?key=eq.raid_slots&select=value')).data[0].value;
+  ok([77, 78].every((l) => slots.some((x) => x.line === l)), 'night-study raids added to raid_slots', slots);
+  // 이스터에그
+  ok((await anon.rpc('claim_egg', { p_key: 'card' })).error, 'anon cannot claim an egg');
+  ok((await C.rpc('claim_egg', { p_key: 'nope' })).error === 'BAD_EGG', 'unknown egg rejected');
+  const e1 = (await C.rpc('claim_egg', { p_key: 'card' })).data;
+  ok(e1?.granted === true && e1.species_id === 238, 'trainer-card egg → 등대리온 special ticket', e1);
+  ok((await C.rpc('claim_egg', { p_key: 'card' })).data?.granted === false, 'same egg only once');
+  ok((await C.rpc('claim_egg', { p_key: 'chart' })).data?.species_id === 241 && (await C.rpc('claim_egg', { p_key: 'map' })).data?.species_id === 244,
+     'type-chart egg → 책갈피아, map egg → 아토키');
+  const sp = (await C.rpc('sync')).data.state.special || [];
+  ok(sp.filter((x) => x.special === 'egg').map((x) => x.species_id).sort().join() === '238,241,244', 'three egg tickets in the pouch', sp);
+  // 트레이너 카드 몬스터 고르기
+  ok((await C.rpc('set_partner', { p_line: 30 })).error === 'NOT_OWNED', 'cannot pick a monster I do not own as card partner');
+  ok((await C.rpc('set_partner', { p_line: 5 })).data?.partner === 5 && (await C.rpc('sync')).data.state.profile.partner === 5, 'pick card partner (saved on the server)');
+  ok((await C.rpc('set_partner', { p_line: null })).data?.partner === null, 'back to automatic partner');
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
