@@ -101,7 +101,7 @@ export function viewDex() {
         'aria-label': ok ? sp.name : '미발견',
         onclick: () => (ok ? openDetail(sp) : toast(isSecret(sp.line_id) ? '지도에 없는 곳에 숨어 있다는 소문이… 학교를 구석구석 찾아보세요!' : '아직 발견하지 못했어요. 학교 곳곳을 찾아보세요!')),
       },
-      h('span.no', isSecret(sp.line_id) ? 'No.???' : dexNo(sp)),
+      h('span.no', dexNo(sp)),
       spriteCanvas(sp.id, 72, ok ? 'normal' : 'silhouette'),
       h('span.nm', ok ? sp.name : '???'),
       canEvo && h('span.evo-dot', '진화'));

@@ -31,7 +31,7 @@ const players = [];
 for (let i = 0; i < N; i++) {
   let sid, tok;
   for (let k = 0; k < 20 && !tok; k++) {
-    sid = '022' + String(100 + Math.floor(Math.random() * 900));
+    sid = '022' + String(500 + Math.floor(Math.random() * 500));
     if ((await rpc(null, 'create_number_account', { p_student_id: sid, p_password: 'loadtest1' })).error) continue;
     tok = await login(`${sid}@code.local`, 'loadtest1');
   }

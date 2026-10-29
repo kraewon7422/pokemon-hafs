@@ -406,7 +406,7 @@ export function viewHome() {
 
     h('section.box', { 'aria-label': '티켓 주머니' },
       h('div.banner', h('b', `티켓 주머니 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
-        h('span', { style: { fontSize: '13px' } }, items.length ? '메인 부스에서 몬스터로 바꿔요' : 'QR을 찍으면 티켓이 들어와요')),
+        h('span', { style: { fontSize: '13px' } }, items.length ? '부스에서 몬스터로 바꿔요' : 'QR을 찍으면 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => (t.special
         ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성' }[t.special.special] || ''}`))
         : h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name)))) : null,

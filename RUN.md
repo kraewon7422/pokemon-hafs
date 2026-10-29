@@ -33,13 +33,13 @@ python -m http.server 8124
 ```
 개발용 테스트 로그인 (테스트 서버 전용 — `CONFIG.DEV_LOGIN = true`이고 서버 설정 `dev_login = true`일 때만):
 로그인 화면 맨 아래 "▸ 개발용 테스트 로그인"을 펼치고 **아무 이메일**(예: `test1`)을 넣으면 계정이 만들어진다. 비밀번호는 **`1234abcd!` 고정**.
-미리 있는 계정: 학생 `022001@test.local` ~, 부스 `booth1@staff.test`, 운영자 `admin@staff.test` (비밀번호 같음). 서버 테스트는 `tests/.env`의 `TEST_PASSWORD=1234abcd!`.
+미리 있는 계정: 학생 `022901@test.local` ~ (테스트 학생은 각 기수 900번대 — 실제 학생 001~400 과 안 겹치게, 테스트가 없으면 만듦), 부스 `booth1@staff.test`, 운영자 `admin@staff.test` (비밀번호 같음). 서버 테스트는 `tests/.env`의 `TEST_PASSWORD=1234abcd!`.
 
 ## 서버 테스트
 ```bash
 node tests/rpc_test.mjs        # → "95 passed, 0 failed" 이어야 함 (tests/.env 필요: PROGRESS.md §4)
 ```
-테스트용 학생 4명(022001~022003, 023004)의 기록을 지우고 다시 만든다. 실전 프로젝트에 절대 돌리지 말 것.
+테스트용 학생 4명(022901~022903, 021904)의 기록을 지우고 다시 만든다. 실전 프로젝트에 절대 돌리지 말 것.
 
 ## 몬스터 그림 넣기
 ```bash
@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0021 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
+1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0022 순서대로 실행 → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소

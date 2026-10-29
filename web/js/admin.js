@@ -32,6 +32,7 @@ const SETTING_HELP = {
   reset_requests_per_10min: '비밀번호 초기화 요청을 10분 동안 전체에서 최대 몇 개 받을지 (장난 방지, 기본 30)',
   raid_slots: '시간대 전설 레이드: [{"line":38,"from":"09:00","until":"11:00"}, …] — 라인 38 소디포(아침)·39 유리프(점심)·40 TTU(저녁). TV 화면이 이 시간에 자동으로 레이드를 열어요',
   raid_slot_hp: '시간대 전설 레이드 보스 체력', raid_slot_minutes: '시간대 전설 레이드 한 판 길이(분)', raid_cooldown_min: '시간대 레이드가 끝나고 다음 판까지(분)',
+  raid_slot_open: '시간대 전설 레이드(아침·점심·저녁)를 QR 없이 앱에서 바로 참가하게 할지 ON/OFF (true/false)',
   raid_tap_cap: '레이드: 1초에 인정하는 탭 수 (오토클릭 방지)', raid_min_taps: '레이드 보상 받으려면 최소 탭 수',
   dex_rewards: '도감 보상: {"50": 41, "100": 42} = 도감 50% → 과연기, 100% → 창문기 (특별 티켓)',
   roulette_777_per_mille: '이스터에그: 룰렛 꽝 1000번 중 몇 번을 777(럭키 세븐 칭호)로 바꿀지 (기본 10 = 1%)',
@@ -1793,6 +1794,8 @@ async function tabRaid() {
     h('tbody', rows.map((r) => {
       const end = h('button.btn.small.danger', '끝내기');
       end.onclick = () => { if (confirm(`${r.title}을(를) 지금 끝낼까요? (실패 처리, 보상 없음)`)) busy(end, async () => { await rpc('admin_end_raid', { p_id: r.id }); draw(await rpc('admin_list_raids')); }); };
+      const openBtn = h(`button.btn.small${r.open ? '.go' : ''}`, r.open ? 'QR 없이 참가: 켜짐' : 'QR 없이 참가: 꺼짐');
+      openBtn.onclick = () => busy(openBtn, async () => { await rpc('admin_set_raid_open', { p_id: r.id, p_open: !r.open }); draw(await rpc('admin_list_raids')); });
       const qr = h('button.btn.small', '인쇄용 QR');
       qr.onclick = () => showRaidQr(r);
       const [label, cls] = STATUS[r.status] || [r.status, 'off'];
@@ -1802,7 +1805,7 @@ async function tabRaid() {
         h('td', chip(label, cls)),
         h('td.mono', `${r.hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`),
         h('td.num', r.players), h('td.num', r.rewarded ?? 0), h('td', fmtTime(r.ends_at)),
-        h('td', h('div.row', r.status === 'active' && !r.tv && r.t ? qr : null, r.status === 'active' ? end : null)));
+        h('td', h('div.row', r.status === 'active' ? openBtn : (r.open ? chip('QR 없이', 'ok') : null), r.status === 'active' && !r.tv && r.t ? qr : null, r.status === 'active' ? end : null)));
     })))) : h('p.muted', '아직 레이드가 없어요.'));
   draw(await rpc('admin_list_raids'));
 
@@ -1824,6 +1827,7 @@ async function tabRaid() {
   const mins = preset([5, 10, 15, 30, 60].map((m) => [m, `${m}분`, m === 10]), '분', 1, 600);
   const mode = h('select.inp', h('option', { value: 'tv' }, 'TV 대형 화면 (30초마다 바뀌는 현장 QR)'), h('option', { value: 'print' }, '인쇄용 고정 QR (아무 데나 붙이기)'));
   const title = h('input.inp', { placeholder: '레이드 이름 (비우면 "몬스터 이름 레이드")', maxlength: 40 });
+  const openChk = h('input', { type: 'checkbox' });
   const go = h('button.btn.go', { type: 'submit' }, '레이드 열기');
   const form = h('form.box.stack', {
     onsubmit: (e) => {
@@ -1833,7 +1837,8 @@ async function tabRaid() {
       }
       busy(go, async () => {
         const r = await rpc('admin_create_raid', { p_species: Number(sel.value), p_hp: Number(hp.value), p_minutes: Number(mins.value), p_tv: mode.value === 'tv', p_title: title.value });
-        toast(`${r.title}을(를) 열었어요.`);
+        if (openChk.checked) await rpc('admin_set_raid_open', { p_id: r.id, p_open: true });
+        toast(`${r.title}을(를) 열었어요.${openChk.checked ? ' (QR 없이 앱에서 참가 가능)' : ''}`);
         title.value = '';
         draw(await rpc('admin_list_raids'));
         if (!r.tv) showRaidQr(r);
@@ -1844,11 +1849,13 @@ async function tabRaid() {
     h('p.small-txt', '아무 몬스터(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, 10번 이상 공격한 모두가 그 몬스터 특별 티켓을 받아요 (가방 5칸 제한 없음). 시간 안에 못 잡으면 실패.'),
     h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 몬스터'), sel)),
     h('div.row', h('label.field', h('span', '보스 체력'), hp.el), h('label.field', h('span', '시간'), mins.el)),
-    h('label.field', h('span', 'QR 방식'), mode), title, go);
+    h('label.field', h('span', 'QR 방식'), mode), title,
+    h('label.row', { style: { gap: '8px', alignItems: 'center' } }, openChk, h('span', h('b', 'QR 없이 참가'), ' — 학생 앱 레이드 탭에 "참가" 버튼이 떠요 (아침·점심·저녁에 모두에게 주는 레이드용)')),
+    go);
   const reload = h('button.btn.small', '새로 고침');
   reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_raids')));
   return [form, h('div.box.stack', h('div.row', h('h2', { style: { flex: 1 } }, '레이드 목록'), reload), list,
-    h('p.small-txt.muted', '시간대 전설 레이드(아침 소디포·점심 유리프·저녁 TTU)는 TV 화면이 켜져 있으면 설정 raid_slots 시간에 자동으로 열려요.'))];
+    h('p.small-txt.muted', '시간대 전설 레이드(아침 소디포·점심 유리프·저녁 TTU)는 TV 화면이 켜져 있으면 설정 raid_slots 시간에 자동으로 열려요. 설정 raid_slot_open 을 true 로 하면 처음부터 QR 없이 참가할 수 있어요 (목록에서 하나씩 켜고 꺼도 돼요).'))];
 }
 
 function showRaidQr(r) {
