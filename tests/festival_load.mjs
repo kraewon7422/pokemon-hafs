@@ -25,9 +25,9 @@ const rpc = async (tok, fn, args = {}) => {
 
 const admin = await login('admin@staff.test');
 const toks = [];
-for (const e of ['022001', '022002', '022003', '021004']) toks.push(await login(`${e}@test.local`));
+for (const e of ['022901', '022902', '022903', '021904']) toks.push(await login(`${e}@test.local`));
 // every test student needs monsters for battles
-for (const sid of ['022001', '022002', '022003', '021004'])
+for (const sid of ['022901', '022902', '022903', '021904'])
   for (const l of [1, 2, 3]) await rpc(admin, 'admin_grant_monster', { p_student_id: sid, p_line: l, p_stage: 3 });
 const raid = (await rpc(admin, 'admin_create_raid', { p_species: 3, p_hp: 10000000, p_minutes: Math.ceil(SECS / 60) + 2, p_tv: false, p_title: '부하 테스트' })).body;
 for (const t of toks) await rpc(t, 'raid_join', { p_q: raid.q, p_t: raid.t, p_line: 1 });

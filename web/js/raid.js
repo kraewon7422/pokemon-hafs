@@ -25,7 +25,10 @@ export const bestLine = (bossId) => collection().filter((c) => !isWithdrawn(c.li
 
 export async function loadMyRaids() {
   S.myRaidsAt = Date.now();
-  try { S.myRaids = await rpc('my_raids', {}, { retries: 0 }); if (S.tab === 'raid' && !S.overlay) renderTab(); } catch { /* offline */ }
+  try {
+    [S.myRaids, S.openRaids] = await Promise.all([rpc('my_raids', {}, { retries: 0 }), rpc('open_raids', {}, { retries: 0 }).catch(() => [])]);
+    if (S.tab === 'raid' && !S.overlay) renderTab();
+  } catch { /* offline */ }
 }
 
 export function viewRaid() {
@@ -34,6 +37,7 @@ export function viewRaid() {
   if (S.online && Date.now() - Math.max(new Date(S.snap.synced_at || 0), S.raidSyncTry || 0) > 15000 && !S.syncing) { S.raidSyncTry = Date.now(); setTimeout(() => sync(), 0); }
   const live = (S.snap.raids_live || []).filter((r) => new Date(r.ends_at) > Date.now());
   const mine = S.myRaids || [];
+  const open = (S.openRaids || []).filter((r) => new Date(r.ends_at) > Date.now());
   // 남은 시간은 1초마다 다시 셈 (아래 raidClock)
   const left = (iso) => h('span', { 'data-ends': iso }, fmtWait(Math.max(0, new Date(iso) - Date.now())));
   return [
@@ -41,6 +45,14 @@ export function viewRaid() {
       h('div.banner', h('b', pix('bolt'), ' 레이드'), live.length ? h('span.chip.hot', '보스 출현 중!') : null),
       h('p', { style: { margin: 0 } }, '대형 화면이나 운영진이 보여 주는 레이드 QR을 찍으면 참가해요. 다 같이 보스를 마구 탭해서 체력을 0으로 만들면, 열심히 싸운 모두가 그 몬스터 티켓을 받아요!'),
       h('button.btn.big.primary', { onclick: openScanner }, pix('camera'), '레이드 QR 찍기')),
+    open.length > 0 && h('div.box.stack.raid-open',
+      h('b', pix('spark'), ' QR 없이 바로 참가할 수 있는 레이드'),
+      open.map((r) => h('button.raid-row', { onclick: () => joinOpenRaid(r) },
+        spriteCanvas(r.species_id, 56),
+        h('div', h('b', r.title),
+          h('div.hpbar.small', h('i', { style: { width: `${(r.hp / r.hp_max) * 100}%` } })),
+          h('small', '남은 시간 ', left(r.ends_at), ` · ${r.players || 0}명 참가 중`)),
+        h('span.chip.hot', r.joined ? '이어 하기' : '참가')))),
     live.length > 0 && h('div.box.stack',
       h('b', '지금 대형 화면에 나타난 보스'),
       live.map((r) => h('div.raid-row', spriteCanvas(r.species_id, 56), h('div', h('b', r.title), h('small', '남은 시간 ', left(r.ends_at), ' · 메인 부스 대형 화면의 QR을 찍어요'))))),
@@ -83,6 +95,16 @@ export async function joinRaid(q, t) {
     sfx.scan(); vibrate(80);
     openRaid(r);
   } catch (e) { sfx.error(); say(errorText(e.message), true); }
+}
+
+// QR 없이 참가 (운영자가 "QR 없이 참가"로 연 레이드)
+export async function joinOpenRaid(r) {
+  if (!S.online) return say('레이드는 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  try {
+    const x = await rpc('raid_join_open', { p_raid: r.id, p_line: bestLine(r.species_id) }, { retries: 0 });
+    sfx.scan(); vibrate(80);
+    openRaid(x);
+  } catch (e) { sfx.error(); say(errorText(e.message), true); loadMyRaids(); }
 }
 
 export function openRaid(r0) {

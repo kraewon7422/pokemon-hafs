@@ -98,8 +98,8 @@ function pocketList(cur, sel, pick, redraw) {
   if (cur === 'key') {
     const p = S.snap?.profile || {};
     return [h('div.stack',
-      h('div.bag-row', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '진화권'), h('br'), h('small', '도감에서 진화에 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
-      h('div.bag-row', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '부스 티켓'), h('br'), h('small', '부스에서 몬스터로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
+      h('div.bag-item', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '진화권'), h('br'), h('small', '도감에서 진화에 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
+      h('div.bag-item', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '부스 티켓'), h('br'), h('small', '부스에서 몬스터로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
       h('button.btn.big.primary', { onclick: () => { closeOverlay(); openBag(); } }, '티켓 QR 보여주기 (부스용)'))];
   }
   const want = cur === 'tool' ? ['hold', 'tool'] : [cur];
@@ -114,7 +114,7 @@ function pocketList(cur, sel, pick, redraw) {
   }
   return rows.map((x) => {
     const mv = x.it.pocket === 'tm' ? moveOf(x.it.move_id) : null;
-    return h(`button.bag-row${sel === x.key ? '.on' : ''}`, { onclick: () => pick(x.key) },
+    return h(`button.bag-item${sel === x.key ? '.on' : ''}`, { onclick: () => pick(x.key) },
       itemIcon(x.key),
       mv ? h('span.tm-line', h('b', h('small.tm-no', x.it.name.replace('특별 기술머신', '특별 No.').replace('영구 기술머신', '영구 No.').replace('기술머신', 'No.')), ` ${mv.name}`),
         h('small', h(`span.type.t-${mv.type}`, mv.type), ...[`위력 ${mv.power || '—'}`, `명중 ${mv.accuracy ?? '—'}`, `PP ${mv.pp}`].map((t, i) => h('span.nw', `${i ? ' · ' : ''}${t}`))))
@@ -220,7 +220,7 @@ function monState(m, sp, reopen) {
   return [
     h('div.exp-row', h('span', 'EXP'), h('span.stat-bar.exp', h('i', { style: { width: `${m.need ? (m.exp / m.need) * 100 : 100}%` } })),
       h('small', m.level >= 100 ? 'MAX' : `${m.exp}/${m.need}`)),
-    h('div.bag-row.slim', held ? itemIcon(m.held, 24) : h('i.item-ico.none'), h('span', h('small', '지닌 물건'), h('br'), h('b', held ? held.name : '없음')),
+    h('div.bag-item.slim', held ? itemIcon(m.held, 24) : h('i.item-ico.none'), h('span', h('small', '지닌 물건'), h('br'), h('b', held ? held.name : '없음')),
       held ? h('button.btn.small', { onclick: async () => {
         try { await rpc('bag_set_held', { p_line: m.line, p_item: null }, { retries: 0 }); toast(`${josa(held.name, '을', '를')} 가방에 넣었다.`); await loadBag({ notify: false }); reopen(); }
         catch (e) { toast(errorText(e.message)); }
