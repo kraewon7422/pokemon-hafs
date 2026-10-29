@@ -35,6 +35,12 @@ const qrName = (id) => S.catalog?.qrs.find((q) => q.id === id)?.name;
 const dexOf = (line, stage) => (line - 1) * 3 + stage;
 // shown dex number = position in the list (No.001…No.104, no gaps) — species.id keeps (line-1)*3+stage for the atlas
 const dexNo = (sp) => `No.${String(S.catalog.species.findIndex((x) => x.id === sp.id) + 1).padStart(3, '0')}`;
+// 도감 순서: 선생님 몬스터 먼저 (계열 번호 순), 전설(교장·교감)·비밀·탐구 전설은 맨 뒤. 도감 번호(No.)도 이 순서
+function sortDex(cat) {
+  const lineRank = new Map(cat.lines.map((l) => [l.id, l.rarity === 'legendary' || l.secret || l.bonus ? 1 : 0]));
+  cat.species.sort((a, b) => (lineRank.get(a.line_id) || 0) - (lineRank.get(b.line_id) || 0) || a.id - b.id);
+  return cat;
+}
 const collection = () => S.snap?.collection || [];
 const owned = (line) => collection().find((c) => c.line_id === line);
 const rules = () => ({ bag_max: 5, qr_daily_cap: 3, evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2], ...(S.snap?.rules || {}) });
@@ -104,6 +110,7 @@ async function boot() {
   }
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
+  if (S.catalog?.lines) sortDex(S.catalog);
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
 
@@ -196,6 +203,7 @@ async function loadCatalog() {
   }
   S.catalog = { lines: lines.data, species: species.data, qrs: qrs.data, at: new Date().toISOString(),
                 moves: moves.data || [], speciesMoves: speciesMoves.data || [], typeChart: typeChart.data || [] };
+  sortDex(S.catalog);
   await kv.set('catalog', S.catalog);
 }
 
@@ -608,7 +616,7 @@ function passwordSheet({ recover = false } = {}) {
         closeOverlay();
         toast(`비밀번호를 바꿨어요. 다른 기기의 로그인은 끊겼어요. 다음부터 ${what}와 새 비밀번호로 들어와요.`, 5000);
       },
-    }, h('small', recover ? `구글로 내 계정(${what})을 찾았어요. 새 비밀번호를 정해 주세요.` : `${what}의 비밀번호예요.`), pw, pw2, err, save)]);
+    }, h('small', recover ? `구글로 내 계정(${what})을 찾았어요. 새 비밀번호를 정해 주세요.` : `${what}의 비밀번호예요.`), withEye(pw), withEye(pw2), err, save)]);
 }
 
 // 설정 → 복구용 구글 연결: 로그아웃 → 연결할 구글로 로그인 → 이 계정 비밀번호 한 번 더 (renderLinkGoogle)
@@ -2162,6 +2170,22 @@ function tapToContinue(ov) {
 
 // ───────────────────────── login ─────────────────────────
 
+// 비밀번호 칸 + 오른쪽 눈 버튼: 누를 때마다 보이기 ↔ 가리기
+const EYE_OPEN = '<svg viewBox="0 0 16 16" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M5 4h6v1h2v1h1v1h1v2h-1v1h-1v1h-2v1H5v-1H3v-1H2V9H1V7h1V6h1V5h2zm1 2v1H5v2h1v1h4V9h1V7h-1V6zm1 1h2v2H7z"/></svg>';
+const EYE_SHUT = '<svg viewBox="0 0 16 16" width="20" height="20" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M1 7h1v1h1v1h2v1h6V9h2V8h1V7h1v2h-1v1h-1v1h1v1h-1v-1h-1v1H9v1H8v-1H7v1H6v-1H4v1H3v-1h1v-1H3v-1H2V9H1z"/></svg>';
+function withEye(input) {
+  const btn = h('button.pw-eye', { type: 'button', 'aria-label': '비밀번호 보기', 'aria-pressed': 'false', html: EYE_OPEN });
+  btn.onclick = () => {
+    const show = input.type === 'password';
+    input.type = show ? 'text' : 'password';
+    btn.innerHTML = show ? EYE_SHUT : EYE_OPEN;
+    btn.setAttribute('aria-pressed', String(show));
+    btn.setAttribute('aria-label', show ? '비밀번호 가리기' : '비밀번호 보기');
+    input.focus();
+  };
+  return h('div.pw-wrap', input, btn);
+}
+
 // 로그인 화면 (0018): 학생 = 고유번호 + 비밀번호, 비학생(선생님·학부모·손님·운영진) = 아이디 + 비밀번호, 맨 아래 구글 = 복구용.
 // 구글은 설정에서 "복구용 구글 연결"을 해 둔 경우에 내 계정으로 들어간다. 비밀번호를 잊으면 그 구글로 들어가서 새로 정한다.
 const linkIntent = () => { try { return JSON.parse(sessionStorage.getItem('linkGoogle') || 'null'); } catch { return null; } };
@@ -2248,7 +2272,7 @@ function studentLogin(err) {
         }
       } finally { go.disabled = false; }
     },
-  }, cid, pw, go, help);
+  }, cid, withEye(pw), go, help);
   return h('section.box.login-card', h('b.lc-title', pix('school'), ' 학생 · 고유번호로 로그인'), form,
     h('small', '처음 쓰는 번호면 지금 적은 비밀번호로 계정이 만들어져요.'));
 }
@@ -2282,7 +2306,7 @@ function idLogin(err) {
         }
       } finally { go.disabled = false; }
     },
-  }, idIn, pw, go, help);
+  }, idIn, withEye(pw), go, help);
   return h('section.box.login-card', h('b.lc-title', pix('door'), ' 비학생 · 아이디로 로그인'), form,
     h('small', '선생님·학부모·다른 학교 손님은 원하는 아이디를 정해서 들어와요 (랭킹 제외). 운영진은 운영자에게 받은 아이디로 들어와요.'));
 }
@@ -2358,7 +2382,7 @@ function resetRequestSheet(prefill = '') {
     h('small', '운영자가 확인하고 허용하면, 지금 정한 새 비밀번호로 바뀌어요. 이 번호에 연결된 구글 계정은 모두 풀려요.'),
     h('label.field', h('span', '고유번호'), cid),
     h('label.field', h('span', '이름'), nm),
-    h('label.field', h('span', '새 비밀번호'), pw), pw2,
+    h('label.field', h('span', '새 비밀번호'), withEye(pw)), withEye(pw2),
     note, err, send),
   ]);
 }
@@ -2387,7 +2411,7 @@ function renderRegister(info) {
   const sidRow = h('label.field', h('span', '고유번호'), sidIn,
     h('small', info.school_id ? '학교 계정에서 고유번호를 가져왔어요.' : '20~22기만 참여할 수 있어요. 22기 1번 → 022001'));
   const idRow = h('label.field', h('span', '아이디'), idIn, h('small', '영문 소문자로 시작, 4~16자 (영문·숫자·_ )'));
-  const pwRow = h('label.field', h('span', '비밀번호'), pwIn,
+  const pwRow = h('label.field', h('span', '비밀번호'), withEye(pwIn),
     h('small', '처음 쓰는 번호·아이디면 지금 정하는 비밀번호가 돼요. 이미 있으면 그 비밀번호를 넣어 주세요.'));
   const googleNote = h('small.muted', '이 구글 계정은 그 계정의 복구용으로 연결돼요. 다음부터 이 구글로 바로 들어올 수 있고, 비밀번호를 잊어도 이 구글로 다시 정할 수 있어요.');
   const seg = h('div.seg', { role: 'group', 'aria-label': '학생인가요' });
@@ -2503,7 +2527,7 @@ function renderLinkGoogle(link) {
     h('div.box.stack',
       h('b', '복구용 구글 연결'),
       h('p', `${keyLabel(link)} 계정의 비밀번호를 넣으면 지금 로그인한 구글이 그 계정에 연결돼요.`),
-      h('label.field', h('span', '비밀번호'), pw)),
+      h('label.field', h('span', '비밀번호'), withEye(pw))),
     err, go,
     h('button.btn.small.ghost', { type: 'button', onclick: cancel }, '취소'))));
 }
