@@ -51,3 +51,17 @@ export function text(g, str, x, y, { size = 8, color = '#fff', align = 'left', s
   if (shadow) { g.fillStyle = shadow; g.fillText(str, x + 1, y + 1); }
   g.fillStyle = color; g.fillText(str, x, y);
 }
+
+// Phaser 3 (web/vendor/phaser.min.js, MIT) — 처음 쓰는 게임이 열릴 때만 불러옴 (앱 첫 로딩은 그대로 가볍게, 한 번 받으면 sw 가 저장)
+let phaserP = null;
+export function loadPhaser() {
+  if (window.Phaser) return Promise.resolve(window.Phaser);
+  phaserP ||= new Promise((ok, bad) => {
+    const s = document.createElement('script');
+    s.src = new URL('../../vendor/phaser.min.js', import.meta.url).href;
+    s.onload = () => ok(window.Phaser);
+    s.onerror = () => { phaserP = null; bad(new Error('PHASER_LOAD')); };
+    document.head.append(s);
+  });
+  return phaserP;
+}

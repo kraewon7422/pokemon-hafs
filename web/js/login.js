@@ -7,7 +7,7 @@ import { sfx } from './sfx.js';
 import { h, $, toast, pix } from './ui.js';
 import { inAppBrowser, escapeInApp, isIOS, renderGoogleButton, devLogin, signOut } from './auth.js';
 import { S, app } from './state.js';
-import { afterLogin, closeOverlay, go, handlePendingScan, installButton, renderShell, sheet } from './app.js';
+import { ICONS, afterLogin, closeOverlay, go, handlePendingScan, installButton, renderShell, sheet } from './app.js';
 
 // ───────────────────────── first run: consent + how to play ─────────────────────────
 
@@ -58,7 +58,7 @@ export function showOnboarding(again = false) {
     ['school', '메인 부스로!', '부스에서 "티켓 QR"을 보여주면 선생님 몬스터를 받아요. 그 장소는 다시 찍을 수 있어요.'],
     ['spark', '퀴즈 → 진화', '몬스터를 받으면 쌤 퀴즈! 맞히면 진화권. 도감에서 몬스터를 눌러 진화시켜요.'],
     ['bolt', '레이드', '대형 화면에 보스가 나타나면 레이드 QR을 찍고 다 같이 마구 탭! 시간 안에 쓰러뜨리면 그 보스 몬스터 티켓을 받아요.'],
-    ['spark', '배틀', '배틀 탭에서 내 팀으로 겨뤄요. 친구 배틀 QR을 찍어 실시간 대결! 친구를 이기면 진화권 1장 (하루 3번).'],
+    ['tab:battle', '배틀', '배틀 탭에서 내 팀으로 겨뤄요. 친구 배틀 QR을 찍어 실시간 대결! 친구를 이기면 진화권 1장 (하루 3번).'],
   ];
   let i = 0;
   const icon = h('div', { style: { fontSize: '56px', textAlign: 'center' } });
@@ -68,7 +68,10 @@ export function showOnboarding(again = false) {
   const next = h('button.btn.big.primary');
   const draw = () => {
     const [a, b, c] = steps[i];
-    icon.replaceChildren(pix(a, 'xl')); title.textContent = `${i + 1}. ${b}`; body.textContent = c;
+    // 'tab:이름' = 아래 메뉴 바와 같은 아이콘 (배틀 등)
+    icon.replaceChildren(a.startsWith('tab:')
+      ? h('span.onb-tab-ico', { html: `<svg viewBox="0 0 28 28" fill="currentColor" aria-hidden="true">${ICONS[a.slice(4)]}</svg>` })
+      : pix(a, 'xl')); title.textContent = `${i + 1}. ${b}`; body.textContent = c;
     dots.textContent = steps.map((_, j) => (j === i ? '●' : '○')).join('');
     next.textContent = i < steps.length - 1 ? '다음 ▶' : '시작하기!';
   };

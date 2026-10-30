@@ -1,9 +1,24 @@
 // 폭탄 피하기: 하늘에서 떨어지는 폭탄 몬스터를 좌우로 피한다. 한 번 맞으면 끝.
 // 점수 = 버틴 초 × 10 + 땅에 떨어진 폭탄 × 5 (서버 상한: 초×30+50 → 폭탄 간격 최소 0.42초라 넉넉히 아래)
-import { pixelCanvas, drawMon, loop, text } from './common.js';
+// 배경 그림: web/img/games/dodge/dodge-bg.png (CC0, 출처는 같은 폴더 CREDITS.txt)
+// 판은 192×288 도트: 몬스터를 1배/정확히 1/2 배로만 그려 도트가 안 깨지면서, 화면에 비해 너무 크지 않게.
+import { pixelCanvas, loop, text } from './common.js';
+import { atlasImage, cellOf } from '../sprites.js';
 
-const W = 160, H = 240, GROUND = 214, MON = 24;
-const MIN_GAP = 0.42; // 폭탄 사이 최소 간격(초) — 점수 상한 지키는 핵심
+const W = 192, H = 288;
+const GR_Y = H - 64;         // 풀·흙길·덤불 띠 윗줄 (띠 높이 64)
+const GROUND = GR_Y + 35;    // 몬스터 발 / 폭탄이 떨어지는 줄 (흙길 가운데)
+const FO_Y = GR_Y + 18 - 92; // 숲 그림 윗줄 (숲 아래쪽이 풀 뒤로 숨게)
+const MT_Y = FO_Y - 56;      // 먼 산 그림 윗줄
+const MIN_GAP = 0.42;        // 폭탄 사이 최소 간격(초) — 점수 상한 지키는 핵심
+const BOMB_R = 5;            // 폭탄 맞는 범위 반지름 (그림 14칸보다 조금 작게)
+
+// 배경 그림 한 장(아틀라스) 안의 조각 위치 [x, y, w, h]
+const R = { mt: [0, 0, 384, 76], fo: [0, 76, 160, 92], gr: [160, 76, 128, 64], tr: [0, 168, 124, 106], c0: [124, 168, 173, 44], c1: [297, 168, 50, 27], c2: [347, 168, 30, 26], h0: [0, 274, 264, 80], h1: [0, 354, 266, 87] };
+const MT_FILL = '#8bb0e7', FO_FILL = '#6285ad';
+const ART = new Image();
+ART.src = new URL('../../img/games/dodge/dodge-bg.png', import.meta.url).href;
+const artReady = () => ART.complete && ART.naturalWidth > 0;
 
 // 폭탄 몬스터 도트 (14×13). k 테두리, r 윗색, h 반짝, d 윗색 그늘, e 눈동자, w 흰 배, g 배 그늘
 const BOMB = [
@@ -29,7 +44,6 @@ const KINDS = {
 };
 const BASE = { k: '#182030', e: '#182030', w: '#f4f4f0', g: '#b8c0cc' };
 
-// 폭탄 그림을 한 번만 만들어 둠 (매 프레임 drawImage)
 function bombSprite(kind) {
   const cv = document.createElement('canvas'); cv.width = 14; cv.height = 13;
   const x = cv.getContext('2d'); const pal = { ...BASE, ...KINDS[kind] };
@@ -37,46 +51,87 @@ function bombSprite(kind) {
   return cv;
 }
 
-// 배경(하늘 + 학교 + 운동장)도 한 번만
-function background() {
+// 하늘: 위가 진한 파랑 → 아래로 밝게, 띠 사이는 체크무늬 디더 (한 번만 그림)
+function skyCanvas() {
   const cv = document.createElement('canvas'); cv.width = W; cv.height = H;
   const x = cv.getContext('2d');
-  const sky = ['#5ca8f0', '#6cb4f4', '#80c0f6', '#94ccf8', '#a8d8fa', '#bce2fa'];
-  const band = Math.ceil(GROUND / sky.length);
+  const sky = ['#5a96ec', '#64a0f2', '#6eaaf8', '#78b0fc', '#82b6ff'];
+  const band = 16;
+  x.fillStyle = sky[sky.length - 1]; x.fillRect(0, 0, W, H);
   sky.forEach((c, i) => { x.fillStyle = c; x.fillRect(0, i * band, W, band); });
-  // 띠 사이 체크무늬 디더
   for (let i = 1; i < sky.length; i++) {
     x.fillStyle = sky[i];
-    for (let px = (i % 2); px < W; px += 2) x.fillRect(px, i * band - 1, 1, 1);
+    for (let px = 0; px < W; px += 2) x.fillRect(px + (i % 2), i * band - 1, 1, 1);
+    x.fillStyle = sky[i - 1];
+    for (let px = 0; px < W; px += 2) x.fillRect(px + ((i + 1) % 2), i * band, 1, 1);
   }
-  // 먼 산
-  x.fillStyle = '#9cc4a0';
-  for (let px = 0; px < W; px++) { const hh = 10 + Math.round(6 * Math.sin(px / 13) + 4 * Math.sin(px / 5.3)); x.fillRect(px, GROUND - 22 - hh, 1, hh + 22); }
-  // 학교 건물
-  const bx = 92, by = GROUND - 46;
-  x.fillStyle = '#e8dcc0'; x.fillRect(bx, by, 60, 46);
-  x.fillStyle = '#c8b898'; x.fillRect(bx, by, 60, 3); x.fillRect(bx + 58, by, 2, 46);
-  x.fillStyle = '#d06048'; x.fillRect(bx + 24, by - 10, 12, 10);
-  x.fillStyle = '#f4f0e0'; x.fillRect(bx + 27, by - 7, 6, 6);
-  x.fillStyle = '#182030'; x.fillRect(bx + 29, by - 6, 1, 3); x.fillRect(bx + 30, by - 4, 2, 1);
-  x.fillStyle = '#6890b8';
-  for (let r = 0; r < 3; r++) for (let q = 0; q < 6; q++) x.fillRect(bx + 4 + q * 9, by + 7 + r * 12, 6, 7);
-  x.fillStyle = '#a8c8e8';
-  for (let r = 0; r < 3; r++) for (let q = 0; q < 6; q++) x.fillRect(bx + 4 + q * 9, by + 7 + r * 12, 2, 2);
-  x.fillStyle = '#8c6040'; x.fillRect(bx + 26, GROUND - 9, 8, 9);
-  // 나무
-  [[14, 30], [40, 24]].forEach(([tx, th]) => {
-    x.fillStyle = '#7a5030'; x.fillRect(tx + 5, GROUND - th + 12, 3, th - 12);
-    x.fillStyle = '#3c9048'; x.fillRect(tx, GROUND - th, 13, 14); x.fillRect(tx + 2, GROUND - th - 3, 9, 3);
-    x.fillStyle = '#58b058'; x.fillRect(tx + 2, GROUND - th + 1, 4, 3);
-  });
-  // 운동장: 잔디 줄 + 흙
-  x.fillStyle = '#48a048'; x.fillRect(0, GROUND, W, 4);
-  x.fillStyle = '#68c058'; for (let px = 0; px < W; px += 3) x.fillRect(px, GROUND - 1, 1, 2);
-  x.fillStyle = '#d8a868'; x.fillRect(0, GROUND + 4, W, H - GROUND - 4);
-  x.fillStyle = '#c09050'; for (let px = 0; px < W; px += 7) x.fillRect(px + ((px / 7) % 2) * 3, GROUND + 9 + ((px / 7) % 3) * 5, 2, 1);
-  x.fillStyle = '#f4f0e0'; x.fillRect(0, GROUND + 15, W, 1);
   return cv;
+}
+
+// 내 몬스터 도트: 64×64 칸에서 실제 그림 부분만 잘라 캐시.
+// 작은 몬스터(≤40)는 1배 그대로, 큰 몬스터는 2×2 칸마다 대표색 하나(테두리 우선)로 정확히 반으로 줄임.
+// body = 실제 몸통 폭 (투명·삐죽 나온 끝은 빼고, 3칸 이상 칠해진 세로줄만 셈) → 맞는 범위 계산용
+const lum = (d, i) => 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+function monSprites(dex) {
+  if (!atlasImage.complete || !atlasImage.naturalWidth) return null;
+  const [sx, sy] = cellOf(dex);
+  const cell = document.createElement('canvas'); cell.width = cell.height = 64;
+  const cg = cell.getContext('2d'); cg.drawImage(atlasImage, sx, sy, 64, 64, 0, 0, 64, 64);
+  const src = cg.getImageData(0, 0, 64, 64).data;
+  const crop = (cv, s) => {
+    const d = cv.getContext('2d').getImageData(0, 0, s, s).data;
+    let x0 = s, y0 = s, x1 = -1, y1 = -1;
+    for (let y = 0; y < s; y++) for (let x = 0; x < s; x++) if (d[(y * s + x) * 4 + 3] > 127) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if (x1 < 0) return { cv, w: s, h: s, body: s };
+    const w = x1 - x0 + 1, h = y1 - y0 + 1;
+    const need = Math.max(3, Math.round(h * 0.25));
+    let body = 0;
+    for (let x = x0; x <= x1; x++) { let n = 0; for (let y = y0; y <= y1; y++) if (d[(y * s + x) * 4 + 3] > 127) n++; if (n >= need) body++; }
+    const out = document.createElement('canvas'); out.width = w; out.height = h;
+    out.getContext('2d').drawImage(cv, x0, y0, w, h, 0, 0, w, h);
+    return { cv: out, w, h, body: body || w };
+  };
+  const full = crop(cell, 64);
+  if (Math.max(full.w, full.h) <= 40) return { full, play: full };
+  const half = document.createElement('canvas'); half.width = half.height = 32;
+  const hg = half.getContext('2d'); const img = hg.createImageData(32, 32); const o = img.data;
+  for (let by = 0; by < 32; by++) for (let bx = 0; bx < 32; bx++) {
+    const ids = [0, 1, 64, 65].map((k) => ((by * 2) * 64 + bx * 2 + k) * 4).filter((i) => src[i + 3] > 127);
+    if (!ids.length) continue;
+    const dark = ids.filter((i) => lum(src, i) < 64);
+    let pick;
+    if (dark.length) pick = dark.reduce((a, b) => (lum(src, b) < lum(src, a) ? b : a));   // 테두리·눈 살리기
+    else if (ids.length < 2) continue;                                                    // 가장자리 한 점은 버림
+    else {
+      const cnt = new Map();
+      ids.forEach((i) => { const k = (src[i] << 16) | (src[i + 1] << 8) | src[i + 2]; cnt.set(k, (cnt.get(k) || 0) + 1); });
+      let best = -1, bk = 0; cnt.forEach((n, k) => { if (n > best) { best = n; bk = k; } });
+      pick = ids.find((i) => ((src[i] << 16) | (src[i + 1] << 8) | src[i + 2]) === bk);
+    }
+    const j = (by * 32 + bx) * 4; o[j] = src[pick]; o[j + 1] = src[pick + 1]; o[j + 2] = src[pick + 2]; o[j + 3] = 255;
+  }
+  hg.putImageData(img, 0, 0);
+  return { full, play: crop(half, 32) };
+}
+
+// 도트 패널 (HUD·제목): 남색 판 + 밝은 윗줄 + 어두운 아랫줄, 모서리는 한 칸 깎음
+function panel(g, x, y, w, h) {
+  g.fillStyle = '#182030'; g.fillRect(x + 1, y, w - 2, h); g.fillRect(x, y + 1, w, h - 2);
+  g.fillStyle = '#2c3c64'; g.fillRect(x + 1, y + 1, w - 2, h - 2);
+  g.fillStyle = '#4a6098'; g.fillRect(x + 2, y + 1, w - 4, 1);
+  g.fillStyle = '#202c4c'; g.fillRect(x + 2, y + h - 2, w - 4, 1);
+}
+// 작은 시계 / 별 아이콘 (7×7)
+function iconClock(g, x, y) {
+  g.fillStyle = '#182030'; g.fillRect(x + 1, y, 5, 7); g.fillRect(x, y + 1, 7, 5);
+  g.fillStyle = '#f4f4f0'; g.fillRect(x + 1, y + 1, 5, 5);
+  g.fillStyle = '#182030'; g.fillRect(x + 3, y + 2, 1, 2); g.fillRect(x + 4, y + 3, 1, 1);
+}
+const STAR = ['...#...', '..###..', '#######', '.#####.', '..###..', '.##.##.', '.#...#.'];
+function iconStar(g, x, y) {
+  g.fillStyle = '#ffe040';
+  STAR.forEach((row, j) => [...row].forEach((ch, i) => { if (ch === '#') g.fillRect(x + i, y + j, 1, 1); }));
+  g.fillStyle = '#fff8c0'; g.fillRect(x + 3, y + 1, 1, 2);
 }
 
 export default {
@@ -88,16 +143,19 @@ export default {
     stage.style.touchAction = 'none';
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     const SPR = { norm: bombSprite('norm'), fast: bombSprite('fast'), zig: bombSprite('zig') };
-    const BG = background();
+    const SKY = skyCanvas();
     const dex = api.partner();
+    let MS = monSprites(dex);
 
     let mode = 'ready'; // ready → play → boom
     let px = W / 2, target = null, keyDir = 0, face = false, walk = 0;
     let t = 0, t0 = 0, spawnIn = 1, dodged = 0, bombs = [], fx = [], boomT = 0, ended = false, shake = 0;
-    let anim = 0, endTimer = 0;
-    const clouds = [{ x: 10, y: 24, s: 4 }, { x: 90, y: 50, s: 3 }, { x: 140, y: 14, s: 5 }];
+    let anim = 0, drift = 0, endTimer = 0, paused = false, pausedAt = 0, skipDt = false;
 
     const score = () => Math.floor(t * 10) + dodged * 5;
+    const playW = () => (MS ? MS.play.w : 24), playH = () => (MS ? MS.play.h : 24);
+    // 맞는 범위: 몸통 폭의 약 65% (가장자리 몇 칸 스치는 건 봐줌), 키는 아래 70%
+    const hitHalf = () => Math.max(5, Math.round((MS ? MS.play.body : 20) * 0.33));
 
     const begin = () => {
       mode = 'play'; t = 0; t0 = performance.now(); spawnIn = 0.8; dodged = 0; bombs = []; fx = [];
@@ -110,11 +168,12 @@ export default {
       const pFast = Math.min(0.3, Math.max(0, (t - 10) * 0.012));
       const pZig = Math.min(0.3, Math.max(0, (t - 18) * 0.012));
       const kind = r < pZig ? 'zig' : r < pZig + pFast ? 'fast' : 'norm';
-      const base = Math.min(170, 62 + t * 2.4);
+      // 난이도 (.work/sim_dodge2.mjs 모의 실험 B안): 처음엔 천천히, 오래 버틸수록 계속 빨라짐 → 중간값 약 20~30초, 잘할수록 오래 버팀
+      const base = Math.min(225, 60 + t * 2.0);
       const vy = base * (kind === 'fast' ? 1.5 : kind === 'zig' ? 0.85 : 1) * (0.9 + Math.random() * 0.2);
       // 가끔은 내 몬스터 쪽을 노림 (가만히 있으면 맞도록)
-      const x = Math.random() < Math.min(0.35, 0.12 + t * 0.01) ? Math.max(8, Math.min(W - 8, px + (Math.random() - 0.5) * 16)) : 8 + Math.random() * (W - 16);
-      bombs.push({ kind, x, x0: x, y: -14, vy, ph: Math.random() * 6.28, amp: 14 + Math.random() * 10 });
+      const x = Math.random() < (t < 8 ? 0 : Math.min(0.32, (t - 8) * 0.007)) ? Math.max(8, Math.min(W - 8, px + (Math.random() - 0.5) * 20)) : 8 + Math.random() * (W - 16);
+      bombs.push({ kind, x, x0: x, y: -14, vy, ph: Math.random() * 6.28, amp: 17 + Math.random() * 12 });
     };
 
     const boom = (bx, by) => {
@@ -136,13 +195,15 @@ export default {
     let down = false;
     const onDown = (e) => {
       e.preventDefault();
+      if (paused) return;
       if (mode === 'ready') { begin(); return; }
       if (mode !== 'play') return;
       down = true; stage.setPointerCapture?.(e.pointerId); target = toX(e);
     };
-    const onMove = (e) => { if (down && mode === 'play') target = toX(e); };
+    const onMove = (e) => { if (down && mode === 'play' && !paused) target = toX(e); };
     const onUp = () => { down = false; };
     const onKey = (e) => {
+      if (paused) return;
       const k = e.key;
       if (mode === 'ready' && (k === ' ' || k === 'Enter' || k === 'ArrowLeft' || k === 'ArrowRight')) { e.preventDefault(); begin(); return; }
       if (k === 'ArrowLeft') { keyDir = -1; target = null; e.preventDefault(); }
@@ -151,40 +212,46 @@ export default {
     const onKeyUp = (e) => {
       if ((e.key === 'ArrowLeft' && keyDir < 0) || (e.key === 'ArrowRight' && keyDir > 0)) keyDir = 0;
     };
+    // 랭킹 창이 게임 위에 열리면 멈춤: 멈춘 시간은 점수·ms 에 안 들어감
+    const onPause = () => { if (paused) return; paused = true; pausedAt = performance.now(); keyDir = 0; down = false; };
+    const onResume = () => { if (!paused) return; paused = false; t0 += performance.now() - pausedAt; skipDt = true; };
     const noScroll = (e) => e.preventDefault();
     stage.addEventListener('pointerdown', onDown);
     stage.addEventListener('pointermove', onMove);
     stage.addEventListener('pointerup', onUp);
     stage.addEventListener('pointercancel', onUp);
     stage.addEventListener('touchmove', noScroll, { passive: false });
+    stage.addEventListener('mg-pause', onPause);
+    stage.addEventListener('mg-resume', onResume);
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
 
     const update = (dt) => {
       anim += dt;
-      clouds.forEach((cl) => { cl.x += cl.s * dt; if (cl.x > W + 20) cl.x = -30; });
+      if (!reduce) drift += dt;
       if (mode === 'play') {
         t += dt;
         // 몬스터 이동
-        const sp = 125;
+        const sp = 160, half = Math.ceil(playW() / 2);
         let vx = 0;
         if (keyDir) vx = keyDir * sp;
-        else if (target != null) { const d = target - px; vx = Math.abs(d) < 1 ? d / dt : Math.sign(d) * sp; if (Math.abs(d) < sp * dt) vx = d / dt; }
-        px = Math.max(10, Math.min(W - 10, px + vx * dt));
+        else if (target != null) { const d = target - px; vx = Math.sign(d) * sp; if (Math.abs(d) < sp * dt) vx = dt ? d / dt : 0; }
+        px = Math.max(half, Math.min(W - half, px + vx * dt));
         if (Math.abs(vx) > 5) { face = vx > 0; walk += dt * 12; } else walk = 0;
         // 폭탄 나오기: 간격이 점점 짧아짐 (최소 MIN_GAP)
         spawnIn -= dt;
-        if (spawnIn <= 0) { spawn(); spawnIn = Math.max(MIN_GAP, 1.0 * Math.exp(-t / 28)) * (0.8 + Math.random() * 0.4); spawnIn = Math.max(MIN_GAP, spawnIn); }
-        // 폭탄 떨어짐 + 부딪힘 검사
+        if (spawnIn <= 0) { spawn(); spawnIn = Math.max(MIN_GAP, 1.2 * Math.exp(-t / 38) * (0.8 + Math.random() * 0.4)); }
+        // 폭탄 떨어짐 + 부딪힘 검사 (몸통 상자 vs 폭탄 원 — 둘 다 그림보다 조금 작게)
+        const hw = hitHalf() + BOMB_R, top = GROUND - playH() * 0.7 - BOMB_R;
         for (const b of bombs) {
           b.y += b.vy * dt;
           if (b.kind === 'zig') { b.ph += dt * 4; b.x = Math.max(7, Math.min(W - 7, b.x0 + Math.sin(b.ph) * b.amp)); }
-          const cy = b.y + 6.5;
-          if (Math.abs(b.x - px) < 10 && cy > GROUND - 20 && cy < GROUND + 2) { boom(b.x, cy); return; }
+          const cy = b.y + 7;
+          if (Math.abs(b.x - px) < hw && cy > top && cy < GROUND) { boom(b.x, cy); return; }
           if (b.y + 13 >= GROUND && !b.done) {
             b.done = true; dodged++;
-            fx.push({ x: b.x, y: GROUND - 6, vx: 0, vy: -18, life: 0.7, txt: '+5' });
-            for (let i = 0; i < 4; i++) fx.push({ x: b.x, y: GROUND - 1, vx: (i - 1.5) * 18, vy: -14, life: 0.3, c: '#c8a070', s: 1 });
+            fx.push({ x: b.x, y: GROUND - 8, vx: 0, vy: -18, life: 0.7, txt: '+5' });
+            for (let i = 0; i < 4; i++) fx.push({ x: b.x, y: GROUND - 1, vx: (i - 1.5) * 18, vy: -14, life: 0.3, c: '#d2d198', s: 1 });
           }
         }
         bombs = bombs.filter((b) => !b.done);
@@ -198,6 +265,39 @@ export default {
       fx = fx.filter((p) => p.life > 0);
     };
 
+    // 아틀라스 조각 그리기 (dx 는 반올림해서 픽셀 맞춤)
+    const piece = (k, dx, dy) => { const [sx, sy, w, h] = R[k]; g.drawImage(ART, sx, sy, w, h, Math.round(dx), Math.round(dy), w, h); };
+    // 가로로 이어붙이기 (period 폭마다 반복, 화면 전체 덮음)
+    const tiled = (k, ox, dy) => { const w = R[k][2]; for (let x = ((Math.round(ox) % w) + w) % w - w; x < W; x += w) piece(k, x, dy); };
+    // 화면을 가로질러 흘러가는 구름: speed px/s, 화면 밖으로 나가면 반대편에서 다시
+    const drifting = (k, x0, y, speed) => { const w = R[k][2]; const span = W + w + 20; piece(k, (((x0 + drift * speed) % span) + span) % span - w, y); };
+
+    const drawScene = () => {
+      g.drawImage(SKY, 0, 0);
+      if (!artReady()) {
+        g.fillStyle = '#48a048'; g.fillRect(0, GROUND, W, H - GROUND);
+        return;
+      }
+      const par = mode === 'ready' ? 0 : px - W / 2;   // 내 몬스터 위치 따라 살짝 밀리는 시차
+      // 높은 하늘 구름 (느리게)
+      drifting('h0', 20, -18, 2.2);
+      drifting('h1', 220, 26, 1.4);
+      // 산 뒤로 지나가는 뭉게구름
+      drifting('c0', 40, MT_Y + 4, 3.2);
+      drifting('c1', 280, MT_Y + 9, 3.2);
+      drifting('c2', 360, MT_Y + 7, 3.2);
+      // 먼 산 (384 폭 중 가운데 부분) + 그 아래 채움
+      piece('mt', -96 - par * 0.05, MT_Y);
+      g.fillStyle = MT_FILL; g.fillRect(0, MT_Y + 76, W, FO_Y + 40 - MT_Y - 76);
+      // 숲 (160 폭 이어붙임)
+      tiled('fo', -par * 0.12, FO_Y);
+      g.fillStyle = FO_FILL; g.fillRect(0, FO_Y + 92, W, GR_Y + 20 - FO_Y - 92);
+      // 큰 나무 (오른쪽, 조금 더 빠른 시차)
+      piece('tr', W - 70 - par * 0.2, GR_Y - 84);
+      // 풀 + 흙길 + 덤불 (128 폭 이어붙임)
+      tiled('gr', 0, GR_Y);
+    };
+
     const drawBomb = (b) => {
       const bx = Math.round(b.x - 7), by = Math.round(b.y);
       g.drawImage(SPR[b.kind], bx, by);
@@ -207,45 +307,76 @@ export default {
       g.fillStyle = on ? '#ffe040' : '#ff8c28'; g.fillRect(bx + 10, by - 5, 1, 2); g.fillRect(bx + 9, by - 4, 3, 1);
       if (on) { g.fillStyle = '#fff8c0'; g.fillRect(bx + 10, by - 4, 1, 1); g.fillRect(bx + 12, by - 6, 1, 1); g.fillRect(bx + 8, by - 6, 1, 1); }
     };
+    // 떨어질 자리 그림자: 가까워질수록 커짐
+    const drawBombShadow = (b) => {
+      const k = Math.max(0, Math.min(1, (b.y + 13) / GROUND));
+      const w = 2 + Math.round(k * 8);
+      g.fillStyle = 'rgba(24,32,48,0.28)'; g.fillRect(Math.round(b.x - w / 2), GROUND - 1, w, 2);
+    };
+
+    // 몬스터 한 마리 (발이 footY 에 닿게, 가운데가 cx)
+    const drawSprite = (s, cx, footY, flip) => {
+      const x = Math.round(cx - s.w / 2), y = Math.round(footY - s.h);
+      if (flip) { g.save(); g.translate(x + s.w, y); g.scale(-1, 1); g.drawImage(s.cv, 0, 0); g.restore(); }
+      else g.drawImage(s.cv, x, y);
+    };
 
     const drawPlayer = () => {
-      const x = Math.round(px - MON / 2);
+      if (!MS) return;
+      const s = MS.play;
       if (mode === 'boom') {
         // 쓰러짐: 깜빡이다 아래로 가라앉음
         const p = Math.min(1, Math.max(0, (boomT - 0.25) / 0.6));
         if (boomT < 0.25 && Math.floor(boomT * 20) % 2) return;
-        g.save(); g.beginPath(); g.rect(0, 0, W, GROUND); g.clip();
-        drawMon(g, dex, x, GROUND - MON + Math.round(p * MON * 0.9), MON, face);
+        g.save(); g.beginPath(); g.rect(0, 0, W, GROUND + 1); g.clip();
+        drawSprite(s, px, GROUND + 1 + Math.round(p * s.h * 0.9), face);
         g.restore();
         return;
       }
       const hop = walk ? Math.round(Math.abs(Math.sin(walk)) * 2) : 0;
-      // 그림자
-      g.fillStyle = 'rgba(24,32,48,0.25)'; g.fillRect(x + 5, GROUND, MON - 10, 2);
-      drawMon(g, dex, x, GROUND - MON - hop + 1, MON, face);
+      g.fillStyle = 'rgba(24,32,48,0.3)'; g.fillRect(Math.round(px - s.w * 0.35), GROUND, Math.round(s.w * 0.7), 2);
+      drawSprite(s, px, GROUND + 1 - hop, face);
+    };
+
+    const drawHud = () => {
+      panel(g, 3, 3, 56, 15);
+      iconClock(g, 7, 7);
+      text(g, `${t.toFixed(1)}초`, 17, 6, { size: 8 });
+      panel(g, W - 63, 3, 60, 15);
+      iconStar(g, W - 59, 7);
+      text(g, `${score()}점`, W - 7, 6, { size: 8, align: 'right', color: '#ffe040' });
     };
 
     const draw = () => {
+      if (!MS) MS = monSprites(dex);
       const sx = shake ? Math.round((Math.random() - 0.5) * shake * 2) : 0;
       const sy = shake ? Math.round((Math.random() - 0.5) * shake * 2) : 0;
+      g.fillStyle = '#82b6ff'; g.fillRect(0, 0, W, H);
       g.save(); g.translate(sx, sy);
-      g.drawImage(BG, 0, 0);
-      g.fillStyle = '#f4f8ff';
-      clouds.forEach((cl) => { const x = Math.round(cl.x), y = cl.y; g.fillRect(x, y, 22, 5); g.fillRect(x + 4, y - 3, 10, 3); g.fillRect(x + 12, y - 5, 7, 5); });
+      drawScene();
       if (mode === 'ready') {
-        const bob = Math.round(Math.sin(anim * 3) * 3);
-        g.fillStyle = 'rgba(24,32,48,0.25)'; g.fillRect(W / 2 - 11, GROUND, 22, 2);
-        drawMon(g, dex, W / 2 - 16, GROUND - 32 + bob - 2, 32, false);
-        drawBomb({ kind: 'norm', x: 40, y: 92 + Math.round(Math.sin(anim * 2) * 3), ph: 0 });
-        drawBomb({ kind: 'zig', x: 120, y: 74 + Math.round(Math.sin(anim * 2 + 1) * 3), ph: 1 });
-        drawBomb({ kind: 'fast', x: 80, y: 120 + Math.round(Math.sin(anim * 2 + 2) * 3), ph: 2 });
-        g.fillStyle = 'rgba(24,32,48,0.55)'; g.fillRect(14, 26, W - 28, 38);
-        text(g, '폭탄 피하기', W / 2, 30, { size: 12, align: 'center', color: '#ffe040' });
-        text(g, '좌우로 움직여 피해요', W / 2, 48, { size: 8, align: 'center' });
-        if (Math.floor(anim * 2) % 2 === 0) text(g, '탭해서 시작', W / 2, 150, { size: 12, align: 'center' });
+        const bob = reduce ? 0 : Math.round(Math.sin(anim * 3) * 2);
+        if (MS) {
+          const s = MS.full;
+          g.fillStyle = 'rgba(24,32,48,0.3)'; g.fillRect(Math.round(W / 2 - s.w * 0.35), GROUND, Math.round(s.w * 0.7), 2);
+          drawSprite(s, W / 2, GROUND + 1 - Math.max(0, bob), false);
+        }
+        const fl = (k) => (reduce ? 0 : Math.round(Math.sin(anim * 2 + k) * 3));
+        drawBomb({ kind: 'norm', x: 40, y: 124 + fl(0), ph: 0 });
+        drawBomb({ kind: 'zig', x: 152, y: 108 + fl(1), ph: 1 });
+        drawBomb({ kind: 'fast', x: 96, y: 152 + fl(2), ph: 2 });
+        panel(g, 16, 30, W - 32, 48);
+        text(g, '폭탄 피하기', W / 2, 36, { size: 12, align: 'center', color: '#ffe040' });
+        text(g, '좌우로 움직여 피해요', W / 2, 54, { size: 8, align: 'center' });
+        text(g, '떨어진 폭탄 하나에 +5', W / 2, 64, { size: 8, align: 'center', color: '#9cc8ff' });
+        if (reduce || Math.floor(anim * 2) % 2 === 0) {
+          panel(g, W / 2 - 46, 186, 92, 18);
+          text(g, '탭해서 시작', W / 2, 189, { size: 8, align: 'center' });
+        }
       } else {
-        bombs.forEach(drawBomb);
+        bombs.forEach(drawBombShadow);
         drawPlayer();
+        bombs.forEach(drawBomb);
       }
       fx.forEach((p) => {
         if (p.txt) text(g, p.txt, Math.round(p.x), Math.round(p.y), { size: 8, align: 'center', color: '#ffe040' });
@@ -261,20 +392,19 @@ export default {
           if (boomT < 0.15) { g.fillStyle = '#ffe040'; g.fillRect(cx - 6, cy - 6, 12, 12); g.fillStyle = '#fff8c0'; g.fillRect(cx - 3, cy - 3, 6, 6); }
         }
         if (boomT > 0.15) {
-          g.fillStyle = 'rgba(24,32,48,0.45)'; g.fillRect(36, 78, W - 72, 36);
-          text(g, '펑!', W / 2, 82, { size: 24, align: 'center', color: '#ff6030' });
+          panel(g, W / 2 - 44, 100, 88, 34);
+          text(g, '펑!', W / 2, 104, { size: 24, align: 'center', color: '#ff6030' });
         }
       }
       g.restore();
-      // 위 HUD
-      if (mode !== 'ready') {
-        g.fillStyle = 'rgba(24,32,48,0.55)'; g.fillRect(0, 0, W, 13);
-        text(g, `${t.toFixed(1)}초`, 4, 2, { size: 8 });
-        text(g, `${score()}점`, W - 4, 2, { size: 8, align: 'right', color: '#ffe040' });
-      }
+      if (mode !== 'ready') drawHud();
     };
 
-    const stopLoop = loop((dt) => { update(dt); draw(); });
+    const stopLoop = loop((dt) => {
+      if (paused) return;                       // 멈춘 동안은 그림도 그대로
+      if (skipDt) { skipDt = false; dt = 0; }   // 다시 시작할 때 한 프레임 건너뜀 (튀지 않게)
+      update(dt); draw();
+    });
 
     return () => {
       stopLoop(); stopFit(); clearTimeout(endTimer); ended = true;
@@ -283,6 +413,8 @@ export default {
       stage.removeEventListener('pointerup', onUp);
       stage.removeEventListener('pointercancel', onUp);
       stage.removeEventListener('touchmove', noScroll);
+      stage.removeEventListener('mg-pause', onPause);
+      stage.removeEventListener('mg-resume', onResume);
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
     };

@@ -130,7 +130,7 @@ export function viewBattle() {
       h('div.banner', h('b', '내 배틀 팀'), h('button.btn.small', { onclick: teamPicker, disabled: !collection().length }, '팀 바꾸기')),
       fmtSeg(S.btFmt, (k) => { S.btFmt = k; renderTab(); }),
       teamStrip(team),
-      h('button.btn.big.primary', { disabled: !team.length || !!pvp, onclick: () => startBattle('cpu', null, S.btFmt) }, pix('spark'), `연습 배틀 · ${FMT[S.btFmt].label} (보상 없음)`),
+      h('button.btn.big.primary', { disabled: !team.length || !!pvp, onclick: () => startBattle('cpu', null, S.btFmt) }, pix('spark'), h('span.btn-label', `연습 배틀 · ${FMT[S.btFmt].label}`), h('small.btn-sub', '보상 없음')),
       h('button.btn.big', { disabled: !team.length || !!pvp, onclick: openScanner }, pix('camera'), '친구 배틀 QR 찍기'),
       h('button.btn.big', { onclick: showBattleQr }, '내 배틀 QR 보여주기'),
       h('small.muted', '친구가 내 QR을 찍으면 실시간 배틀을 신청하거나, 내 팀을 AI가 조종하는 배틀을 할 수 있어요. 1 대 1인지 2 대 2인지는 QR을 보여주는 사람이 정해요.')),

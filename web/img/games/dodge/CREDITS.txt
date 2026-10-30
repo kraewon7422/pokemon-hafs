@@ -1,0 +1,25 @@
+폭탄 피하기 (dodge) background art credits
+==========================================
+
+dodge-bg.png is a derived atlas (cropped, cloud layers separated, high clouds recoloured to the
+sky palette with Python Pillow). All source art is CC0 1.0 (public domain); no attribution is
+required, but we credit the authors with thanks.
+
+1) Mountains, low clouds, pine forest, big tree, grass/path/bush strip
+   Pack:    "Country Side Platform Tiles" (country-platform-files.zip:
+            layers/country-platform-back.png, country-platform-forest.png,
+            country-platform-tiles-example.png)
+   Author:  Luis Zuno (@ansimuz)  https://ansimuz.com
+   Source:  https://opengameart.org/content/country-side-platform-tiles
+   License: CC0 1.0 Universal (Public Domain Dedication) - per the pack's license.txt
+            ("This piece is under a CC0 License")
+
+2) High wispy clouds (recoloured)
+   Pack:    "Background Clouds And Mountains Parallax"
+            (Layers/Clouds04.png, Layers/Cloud03.png)
+   Author:  FabinhoSC (Fábio)
+   Source:  https://opengameart.org/content/background-clouds-and-mountains-parallax
+   License: CC0 1.0 Universal (Public Domain) - per the page and the pack's Read.txt
+
+Downloaded 2026-10-30 via the Wayback Machine mirror of opengameart.org.
+The bomb sprites, HUD panels and icons are original code-drawn pixel art in web/js/games/dodge.js.

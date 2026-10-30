@@ -1,0 +1,27 @@
+몬스터 서핑 (surf) art credits
+==============================
+
+surf-props.png is a packed atlas (cropped with Python Pillow; rocks and the sand tile recoloured
+to the game's sea/sand palette, stray grass and soft shadow pixels removed). All source art is
+CC0 1.0 (public domain); no attribution is required, but we credit the authors with thanks.
+The atlas rectangles are listed in web/js/games/surf.js (const PROPS).
+
+1) rockBig, rock1, rock2, rock3 (recoloured grey-blue), log, raft, barrel, crate, pad2, pad3 (lily pads)
+   Pack:    "Zelda-like tilesets and sprites" (gfx_3.zip -> gfx/Overworld.png)
+   Author:  ArMM1998
+   Source:  https://opengameart.org/content/zelda-like-tilesets-and-sprites
+   License: CC0 1.0 Universal (Public Domain Dedication), as stated on the page
+
+2) sandTile (recoloured), pebbleS, pebbleL, shell1-4, bucket, bucketB, shovel, star1, star2
+   Pack:    "Beach tileset" (beach_tiles_1.png)
+   Author:  ChikenwingJJA
+   Source:  https://opengameart.org/content/beach-tileset
+   License: CC0 1.0 Universal (Public Domain Dedication), as stated on the page
+
+Downloaded 2026-10-30 via the Wayback Machine mirror of opengameart.org
+(https://web.archive.org/web/2024/https://opengameart.org/content/<slug>).
+
+Everything else in the game (sea, shallows/foam, islands, palm trees, pier, buoy, seaweed,
+whirlpool, wave ramp, octopus monster, tentacles, surfboard, coins, hearts, bolts, HUD) is
+original code-drawn pixel art in web/js/games/surf.js. The surfer is the player's own monster
+from web/sprites/atlas.png, shrunk 2:1 with a per-2x2-block majority filter.
