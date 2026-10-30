@@ -64,6 +64,9 @@ export async function boot() {
         w?.addEventListener('statechange', () => { if (w.state === 'installed') offer(w); });
       });
       setInterval(() => reg.update().catch(() => {}), 10 * 60_000);
+      // 첫 화면이 뜬 뒤 (4초 뒤, 폰이 한가할 때) 나머지 파일을 뒤에서 받아 둠 → 미니게임·지도·QR 카메라도 오프라인 가능
+      const warm = () => navigator.serviceWorker.ready.then((r) => r.active?.postMessage('warm')).catch(() => {});
+      setTimeout(() => (window.requestIdleCallback ? requestIdleCallback(warm, { timeout: 8000 }) : warm()), 4000);
     }).catch(() => {});
   }
 

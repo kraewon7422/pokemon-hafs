@@ -1190,9 +1190,32 @@ def ears(s, kind, g, rp, inner):
                          (32 + sg * (rx + 2 * k), cy + 3)]), inner)
 
 
+def fish_face(s, g, T, st):
+    rp = T['body']
+    rx, ry, cy = g['rx'], g['ry'], g['cy']
+    bx, by, bry = 32 - rx * .14, cy + ry * .16, ry * .68        # 몸통 타원 (body_shape 의 fish 와 같은 값)
+    front = bx - rx * 1.02                                       # 코끝 x
+    ex, eyy = round(front + rx * .40), round(by - bry * .30)
+    r = (1.7, 2.2, 2.8)[st - 1]
+    s.fx(set(ell(ex, eyy, r + .9, r + .9)), WHITE)               # 흰자 (둥근 물고기 눈)
+    pupil = set(ell(ex - .6, eyy + .2, r * .72, r * .8))
+    s.fx(pupil, EYE)
+    s.px(ex - 1 - (1 if st == 3 else 0), eyy - 1, WHITE)         # 반짝임 (왼쪽 위)
+    if st == 3 and T.get('brows', True):                         # 눈썹 한 줄
+        s.pxs([(ex - 3 + i, eyy - round(r) - 2 + (1 if i == 0 else 0)) for i in range(5)], rp[0])
+    my = round(by + bry * .22)
+    fx0 = round(front) + 1
+    s.pxs([(fx0 + 1, my), (fx0 + 2, my + 1), (fx0 + 3, my + 1), (fx0 + 4, my)], rp[0])   # 코끝 쪽 작은 웃는 입
+    if T.get('blush'):
+        s.pxs([(ex + round(r) + 1, eyy + round(r) + 1), (ex + round(r) + 2, eyy + round(r) + 1)], T['blush'])
+
+
 def face(s, g, T, st):
     style = T.get('eyes', 'big')
     rp = T['body']
+    if T.get('plan') == 'fish':     # 옆모습 물고기: 앞쪽(왼쪽)에 눈 하나 + 코끝에 입 (두 눈이 가운데 있으면 어색함)
+        fish_face(s, g, T, st)
+        return
     ey, gap = g['ey'], g['gap']
     if style == 'happy':        # ^ ^
         for sx in (32 - gap - 4, 32 + gap):

@@ -66,7 +66,7 @@ const SETTING_HELP = {
   practice_exp_daily: '연습 배틀: 경험치·물건을 받는 판 수 (하루, 기본 10). 넘으면 연습은 할 수 있지만 경험치는 없어요',
 };
 const TABS = [
-  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['raid', '레이드'], ['req', '요청'], ['staff', '운영진'], ['set', '설정'],
+  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['raid', '레이드'], ['req', '요청'], ['mg', '미니게임'], ['staff', '운영진'], ['set', '설정'],
 ];
 const CODE_BATCH = 700;   // admin_make_login_codes accepts at most 700 ids per call
 
@@ -363,7 +363,7 @@ function setBanner(open, selfRedeem) {
   if (sr && selfRedeem !== undefined) sr.classList.toggle('on', isOn(selfRedeem));
 }
 
-const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, raid: tabRaid, req: tabReq, staff: tabStaff, set: tabSet };
+const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, raid: tabRaid, req: tabReq, mg: tabMg, staff: tabStaff, set: tabSet };
 
 async function go(tab) {
   S.tab = tab;
@@ -1713,6 +1713,86 @@ async function tabStaff() {
 
   return [h('div.cols', idMake, links), h('div.box.stack', h('h2', '운영진 아이디'), ids),
     h('div.cols', form, h('div.box.stack', h('h2', '구글로 등록된 운영진'), list))];
+}
+
+// 미니게임 (0023·0025): 관리 방법 안내 · 열리는 몬스터 수 · 게임 켜고 끄기 · 게임별 기록 (부정 기록 지우기) · 랭킹 초기화
+const MG = [['surf', '몬스터 서핑'], ['dodge', '폭탄 피하기'], ['maze', '자이로 미로 (랭킹 모드)'], ['land', '땅따먹기']];
+const mgFmt = (id, v) => (id === 'maze' ? `${(v / 1000).toFixed(2)}초` : id === 'land' ? `${(v / 10).toFixed(1)}%` : `${Number(v).toLocaleString()}${id === 'surf' ? 'm' : '점'}`);
+async function tabMg() {
+  let ov = await rpc('admin_minigame_overview');
+  let game = S.mgGame || 'surf';
+  const saveSetting = (key, value) => tq(sb.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', key));
+
+  const help = h('details.box', { open: true },
+    h('summary', h('b', '미니게임 관리 방법 (처음이면 읽어 주세요)')),
+    h('ul.small-txt',
+      h('li', '학생 앱 홈의 "미니게임" 버튼은 몬스터를 아래 숫자만큼 모은 학생에게만 열려요. 축제 첫날엔 낮게, 나중엔 그대로 두면 돼요.'),
+      h('li', '게임을 끄면 학생 앱에 "지금은 쉬는 중이에요"로 보이고, 서버도 그 게임 기록을 받지 않아요 (문제가 생긴 게임만 잠깐 끌 때).'),
+      h('li', '랭킹은 게임마다 따로예요 (전체 점수 랭킹에는 안 들어가요). 한 사람의 가장 좋은 기록만 줄 세워요. 미로는 시간이 짧을수록 위예요.'),
+      h('li', '서버가 말이 안 되는 기록(너무 빠른 속도 등)은 저절로 거절해요. 그래도 이상한 1등이 보이면 아래 표에서 그 학생 기록만 지우세요.'),
+      h('li', '"랭킹 초기화"는 그 게임 기록을 모두 지워요 (되돌릴 수 없음, "초기화" 입력). 연습 기간이 끝나고 진짜 축제를 시작할 때 쓰면 좋아요.'),
+      h('li', '인터넷이 끊긴 채 한 판은 학생 폰에 저장됐다가 연결되면 자동으로 올라와요 (게임마다 가장 좋은 기록 하나).')));
+
+  // 설정: 열리는 몬스터 수 + 게임 켜고 끄기
+  const unlock = h('input.inp', { type: 'number', min: 0, max: 300, value: ov.unlock, style: { maxWidth: '110px' } });
+  const saveUnlock = h('button.btn.small.go', '저장');
+  saveUnlock.onclick = () => {
+    const v = Number(unlock.value);
+    if (!Number.isInteger(v) || v < 0 || v > 300) { toast('0~300 사이 숫자로 넣어 주세요.'); return; }
+    busy(saveUnlock, async () => { await saveSetting('minigame_unlock', v); toast(`몬스터 ${v}마리부터 미니게임이 열려요.`); });
+  };
+  const toggles = h('div.row', { style: { flexWrap: 'wrap', gap: '6px' } });
+  const drawToggles = () => toggles.replaceChildren(...MG.map(([id, label]) => {
+    const off = (ov.off || []).includes(id);
+    const b = h(`button.btn.small${off ? '.danger' : '.go'}`, `${label.replace(' (랭킹 모드)', '')}: ${off ? '꺼짐' : '켜짐'}`);
+    b.onclick = () => busy(b, async () => {
+      const next = off ? (ov.off || []).filter((x) => x !== id) : [...(ov.off || []), id];
+      await saveSetting('minigame_off', next); ov = { ...ov, off: next }; drawToggles();
+      toast(`${label.replace(' (랭킹 모드)', '')}: ${off ? '켰어요' : '껐어요 (학생 앱에 "쉬는 중")'}`);
+    });
+    return b;
+  }));
+  drawToggles();
+  const settings = h('div.box.stack',
+    h('h2', '설정'),
+    h('div.row', { style: { flexWrap: 'wrap', gap: '8px', alignItems: 'center' } }, h('span', '미니게임이 열리는 몬스터 수'), unlock, h('span', '마리'), saveUnlock),
+    h('small.muted', '게임 켜고 끄기 (누르면 바로 바뀌어요)'), toggles);
+
+  // 현황
+  const stats = h('div.box.stack', h('h2', '현황'),
+    h('div.tbl-wrap', h('table.tbl',
+      h('thead', h('tr', h('th', '게임'), h('th.num', '오늘 판 수'), h('th.num', '전체 판 수'), h('th.num', '참가자'))),
+      h('tbody', MG.map(([id, label]) => { const g = ov.games?.[id] || {}; return h('tr', h('td', label), h('td.num', g.today ?? 0), h('td.num', g.plays ?? 0), h('td.num', g.players ?? 0)); })))));
+
+  // 게임별 기록
+  const list = h('div');
+  const seg = h('div.row', { style: { flexWrap: 'wrap', gap: '6px' } });
+  const reset = h('button.btn.small.danger', '이 게임 랭킹 초기화');
+  const load = async () => {
+    S.mgGame = game;
+    seg.replaceChildren(...MG.map(([id, label]) => h(`button.btn.small${id === game ? '.go' : ''}`, { onclick: () => { game = id; load(); } }, label.replace(' (랭킹 모드)', ''))));
+    list.replaceChildren(h('p.muted', '불러오는 중…'));
+    const rows = await rpc('admin_minigame_scores', { p_game: game, p_limit: 200 });
+    list.replaceChildren(rows.length ? h('div.tbl-wrap', h('table.tbl',
+      h('thead', h('tr', h('th.num', '순위'), h('th', '학번'), h('th', '이름'), h('th.num', game === 'maze' ? '기록 (짧을수록 위)' : '기록'), h('th.num', '판 수'), h('th', '마지막'), h('th', ''))),
+      h('tbody', rows.map((r) => {
+        const del = h('button.btn.small.danger', '기록 지우기');
+        del.onclick = async () => {
+          if (!await confirmBox('이 학생의 기록 지우기', [`${r.student_id} ${r.name || ''} 의 "${MG.find(([i]) => i === game)[1]}" 기록 ${r.plays}개를 모두 지울까요?`, '되돌릴 수 없어요. 이상한(부정) 기록을 지울 때만 쓰세요.'], { ok: '지우기', danger: true })) return;
+          busy(del, async () => { const n = await rpc('admin_delete_minigame_scores', { p_game: game, p_student_id: r.student_id }); toast(`${n}개 지웠어요.`); load(); });
+        };
+        return h('tr', h('td.num', r.rk), h('td.mono', r.student_id), h('td', r.name || '–'), h('td.num', h('b', mgFmt(game, r.score))), h('td.num', r.plays), h('td', fmtTime(r.at)), h('td', del));
+      })))) : h('p.muted', '아직 기록이 없어요.'));
+  };
+  reset.onclick = async () => {
+    const label = MG.find(([i]) => i === game)[1];
+    if (!await confirmBox(`${label} 랭킹 초기화`, [`"${label}"의 기록을 모두 지워요. 되돌릴 수 없어요.`, '연습 기간이 끝나고 진짜 축제를 시작할 때 쓰세요.'], { ok: '모두 지우기', danger: true, typeToConfirm: '초기화' })) return;
+    busy(reset, async () => { const n = await rpc('admin_reset_minigame', { p_game: game, p_confirm: '초기화' }); toast(`${label}: 기록 ${n}개를 지웠어요.`); ov = await rpc('admin_minigame_overview'); load(); });
+  };
+  load();
+  return [help, settings, stats,
+    h('div.box.stack', h('div.row', { style: { flexWrap: 'wrap', gap: '8px', alignItems: 'center' } }, h('h2', '게임별 기록'), h('span.spacer', { style: { flex: 1 } }), reset),
+      seg, h('small.muted', '한 사람당 가장 좋은 기록 · 위에서 200명까지. 학번·이름은 운영자에게만 보여요.'), list)];
 }
 
 // 요청: 비밀번호 초기화 요청 (허용하면 학생이 고른 새 비밀번호로 바뀜) + 학생 문의함 (0011)

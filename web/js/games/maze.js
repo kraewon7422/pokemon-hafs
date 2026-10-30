@@ -366,12 +366,12 @@ function levelRot(n0) {
 }
 
 function ensureStyle() {
-  if (document.getElementById('mgm-style2')) return;
-  const s = document.createElement('style'); s.id = 'mgm-style2';
+  if (document.getElementById('mgm-style3')) return;
+  const s = document.createElement('style'); s.id = 'mgm-style3';
   s.textContent = `
-.mgm-bar { display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 340px; text-align: center; }
+.mgm-bar { flex: none; display: flex; flex-direction: column; align-items: center; gap: 6px; width: 100%; max-width: 340px; text-align: center; word-break: keep-all; overflow-wrap: break-word; }
 .mgm-bar .mgm-row { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; width: 100%; }
-.mgm-bar .btn { flex: 1; min-width: 0; }
+.mgm-bar .btn { flex: 1 1 0; min-width: max-content; white-space: nowrap; }
 .mgm-hint { font-size: 12px; color: #384050; line-height: 1.4; }
 .mgm-hint b { color: #1d6a70; }
 .mgm-hint.warn { color: #a03020; }
@@ -388,6 +388,27 @@ export default {
     const pc = pixelCanvas(stage, W, H); const { c, g } = pc;
     const bar = document.createElement('div'); bar.className = 'mgm-bar'; stage.append(bar);
     const dex = api.partner();
+    // 판 크기: common.js 의 맞춤은 아래 막대를 모름 (막대가 화면 밖으로 밀림) → 여기서 (stage 높이 − 막대 높이) 에 맞춤.
+    // 도트가 뭉개지지 않게 기기 픽셀 정수배, 너무 작은 화면만 소수배. 판이 3D 로 기울 때 커지는 몫(LEAN_ROOM)도 남겨 둠
+    pc.stop();
+    const LEAN_ROOM = 1.06; let persp = 700, barMax = 0;
+    const fit = () => {
+      const box = stage.getBoundingClientRect(); if (!box.width) return;
+      barMax = Math.max(barMax, bar.getBoundingClientRect().height);   // 시작 막대가 제일 큼 → 게임 시작해도 판 크기가 안 바뀜
+      const dpr = window.devicePixelRatio || 1;
+      const gap = parseFloat(getComputedStyle(stage).rowGap) || 0;
+      const availW = box.width - 6, availH = (box.height || window.innerHeight) - barMax - gap - 6 - 2;
+      const k = Math.min(availW / (W * 1.03), availH / (H * LEAN_ROOM));   // 옆으로는 약 3% 만 커짐 (위아래는 여백까지 6%)
+      const kp = Math.floor(k * dpr + 1e-6) / dpr;
+      // DPR1 큰 모니터에서 정수배가 자리를 20% 넘게 남기면 0.25 단위로 채움 (폰은 기기 픽셀 정수배 그대로 → 선명)
+      const sc = kp >= 1 ? (dpr < 1.5 && kp < k * 0.8 ? Math.floor(k * 4) / 4 : kp) : Math.max(0.5, k);
+      c.style.width = `${W * sc}px`; c.style.height = `${H * sc}px`;
+      c.style.margin = `${Math.ceil(H * sc * (LEAN_ROOM - 1) / 2)}px 0`;   // 기운 판이 위 막대나 아래 버튼에 닿지 않게
+      persp = Math.round(H * sc * 2.2);   // 판 크기에 비례한 원근 → 기운 판이 늘 같은 비율(약 3%)만 커짐
+    };
+    const ro = new ResizeObserver(fit); ro.observe(stage); ro.observe(bar); fit();
+    // 터치 없는 컴퓨터: 기울이기는 못 씀 → 마우스·방향키를 먼저
+    const touchy = (navigator.maxTouchPoints || 0) > 0 || matchMedia('(pointer: coarse)').matches;
 
     // 자유 모드: 미로 종류를 섞어 돌림 (같은 종류가 연달아 안 나오게)
     const sess = rng((Math.random() * 2 ** 31) | 0);
@@ -474,16 +495,18 @@ export default {
       const tag = document.createElement('div'); tag.className = 'mgm-mode'; tag.textContent = modeLabel;
       const hint = document.createElement('div'); hint.className = 'mgm-hint';
       hint.innerHTML = (RANKED ? `같은 미로 ${RANK.length}판을 <b>가장 빨리</b>! ` : '미로가 끝없이 이어져요. 몇 단계까지 갈까요? ')
-        + '<br>폰을 <b>평평하게</b> 들고 버튼을 눌러요. 기울여서 몬스터볼을 <b>구멍</b>에 넣어요!';
+        + (touchy ? '<br>폰을 <b>평평하게</b> 들고 버튼을 눌러요. 기울여서 몬스터볼을&nbsp;<b>구멍</b>에&nbsp;넣어요!'
+          : '<br>판을 마우스로 <b>누른 채 끌거나</b> <b>방향키</b>로 몬스터볼을&nbsp;<b>구멍</b>에&nbsp;넣어요!');
       const row = document.createElement('div'); row.className = 'mgm-row';
-      row.append(btn('기울이기 켜기', 'primary', enableTilt), btn('손가락으로', '', () => begin(false)));
+      if (touchy) row.append(btn('기울이기 켜기', 'primary', enableTilt), btn('손가락으로', '', () => begin(false)));
+      else row.append(btn('마우스·방향키로', 'primary', () => begin(false)), btn('기울이기 켜기', '', enableTilt));
       bar.replaceChildren(tag, hint, row);
     };
     let note = '';
     let endBtn = null;
     const showPlay = () => {
       const hint = document.createElement('div'); hint.className = `mgm-hint${note ? ' warn' : ''}`;
-      hint.innerHTML = note || (ori.on ? '폰을 기울여 굴려요 · 화면을 끌어도 돼요' : '화면을 누른 채 <b>끌면</b> 그쪽으로 기울어요 · 방향키도 OK');
+      hint.innerHTML = note || (ori.on ? '폰을 기울여 굴려요 · 화면을 끌어도 돼요' : (touchy ? '화면을 누른 채 <b>끌면</b> 그쪽으로 기울어요 · 방향키도&nbsp;OK' : '판을 마우스로 누른 채 <b>끌면</b> 그쪽으로 기울어요 · 방향키도&nbsp;OK'));
       const row = document.createElement('div'); row.className = 'mgm-row';
       if (ori.on) row.append(btn('수평 다시 맞추기', 'small', () => { calibrate(); showBanner('수평 맞추는 중…', '폰을 가만히 들고 있어요', 0.8); api.sfx.blip(); }));
       if (!RANKED) {
@@ -613,7 +636,9 @@ export default {
     c.style.transition = 'none'; c.style.willChange = 'transform';
     const leanBoard = () => {
       lean.x += (tilt.x - lean.x) * 0.2; lean.y += (tilt.y - lean.y) * 0.2;
-      c.style.transform = `perspective(700px) rotateX(${(-lean.y * LEAN_DEG).toFixed(2)}deg) rotateY(${(lean.x * LEAN_DEG).toFixed(2)}deg)`;
+      // 기울면 가까운 쪽 모서리가 원근으로 커짐 → 그만큼 살짝 줄여서 판이 제 자리 밖으로 안 나가게
+      const shrink = 1 - 0.065 * Math.max(Math.abs(lean.x), Math.abs(lean.y)) * (LEAN_DEG / 11);
+      c.style.transform = `perspective(${persp}px) rotateX(${(-lean.y * LEAN_DEG).toFixed(2)}deg) rotateY(${(lean.x * LEAN_DEG).toFixed(2)}deg) scale(${shrink.toFixed(3)})`;
       c.style.boxShadow = `${(-lean.x * 8).toFixed(1)}px ${(6 - lean.y * 8).toFixed(1)}px 14px rgba(0,0,0,.35)`;
     };
 
@@ -741,7 +766,7 @@ export default {
 
     const stopLoop = loop(step);
     return () => {
-      stopLoop(); pc.stop(); ended = true;
+      stopLoop(); pc.stop(); ro.disconnect(); ended = true;
       timers.forEach(clearTimeout);
       window.removeEventListener('deviceorientation', onOri);
       window.removeEventListener('deviceorientationabsolute', onOri);

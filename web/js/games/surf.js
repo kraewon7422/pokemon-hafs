@@ -12,6 +12,7 @@ const BOOST_T = 2.2, BOOST_K = 1.6, MAX_BASE = 165; // 165×1.6 = 264 px/s = 26.
 const ATLAS_URL = new URL('../../sprites/atlas.png', import.meta.url).href;
 const PROPS_URL = new URL('../../img/games/surf/surf-props.png', import.meta.url).href;
 const PROPS = { rockBig: [0, 0, 25, 21], rock1: [26, 0, 16, 14], rock2: [43, 0, 15, 13], rock3: [59, 0, 11, 9], log: [71, 0, 44, 15], raft: [116, 0, 32, 26], barrel: [149, 0, 17, 24], crate: [167, 0, 16, 18], pad2: [0, 27, 9, 9], pad3: [10, 27, 11, 11], sandTile: [22, 27, 16, 16], pebbleS: [39, 27, 7, 5], pebbleL: [47, 27, 12, 7], shell1: [60, 27, 7, 5], shell2: [68, 27, 12, 7], shell3: [81, 27, 7, 5], shell4: [89, 27, 12, 7], bucket: [102, 27, 10, 17], bucketB: [113, 27, 10, 17], shovel: [124, 27, 18, 17], star1: [143, 27, 5, 5], star2: [149, 27, 5, 5] };
+const JUMP_T = 1.0; // 파도 점프 체공 시간 (초)
 const PR = 2; // 내 몬스터 부딪힘 반지름 (보이는 몸보다 훨씬 작게 = 너그럽게)
 const TAU = Math.PI * 2;
 
@@ -334,24 +335,29 @@ function whirlFrames() {
     return g;
   });
 }
+// 파도 점프대: 위에서 본 부서지는 파도 마루 — 뒤쪽 밝은 물, 하얀 거품 마루(반짝), 아래쪽 진한 그림자, 노란 화살표
+const RAMP_W = 46, RAMP_H = 22;
 function rampFrames() {
-  const w = 34, h = 16, cx = 17, cy = 8;
-  return [0, 1].map((f) => {
+  const w = RAMP_W, h = RAMP_H, cx = 23, cy = 10;
+  return [0, 1, 2].map((f) => {
     const g = new G(w, h);
-    for (let x = -14; x <= 14; x++) {
-      const k = 1 - (x / 15) ** 2; const hh = Math.round(4 * k + 1);
-      for (let y = 0; y <= hh + 2; y++) {
-        const c = y === 0 ? C.foam : y === 1 ? (hash(x, f) < 0.3 ? C.foam2 : C.foam) : y < hh ? C.sh2 : y === hh ? C.sh1 : '#0e6a8c';
-        g.set(cx + x, cy - 3 + y, c);
-      }
-      // 뒤쪽(위) 밝은 물결
-      if (Math.abs(x) < 12) g.set(cx + x, cy - 4, C.sh3);
-      if (Math.abs(x) < 9 && hash(x, 3, f) < 0.5) g.set(cx + x, cy - 5, C.sh2);
+    for (let x = -21; x <= 21; x++) {
+      const k = Math.max(0, 1 - (x / 22) ** 2); const curve = Math.round(k * 3); // 가운데가 앞으로 볼록
+      const top = cy - 5 + (3 - curve), crest = cy + curve;
+      // 뒤쪽 물결 면 (밝은 청록 → 연한 민트)
+      for (let y = top; y < crest; y++) g.set(cx + x, y, y < top + 2 ? (bay(x, y) < k ? C.sh2 : C.sh1) : C.sh3);
+      // 거품 마루 2줄 (반짝이는 점이 프레임마다 옆으로 흐름)
+      g.set(cx + x, crest, (x + f * 3) % 9 === 0 ? C.sh3 : C.white);
+      g.set(cx + x, crest + 1, hash(x, f, 2) < 0.35 ? C.foam2 : C.foam);
+      // 아래 그림자 (파도 앞면) 2~3줄
+      if (k > 0.05) { g.set(cx + x, crest + 2, '#0b5f80'); g.set(cx + x, crest + 3, k > 0.4 ? '#0a5677' : '#0d6a8a'); if (k > 0.55) g.set(cx + x, crest + 4, '#0d6a8a'); }
     }
-    // 물보라
-    [[-10, -7], [-3, -8], [6, -7], [12, -6]].forEach(([x, y], i) => { if ((i + f) % 2 === 0) g.set(cx + x, cy + y, C.foam); });
-    // 화살표 (점프대 표시)
-    [[0, 2], [-1, 1], [1, 1], [-2, 0], [2, 0]].forEach(([x, y]) => g.set(cx + x, cy + y, C.gold));
+    // 물보라 (프레임마다 다른 자리)
+    [[-17, -4], [-9, -6], [-1, -7], [8, -6], [16, -4], [-13, -7], [4, -8], [12, -7]].forEach(([x, y], i) => { if ((i + f) % 3 === 0) { g.set(cx + x, cy + y, C.white); g.set(cx + x, cy + y - 1, C.foam2); } });
+    // 아래로 가리키는 노란 화살표 (테두리 진하게)
+    const ar = new G(w, h);
+    [[-3, 0], [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0], [3, 0], [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1], [-1, 2], [0, 2], [1, 2], [0, 3]].forEach(([x, y]) => ar.set(cx + x, cy - 4 + y, y === 0 && f === 1 ? C.goldL : C.gold));
+    ar.outline('#7a4a08'); g.over(ar);
     return g;
   });
 }
@@ -548,7 +554,7 @@ export default {
       game = new Phaser.Game({
         type: Phaser.AUTO, parent: wrap, width: GW, height: GH,
         pixelArt: true, roundPixels: true, antialias: false, backgroundColor: '#0d6d91', banner: false,
-        audio: { noAudio: true }, input: { keyboard: false, gamepad: false }, disableContextMenu: true,
+        audio: { noAudio: true }, input: { keyboard: false, gamepad: false, activePointers: 3 }, disableContextMenu: true,
         scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
         callbacks: { postBoot: (g) => { if (dead) g.destroy(true); else if (paused) g.loop.sleep(); } },
         scene: { key: 'surf', preload() { this.load.spritesheet('mons', ATLAS_URL, { frameWidth: 64, frameHeight: 64 }); this.load.image('props', PROPS_URL); }, create() { setup(this, Phaser); }, update(t, d) { tick(d); } },
@@ -645,10 +651,11 @@ export default {
         .setScrollFactor(0).setDepth(1e6 + 2).setShadow(1, 1, '#06283a', 0, false, true);
       const tM = TXT(GW / 2, 1, '0m').setOrigin(0.5, 0);
       const btnIcon = sc.add.image(GW - 18, GH - 18, 'pbolt', 0).setScrollFactor(0).setDepth(1e6 + 1);
-      const tBan = TXT(GW / 2, 208, '').setOrigin(0.5, 0.5).setDepth(1e6 + 3);
+      // 알림 글씨: 띠보다 넓으면 띄어쓰기에서만 줄을 바꿈 (단어 중간에서 안 끊김)
+      const tBan = TXT(GW / 2, 208, '').setOrigin(0.5, 0.5).setDepth(1e6 + 3).setAlign('center').setWordWrapWidth(GW - 24, false);
       const tTitle = TXT(GW / 2, 24, '몬스터 서핑').setOrigin(0.5, 0).setScale(2).setColor('#fff6b0').setShadow(1, 1, '#0a3a52', 0, false, true);
       const tSub = TXT(GW / 2, 56, '문어를 피해 멀리멀리!', 12, false, '#d8fbf4').setOrigin(0.5, 0);
-      const help = ['끌거나 좌우를 눌러', '방향 바꾸기', '두 번 톡 / 번개 = 부스트', '하트 3개, 다 잃으면 끝']
+      const help = ['끌거나 좌우를 눌러', '방향 바꾸기', '번개 단추 = 부스트', '하트 3개를 지켜요']
         .map((s, i) => TXT(GW / 2, 178 + i * 14, s, 12, false, i === 2 ? '#fff3a0' : '#ffffff').setOrigin(0.5, 0));
       const tTap = TXT(GW / 2, 246, '탭해서 시작').setOrigin(0.5, 0);
       const tOver = TXT(GW / 2, 184, '').setOrigin(0.5, 0).setDepth(1e6 + 3);
@@ -662,10 +669,11 @@ export default {
       const P = { x: 0, y: 0, head: 2, ang: 0, spd: 0, maxY: 0, hearts: 3, bolts: 1, coins: 0, inv: 0, boost: 0, jump: 0, weed: 0, slow: 0 };
       let camOff = 128;
       const objs = []; const chunks = new Set(); const parts = []; const trail = [];
-      const O = { st: 'off', x: 0, y: 0, next: 500, tent: 3 };
+      const O = { st: 'off', x: 0, y: 0, win: -1, tent: 3, a: 1 }; // 문어: 500+1000k m 에 와서 700+1000k m 에 떠남
       let banner = { s: '', t: 0, col: 0 };
       const metres = () => Math.max(0, Math.floor(P.maxY / PX_PER_M));
-      const base = () => Math.min(MAX_BASE, 100 + metres() * 0.045);
+      // 난이도는 천천히: 속도 10 m/s → 16.5 m/s (약 2900 m 에서 최고)
+      const base = () => Math.min(MAX_BASE, 100 + metres() * 0.0225);
       const show = (s, col, t = 2) => { banner = { s, t, col }; };
 
       // ─────────── 만들기 · 지우기 ───────────
@@ -679,7 +687,7 @@ export default {
         raft: { sp: 16, hits: [[-6, 0, 7], [6, 0, 7]] }, barrel: { sp: 7, hits: [[0, -4, 5]] }, crate: { sp: 7, hits: [[0, -3, 5]] },
         buoy: { sp: 6, hits: [[0, -2, 3]] },
         pier: { sp: 34, hits: [[-22, -1, 4.5], [-11, -1, 4.5], [0, -1, 4.5], [11, -1, 4.5], [22, -1, 4.5], [29, -1, 4], [-29, -1, 4]] },
-        weed: { sp: 17 }, whirl: { sp: 24 }, ramp: { sp: 16 }, tent: { sp: 6, hits: [[0, -3, 3]] }, coin: { sp: 4 }, heart: { sp: 5 }, bolt: { sp: 5 },
+        weed: { sp: 17 }, whirl: { sp: 24 }, ramp: { sp: 20 }, tent: { sp: 6, hits: [[0, -3, 3]] }, coin: { sp: 4 }, heart: { sp: 5 }, bolt: { sp: 5 },
       };
       const make = (t, x, y) => {
         const o = { t, x, y, ph: Math.random() * 10, hit: false, age: 0, ...SPEC[t] };
@@ -699,8 +707,9 @@ export default {
       const kill = (o) => { o.body?.destroy(); o.halo?.destroy(); o.gone = true; };
       const free = (x, y, sp, gap) => objs.every((o) => o.gone || Math.hypot(o.x - x, o.y - y) > o.sp + sp + gap);
       const pick = (m, r) => {
-        const w = [['rockS', 1.8], ['rockM', 0.9], ['rockM2', 0.8], ['rockL', m > 120 ? 1 : 0.3], ['barrel', 0.5], ['crate', 0.5], ['raft', m > 150 ? 0.5 : 0], ['isl0', 0.8], ['isl2', 0.7], ['isl1', m > 150 ? 0.7 : 0.2], ['isl3', m > 400 ? 0.5 : 0],
-          ['log', m > 60 ? 1.1 : 0], ['buoy', 0.7], ['weed', m > 40 ? 1 : 0], ['pier', m > 220 ? 0.6 : 0], ['whirl', m > 320 ? 0.6 : 0], ['ramp', m > 90 ? 0.55 : 0]];
+        // 어려운 것은 늦게 등장 (소용돌이 650 m, 뗏목 300 m, 통·상자 150 m …)
+        const w = [['rockS', 1.8], ['rockM', 0.9], ['rockM2', 0.8], ['rockL', m > 240 ? 1 : 0.3], ['barrel', m > 150 ? 0.5 : 0], ['crate', m > 150 ? 0.5 : 0], ['raft', m > 300 ? 0.5 : 0], ['isl0', 0.8], ['isl2', 0.7], ['isl1', m > 300 ? 0.7 : 0.2], ['isl3', m > 800 ? 0.5 : 0],
+          ['log', m > 120 ? 1.1 : 0], ['buoy', 0.7], ['weed', m > 80 ? 1 : 0], ['pier', m > 440 ? 0.6 : 0], ['whirl', m > 650 ? 0.6 : 0], ['ramp', m > 90 ? 0.55 : 0]];
         let s = w.reduce((a, b) => a + b[1], 0) * r;
         for (const [t, k] of w) { s -= k; if (s <= 0) return t; }
         return 'rockS';
@@ -708,7 +717,7 @@ export default {
       const genChunk = (cx, cy) => {
         const key = `${cx},${cy}`; if (chunks.has(key)) return; chunks.add(key);
         const x0 = cx * CH, y0 = cy * CH, m = Math.max(0, y0 / PX_PER_M);
-        const n = Math.floor(1.6 + Math.min(3, m / 380) + Math.random() * 1.6);
+        const n = Math.floor(1.2 + Math.min(3.6, m / 800) + Math.random() * 1.5); // 1000 m 쯤 = 예전 500 m, 그 뒤로도 ~2900 m 까지 천천히 빽빽해짐
         for (let i = 0; i < n; i++) {
           const t = pick(m, Math.random());
           for (let k = 0; k < 10; k++) {
@@ -758,30 +767,36 @@ export default {
       };
 
       // ─────────── 입력 ───────────
-      let down = null, lastTap = null;
+      // 손가락마다 따로 기억 (두 엄지로 번갈아 눌러도 다 먹힘). 누르는 순간 바로 한 칸,
+      // 꾹 누르고 있으면 같은 쪽으로 계속, 옆으로 길게 끌면 끈 거리만큼 방향이 따라감. 부스트는 번개 단추만.
+      const HOLD_FIRST = 0.32, HOLD_EVERY = 0.2, DRAG_START = 8, DRAG_STEP = 11; // 초 · 논리 도트
+      const touches = new Map();
       const setHead = (h) => { const n = clamp(h, 0, 4); if (n !== P.head) { P.head = n; api.sfx.blip?.(); splash(P.x, P.y + 3, 3, 30); } };
+      const onBoostBtn = (p) => Math.hypot(p.x - (GW - 18), p.y - (GH - 18)) < 17;
       sc.input.on('pointerdown', (p) => {
         if (paused) return;
         if (mode === 'ready') { begin(); return; }
         if (mode !== 'play') return;
-        if (Math.hypot(p.x - (GW - 18), p.y - (GH - 18)) < 15) { useBoost(); down = null; return; }
-        down = { x: p.x, h0: P.head, moved: false };
+        if (onBoostBtn(p)) { useBoost(); return; }
+        const side = p.x < GW / 2 ? -1 : 1;
+        setHead(P.head + side);
+        touches.set(p.id, { x: p.x, side, hold: HOLD_FIRST, drag: false });
       });
       sc.input.on('pointermove', (p) => {
-        if (!down || paused || mode !== 'play') return;
-        const dx = p.x - down.x; if (Math.abs(dx) > 5) down.moved = true;
-        if (down.moved) setHead(down.h0 + Math.round(dx / 12));
+        const d = touches.get(p.id); if (!d || paused || mode !== 'play' || !p.isDown) return;
+        if (!d.drag && Math.abs(p.x - d.x) >= DRAG_START) { d.drag = true; d.ax = p.x; d.ah = P.head; } // 손 떨림은 무시, 진짜 끌기만
+        if (d.drag) setHead(d.ah + Math.trunc((p.x - d.ax) / DRAG_STEP));
       });
-      const up = (p) => {
-        if (!down || paused || mode !== 'play') { down = null; return; }
-        if (!down.moved) {
-          const now = performance.now();
-          if (lastTap && now - lastTap.t < 300 && Math.abs(p.x - lastTap.x) < 30) { P.head = lastTap.h0; lastTap = null; useBoost(); }
-          else { lastTap = { t: now, x: p.x, h0: P.head }; setHead(P.head + (p.x < GW / 2 ? -1 : 1)); }
-        }
-        down = null;
-      };
+      const up = (p) => { touches.delete(p.id); };
       sc.input.on('pointerup', up); sc.input.on('pointerupoutside', up);
+      const holdTurn = (dt) => { // 꾹 누르고 있으면 같은 쪽으로 일정하게 돎
+        for (const [id, d] of touches) {
+          const ptr = sc.input.manager.pointers.find((q) => q.id === id);
+          if (!ptr || !ptr.isDown) { touches.delete(id); continue; }
+          if (d.drag) continue;
+          d.hold -= dt; if (d.hold <= 0) { d.hold += HOLD_EVERY; setHead(P.head + d.side); }
+        }
+      };
       keyHandler = (e) => {
         if (paused || dead) return;
         const k = e.key;
@@ -838,7 +853,7 @@ export default {
             continue;
           }
           if (o.t === 'weed') { if ((dx / 15) ** 2 + (dy / 9) ** 2 < 1 && P.jump <= 0) { if (P.weed <= 0) api.sfx.statDown?.(); P.weed = 0.35; } continue; }
-          if (o.t === 'ramp') { if (Math.abs(dx) < 14 && Math.abs(dy) < 5 && P.jump <= 0) { P.jump = 0.8; api.sfx.ballThrow?.(); splash(P.x, P.y, 8, 40); } continue; }
+          if (o.t === 'ramp') { if (Math.abs(dx) < 19 && Math.abs(dy) < 5 && P.jump <= 0) { P.jump = JUMP_T; api.sfx.ballThrow?.(); splash(P.x, P.y, 8, 40); } continue; }
           if (o.t === 'whirl') continue;
           if (o.t === 'tent' && !(o.age > 0.75 && o.age < 2.9)) continue;
           if (o.hit) continue;
@@ -852,25 +867,55 @@ export default {
           if (mode !== 'play') return;
         }
 
-        // 문어
-        if (O.st === 'off' && m >= O.next) {
-          O.st = 'enter'; O.y = P.y - 190; O.x = P.x; O.tent = 2.5;
+        // 문어: 정해진 구간에만 (500~700 m, 1500~1700 m, 2500~2700 m …)
+        const k = Math.floor((m - 500) / 1000), inWin = m >= 500 && m - 500 - k * 1000 < 200;
+        if (inWin && O.st === 'off' && O.win !== k && !O.noOcto) {
+          O.st = 'enter'; O.win = k; O.y = P.y - 190; O.x = P.x; O.tent = 2.5; O.a = 1;
           show('문어 몬스터가 쫓아온다!', 3, 2.6); api.sfx.wrong?.();
         }
+        if ((O.st === 'enter' || O.st === 'chase') && !inWin) { // 구간 끝 → 물속으로 사라짐 (그 뒤로는 못 잡음)
+          O.st = 'leave'; show('문어를 따돌렸다!', 2, 2); api.sfx.correct?.();
+        }
+        if (O.st === 'leave') {
+          O.y += base() * 0.4 * dt; O.a -= dt * 1.2; // 뒤로 처지며 가라앉음
+          if (O.a <= 0 || P.y - O.y > 260) O.st = 'off';
+        }
         if (O.st === 'enter' || O.st === 'chase') {
-          const ratio = 0.9 + Math.min(0.07, (m - 500) / 9000);
-          const os = O.st === 'enter' ? base() + 75 : base() * ratio;
+          const ratio = 0.9 + Math.min(0.07, k * 0.025);
+          const gap0 = P.y - O.y;
+          // 멀어지면(부스트 등) 조금 빠르게 다시 따라붙음, 가까우면 내 속도보다 살짝 느림
+          const os = O.st === 'enter' ? base() + 75 : gap0 > 95 ? base() * 1.06 : base() * ratio;
           O.y = Math.min(O.y + os * dt, P.y - 7); const lat = base() * 1.05 * dt; O.x += clamp(P.x - O.x, -lat, lat);
           const gap = P.y - O.y;
           if (O.st === 'enter' && gap <= 78) O.st = 'chase';
           if (gap < 11 && Math.abs(P.x - O.x) < 10 && P.jump <= 0 && P.boost <= 0) { O.y = P.y - 9; gameOver('octo'); return; }
-          if (O.st === 'chase' && gap > 215) { O.st = 'off'; O.next = m + 330 + Math.floor(Math.random() * 220); show('문어를 따돌렸다!', 2, 1.8); api.sfx.correct?.(); }
           O.tent -= dt;
           if (O.st === 'chase' && O.tent <= 0) {
-            O.tent = Math.max(1.4, 3.4 - m / 2000) * (0.8 + Math.random() * 0.4);
+            O.tent = Math.max(1.6, 3.4 - k * 0.4) * (0.8 + Math.random() * 0.4);
             const tx = P.x + vx * 1.0 + (Math.random() - 0.5) * 14, ty = P.y + 150;
             if (free(tx, ty, 6, 4)) make('tent', tx, ty);
           }
+        }
+      };
+
+      // 새 구역 만들기 · 지난 것 지우기 · 움직임 (그리기와 따로 — 시험용 빨리감기에서도 씀)
+      const world = (dt, camX, camY) => {
+        for (let cy = Math.floor(camY / CH); cy <= Math.floor((camY + GH + CH) / CH); cy++) for (let cx = Math.floor((camX - CH) / CH); cx <= Math.floor((camX + GW + CH) / CH); cx++) if (mode !== 'ready' || cy * CH > camY + GH) genChunk(cx, cy);
+        // 지난 것 지우기 + 움직임
+        for (let i = objs.length - 1; i >= 0; i--) {
+          const o = objs[i];
+          if (!o.gone && (o.y < camY - 90 || (o.t === 'tent' && o.age > 3.3))) kill(o);
+          if (o.gone) { objs.splice(i, 1); continue; }
+          o.age += dt;
+          const f2 = Math.floor(T / 0.42 + o.ph) % 2;
+          o.halo?.setFrame(f2);
+          if (o.t === 'buoy') o.body.setFrame(Math.floor(T / 0.5 + o.ph) % 2);
+          else if (o.t === 'weed') o.body.setFrame(f2);
+          else if (o.t === 'ramp') o.body.setFrame(Math.floor(T / 0.16 + o.ph) % 3);
+          else if (o.t === 'whirl') o.body.setFrame(Math.floor(T / 0.13) % 4);
+          else if (o.t === 'coin') { o.body.setFrame(Math.floor(T / 0.13 + o.ph) % 4); o.body.y = o.y + Math.round(Math.sin(T * 4 + o.ph)); }
+          else if (o.t === 'heart' || o.t === 'bolt') o.body.y = o.y + Math.round(Math.sin(T * 4 + o.ph) * 1.5);
+          else if (o.t === 'tent') { const a = o.age; o.body.setFrame(a < 0.55 ? 0 : a < 0.68 ? 1 : a < 0.8 ? 2 : a < 2.9 ? 3 + (Math.floor(a / 0.3) % 2) : a < 3.05 ? 2 : a < 3.2 ? 1 : 0); }
         }
       };
 
@@ -882,23 +927,7 @@ export default {
         sea.setTilePosition(camX, camY);
         caus.setTilePosition(Math.round(camX + Math.sin(T * 0.4) * 9), Math.round(camY - T * 5));
         cloud.setTilePosition(Math.round(camX * 1 - T * 6), Math.round(camY * 1 - T * 3));
-        // 새 구역
-        for (let cy = Math.floor(camY / CH); cy <= Math.floor((camY + GH + CH) / CH); cy++) for (let cx = Math.floor((camX - CH) / CH); cx <= Math.floor((camX + GW + CH) / CH); cx++) if (mode !== 'ready' || cy * CH > camY + GH) genChunk(cx, cy);
-        // 지난 것 지우기 + 움직임
-        for (let i = objs.length - 1; i >= 0; i--) {
-          const o = objs[i];
-          if (!o.gone && (o.y < camY - 90 || (o.t === 'tent' && o.age > 3.3))) kill(o);
-          if (o.gone) { objs.splice(i, 1); continue; }
-          o.age += dt;
-          const f2 = Math.floor(T / 0.42 + o.ph) % 2;
-          o.halo?.setFrame(f2);
-          if (o.t === 'buoy') o.body.setFrame(Math.floor(T / 0.5 + o.ph) % 2);
-          else if (o.t === 'weed' || o.t === 'ramp') o.body.setFrame(f2);
-          else if (o.t === 'whirl') o.body.setFrame(Math.floor(T / 0.13) % 4);
-          else if (o.t === 'coin') { o.body.setFrame(Math.floor(T / 0.13 + o.ph) % 4); o.body.y = o.y + Math.round(Math.sin(T * 4 + o.ph)); }
-          else if (o.t === 'heart' || o.t === 'bolt') o.body.y = o.y + Math.round(Math.sin(T * 4 + o.ph) * 1.5);
-          else if (o.t === 'tent') { const a = o.age; o.body.setFrame(a < 0.55 ? 0 : a < 0.68 ? 1 : a < 0.8 ? 2 : a < 2.9 ? 3 + (Math.floor(a / 0.3) % 2) : a < 3.05 ? 2 : a < 3.2 ? 1 : 0); }
-        }
+        world(dt, camX, camY);
         // 반짝이
         for (const s of sparks) {
           s.t += dt;
@@ -929,9 +958,13 @@ export default {
           });
         }
         // 보드 그림자 · 점프 그림자
-        if (P.jump > 0) { wake.fillStyle(0x06405c, 0.45); wake.fillEllipse(Math.round(P.x), Math.round(P.y + 1), 10, 4); }
+        if (P.jump > 0) { // 공중일 때 물 위 그림자 (높을수록 작고 옅게)
+          const hgt = Math.sin(Math.PI * (1 - P.jump / JUMP_T));
+          wake.fillStyle(0x053a54, 0.6 - hgt * 0.2); wake.fillEllipse(Math.round(P.x), Math.round(P.y + 2), Math.round(14 - hgt * 4), Math.round(5 - hgt));
+          wake.fillStyle(0x053a54, 0.35); wake.fillEllipse(Math.round(P.x), Math.round(P.y + 2), Math.round(18 - hgt * 4), Math.round(7 - hgt));
+        }
         // 내 몬스터
-        const jh = P.jump > 0 ? Math.round(Math.sin(Math.PI * (1 - P.jump / 0.8)) * 10) : 0;
+        const jh = P.jump > 0 ? Math.round(Math.sin(Math.PI * (1 - P.jump / JUMP_T)) * 12) : 0;
         const bob = mode === 'ready' ? Math.round(Math.sin(T * 3) * 1.5) : Math.round(Math.sin(T * 7)) * (P.jump > 0 ? 0 : 1);
         let sink = 0;
         if (mode === 'over') sink = Math.min(10, overT * 14);
@@ -945,8 +978,8 @@ export default {
         mon.setCrop(0, 0, meG.w, Math.max(0, footY - sink));
         if (P.boost > 0) mon.setTint(Math.floor(T * 12) % 2 ? 0xfff2a0 : 0xffffff); else mon.clearTint();
         // 문어
-        if (O.st === 'enter' || O.st === 'chase' || (mode === 'over' && reason === 'octo')) {
-          octo.setVisible(true).setFrame(Math.floor(T / 0.3) % 2).setPosition(Math.round(O.x), Math.round(O.y + Math.sin(T * 3) * 1.5)).setDepth(O.y + 16);
+        if (O.st === 'enter' || O.st === 'chase' || O.st === 'leave' || (mode === 'over' && reason === 'octo')) {
+          octo.setVisible(true).setFrame(Math.floor(T / 0.3) % 2).setPosition(Math.round(O.x), Math.round(O.y + Math.sin(T * 3) * 1.5)).setDepth(O.y + 16).setAlpha(O.st === 'leave' ? Math.max(0, O.a) : 1);
         } else octo.setVisible(false);
         // 물보라
         fxG.clear();
@@ -998,9 +1031,10 @@ export default {
           const fl = !reduce && banner.col === 3 && Math.floor(T * 5) % 2;
           const col = banner.col === 3 ? (fl ? 0xd23c96 : 0x9b2f86) : banner.col === 1 ? 0x8a5a00 : 0x0a6a5a;
           tBan.setText(banner.s).setVisible(true);
-          const bw = Math.min(GW - 6, tBan.width + 14);
-          hud.fillStyle(col, 0.88); hud.fillRoundedRect(Math.round(GW / 2 - bw / 2), 198, Math.round(bw), 20, 5);
-          hud.lineStyle(1, 0xffffff, 0.8); hud.strokeRoundedRect(Math.round(GW / 2 - bw / 2), 198, Math.round(bw), 20, 5);
+          const bw = Math.min(GW - 8, Math.ceil(tBan.width) + 16), bh = Math.ceil(tBan.height) + 6;
+          const bx = Math.round(GW / 2 - bw / 2), by = Math.round(208 - bh / 2);
+          hud.fillStyle(col, 0.88); hud.fillRoundedRect(bx, by, bw, bh, 5);
+          hud.lineStyle(1, 0xffffff, 0.8); hud.strokeRoundedRect(bx, by, bw, bh, 5);
         } else tBan.setVisible(false);
         // 끝 화면
         if (mode === 'over' && overT > 0.35) {
@@ -1015,7 +1049,7 @@ export default {
       tick = (deltaMs) => {
         if (dead) return;
         const dt = Math.min(deltaMs, 100) / 1000; T += dt;
-        if (mode === 'play') { step(dt); camOff += ((O.st === 'chase' || O.st === 'enter' ? PY + 34 : PY) - camOff) * Math.min(1, dt * 2); }
+        if (mode === 'play') { holdTurn(dt); step(dt); camOff += ((O.st === 'chase' || O.st === 'enter' ? PY + 34 : PY) - camOff) * Math.min(1, dt * 2); }
         else if (mode === 'over') {
           overT += dt;
           if (reason === 'octo') { O.x += (P.x - O.x) * Math.min(1, dt * 6); O.y += (P.y - 7 - O.y) * Math.min(1, dt * 6); }
@@ -1025,13 +1059,44 @@ export default {
       };
 
       // 시험용 엿보기 (게임 진행에는 안 씀)
-      stage.surfDebug = () => ({ mode, m: metres(), ms: Math.round(ms), hearts: P.hearts, inv: +P.inv.toFixed(2), bolts: P.bolts, coins: P.coins, octo: O.st, gap: Math.round(P.y - O.y), x: Math.round(P.x), head: P.head, objs: objs.length });
+      stage.surfDebug = () => ({ mode, m: metres(), ms: Math.round(ms), hearts: P.hearts, inv: +P.inv.toFixed(2), jump: +P.jump.toFixed(2), bolts: P.bolts, coins: P.coins, octo: O.st, gap: Math.round(P.y - O.y), x: Math.round(P.x), head: P.head, objs: objs.length,
+        texts: [tM, tBan, tTitle, tSub, tTap, tOver, tOverM, ...help].filter((t) => t.visible && t.text).map((t) => { const r = t.getBounds(); return { s: t.text, x0: Math.round(r.x), x1: Math.round(r.right), y0: Math.round(r.y), y1: Math.round(r.bottom), lines: t.getWrappedText ? t.getWrappedText().length : 1 }; }) });
       if (location.pathname.endsWith('/.dev-mg.html')) {
         stage.surfCheat = (o) => {
           Object.assign(P, o.P || {}, o.y != null ? { y: o.y, maxY: o.y } : {});
           if (o.clear) { objs.forEach(kill); for (let cy = Math.floor((P.y - 200) / CH); cy < Math.floor((P.y + 2000) / CH); cy++) for (let cx = -12; cx < 12; cx++) chunks.add(`${cx},${cy}`); }
           if (o.spawn) { const [t, dx, dy] = o.spawn; make(t, P.x + dx, P.y + dy); }
-          if (o.noOcto) O.next = 1e9;
+          if (o.noOcto) O.noOcto = true;
+        };
+        // 시험용 봇: 0.3초 늦게 반응하며 앞 1초를 내다보고 안 부딪히는 방향을 고름. 화면 없이 빨리 감아 거리(m)를 돌려줌
+        stage.surfBot = ({ react = 0.3, maxT = 900 } = {}) => {
+          if (mode === 'ready') begin();
+          const dt = 1 / 60; let t = 0, nextThink = 0; const q = [];
+          const danger = (h) => {
+            const a = HEAD[h] * Math.PI / 180, vx = Math.sin(a) * P.spd, vy = Math.cos(a) * P.spd;
+            for (let s = 0.05; s <= 1.0; s += 0.05) {
+              const x = P.x + vx * s, y = P.y + vy * s;
+              for (const o of objs) {
+                if (o.gone || Math.abs(o.y - y) > 40 || Math.abs(o.x - x) > 60) continue;
+                if (o.t === 'whirl') { if (Math.hypot(o.x - x, o.y - y) < 14) return s; continue; }
+                if (!o.hits || (o.t === 'tent' && o.age + s < 0.6)) continue;
+                for (const [hx, hy, r] of o.hits) if (Math.hypot(x - o.x - hx, y - o.y - hy) < r + PR + 2) return s;
+              }
+            }
+            return 2;
+          };
+          while (mode === 'play' && t < maxT) {
+            if (t >= nextThink) {
+              nextThink = t + 0.1; let best = P.head, bs = -1;
+              for (let h = 0; h < 5; h++) { const sc2 = danger(h) - Math.abs(h - 2) * 0.02; if (sc2 > bs) { bs = sc2; best = h; } }
+              q.push([t + react, best]);
+            }
+            while (q.length && q[0][0] <= t) P.head = q.shift()[1];
+            step(dt); camOff += ((O.st === 'chase' || O.st === 'enter' ? PY + 34 : PY) - camOff) * Math.min(1, dt * 2);
+            world(dt, Math.round(P.x - GW / 2), Math.round(P.y - camOff));
+            t += dt;
+          }
+          return { m: metres(), t: Math.round(t), reason, hearts: P.hearts };
         };
       }
     }
@@ -1045,7 +1110,7 @@ export default {
       stage.removeEventListener('mg-resume', onResume);
       window.removeEventListener('keydown', onKey);
       keyHandler = null; tick = () => {};
-      delete stage.surfDebug; delete stage.surfCheat;
+      delete stage.surfDebug; delete stage.surfCheat; delete stage.surfBot;
       if (game) { try { game.loop.wake(); } catch { /* */ } game.destroy(true); game = null; }
       wrap.remove();
     };

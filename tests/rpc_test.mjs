@@ -1106,5 +1106,36 @@ console.log('\n[34] 미니게임 (0023) · 야자 전설 · 환상 이스터에�
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
+console.log('\n[35] 미니게임 운영 · 연습 배틀 공정 모드 (0025)');
+{
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'mg1234' })).error);
+  const C = client(await pwLogin(`${sid}@code.local`, 'mg1234'));
+  await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '운영테스트' });
+  for (let l = 1; l <= 10; l++) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l, p_stage: 3 });
+  const cfg = (await C.rpc('minigame_config')).data;
+  ok(cfg?.unlock === 10 && Array.isArray(cfg.off), 'students get the minigame config (unlock + off list)', cfg);
+  ok((await anon.rpc('minigame_config')).error, 'anon cannot read minigame config');
+  ok((await C.rpc('admin_minigame_overview')).error === 'NOT_ADMIN', 'students cannot open the admin overview');
+  ok(await admin.patch('settings?key=eq.minigame_off', { value: ['dodge'] }) < 300, 'admin turns dodge off');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'dodge', p_score: 30, p_ms: 5000 })).error === 'GAME_OFF', 'a turned-off game does not take scores');
+  await admin.patch('settings?key=eq.minigame_off', { value: [] });
+  ok((await C.rpc('submit_minigame_score', { p_game: 'dodge', p_score: 30, p_ms: 5000 })).data?.me?.score === 30, 'back on: score saved');
+  const ov = (await admin.rpc('admin_minigame_overview')).data;
+  ok(ov?.games?.dodge?.plays >= 1 && 'surf' in ov.games, 'admin overview counts plays per game', ov?.games?.dodge);
+  const rows = (await admin.rpc('admin_minigame_scores', { p_game: 'dodge' })).data || [];
+  ok(rows.some((r) => r.student_id === sid && r.score === 30 && r.plays === 1), 'admin list shows student number + best', rows.find((r) => r.student_id === sid));
+  ok((await admin.rpc('admin_delete_minigame_scores', { p_game: 'dodge', p_student_id: sid })).data === 1, 'admin deletes one student\'s records');
+  ok(!((await admin.rpc('admin_minigame_scores', { p_game: 'dodge' })).data || []).some((r) => r.student_id === sid), 'gone from the list');
+  ok((await admin.rpc('admin_reset_minigame', { p_game: 'dodge', p_confirm: '삭제' })).error === 'CONFIRM_MISMATCH', 'reset needs the word 초기화');
+  ok((await C.rpc('admin_reset_minigame', { p_game: 'dodge', p_confirm: '초기화' })).error === 'NOT_ADMIN', 'students cannot reset');
+  // 연습 배틀 공정 모드
+  const bf = (await C.rpc('battle_start_cpu', { p_lines: [1, 2, 3], p_fair: true })).data;
+  ok(bf?.fair === true && bf.items_left === 0, 'practice battle in fair mode (Lv.50, no items)', { fair: bf?.fair, items: bf?.items_left });
+  ok((bf?.sides?.[0]?.mons || []).every((m) => m.lv === 50 || m.level === 50 || m.lv == null), 'my monsters are Lv.50 in fair mode', bf?.sides?.[0]?.mons?.map((m) => m.lv ?? m.level));
+  const bn = (await C.rpc('battle_start_cpu', { p_lines: [1, 2, 3] })).data;
+  ok(bn?.fair === false, 'practice battle default stays normal', bn?.fair);
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
