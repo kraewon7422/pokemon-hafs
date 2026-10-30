@@ -66,9 +66,9 @@ export function viewRaid() {
         h(`span.chip${r.status === 'active' ? '.hot' : ''}`, r.status === 'active' ? '참가하기' : r.status === 'won' ? '승리' : '끝')))),
     h('div.box.stack',
       h('b', '시간대 전설 레이드'),
-      h('div.raid-preview', [[112, '아침'], [115, '점심'], [118, '저녁']].map(([id, t]) =>
+      h('div.raid-preview', [[112, '아침'], [115, '점심'], [118, '저녁'], [229, '야자1'], [232, '야자2']].map(([id, t]) =>
         h('div', spriteCanvas(id, 56, (owned(speciesOf(id)?.line_id) ? 'normal' : 'silhouette')), h('small', `${t} 전설`)))),
-      h('small.muted', '아침·점심·저녁마다 다른 전설이 대형 화면에 나타나요. 교장·교감 선생님 레이드와 운영진 특별 레이드도 있어요.')),
+      h('small.muted', '아침·점심·저녁, 야자1·야자2 시간마다 다른 전설이 대형 화면에 나타나요. 교장·교감 선생님 레이드와 운영진 특별 레이드도 있어요.')),
   ];
 }
 

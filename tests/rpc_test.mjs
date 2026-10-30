@@ -965,8 +965,10 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
     }
     return x;
   };
-  b = await settle((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).data);
-  ok(b.log.some((e) => /반창고를 사용했다/.test(e.m || '')) && b.items_left === 1, 'use a bandage in battle (turn used, 1 left)', b.items_left);
+  // 그 턴의 기록은 교체 전에 확인 (상대가 랜덤이라 그 턴에 쓰러지면 교체 화면이 기록을 덮음)
+  const used = (await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).data;
+  ok(used.log.some((e) => /반창고를 사용했다/.test(e.m || '')) && used.items_left === 1, 'use a bandage in battle (turn used, 1 left)', used.items_left);
+  b = await settle(used);
   bag = (await A.c.rpc('bag_state')).data;
   ok(bag.items.find((x) => x.key === 'bandage')?.qty === 2, 'bandage consumed from the bag');
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'mint', target: b.sides[0].act[0] } })).error === 'NO_ITEM', 'cannot use medicine you do not have');
@@ -1058,22 +1060,26 @@ console.log('\n[34] 미니게임 (0023) · 야자 전설 · 환상 이스터에�
   const C = client(await pwLogin(`${sid}@code.local`, 'mg1234'));
   await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '미니테스트' });
   for (let l = 1; l <= 9; l++) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l, p_stage: 1 });
-  ok((await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 120, p_ms: 60000 })).error === 'MINIGAME_LOCKED', 'minigames locked under 10 monsters');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'surf', p_score: 120, p_ms: 60000 })).error === 'MINIGAME_LOCKED', 'minigames locked under 10 monsters');
   await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 10, p_stage: 1 });
-  ok((await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 400, p_ms: 60000 })).error === 'BAD_SCORE', 'impossible yacht score rejected');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'surf', p_score: 5000, p_ms: 60000 })).error === 'BAD_SCORE', 'surf: too far for the time rejected (max 40 m/s)');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 100, p_ms: 60000 })).error === 'BAD_GAME', 'old dice yacht game is gone');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'land', p_score: 1200, p_ms: 90000 })).error === 'BAD_SCORE', 'land: more than the whole board rejected');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'land', p_score: 300, p_ms: 3000 })).error === 'BAD_SCORE', 'land: under 5 s rejected');
+  ok((await C.rpc('submit_minigame_score', { p_game: 'land', p_score: 312, p_ms: 90000 })).data?.me?.score === 312, 'land score saved (‰ of the board)');
   ok((await C.rpc('submit_minigame_score', { p_game: 'dodge', p_score: 900, p_ms: 5000 })).error === 'BAD_SCORE', 'dodge score too high for the time rejected');
   ok((await C.rpc('submit_minigame_score', { p_game: 'chess', p_score: 1, p_ms: 9000 })).error === 'BAD_GAME', 'unknown game rejected');
-  const y = (await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 150, p_ms: 60000 })).data;
-  ok(y?.me?.score === 150 && y.me.rank >= 1, 'yacht score saved, my rank returned', y?.me);
-  ok((await C.rpc('submit_minigame_score', { p_game: 'yacht', p_score: 160, p_ms: 60000 })).error === 'TRY_LATER', 'one submit per 5 s per game');
+  const y = (await C.rpc('submit_minigame_score', { p_game: 'surf', p_score: 1500, p_ms: 60000 })).data;
+  ok(y?.me?.score === 1500 && y.me.rank >= 1, 'surf distance saved, my rank returned', y?.me);
+  ok((await C.rpc('submit_minigame_score', { p_game: 'surf', p_score: 1600, p_ms: 60000 })).error === 'TRY_LATER', 'one submit per 5 s per game');
   ok((await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 50000, p_ms: 90000 })).error === 'BAD_SCORE', 'maze time must match real time');
   ok((await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 50000, p_ms: 50500 })).data?.me?.score === 50000, 'maze time saved');
   await new Promise((r) => setTimeout(r, 5200));
   const m2 = (await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 40000, p_ms: 40100 })).data;
   ok(m2?.me?.score === 40000, 'maze: faster time becomes my best (lower is better)', m2?.me);
-  const rk = (await C.rpc('minigame_ranking', { p_game: 'yacht' })).data;
-  ok(rk?.top?.some((x) => x.me && x.score === 150) && rk.unlock === 10, 'ranking lists me with my best', rk?.me);
-  ok((await anon.rpc('minigame_ranking', { p_game: 'yacht' })).error, 'anon cannot read minigame ranking');
+  const rk = (await C.rpc('minigame_ranking', { p_game: 'surf' })).data;
+  ok(rk?.top?.some((x) => x.me && x.score === 1500) && rk.unlock === 10, 'ranking lists me with my best', rk?.me);
+  ok((await anon.rpc('minigame_ranking', { p_game: 'surf' })).error, 'anon cannot read minigame ranking');
 
   // 0024: 새 몬스터 6마리 + 환상 표시
   const ln = (await C.select('lines?id=gte.77&id=lte.82&select=id,mythic,bonus,btype&order=id')).data;

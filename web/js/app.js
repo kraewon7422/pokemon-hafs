@@ -416,7 +416,7 @@ export function viewHome() {
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
         pix('gift'), '지금은 앱에서 바로 받기 (부스 혼잡 모드)')),
 
-    h('button.btn.big.bag-btn', { onclick: () => openBagScreen() }, pix('bag', 'l'), '가방', h('small', ' 몬스터 박스 · 도구 · 회복약 · 기술머신')),
+    h('button.btn.big.bag-btn', { onclick: () => openBagScreen() }, pix('bag', 'l'), h('span.btn-label', '가방')),
     minigameButton(),
 
     rouletteBox(),
@@ -524,8 +524,8 @@ export function openSettings() {
     h('section.box.setting-name',
       h('b', '랭킹·대형 화면에 보이는 내 이름'),
       h('div.seg', { role: 'group', 'aria-label': '이름 공개' },
-        h('button', { 'aria-pressed': String(!!p.show_on_board), onclick: () => setPublic(true) }, `공개: ${masked}`),
-        h('button', { 'aria-pressed': String(!p.show_on_board), onclick: () => setPublic(false) }, '비공개: 익명 트레이너')),
+        h('button', { 'aria-pressed': String(!!p.show_on_board), onclick: () => setPublic(true) }, h('span', '공개'), h('small', masked)),
+        h('button', { 'aria-pressed': String(!p.show_on_board), onclick: () => setPublic(false) }, h('span', '비공개'), h('small', '익명 트레이너'))),
       h('small', '공개해도 이름 가운데 글자는 가려져요. 언제든 바꿀 수 있어요.')),
     ['number', 'id'].includes(p.login) && p.role === 'student' && h('section.box.stack.setting-login',
       h('b', '로그인 정보'),
@@ -922,7 +922,10 @@ export async function celebrate(tickets, prevLines) {
     paint(canvas, sp.id, 200);
     sfx.catch(); vibrate([80, 60, 160]);
     if (lucky) sfx.correct();
-    await typeText(text, `${secret ? '★비밀 몬스터 발견★\n' : ''}축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!${rare && !secret ? ' ★희귀★' : ''}\n(${t.qr_name})${lucky ? `\n✦ ${lucky} ✦` : ''}`);
+    // 등급 표시는 첫 줄에 따로 (문장 끝에 붙이면 좁은 폰에서 혼자 다음 줄로 떨어짐)
+    const tag = secret ? '★비밀 몬스터 발견★' : lineOf(sp.line_id)?.mythic ? '★환상의 몬스터★'
+      : lineOf(sp.line_id)?.rarity === 'legendary' ? '★전설의 몬스터★' : rare ? '★희귀 몬스터★' : '';
+    await typeText(text, `${tag ? `${tag}\n` : ''}축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!\n(${t.qr_name})${lucky ? `\n✦ ${lucky} ✦` : ''}`);
     text.append(h('span.more', '▼'));
     S.celebrated.add(t.nonce);
     await kv.set('celebrated', [...S.celebrated]);

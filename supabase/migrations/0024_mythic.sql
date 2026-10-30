@@ -27,8 +27,8 @@ insert into public.species (id, line_id, stage, name, category, flavor, height, 
  (244, 82, 1, '아토키', '환상 몬스터', '원자 궤도를 두르고 열쇠 꼬리로 자연의 비밀을 여는 환상. 숲 가장자리에서 조용히 관찰을 한다.', '100cm', '20kg')
 on conflict (id) do nothing;
 
--- 야자 시간대 레이드 (임시 시간 — 운영자 페이지 설정 raid_slots 에서 실제 시간으로 고친다)
-update public.settings set value = value || '[{"line": 77, "from": "18:40", "until": "20:00"}, {"line": 78, "from": "20:20", "until": "21:50"}]'::jsonb
+-- 야자 시간대 레이드: 야1 19:00~20:20, 야2 20:50~23:00 (운영자 페이지 설정 raid_slots 에서 바꿀 수 있음)
+update public.settings set value = value || '[{"line": 77, "from": "19:00", "until": "20:20"}, {"line": 78, "from": "20:50", "until": "23:00"}]'::jsonb
  where key = 'raid_slots' and not exists (select 1 from jsonb_array_elements(value) e where (e ->> 'line')::int in (77, 78));
 
 -- 이스터에그 특별 티켓

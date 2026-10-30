@@ -334,7 +334,6 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 @media (max-width: 380px) { .sum-main { grid-template-columns: 1fr; } .sum-pic { border-right: 0; border-bottom: 3px solid #182030; min-height: 120px; } }
 
 /* raid / battle tabs */
-.raid-preview { display: flex; justify-content: space-around; gap: 8px; }
 .raid-preview > div { display: grid; justify-items: center; gap: 2px; }
 .type-cycle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .type-cycle .arrow { font-weight: bold; color: #586890; }
@@ -649,24 +648,9 @@ section[aria-label="티켓 주머니"] .banner > span { text-align: right; }
 .mg-result { display: flex; align-items: center; gap: 12px; }
 .mg-result .big { display: block; font-size: 28px; }
 .mg-result canvas { image-rendering: pixelated; }
-.mg-rank { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; max-height: 40vh; overflow-y: auto; }
-.mg-rank li { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 6px; padding: 4px 8px; border-radius: 6px; background: #f0f2f6; }
-.mg-rank li.me { background: #fff4c8; box-shadow: inset 0 0 0 2px #f8c030; }
-.mg-rank .rk { font-weight: bold; text-align: right; }
-.mg-rank .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 이스터에그 (0024): 지도 오른쪽 위 숲 모서리 — 보이지 않는 누름 칸 */
 .map-egg { position: absolute; right: 0; top: 0; width: 16%; height: 9%; z-index: 1; -webkit-tap-highlight-color: transparent; }
 
-/* 미니게임: 화면 아래 랭킹 보기 (펼치면 그 자리에서 목록) */
-.mg-rank-panel { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 560px; margin: 8px auto 0; }
-.mg-rank-btn { width: 100%; }
-.mg-rank-box { background: var(--paper, #fff); border: 3px solid #182030; border-radius: 8px; padding: 8px; max-height: 42vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
-.mg-rank-box > * { flex-shrink: 0; }
-.mg-rank-box .mg-rank { max-height: none; overflow: visible; }
-.mg-rank li.muted { display: block; background: none; }
-.mg-rank-box[hidden] { display: none; }
-.mg-rank-tabs { display: flex; gap: 4px; }
-.mg-rank-tabs button { flex: 1; min-width: 0; font-size: 13px; }
 
 /* 트레이너 카드 몬스터 바꾸기 (0024): 사진 오른쪽 위 작은 동그라미 */
 .trainer .partner { position: relative; }
@@ -677,3 +661,58 @@ section[aria-label="티켓 주머니"] .banner > span { text-align: right; }
 .partner-pick { display: grid; justify-items: center; gap: 2px; padding: 6px 2px; border: 2px solid #d8dce4; border-radius: 8px; background: #fff; cursor: pointer; }
 .partner-pick small { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .partner-pick.on { border-color: #f8c030; background: #fff4c8; }
+
+/* 미니게임 랭킹 (아래에서 올라오는 창, 미니게임 화면 안): 목록만 스크롤, 제목·탭·내 순위는 고정 */
+.mg-foot { position: sticky; bottom: 0; padding-top: 8px; margin-top: auto; background: linear-gradient(transparent, #e4ecd8 30%); width: 100%; max-width: 560px; align-self: center; }
+.mg-rank-btn { width: 100%; }
+.mg-sheet-wrap { position: absolute; inset: 0; z-index: 20; background: rgba(16, 24, 40, .55); display: flex; align-items: flex-end; justify-content: center; animation: fade .15s; }
+.mg-sheet { box-sizing: border-box; width: 100%; max-width: 560px; height: min(78dvh, 640px); display: flex; flex-direction: column; gap: 8px; background: #fffdf5; border: 3px solid #182030; border-bottom: 0; border-radius: 16px 16px 0 0; padding: 8px 12px calc(12px + env(safe-area-inset-bottom)); animation: up .2s steps(4); }
+.mg-sheet > * { flex-shrink: 0; }
+.mg-sheet .grab { margin: 0 auto; }
+.mg-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.mg-sheet-head b { font-size: 18px; display: inline-flex; align-items: center; gap: 4px; }
+.mg-rank-tabs { display: flex; }
+.mg-rank-tabs button { flex: 1; min-width: 0; padding: 0 4px; font-size: 13px; word-break: keep-all; }
+.mg-rank-sub { color: #586078; }
+.mg-rank-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; border-radius: 8px; }
+.mg-rank-scroll.short { flex: none; max-height: 34dvh; }
+.mg-rank { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.mg-rank-row { display: grid; grid-template-columns: 32px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 36px; padding: 4px 10px; border-radius: 8px; background: #eef0f5; }
+.mg-rank-row .rk { font-weight: bold; text-align: center; }
+.mg-rank-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mg-rank-row b { white-space: nowrap; }
+.mg-rank-row.top1 { background: #fff0b8; } .mg-rank-row.top2 { background: #e8ecf4; } .mg-rank-row.top3 { background: #f6e0cc; }
+.mg-rank-row.top1 .rk { color: #b07800; } .mg-rank-row.top3 .rk { color: #a05a20; }
+.mg-rank-row.me { background: #fff4c8; box-shadow: inset 0 0 0 2px #f8c030; }
+.mg-rank-mine { border-top: 2px dashed #c8ccd8; padding-top: 8px; }
+.mg-rank-empty { margin: 16px 4px; text-align: center; word-break: keep-all; }
+.mg-row2 { display: flex; gap: 8px; } .mg-row2 > * { flex: 1; min-width: 0; }
+.mg-btns { grid-column: 1 / -1; flex-wrap: wrap; }
+.mg-pic { grid-row: auto; align-self: start; }
+.mg-foot .mg-rank-btn { box-shadow: 0 -4px 12px rgba(16, 24, 40, .12); }
+
+/* 처음 안내: 아래 메뉴 바 아이콘을 크게 (배틀) */
+.onb-tab-ico { display: inline-grid; place-items: center; width: 72px; height: 72px; color: var(--ink); }
+.onb-tab-ico svg { width: 64px; height: 64px; }
+
+/* 홈의 큰 버튼 (가방·미니게임): 이름은 절대 안 쪼개고, 설명만 줄바꿈 (전역 overflow-wrap:anywhere 가 flex 안에서 "가/방" 처럼 쪼개던 문제) */
+.bag-btn, .mg-btn { flex-wrap: nowrap; text-align: left; }
+.btn-label { flex: none; white-space: nowrap; }
+.bag-btn small, .mg-btn > small { flex: 0 1 auto; min-width: 0; overflow-wrap: break-word; word-break: keep-all; line-height: 1.3; }
+
+/* UI 점검 (2026-10-30, 폰 글자 크기에서): 줄이 어색하게 깨지던 곳 */
+.stats { grid-template-columns: repeat(2, max-content); column-gap: 14px; }
+.stats > span { display: flex; align-items: baseline; gap: 6px; font-size: var(--fs-s); }
+.stats b { float: none; margin-left: 0; font-size: var(--fs-m); }
+.dex-head .banner > span:first-child { white-space: nowrap; }
+.dex-head .banner > span + span { text-align: right; }
+.btn .btn-sub { font-weight: normal; font-size: var(--fs-s); opacity: .85; white-space: nowrap; }
+.setting-name .seg button { display: grid; align-content: center; gap: 2px; line-height: 1.2; }
+.setting-name .seg button small { font-size: var(--fs-s); word-break: keep-all; overflow-wrap: break-word; }
+.raid-preview { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); justify-items: center; gap: 8px 4px; }
+.mg-btns .btn { flex: 1 1 0; min-width: 0; padding-left: 6px; padding-right: 6px; white-space: nowrap; }
+.mg-btns .btn.small { flex: 0 0 auto; }
+
+/* 게임 결과 창 (게임 화면 위): 내용만큼 높이, 목록은 짧게 스크롤 */
+.mg-sheet.mg-result-sheet { height: auto; max-height: 86dvh; overflow-y: auto; }
+.mg-result > div { display: grid; gap: 2px; justify-items: start; }

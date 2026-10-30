@@ -1,12 +1,12 @@
--- 0023: 미니게임 (홈 → 미니게임, 몬스터 10마리부터 열림) — 요트 · 폭탄 피하기 · 자이로 미로
+-- 0023: 미니게임 (홈 → 미니게임, 몬스터 10마리부터 열림) — 서핑 · 폭탄 피하기 · 자이로 미로 · 땅따먹기
 --  · 점수는 게임마다 따로 랭킹 (전체 랭킹에는 안 들어감). 한 사람의 가장 좋은 기록만 줄 세움.
---  · 요트·폭탄 피하기 = 점수가 클수록 좋음, 미로 = 시간(ms)이 짧을수록 좋음 (minigame_games.lower_better).
+--  · 서핑(m)·폭탄 피하기(점)·땅따먹기(땅 ‰) = 클수록 좋음, 미로 = 랭킹 모드 5판 시간(ms)이 짧을수록 좋음 (_mg_lower). 미로 자유 모드는 기록 안 보냄.
 --  · 서버 확인: 몬스터 minigame_unlock (10) 마리 이상, 게임별 점수 범위, 걸린 시간에 맞는 점수, 같은 게임 5초에 한 번.
 
 create table if not exists public.minigame_scores (
   id      bigserial primary key,
   user_id uuid not null references public.profiles (user_id) on delete cascade on update cascade,
-  game    text not null check (game in ('yacht', 'dodge', 'maze')),
+  game    text not null check (game in ('surf', 'dodge', 'maze', 'land')),
   score   int not null,
   ms      int not null default 0,          -- 한 판에 걸린 시간 (점수 확인용)
   at      timestamptz not null default now()
@@ -26,15 +26,16 @@ language plpgsql security definer set search_path = '' as $$
 declare uid uuid := auth.uid(); n int; ok boolean;
 begin
   if uid is null or not exists (select 1 from public.profiles where user_id = uid) then raise exception 'NOT_AUTHENTICATED'; end if;
-  if p_game not in ('yacht', 'dodge', 'maze') then raise exception 'BAD_GAME'; end if;
+  if p_game not in ('surf', 'dodge', 'maze', 'land') then raise exception 'BAD_GAME'; end if;
   select count(*) into n from public.collection where user_id = uid;
   if n < coalesce((public._setting('minigame_unlock'))::int, 10) then raise exception 'MINIGAME_LOCKED'; end if;
   if exists (select 1 from public.minigame_scores where user_id = uid and game = p_game and at > now() - interval '5 seconds') then
     raise exception 'TRY_LATER';
   end if;
-  -- 말이 되는 점수인지 (요트: 13칸 최대 375 / 폭탄: 1초에 최대 30점 / 미로: 3판을 6초~10분)
+  -- 말이 되는 점수인지 (서핑: 1초에 최대 40m / 폭탄: 1초에 최대 30점 / 땅따먹기: 판의 0~1000‰, 5초 이상 / 미로: 5판을 6초~10분)
   ok := case p_game
-    when 'yacht' then p_score between 0 and 375 and p_ms >= 20000
+    when 'surf' then p_score between 0 and 1000000 and p_ms >= 1000 and p_score <= p_ms / 1000.0 * 40 + 50
+    when 'land' then p_score between 0 and 1000 and p_ms >= 5000
     when 'dodge' then p_score between 0 and 100000 and p_ms >= 1000 and p_score <= p_ms / 1000.0 * 30 + 50
     else p_score between 6000 and 600000 and abs(p_ms - p_score) < 3000 end;
   if not ok then raise exception 'BAD_SCORE'; end if;
@@ -42,13 +43,13 @@ begin
   return public.minigame_ranking(p_game) || jsonb_build_object('submitted', p_score);
 end $$;
 
--- 게임별 랭킹: 한 사람의 최고 기록으로 상위 20 + 내 기록·순위
+-- 게임별 랭킹: 한 사람의 최고 기록으로 상위 50 + 내 기록·순위
 create or replace function public.minigame_ranking(p_game text) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare uid uuid := auth.uid(); lo boolean := public._mg_lower(p_game);
 begin
   if uid is null then raise exception 'NOT_AUTHENTICATED'; end if;
-  if p_game not in ('yacht', 'dodge', 'maze') then raise exception 'BAD_GAME'; end if;
+  if p_game not in ('surf', 'dodge', 'maze', 'land') then raise exception 'BAD_GAME'; end if;
   return (with best as (
       select user_id, case when lo then min(score) else max(score) end as score, max(at) as at
         from public.minigame_scores where game = p_game group by user_id),
@@ -58,7 +59,7 @@ begin
       'game', p_game, 'lower_better', lo,
       'top', coalesce((select jsonb_agg(jsonb_build_object('rank', r.rk, 'name', public._display_name(p), 'score', r.score, 'me', r.user_id = uid)
                                         order by r.rk, r.at)
-                       from (select * from ranked order by rk, at limit 20) r join public.profiles p on p.user_id = r.user_id), '[]'),
+                       from (select * from ranked order by rk, at limit 50) r join public.profiles p on p.user_id = r.user_id), '[]'),
       'me', (select jsonb_build_object('rank', r.rk, 'score', r.score) from ranked r where r.user_id = uid),
       'players', (select count(*) from best),
       'unlock', coalesce((public._setting('minigame_unlock'))::int, 10)));
