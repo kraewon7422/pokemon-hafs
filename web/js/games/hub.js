@@ -7,7 +7,8 @@ import { spriteCanvas } from '../sprites.js';
 import { sfx, unlockAudio } from '../sfx.js';
 import { h, toast, pix } from '../ui.js';
 import { S, collection, dexOf, partnerMon } from '../state.js';
-import { overlay, closeOverlay } from '../app.js';
+import { overlay, closeOverlay, renderTab } from '../app.js';
+import { kv } from '../db.js';
 
 // 내 몬스터 (지금 단계 도감 번호) — 게임 속 캐릭터로 씀. 없으면 기본 몬스터
 const myMons = () => { const xs = collection().map((c) => dexOf(c.line_id, c.stage)); return xs.length ? xs : [1, 4, 7]; };
@@ -24,11 +25,51 @@ export const GAMES = [
   { id: 'land', short: '땅따먹기', title: '땅따먹기', dex: 76, desc: '내 땅 밖으로 선을 그리고 돌아오면 그 안이 내 땅! 꼬리를 밟히면 목숨 하나 (3개). AI 3명과 90초 대결.',
     fmt: (v) => `${(v / 10).toFixed(1)}%`, load: () => import('./land.js') },
 ];
-export const unlockAt = () => Number(S.snap?.rules?.minigame_unlock ?? 10);
+// 오프라인 기록: 인터넷이 없을 때 끝난 판은 폰에 (게임마다 가장 좋은 것 하나만) 두었다가 연결되면 보냄
+const PENDING = 'mgPending';
+const better = (g, a, b) => (GAMES.find((x) => x.id === g)?.lower ? a < b : a > b);
+async function keepOffline(game, score, ms) {
+  const p = (await kv.get(PENDING)) || {};
+  const cur = p[game.id];
+  if (!cur || better(game.id, score, cur.score)) p[game.id] = { score, ms, at: Date.now() };
+  await kv.set(PENDING, p);
+}
+let flushing = false;
+export async function flushMinigameScores() {
+  if (flushing || !S.online) return;
+  flushing = true;
+  try {
+    const p = (await kv.get(PENDING)) || {};
+    for (const [id, v] of Object.entries(p)) {
+      try { await rpc('submit_minigame_score', { p_game: id, p_score: v.score, p_ms: v.ms }, { retries: 0 }); delete p[id]; }
+      catch (e) { if (!/fetch|network|offline/i.test(e.message || '')) delete p[id]; }   // 서버가 거절한 기록은 버림, 연결 문제면 다음에 다시
+    }
+    await kv.set(PENDING, p);
+  } finally { flushing = false; }
+}
+window.addEventListener('online', () => setTimeout(flushMinigameScores, 1500));
+
+// 운영자 설정 (0025 minigame_config): 열리는 몬스터 수 · 쉬는 게임. 폰에 저장해 두고 5분마다 새로 받음
+let cfg = null; let cfgAt = 0;
+kv.get('mgConfig').then((c) => { if (c && !cfg) cfg = c; });
+export async function refreshMgConfig(force = false) {
+  if (!S.online || (!force && Date.now() - cfgAt < 300000)) return cfg;
+  cfgAt = Date.now();
+  try {
+    const c = await rpc('minigame_config', {}, { retries: 0 });
+    const changed = JSON.stringify(c) !== JSON.stringify(cfg);
+    cfg = c; kv.set('mgConfig', c);
+    if (changed && S.tab === 'home' && !S.overlay) renderTab();
+  } catch { /* 오프라인: 저장된 값 그대로 */ }
+  return cfg;
+}
+const isOff = (g) => (cfg?.off || []).includes(g.id);
+export const unlockAt = () => Number(cfg?.unlock ?? 10);
 export const isUnlocked = () => collection().length >= unlockAt();
 
 // 홈 버튼: 잠겨 있으면 자물쇠
 export function minigameButton() {
+  refreshMgConfig();
   const n = collection().length; const need = unlockAt();
   const locked = n < need;
   return h(`button.btn.big.mg-btn${locked ? '.locked' : ''}`, {
@@ -41,13 +82,14 @@ export function minigameButton() {
 
 export async function openMinigames() {
   sfx.select(); unlockAudio();
+  refreshMgConfig(true).then(() => draw());
   const best = {};
   const list = h('div.mg-list');
   const draw = () => list.replaceChildren(...GAMES.map((g) => h('div.mg-card',
     h('div.mg-pic', spriteCanvas(g.dex, 64)),
     h('div.mg-info', h('b', g.title), h('small', g.desc),
       h('small.mg-best', best[g.id]?.me ? `내 최고 ${g.fmt(best[g.id].me.score)} · ${best[g.id].me.rank}위` : best[g.id] ? '아직 기록 없음' : '…')),
-    h('div.mg-btns',
+    isOff(g) ? h('div.mg-btns', h('span.chip.mg-off', '지금은 쉬는 중이에요'), h('button.btn.small', { onclick: () => rankSheet(ov, GAMES, g) }, '랭킹')) : h('div.mg-btns',
       h('button.btn.primary', { onclick: () => playGame(g, 'rank') }, g.free ? '랭킹 모드' : '시작'),
       g.free && h('button.btn', { onclick: () => playGame(g, 'free') }, '자유 모드'),
       h('button.btn.small', { onclick: () => rankSheet(ov, GAMES, g) }, '랭킹')))));
@@ -60,6 +102,7 @@ export async function openMinigames() {
     h('div.mg-foot', h('button.btn.big.mg-rank-btn', { onclick: () => rankSheet(ov, GAMES, GAMES[0]) }, pix('spark'), ' 랭킹 보기'))), 'full');
   ov.classList.add('bag-overlay');
   if (S.online) {
+    await flushMinigameScores();
     await Promise.all(GAMES.map(async (g) => { try { best[g.id] = await rpc('minigame_ranking', { p_game: g.id }, { retries: 0 }); } catch { /* offline */ } }));
     draw();
   }
@@ -88,10 +131,14 @@ async function playGame(game, mode = 'rank') {
       stage.dispatchEvent(new CustomEvent('mg-pause'));
       if (mode === 'free') return freeResult(ov, game, score, ms);   // 자유 모드는 기록을 안 보냄
       let res = null; let err = '';
-      if (S.online) {
-        try { res = await rpc('submit_minigame_score', { p_game: game.id, p_score: Math.round(score), p_ms: Math.round(ms) }, { retries: 0 }); }
-        catch (e) { err = errorText(e.message); }
-      } else err = '오프라인이라 기록은 저장하지 못했어요.';
+      const sc = Math.round(score), m = Math.round(ms);
+      if (S.online && navigator.onLine !== false) {
+        try { res = await rpc('submit_minigame_score', { p_game: game.id, p_score: sc, p_ms: m }, { retries: 0 }); }
+        catch (e) {
+          if (/fetch|network|offline/i.test(e.message || '')) { await keepOffline(game, sc, m); err = '인터넷이 끊겨서 기록을 폰에 저장했어요. 연결되면 자동으로 올라가요.'; }
+          else err = errorText(e.message);
+        }
+      } else { await keepOffline(game, sc, m); err = '오프라인이에요. 기록은 폰에 저장했다가 연결되면 자동으로 올라가요.'; }
       result(ov, game, score, res, err);
     },
   };

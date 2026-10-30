@@ -2,6 +2,19 @@
 // Reads only the centre square of the frame (faster, better in dim corridors) every ~120 ms.
 // Usage: const sc = new Scanner(videoEl, onText); await sc.start(); ... sc.stop();
 
+// jsQR 은 카메라를 처음 열 때 한 번만 불러옴 (첫 화면을 빠르게). 오프라인이면 sw 가 저장해 둔 것을 씀
+let jsqrP = null;
+export function loadJsQR() {
+  if (window.jsQR) return Promise.resolve();
+  jsqrP ||= new Promise((ok, bad) => {
+    const s = document.createElement('script');
+    s.src = new URL('../vendor/jsQR.js', import.meta.url).href;
+    s.onload = () => ok(); s.onerror = () => { jsqrP = null; bad(new Error('NO_SCANNER')); };
+    document.head.append(s);
+  });
+  return jsqrP;
+}
+
 export class Scanner {
   constructor(video, onText) {
     this.video = video;
@@ -16,6 +29,7 @@ export class Scanner {
 
   async start() {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('NO_CAMERA');
+    await loadJsQR();
     this.stream = await navigator.mediaDevices.getUserMedia({
       audio: false,
       video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },

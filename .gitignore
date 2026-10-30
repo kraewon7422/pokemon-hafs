@@ -34,3 +34,4 @@ art-src/
 web/img/booth-ball.gif
 # 미니게임 개발용 시험 페이지 (로그인 없이 게임 하나만 띄움)
 web/.dev-mg.html
+web/.tmp-session.json

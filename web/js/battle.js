@@ -130,6 +130,9 @@ export function viewBattle() {
       h('div.banner', h('b', '내 배틀 팀'), h('button.btn.small', { onclick: teamPicker, disabled: !collection().length }, '팀 바꾸기')),
       fmtSeg(S.btFmt, (k) => { S.btFmt = k; renderTab(); }),
       teamStrip(team),
+      h('div.seg.bt-fmt.bt-fair', { role: 'group', 'aria-label': '연습 배틀 레벨' }, [[false, '내 레벨'], [true, '공정 모드']].map(([v, l]) =>
+        h('button', { 'aria-pressed': String(practiceFair() === v), onclick: () => { sfx.blip(); setPracticeFair(v); renderTab(); } }, l))),
+      h('small.muted', practiceFair() ? '공정 모드: 양쪽 모두 Lv.50, 회복약을 쓸 수 없어요.' : '연습 배틀은 내 몬스터 레벨 그대로 싸워요.'),
       h('button.btn.big.primary', { disabled: !team.length || !!pvp, onclick: () => startBattle('cpu', null, S.btFmt) }, pix('spark'), h('span.btn-label', `연습 배틀 · ${FMT[S.btFmt].label}`), h('small.btn-sub', '보상 없음')),
       h('button.btn.big', { disabled: !team.length || !!pvp, onclick: openScanner }, pix('camera'), '친구 배틀 QR 찍기'),
       h('button.btn.big', { onclick: showBattleQr }, '내 배틀 QR 보여주기'),
@@ -246,6 +249,10 @@ export async function declineInvite(inv) {
   renderTab();
 }
 
+// 연습 배틀 공정 모드 (0025): 이 폰에 기억
+const practiceFair = () => { try { return localStorage.getItem('btPracticeFair') === '1'; } catch { return false; } };
+const setPracticeFair = (v) => { try { localStorage.setItem('btPracticeFair', v ? '1' : '0'); } catch { /* 저장 못 해도 이번엔 적용 안 됨 */ } };
+
 let starting = false;
 export async function startBattle(mode, code, fmt) {
   if (starting) return;   // 두 번 눌러서 배틀이 두 개 만들어지지 않게
@@ -255,7 +262,7 @@ export async function startBattle(mode, code, fmt) {
   if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   starting = true;
   try {
-    const args = mode === 'cpu' ? { p_lines: team, p_format: fmt } : { p_code: code, p_lines: team };
+    const args = mode === 'cpu' ? { p_lines: team, p_format: fmt, p_fair: practiceFair() } : { p_code: code, p_lines: team };
     openBattle(await rpc({ cpu: 'battle_start_cpu', team: 'battle_start_team', pvp: 'battle_challenge' }[mode], args, { retries: 0 }));
   } catch (e) { sfx.error(); say(errorText(e.message), true); if (e.message === 'IN_PVP_BATTLE') pollInbox(true); }
   finally { starting = false; }

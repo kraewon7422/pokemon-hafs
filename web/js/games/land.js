@@ -1,9 +1,10 @@
 // 땅따먹기: 30×30 돌판 위에서 나 + AI 3마리가 동시에 움직이며 땅을 넓힌다 (90초).
 // 규칙: 내 땅 밖으로 나가면 꼬리(줄무늬)가 생기고, 내 땅으로 돌아오면 꼬리 + 땅으로 둘러싼 칸이 모두 내 땅.
-//   남이 내 꼬리를 밟으면 나는 탈락, 내가 남의 꼬리를 밟으면 그 친구가 탈락. 내 꼬리를 내가 밟아도 탈락.
-//   머리끼리 부딪히면 자기 땅 위에 있던 쪽은 무사. 판 밖으로는 못 나감(멈춤).
-//   AI 는 탈락하면 땅이 사라지고 3초 뒤 빈 곳에서 다시 나옴. 내가 탈락하면 그 자리에서 끝.
+//   남이 내 꼬리를 밟으면 나는 목숨 하나를 잃고, 내가 남의 꼬리를 밟으면 그 친구가 탈락. 내 꼬리를 내가 밟아도 탈락.
+//   머리끼리 부딪히면 자기 땅 위에 있던 쪽은 무사. 판 밖으로는 못 나감(멈춤). 같은 걸음에 집에 도착하면 꼬리를 밟혀도 무사.
+//   AI 는 탈락하면 땅이 사라지고 3초 뒤 빈 곳에서 다시 나옴. 나는 목숨 3개 — 다 잃으면 그 자리에서 끝.
 // 점수 = 끝날 때 내 땅 (판 900칸 중 천분율, 0~1000). 화면: 나를 따라가는 카메라(가로 약 17칸) + 오른쪽 위 작은 지도.
+// 조작: 화면 어디든 누르고 끄는 조이스틱 (어느 각도든 — 대각선은 계단처럼 고르게 꺾임) · 방향키/WASD (두 키 = 대각선).
 // Phaser 3 (vendor) 사용 — start() 는 바로 돌아가고 Phaser 는 뒤에서 불러옴.
 import { loadPhaser } from './common.js';
 
@@ -13,7 +14,7 @@ export const STEP = 1 / 7;                  // 한 칸 이동 시간 (초) = 초
 const ROUND = 90;                           // 한 판 (초)
 const RESPAWN = Math.round(3 / STEP);       // AI 다시 나오기 (걸음 수 ≈ 3초)
 export const LIVES = 3;                     // 내 목숨
-const P_RESPAWN = Math.round(1.5 / STEP);   // 내가 다시 나오기 (≈ 1.5초)
+const P_RESPAWN = Math.round(2 / STEP);     // 내가 다시 나오기 (≈ 2초: 느린 화면 0.4초 + 카메라 이동 + 카운트)
 const PROTECT = Math.round(1 / STEP);       // 다시 나온 뒤 무적 (≈ 1초)
 const CALM = Math.round(10 / STEP);         // 처음 10초는 AI 가 꼬리를 노리지 않음
 const MOOD = Math.round(2 / STEP);          // AI 기분(노릴지) 다시 정하는 간격
@@ -38,11 +39,12 @@ export function enclose(own, trail, n, p) {
   return out;
 }
 
-// AI 성격: legs = 밖으로 나가는 거리 범위, margin = 위험 감지 여유, budget = 꼬리 최대 길이, hunt = 남의 꼬리 노리는 거리, blind = 가끔 위험을 못 봄
+// AI 성격: legs = 밖으로 나가는 거리 범위, margin = 위험 감지 여유, budget = 꼬리 최대 길이, hunt = 남의 꼬리 노리는 거리,
+//   cut = 2초마다 '노릴 기분'이 될 확률, blind = 가끔 위험을 못 봄
 const PERS = {
   me: {},
   cautious: { legs: [3, 6], margin: 4, budget: 18, hunt: 1, cut: 0.35, blind: 0.03 },
-  greedy: { legs: [8, 14], margin: 1, budget: 46, hunt: 2, cut: 0.5, blind: 0.1 },
+  greedy: { legs: [8, 14], margin: 1, budget: 46, hunt: 2, cut: 0.5, blind: 0.16 },
   hunter: { legs: [3, 6], margin: 2, budget: 20, hunt: 6, cut: 0.8, blind: 0.06 },
 };
 
@@ -59,10 +61,12 @@ export class LandSim {
     this.players = kinds.map((kind, id) => ({
       id, kind, ai: kind !== 'me', alive: true, x: 0, y: 0, px: 0, py: 0, dir: null, queue: [], trail: [], land: 0,
       mode: 'out', plan: null, wait: 0, exit: null, respawnAt: 0, kills: 0, blocked: false, lives: id === 0 ? LIVES : Infinity, protect: 0,
+      stick: null, stickRelease: false, stickOn: false, ex: 0, ey: 0, spawnSpot: null,
     }));
     this.players.forEach((p, i) => this.place(p, homes[i % 4][0], homes[i % 4][1]));
   }
   idx(x, y) { return y * this.n + x; }
+  inb(x, y) { return x >= 0 && y >= 0 && x < this.n && y < this.n; }
   // K×K 땅을 주고 그 위에 세움
   place(p, cx, cy) {
     const lo = -Math.floor((K - 1) / 2), hi = lo + K - 1;
@@ -72,12 +76,38 @@ export class LandSim {
       this.own[i] = p.id;
     }
     Object.assign(p, { x: cx, y: cy, px: cx, py: cy, alive: true, trail: [], plan: null, mode: 'out', exit: null, dir: null, queue: [],
-      wait: 1 + Math.floor(this.rnd() * 3) });
+      wait: 1 + Math.floor(this.rnd() * 3), stickOn: false, spawnSpot: null });
     this.count();
   }
   count() {
     for (const p of this.players) p.land = 0;
     for (let i = 0; i < this.own.length; i++) if (this.own[i] >= 0) this.players[this.own[i]].land++;
+  }
+  // 조이스틱 방향 → 이번 걸음 방향. 대각선은 오차 누적(브레젠험)으로 가로·세로를 고르게 번갈아 → 계단 모양 꼬리.
+  // 뒤로 당기면 바로 180° 돌지 않고 옆으로 꺾어서 돎. 벽 쪽으로만 밀면 멈춤.
+  steer(p) {
+    const s = p.stick;
+    const ax = Math.abs(s.x), ay = Math.abs(s.y), tot = ax + ay;
+    if (!tot) return p.dir;
+    let fx = ax / tot;
+    if (fx < 0.13) fx = 0; else if (fx > 0.87) fx = 1;   // 거의 똑바로면 똑바로
+    const hd = s.x > 0 ? 1 : 3, vd = s.y > 0 ? 2 : 0;
+    if (!p.stickOn) { p.stickOn = true; p.ex = 0; p.ey = 0; }
+    p.ex += fx; p.ey += 1 - fx;
+    const order = fx === 1 ? [hd] : fx === 0 ? [vd] : p.ex >= p.ey ? [hd, vd] : [vd, hd];
+    const back = p.dir == null ? -1 : (p.dir + 2) % 4;
+    const ok = (d) => d !== back && this.inb(p.x + DX[d], p.y + DY[d]);
+    const clamp = () => { p.ex = Math.max(-1, Math.min(1, p.ex)); p.ey = Math.max(-1, Math.min(1, p.ey)); };
+    for (const d of order) if (ok(d)) { if (d === hd) p.ex -= 1; else p.ey -= 1; clamp(); return d; }
+    clamp();
+    if (order[0] === back) {   // 똑바로 뒤 → 옆으로 (조이스틱이 살짝 기운 쪽, 아니면 넓은 쪽)
+      const sides = [(p.dir + 1) % 4, (p.dir + 3) % 4].filter((d) => this.inb(p.x + DX[d], p.y + DY[d]));
+      if (!sides.length) return p.dir;
+      const lean = (d) => (d % 2 ? Math.sign(s.x) * (d === 1 ? 1 : -1) : Math.sign(s.y) * (d === 2 ? 1 : -1));
+      sides.sort((a, b) => lean(b) - lean(a) || this.room(p, b) - this.room(p, a));
+      return sides[0];
+    }
+    return p.dir;
   }
   // 한 걸음 (모두 동시에)
   tick() {
@@ -87,7 +117,9 @@ export class LandSim {
     for (const p of ps) {
       if (!p.alive) continue;
       if (p.ai) { if (this.aiOn) p.dir = this.think(p); }
+      else if (p.stick) p.dir = this.steer(p);
       else while (p.queue.length) { const d = p.queue.shift(); if (p.dir == null || d !== (p.dir + 2) % 4) { p.dir = d; break; } }
+      if (p.stickRelease) { p.stick = null; p.stickRelease = false; p.stickOn = false; }
     }
     const moved = [];
     for (const p of ps) {
@@ -95,32 +127,36 @@ export class LandSim {
       p.px = p.x; p.py = p.y; p.blocked = false;
       if (p.dir == null) continue;
       const nx = p.x + DX[p.dir], ny = p.y + DY[p.dir];
-      if (nx < 0 || ny < 0 || nx >= this.n || ny >= this.n) { p.blocked = true; continue; }
+      if (!this.inb(nx, ny)) { p.blocked = true; continue; }
       p.x = nx; p.y = ny; moved.push(p);
     }
+    // 이번 걸음에 집(내 땅)에 도착해 땅을 먹는 친구들 — 같은 걸음에 꼬리를 밟혀도 무사 (집에 먼저 닿은 것으로 침)
+    const homing = new Set(moved.filter((p) => own[this.idx(p.x, p.y)] === p.id && p.trail.length).map((p) => p.id));
     const deaths = new Map();
     const kill = (id, cause, by) => { if (!deaths.has(id) && (cause === 'self' || !this.safe(ps[id]))) deaths.set(id, { cause, by }); };
     for (const p of moved) {
       const t = trail[this.idx(p.x, p.y)];
       if (t === p.id) kill(p.id, 'self', p.id);
-      else if (t >= 0) kill(t, 'cut', p.id);
+      else if (t >= 0 && !homing.has(t)) kill(t, 'cut', p.id);
     }
-    // 머리끼리 (같은 칸 / 서로 자리 바꿈): 자기 땅 위면 무사
+    // 머리끼리: 같은 칸이면 '지금 서 있는 칸'이 자기 땅인 쪽이 무사. 서로 자리를 바꿨으면 '출발한 칸'이 자기 땅인 쪽이 무사
     const alive = ps.filter((p) => p.alive);
     for (let i = 0; i < alive.length; i++) for (let j = i + 1; j < alive.length; j++) {
       const a = alive[i], b = alive[j];
       const same = a.x === b.x && a.y === b.y;
-      const swap = a.x === b.px && a.y === b.py && b.x === a.px && b.y === a.py && (a.x !== a.px || a.y !== a.py);
+      const swap = !same && a.x === b.px && a.y === b.py && b.x === a.px && b.y === a.py && (a.x !== a.px || a.y !== a.py);
       if (!same && !swap) continue;
-      if (own[this.idx(a.x, a.y)] !== a.id) kill(a.id, 'crash', b.id);
-      if (own[this.idx(b.x, b.y)] !== b.id) kill(b.id, 'crash', a.id);
+      const home = (p) => (same ? own[this.idx(p.x, p.y)] === p.id : own[this.idx(p.px, p.py)] === p.id);
+      if (!home(a)) kill(a.id, 'crash', b.id);
+      if (!home(b)) kill(b.id, 'crash', a.id);
     }
     for (const [id, c] of deaths) this.die(ps[id], c.cause, c.by);
+    // 땅 먹기를 먼저 (꼬리가 다른 친구 꼬리로 덮이기 전에), 그다음 꼬리 늘리기
+    for (const p of moved) if (p.alive && homing.has(p.id)) this.capture(p);
     for (const p of moved) {
       if (!p.alive) continue;
       const i = this.idx(p.x, p.y);
-      if (own[i] === p.id) { if (p.trail.length) this.capture(p); }
-      else if (trail[i] !== p.id) { trail[i] = p.id; this.trailAt[i] = this.steps; p.trail.push(i); }
+      if (own[i] !== p.id && trail[i] !== p.id) { trail[i] = p.id; this.trailAt[i] = this.steps; p.trail.push(i); }
     }
     this.count();
     for (const p of ps) if (p.alive && p.land === 0) { this.die(p, 'noland', null); this.count(); }
@@ -133,13 +169,21 @@ export class LandSim {
     if (p.lives > 0) {   // 마지막 목숨이면 땅을 남겨 둠 (점수 = 그때 땅)
       for (let i = 0; i < this.own.length; i++) if (this.own[i] === p.id) this.own[i] = -1;
       p.respawnAt = this.steps + (p.ai ? RESPAWN : P_RESPAWN);
+      if (!p.ai) p.spawnSpot = this.findSpot();   // 카메라가 미리 그곳으로 감
     }
     if (by != null && by !== p.id) { this.players[by].kills++; this.players[by].restUntil = this.steps + REST; }
-    this.events.push({ t: 'die', id: p.id, cause, by, x: p.x, y: p.y, lives: p.lives });
+    this.events.push({ t: 'die', id: p.id, cause, by, x: p.x, y: p.y, lives: p.lives, spot: p.spawnSpot });
   }
   capture(p) {
     const cells = enclose(this.own, this.trail, this.n, p.id);
     const prev = []; const victims = new Set();
+    const set = new Set(cells);
+    // 둘러싼 곳 안에 서 있던 친구도 탈락 (단, 방금 내 꼬리 칸을 밟고 있던 친구는 제외 — 그 칸은 경계)
+    for (const q of this.players) {
+      if (q === p || !q.alive) continue;
+      const qi = this.idx(q.x, q.y);
+      if (set.has(qi) && this.trail[qi] !== p.id) victims.add(q.id);
+    }
     for (const i of cells) {
       prev.push(this.own[i]);
       const t = this.trail[i];
@@ -152,19 +196,22 @@ export class LandSim {
     if (p.ai) { p.wait = p.id === 0 ? 1 + Math.floor(this.rnd() * 4) : 3 + Math.floor(this.rnd() * 6); p.exit = null; p.plan = null; p.mode = 'out'; }
     this.events.push({ t: 'cap', id: p.id, cells, prev, x: p.x, y: p.y });
   }
-  // 빈 곳 찾아 다시 나오기 (다른 머리에서 멀리)
-  respawn(p) {
-    const n = this.n; const heads = this.players.filter((q) => q.alive);
+  // 다시 나올 자리: 빈 K×K, 다른 머리에서 멀리
+  spotOk(cx, cy, strict) {
     const lo = -Math.floor((K - 1) / 2), hi = lo + K - 1;
+    if (!this.inb(cx + lo, cy + lo) || !this.inb(cx + hi, cy + hi)) return false;
+    for (let dy = lo; dy <= hi; dy++) for (let dx = lo; dx <= hi; dx++) {
+      const i = this.idx(cx + dx, cy + dy);
+      if (this.trail[i] >= 0 || (strict && this.own[i] >= 0)) return false;
+    }
+    return true;
+  }
+  findSpot() {
+    const n = this.n; const heads = this.players.filter((q) => q.alive);
     let best = null, bs = -1;
     for (const strict of [true, false]) {
-      for (let cy = -lo; cy < n - hi; cy++) for (let cx = -lo; cx < n - hi; cx++) {
-        let ok = true;
-        for (let dy = lo; dy <= hi && ok; dy++) for (let dx = lo; dx <= hi && ok; dx++) {
-          const i = this.idx(cx + dx, cy + dy);
-          if (this.trail[i] >= 0 || (strict && this.own[i] >= 0)) ok = false;
-        }
-        if (!ok) continue;
+      for (let cy = 0; cy < n; cy++) for (let cx = 0; cx < n; cx++) {
+        if (!this.spotOk(cx, cy, strict)) continue;
         const d = heads.reduce((m, q) => Math.min(m, Math.abs(q.x - cx) + Math.abs(q.y - cy)), 99);
         if (d < 4) continue;
         const s = Math.min(d, 14) + this.rnd() * 5;
@@ -172,8 +219,17 @@ export class LandSim {
       }
       if (best) break;
     }
-    if (!best) { p.respawnAt = this.steps + 7; return; }
-    this.place(p, best[0], best[1]);
+    return best;
+  }
+  respawn(p) {
+    let spot = p.spawnSpot;
+    if (spot) {
+      const near = this.players.some((q) => q.alive && Math.abs(q.x - spot[0]) + Math.abs(q.y - spot[1]) < 3);
+      if (!this.spotOk(spot[0], spot[1], true) || near) spot = null;
+    }
+    spot ||= this.findSpot();
+    if (!spot) { p.respawnAt = this.steps + 7; return; }
+    this.place(p, spot[0], spot[1]);
     if (p.id === 0) p.protect = this.steps + PROTECT;
     this.events.push({ t: 'spawn', id: p.id, x: p.x, y: p.y });
   }
@@ -217,9 +273,8 @@ export class LandSim {
     let best = null, bs = -INF;
     for (const o of safe) {
       let x = p.x, y = p.y, leave = 0;
-      while (x >= 0 && y >= 0 && x < this.n && y < this.n && this.own[this.idx(x, y)] === p.id) { x += DX[o.d]; y += DY[o.d]; leave++; }
-      const inb = x >= 0 && y >= 0 && x < this.n && y < this.n;
-      const s = Math.min(this.room(p, o.d), 10) - leave * 0.6 + (inb && this.own[this.idx(x, y)] === -1 ? 2 : 0) + this.rnd() * 4;
+      while (this.inb(x, y) && this.own[this.idx(x, y)] === p.id) { x += DX[o.d]; y += DY[o.d]; leave++; }
+      const s = Math.min(this.room(p, o.d), 10) - leave * 0.6 + (this.inb(x, y) && this.own[this.idx(x, y)] === -1 ? 2 : 0) + this.rnd() * 4;
       if (s > bs) { bs = s; best = o; }
     }
     return best ? best.d : p.dir;
@@ -251,10 +306,10 @@ export class LandSim {
     let safe = opts.filter((o) => hd[o.i] < INF);
     if (!safe.length) safe = opts;
     const pick = (f) => safe.slice().sort((a, b) => f(a) - f(b) || (a.d === p.dir ? -1 : b.d === p.dir ? 1 : 0))[0].d;
-    // 바로 옆에 남의 꼬리 → 밟기
     // 기분: 2초마다 '노릴까?' 를 다시 정함 (성격마다 확률) · 처음 10초와 누굴 잡은 뒤 6초는 쉼
     if (this.steps >= (p.moodAt || 0)) { p.moodAt = this.steps + MOOD; p.angry = rnd() < P.cut; }
     const calm = this.steps < CALM || this.steps < (p.restUntil || 0) || !p.angry;
+    // 바로 옆에 남의 꼬리 → 밟기 (노릴 기분일 때만)
     const cut = calm ? null : safe.find((o) => this.prey(p, o.i));
     if (cut) return cut.d;
     // 노릴 기분이 아니면 남의 꼬리를 밟지 않게 비켜 감 (다른 길이 있을 때)
@@ -298,8 +353,9 @@ export class LandSim {
 // ── 화면 ──
 const W = 336, H = 560;                       // 논리 해상도 (도트)
 const T = 20, WM = 28, WORLD = N * T + WM * 2;  // 칸 크기 · 판 둘레 풀밭 · 월드 크기
-const VIEW = { x: 0, y: 40, w: W, h: 360 };   // 판이 보이는 창 (위 40 = 점수줄, 아래 = 방향 버튼)
+const VIEW = { x: 0, y: 40, w: W, h: 360 };   // 판이 보이는 창 (위 40 = 점수줄, 아래 = 조이스틱 칸)
 const PAD_Y = VIEW.y + VIEW.h;
+const JOY = { x: 168, y: PAD_Y + 80, r: 62, knob: 22, dead: 10 };   // 조이스틱 (지름 124)
 const ATLAS = new URL('../../sprites/atlas.png', import.meta.url).href;
 const FONT = 'Galmuri11, monospace';
 
@@ -311,12 +367,24 @@ const PAL = [
 ];
 const hex = (s) => parseInt(s.slice(1), 16);
 const rgb = (s) => [hex(s) >> 16, (hex(s) >> 8) & 255, hex(s) & 255];
+// 땅 % 글자 (100% 는 소수점 없이 — 칸 밖으로 넘치지 않게)
+const pctText = (land) => { const v = (land * 100) / (N * N); return v >= 99.95 ? '100%' : `${v.toFixed(1)}%`; };
+
+// 탈락 이유 (한 줄)
+function deathText(e) {
+  const who = e.by != null && e.by !== e.id ? PAL[e.by].name : '';
+  if (e.cause === 'self') return '내 꼬리를 밟았어요';
+  if (e.cause === 'cut') return `${who}에게 꼬리가 잘렸어요`;
+  if (e.cause === 'crash') return '부딪혔어요';
+  if (e.cause === 'enclosed') return `${who}에게 갇혔어요`;
+  return '땅을 모두 잃었어요';
+}
 
 function rng(seed) {
   let a = seed >>> 0;
   return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
 }
-// 풀밭 + 꽃 + 돌멩이 (x0,y0,w,h 안에, avoid 사각형은 피함)
+// 풀밭 + 꽃 + 돌멩이 (avoid 사각형은 피함)
 function grass(g, w, h, seed, avoid) {
   const r = rng(seed);
   g.fillStyle = '#74c050'; g.fillRect(0, 0, w, h);
@@ -349,9 +417,11 @@ export default {
   title: '땅따먹기',
   start(stage, api) {
     const dev = location.pathname.endsWith('.dev-mg.html');
+    const reduce = !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    // 판 그릇: flex 를 쓰지 않음 (Phaser 가 가운데 맞춤을 직접 함 — flex 가운데 맞춤과 겹치면 오른쪽으로 밀림)
     const box = document.createElement('div');
-    box.style.cssText = 'flex:1 1 auto;width:100%;min-height:0;position:relative;touch-action:none;display:flex;justify-content:center;';
-    box.innerHTML = '<p style="margin:auto;font-size:14px;color:#384050">불러오는 중…</p>';
+    box.style.cssText = 'flex:1 1 auto;align-self:stretch;width:100%;min-height:0;position:relative;touch-action:none;overflow:hidden;';
+    box.innerHTML = '<p style="margin:40px 0 0;text-align:center;font-size:14px;color:#384050">불러오는 중…</p>';
     stage.append(box);
 
     let dead = false, game = null, scene = null, paused = false;
@@ -365,9 +435,9 @@ export default {
     const pool = [...new Set(owned.filter((d) => d !== partner && d >= 1 && d <= 252))].sort(() => Math.random() - 0.5);
     for (const d of [1, 7, 10, 25, 39]) if (pool.length < 3 && d !== partner && !pool.includes(d)) pool.push(d);
     const dex = [partner, ...pool.slice(0, 3)];
-    let mode = 'ready';   // ready → count → play → result
-    let clock = 0;        // 남은 시간 계산용 (게임 시간, 초)
-    let acc = 0, countT = 0, timeScale = 1;
+    let mode = 'ready';   // ready → count → play → (over →) result
+    let clock = 0;        // 게임 시간 (초)
+    let acc = 0, countT = 0, timeScale = 1, slowUntil = 0;
     let t0 = 0, pausedAt = 0, pausedTotal = 0;
     let finalScore = 0, finalMs = 0, reason = '';
 
@@ -376,63 +446,67 @@ export default {
       if (sent || dead) return; sent = true; clearTimeout(endTimer);
       api.end(finalScore, finalMs);
     };
-    const finish = (why) => {
-      if (mode === 'result') return;
-      mode = 'result'; reason = why;
-      finalScore = sim.score(0); finalMs = Math.max(0, realMs());
-      scene?.showResult();
-      endTimer = setTimeout(sendEnd, 3200);
+    // 끝: 점수·시간은 지금 확정, 결과판은 delay 뒤 (마지막 목숨이면 탈락 안내를 잠깐 보여 줌)
+    const finish = (why, delay = 0) => {
+      if (mode === 'result' || mode === 'over') return;
+      reason = why; finalScore = sim.score(0); finalMs = Math.max(0, realMs());
+      const show = () => { if (dead) return; mode = 'result'; scene?.showResult(); endTimer = setTimeout(sendEnd, 3200); };
+      if (delay) { mode = 'over'; timers.push(setTimeout(show, delay)); } else show();
     };
     const begin = () => { if (mode !== 'ready') return; mode = 'count'; countT = 0; api.sfx.blip(); };
-    const queueDir = (d) => {
-      const p = sim.players[0];
-      if (!p.alive || mode === 'result' || mode === 'ready') return;
-      const last = p.queue.length ? p.queue[p.queue.length - 1] : p.dir;
-      if (d === last) return;
-      if (p.queue.length >= 2) p.queue.shift();
-      p.queue.push(d);
-      scene?.pressPad(d);
-    };
 
-    // ── 입력: 밀기(스와이프) · 방향 버튼 · 방향키 ──
-    const PADS = [
-      { d: 0, x: 168, y: PAD_Y + 30 }, { d: 2, x: 168, y: PAD_Y + 132 },
-      { d: 3, x: 110, y: PAD_Y + 81 }, { d: 1, x: 226, y: PAD_Y + 81 },
-    ];
-    const BTN = 52;
-    let swipe = null;
+    // ── 입력: 조이스틱(누른 곳에 나타남) · 방향키/WASD ──
+    const me0 = sim.players[0];
+    const setStick = (x, y) => {
+      if (Math.hypot(x, y) < 1e-6) { if (me0.stick) me0.stickRelease = true; return; }
+      me0.stick = { x, y }; me0.stickRelease = false;
+    };
+    const releaseStick = () => { if (me0.stick) me0.stickRelease = true; };
+    let joy = null;   // { id, bx, by, kx, ky } (논리 좌표)
     const toLogical = (e) => {
       const r = game?.canvas?.getBoundingClientRect();
       if (!r || !r.width) return null;
-      return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H, k: r.width / W };
+      return { x: ((e.clientX - r.left) / r.width) * W, y: ((e.clientY - r.top) / r.height) * H };
+    };
+    const joyUpdate = () => {
+      const dx = joy.kx - joy.bx, dy = joy.ky - joy.by;
+      if (Math.hypot(dx, dy) < JOY.dead) releaseStick();   // 가운데 = 지금 방향 그대로
+      else setStick(dx, dy);
     };
     const onDown = (e) => {
       e.preventDefault();
       if (mode === 'ready') { begin(); return; }
       if (mode === 'result') { if (scene && scene.resultAge() > 900) sendEnd(); return; }
-      const L = toLogical(e);
-      if (L) {
-        const b = PADS.find((q) => Math.abs(L.x - q.x) <= BTN / 2 + 4 && Math.abs(L.y - q.y) <= BTN / 2 + 4);
-        if (b) { queueDir(b.d); return; }
-      }
-      swipe = { x: e.clientX, y: e.clientY, id: e.pointerId };
+      if (mode === 'over' || joy) return;
+      const L = toLogical(e); if (!L) return;
+      const bx = Math.max(JOY.r + 2, Math.min(W - JOY.r - 2, L.x));
+      const by = Math.max(VIEW.y + JOY.r + 2, Math.min(H - JOY.r - 2, L.y));
+      joy = { id: e.pointerId, bx, by, kx: L.x, ky: L.y };
       box.setPointerCapture?.(e.pointerId);
+      joyUpdate();
     };
     const onMove = (e) => {
-      if (!swipe || e.pointerId !== swipe.id) return;
+      if (!joy || e.pointerId !== joy.id) return;
       e.preventDefault();
-      const dx = e.clientX - swipe.x, dy = e.clientY - swipe.y;
-      if (Math.max(Math.abs(dx), Math.abs(dy)) < 14) return;
-      queueDir(Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 1 : 3) : (dy > 0 ? 2 : 0));
-      swipe.x = e.clientX; swipe.y = e.clientY;
+      const L = toLogical(e); if (!L) return;
+      joy.kx = L.x; joy.ky = L.y; joyUpdate();
     };
-    const onUp = () => { swipe = null; };
-    const KEYS = { ArrowUp: 0, ArrowRight: 1, ArrowDown: 2, ArrowLeft: 3, w: 0, d: 1, s: 2, a: 3, W: 0, D: 1, S: 2, A: 3 };
+    const onUp = (e) => { if (!joy || (e && e.pointerId !== joy.id)) return; joy = null; releaseStick(); };
+    const KEYS = { ArrowUp: [0, -1], ArrowRight: [1, 0], ArrowDown: [0, 1], ArrowLeft: [-1, 0], w: [0, -1], d: [1, 0], s: [0, 1], a: [-1, 0] };
+    const held = new Set();
+    const keyStick = () => {
+      let x = 0, y = 0; held.forEach((k) => { x += KEYS[k][0]; y += KEYS[k][1]; });
+      if (!x && !y) releaseStick(); else setStick(x, y);
+    };
+    const keyOf = (e) => (e.key.length === 1 ? e.key.toLowerCase() : e.key);
     const onKey = (e) => {
-      if (mode === 'ready' && (e.key === ' ' || e.key === 'Enter' || e.key in KEYS)) { e.preventDefault(); begin(); return; }
+      const k = keyOf(e);
+      if (mode === 'ready' && (e.key === ' ' || e.key === 'Enter' || k in KEYS)) { e.preventDefault(); begin(); return; }
       if (mode === 'result' && (e.key === ' ' || e.key === 'Enter')) { if (scene && scene.resultAge() > 900) sendEnd(); return; }
-      if (e.key in KEYS) { e.preventDefault(); queueDir(KEYS[e.key]); }
+      if (k in KEYS) { e.preventDefault(); held.add(k); keyStick(); }
     };
+    const onKeyUp = (e) => { const k = keyOf(e); if (held.delete(k)) keyStick(); };
+    const onBlur = () => { held.clear(); joy = null; releaseStick(); };
     const noScroll = (e) => e.preventDefault();
     const onPause = () => {
       if (paused) return; paused = true; pausedAt = performance.now();
@@ -451,6 +525,8 @@ export default {
     stage.addEventListener('mg-pause', onPause);
     stage.addEventListener('mg-resume', onResume);
     window.addEventListener('keydown', onKey);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('blur', onBlur);
 
     // ── Phaser 장면 ──
     const makeScene = (Phaser) => class LandScene extends Phaser.Scene {
@@ -459,6 +535,28 @@ export default {
       canvasTex(key, w, h, draw) { const t = this.textures.createCanvas(key, w, h); draw(t.getContext(), w, h); t.refresh(); return t; }
       txt(x, y, s, size = 12, color = '#ffffff', stroke = 3) {
         return this.add.text(x, y, s, { fontFamily: FONT, fontSize: `${size}px`, color, stroke: '#182030', strokeThickness: stroke, align: 'center' });
+      }
+      // 몬스터 그림이 실제로 차지하는 사각형 (64×64 칸 안) — 칸에 꼭 맞게 넣을 때 씀
+      monBox(d) {
+        this.boxes ||= {};
+        if (this.boxes[d]) return this.boxes[d];
+        const f = Math.max(0, Math.min(251, d - 1));
+        const img = this.textures.get('mons').getSourceImage();
+        const c = document.createElement('canvas'); c.width = 64; c.height = 64;
+        const g = c.getContext('2d'); g.drawImage(img, (f % 12) * 64, Math.floor(f / 12) * 64, 64, 64, 0, 0, 64, 64);
+        const a = g.getImageData(0, 0, 64, 64).data;
+        let x0 = 64, y0 = 64, x1 = -1, y1 = -1;
+        for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) if (a[(y * 64 + x) * 4 + 3] > 8) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+        const b = x1 < 0 ? { x: 0, y: 0, w: 64, h: 64 } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+        this.boxes[d] = b; return b;
+      }
+      // 몬스터를 (cx,cy) 가운데, w×h 칸 안에 통째로 (배율은 1 · 0.5 · 0.25 중 들어가는 가장 큰 것)
+      monIcon(cx, cy, d, w, h) {
+        const b = this.monBox(d);
+        const s = [1, 0.5, 0.25].find((k) => b.w * k <= w && b.h * k <= h) || 0.25;
+        const spr = this.add.sprite(0, 0, 'mons', Math.max(0, Math.min(251, d - 1))).setOrigin(0).setScale(s).setCrop(b.x, b.y, b.w, b.h);
+        spr.setPosition(Math.round(cx - (b.x + b.w / 2) * s), Math.round(cy - (b.y + b.h / 2) * s));
+        return spr;
       }
       makeTextures() {
         // 돌판 (회색 두 가지)
@@ -506,20 +604,9 @@ export default {
           g.fillStyle = '#101828'; g.fillRect(0, 38, W, 2);
         });
         this.canvasTex('panel', W, H - PAD_Y, (g, w, h) => {
-          grass(g, w, h, 11, [168 - 90, 0, 180, h]);
+          grass(g, w, h, 11, [JOY.x - JOY.r - 6, 0, JOY.r * 2 + 12, h]);
           g.fillStyle = '#101828'; g.fillRect(0, 0, w, 3);
           g.fillStyle = '#5a9e3e'; g.fillRect(0, 3, w, 1);
-        });
-        this.canvasTex('btn', BTN, BTN, (g) => {
-          g.fillStyle = '#182030'; g.fillRect(3, 0, BTN - 6, BTN); g.fillRect(0, 3, BTN, BTN - 6); g.fillRect(1, 1, BTN - 2, BTN - 2);
-          g.fillStyle = '#c9bc9c'; g.fillRect(3, 3, BTN - 6, BTN - 6);
-          g.fillStyle = '#f6eed8'; g.fillRect(3, 3, BTN - 6, BTN - 11);
-          g.fillStyle = '#ffffff'; g.fillRect(5, 5, BTN - 14, 2);
-        });
-        this.canvasTex('arr', 20, 14, (g) => {
-          g.fillStyle = '#384050';
-          for (let r = 0; r < 10; r++) g.fillRect(9 - r, r, 2 + r * 2, 1);
-          g.fillRect(6, 10, 8, 4);
         });
         this.canvasTex('mini', N * 2 + 2, N * 2 + 2, (g) => { g.fillStyle = '#182030'; g.fillRect(0, 0, N * 2 + 2, N * 2 + 2); });
       }
@@ -548,10 +635,10 @@ export default {
         this.puff = this.add.particles(0, 0, 'px', {
           lifespan: 500, speed: { min: 30, max: 90 }, scale: { start: 1.3, end: 0 }, alpha: { start: 1, end: 0 }, emitting: false,
         }).setDepth(450);
-        this.floaters = [];
 
-        // 화면에 고정된 것들 (점수줄 · 방향 버튼 · 작은 지도 · 화살표)
+        // 화면에 고정된 것들 (점수줄 · 조이스틱 칸 · 작은 지도 · 화살표)
         const ui = (o, d = 1000) => o.setScrollFactor(0).setDepth(d);
+        this.ui = ui;
         ui(this.add.image(0, 0, 'hud').setOrigin(0));
         ui(this.add.image(0, PAD_Y, 'panel').setOrigin(0));
         this.badges = [];
@@ -562,31 +649,27 @@ export default {
           g.fillStyle(hex(c.base), 1); g.fillRoundedRect(bx[p] + 2, 7, 62, 26, 5);
           g.fillStyle(hex(c.hi), 1); g.fillRect(bx[p] + 6, 9, 54, 2);
           if (p === 0) { g.lineStyle(2, 0xffffff, 1); g.strokeRoundedRect(bx[p] + 1, 6, 64, 28, 6); }
-          const icon = ui(this.add.sprite(bx[p] + 15, 21, 'mons', Math.max(0, Math.min(251, dex[p] - 1))).setScale(0.5), 1001);
-          icon.setCrop(4, 4, 56, 56);
-          const tx = ui(this.txt(bx[p] + 46, 14, '', 12), 1002).setOrigin(0.5, 0);
+          const icon = ui(this.monIcon(bx[p] + 15, 20, dex[p], 22, 22), 1001);
+          const tx = ui(this.txt(bx[p] + 45, 13, '', 12), 1002).setOrigin(0.5, 0);
           this.badges.push({ g, tx, icon, x: bx[p] });
         });
         this.timerBg = ui(this.add.graphics());
         this.timerBg.fillStyle(0x101828, 1); this.timerBg.fillRoundedRect(139, 3, 58, 34, 8);
         this.timerBg.fillStyle(0xf6eed8, 1); this.timerBg.fillRoundedRect(141, 5, 54, 30, 7);
         this.timerTx = ui(this.txt(168, 11, '1:30', 18, '#24324a', 0), 1002).setOrigin(0.5, 0);
-        // 방향 버튼
-        this.pads = PADS.map((q) => {
-          const b = ui(this.add.image(q.x, q.y, 'btn'));
-          const a = ui(this.add.image(q.x, q.y - 2, 'arr'), 1001).setAngle(q.d * 90);
-          return { ...q, b, a, flash: 0 };
-        });
-        ui(this.txt(40, PAD_Y + 60, '밀거나\n눌러서\n방향 바꾸기', 12, '#ffffff', 3), 1001).setOrigin(0.5, 0).setLineSpacing(2);
-        ui(this.txt(296, PAD_Y + 58, '내 땅', 12, '#ffffff', 3), 1001).setOrigin(0.5, 0);
-        this.myPct = ui(this.txt(296, PAD_Y + 76, '0%', 24, '#ffe048', 4), 1001).setOrigin(0.5, 0);
-        this.hearts = [0, 1, 2].map((k) => ui(this.add.image(277 + k * 19, PAD_Y + 118, 'heart'), 1001));
+        // 아래 칸: 안내 · 조이스틱 · 내 땅 · 목숨
+        ui(this.txt(52, PAD_Y + 62, '아무 데나\n누르고 끌어서\n움직여요', 12, '#ffffff', 3), 1001).setOrigin(0.5, 0).setLineSpacing(3);
+        ui(this.txt(284, PAD_Y + 46, '내 땅', 12, '#ffffff', 3), 1001).setOrigin(0.5, 0);
+        this.myPct = ui(this.txt(284, PAD_Y + 64, '0%', 24, '#ffe048', 4), 1001).setOrigin(0.5, 0);
+        this.hearts = [0, 1, 2].map((k) => ui(this.add.image(265 + k * 19, PAD_Y + 106, 'heart'), 1001));
+        this.joyG = ui(this.add.graphics(), 1005);
         // 작은 지도
         this.miniBuf = new ImageData(N * 2 + 2, N * 2 + 2);
         this.mini = ui(this.add.image(W - 4, VIEW.y + 4, 'mini').setOrigin(1, 0), 900).setAlpha(0.92);
         this.arrows = ui(this.add.graphics(), 890);
         this.danger = ui(this.add.graphics(), 950);
         this.overlay = ui(this.add.container(0, 0), 1100);
+        this.deathBox = ui(this.add.container(0, 0), 1090).setVisible(false);
         this.blink = 0;
 
         const cam = this.cameras.main;
@@ -608,35 +691,44 @@ export default {
         const x = p.px + (p.x - p.px) * a, y = p.py + (p.y - p.py) * a;
         return [WM + x * T + T / 2, WM + y * T + T / 2];
       }
+      // 카메라: 나를 따라감. 탈락 중이면 (느린 화면이 끝난 뒤) 다시 나올 곳으로 천천히 옮겨 감
       camTarget(snap) {
         const cam = this.cameras.main; const me = sim.players[0];
-        const [wx, wy] = this.worldPos(me, Math.min(1, acc / STEP));
+        let wx, wy, k = 0.16;
+        if (!me.alive && me.spawnSpot && performance.now() > slowUntil) {
+          [wx, wy] = [WM + me.spawnSpot[0] * T + T / 2, WM + me.spawnSpot[1] * T + T / 2]; k = 0.07;
+        } else [wx, wy] = this.worldPos(me, Math.min(1, acc / STEP));
         const tx = Math.max(0, Math.min(WORLD - W, wx - W / 2));
         const ty = Math.max(-VIEW.y, Math.min(WORLD - VIEW.y - VIEW.h, wy - VIEW.y - VIEW.h / 2));
         if (snap) { this.cx = tx; this.cy = ty; }
-        else { this.cx += (tx - this.cx) * 0.16; this.cy += (ty - this.cy) * 0.16; }
+        else { this.cx += (tx - this.cx) * k; this.cy += (ty - this.cy) * k; }
         cam.scrollX = Math.round(this.cx); cam.scrollY = Math.round(this.cy);
       }
-      pressPad(d) { const p = this.pads?.find((q) => q.d === d); if (p) p.flash = 0.15; api.sfx.evoTick(); }
       clearOverlay() { this.overlay.removeAll(true); }
+      // 판 위 둥근 안내판 (흰 바탕). 돌려주는 값 = 그래픽
+      card(x, y, w, h) {
+        const g = this.add.graphics();
+        g.fillStyle(0x101828, 1); g.fillRoundedRect(x, y, w, h, 10);
+        g.fillStyle(0xfffaf0, 1); g.fillRoundedRect(x + 3, y + 3, w - 6, h - 6, 8);
+        return g;
+      }
       showReady() {
         this.clearOverlay();
-        const g = this.add.graphics();
-        g.fillStyle(0x182030, 0.6); g.fillRect(0, VIEW.y, W, VIEW.h);
-        g.fillStyle(0x101828, 1); g.fillRoundedRect(14, VIEW.y + 50, W - 28, 246, 10);
-        g.fillStyle(0xfffaf0, 1); g.fillRoundedRect(17, VIEW.y + 53, W - 34, 240, 8);
-        g.fillStyle(0xe5534b, 1); g.fillRect(17, VIEW.y + 92, W - 34, 2);
+        const dim = this.add.graphics(); dim.fillStyle(0x182030, 0.6); dim.fillRect(0, VIEW.y, W, VIEW.h);
+        const g = this.card(14, VIEW.y + 46, W - 28, 262);
+        g.fillStyle(0xe5534b, 1); g.fillRect(17, VIEW.y + 88, W - 34, 2);
         const lines = [
           '땅 밖으로 나가면 꼬리가 생겨요',
           '내 땅으로 돌아오면 둘러싼 곳이 내 땅!',
           '남의 꼬리를 밟으면 그 친구가 탈락',
           '내 꼬리를 밟히거나 밟으면 탈락!',
           '목숨은 3개! 잡혀도 다시 나와요',
+          '아무 데나 누르고 끌면 그쪽으로 가요',
           '90초 동안 가장 넓은 땅을 차지해요',
         ];
-        const items = [g, this.txt(W / 2, VIEW.y + 62, '땅따먹기', 24, '#e5534b', 0).setOrigin(0.5, 0)];
-        lines.forEach((s, i) => items.push(this.txt(W / 2, VIEW.y + 104 + i * 22, s, 12, '#303848', 0).setOrigin(0.5, 0)));
-        this.tapTx = this.txt(W / 2, VIEW.y + 254, '탭해서 시작', 18, '#e5534b', 0).setOrigin(0.5, 0);
+        const items = [dim, g, this.txt(W / 2, VIEW.y + 58, '땅따먹기', 24, '#e5534b', 0).setOrigin(0.5, 0)];
+        lines.forEach((s, i) => items.push(this.txt(W / 2, VIEW.y + 100 + i * 22, s, 12, '#303848', 0).setOrigin(0.5, 0)));
+        this.tapTx = this.txt(W / 2, VIEW.y + 264, '탭해서 시작', 18, '#e5534b', 0).setOrigin(0.5, 0);
         items.push(this.tapTx);
         this.overlay.add(items);
       }
@@ -647,35 +739,67 @@ export default {
         t.setScale(1.6); this.tweens.add({ targets: t, scale: 1, duration: 220, ease: 'Back.Out' });
         this.overlay.add(t);
       }
+      // 내가 탈락했을 때: 이유 + 남은 목숨 + 다시 출발 카운트 (안내판 하나만)
+      showDeath(e) {
+        if (this.lastToast?.active) { this.tweens.killTweensOf(this.lastToast); this.lastToast.destroy(); }
+        const box = this.deathBox; box.removeAll(true);
+        const x = 38, y = VIEW.y + 64, w = W - 76, h = 108;
+        const items = [this.card(x, y, w, h), this.txt(W / 2, y + 14, deathText(e), 14, '#b03634', 0).setOrigin(0.5, 0)];
+        if (e.lives > 0) {
+          items.push(this.txt(W / 2 - 34, y + 44, '남은 목숨', 12, '#384050', 0).setOrigin(0.5, 0));
+          for (let k = 0; k < LIVES; k++) items.push(this.add.image(W / 2 + 14 + k * 19, y + 51, k < e.lives ? 'heart' : 'heart0'));
+          this.deathCount = this.txt(W / 2, y + 72, '', 18, '#24324a', 0).setOrigin(0.5, 0);
+          items.push(this.deathCount);
+        } else {
+          items.push(this.txt(W / 2, y + 48, '목숨을 모두 잃었어요', 12, '#384050', 0).setOrigin(0.5, 0));
+          for (let k = 0; k < LIVES; k++) items.push(this.add.image(W / 2 - 19 + k * 19, y + 82, 'heart0'));
+          this.deathCount = null;
+        }
+        box.add(items); box.setVisible(true).setAlpha(0);
+        this.tweens.add({ targets: box, alpha: 1, duration: 160 });
+      }
+      hideDeath(after = 0) {
+        const box = this.deathBox;
+        this.tweens.add({ targets: box, alpha: 0, delay: after, duration: 220, onComplete: () => { box.setVisible(false); box.removeAll(true); this.deathCount = null; } });
+      }
       resultAge() { return this.resultAt ? performance.now() - this.resultAt : 0; }
+      // 결과: 순위표 (메달 · 몬스터 · 이름 · 땅 %) — 몬스터는 칸 안에 통째로
       showResult() {
+        this.deathBox.setVisible(false).removeAll(true);
         this.clearOverlay(); this.resultAt = performance.now();
         const order = sim.players.map((p) => p).sort((a, b) => b.land - a.land || a.id - b.id);
         const rank = order.indexOf(sim.players[0]) + 1;
-        const g = this.add.graphics();
-        g.fillStyle(0x182030, 0.62); g.fillRect(0, VIEW.y, W, VIEW.h);
-        g.fillStyle(0x101828, 1); g.fillRoundedRect(14, VIEW.y + 24, W - 28, 300, 10);
-        g.fillStyle(0xfffaf0, 1); g.fillRoundedRect(17, VIEW.y + 27, W - 34, 294, 8);
+        const dim = this.add.graphics(); dim.fillStyle(0x182030, 0.62); dim.fillRect(0, VIEW.y, W, VIEW.h);
+        const px = 14, py = VIEW.y + 12, pw = W - 28, ph = 336;
+        const items = [dim, this.card(px, py, pw, ph)];
         const head = rank === 1 ? '1등!' : `${rank}등`;
-        const sub = reason === 'dead' ? '목숨을 모두 잃었어요! 그때 땅으로 기록해요' : '시간 끝!';
-        const items = [g,
-          this.txt(W / 2, VIEW.y + 36, head, 36, rank === 1 ? '#f0a020' : '#4a7fe0', 0).setOrigin(0.5, 0),
-          this.txt(W / 2, VIEW.y + 80, sub, 12, '#384050', 0).setOrigin(0.5, 0)];
+        const sub = reason === 'dead' ? '목숨을 모두 잃었어요 · 그때 땅으로 기록' : '시간 끝!';
+        items.push(this.txt(W / 2, py + 12, head, 30, rank === 1 ? '#f0a020' : '#4a7fe0', 0).setOrigin(0.5, 0),
+          this.txt(W / 2, py + 50, sub, 12, '#384050', 0).setOrigin(0.5, 0));
+        const MED = [0xf0b020, 0xb8c0cc, 0xc8783c];
+        const rx = px + 10, rw = pw - 20, rh = 50;
         order.forEach((p, i) => {
-          const y = VIEW.y + 106 + i * 44; const c = PAL[p.id];
-          const row = this.add.graphics();
-          row.fillStyle(p.id === 0 ? 0xfff0c0 : 0xeef0f4, 1); row.fillRoundedRect(26, y, W - 52, 40, 6);
-          if (p.id === 0) { row.lineStyle(2, 0xf0b020, 1); row.strokeRoundedRect(26, y, W - 52, 40, 6); }
+          const y = py + 74 + i * (rh + 4); const c = PAL[p.id];
+          const g = this.add.graphics();
+          g.fillStyle(p.id === 0 ? 0xfff0c0 : 0xeef0f4, 1); g.fillRoundedRect(rx, y, rw, rh, 6);
+          if (p.id === 0) { g.lineStyle(2, 0xf0b020, 1); g.strokeRoundedRect(rx + 1, y + 1, rw - 2, rh - 2, 6); }
+          // 메달 (1~3등) / 숫자
+          g.fillStyle(i < 3 ? MED[i] : 0xd4d8e0, 1); g.fillCircle(rx + 20, y + rh / 2, 13);
+          g.lineStyle(2, 0x182030, 1); g.strokeCircle(rx + 20, y + rh / 2, 13);
+          // 몬스터 칸
+          g.fillStyle(0xffffff, 1); g.fillRoundedRect(rx + 40, y + 4, 44, rh - 8, 5);
+          g.lineStyle(1, hex(c.base), 1); g.strokeRoundedRect(rx + 40, y + 4, 44, rh - 8, 5);
           const pct = (p.land * 100) / (N * N);
-          row.fillStyle(0xd0d4dc, 1); row.fillRect(140, y + 26, 150, 6);
-          row.fillStyle(hex(c.base), 1); row.fillRect(140, y + 26, Math.max(2, Math.round(150 * Math.min(1, pct / 50))), 6);
-          items.push(row,
-            this.txt(42, y + 12, `${i + 1}`, 18, i === 0 ? '#f0a020' : '#384050', 0).setOrigin(0.5, 0),
-            this.add.sprite(80, y + 39, 'mons', Math.max(0, Math.min(251, dex[p.id] - 1))).setOrigin(0.5, 1).setCrop(8, 24, 48, 40),
-            this.txt(140, y + 6, c.name, 12, c.lo, 0),
-            this.txt(290, y + 4, `${pct.toFixed(1)}%`, 18, '#303848', 0).setOrigin(1, 0));
+          const barX = rx + 94, barW = 112;
+          g.fillStyle(0xd0d4dc, 1); g.fillRect(barX, y + 33, barW, 6);
+          g.fillStyle(hex(c.base), 1); g.fillRect(barX, y + 33, Math.max(2, Math.round(barW * Math.min(1, pct / 50))), 6);
+          items.push(g,
+            this.txt(rx + 20, y + rh / 2 - 7, `${i + 1}`, 12, '#182030', 0).setOrigin(0.5, 0),
+            this.monIcon(rx + 62, y + rh / 2, dex[p.id], 40, rh - 12),
+            this.txt(barX, y + 10, p.id === 0 ? '나' : c.name, 12, p.id === 0 ? '#b03634' : c.lo, 0),
+            this.txt(rx + rw - 10, y + 15, pctText(p.land), 18, '#303848', 0).setOrigin(1, 0));
         });
-        items.push(this.txt(W / 2, VIEW.y + 288, `점수 ${finalScore}`, 18, '#e5534b', 0).setOrigin(0.5, 0));
+        items.push(this.txt(W / 2, py + ph - 34, `점수 ${finalScore}`, 18, '#e5534b', 0).setOrigin(0.5, 0));
         this.overlay.add(items);
         if (rank === 1 && reason !== 'dead') { api.sfx.catch(); this.confettiScreen(); } else if (reason !== 'dead') api.sfx.select();
       }
@@ -688,8 +812,8 @@ export default {
         const me = e.id === 0;
         if (e.t === 'cap') {
           const hx = e.x, hy = e.y;
-          const sorted = e.cells.map((i) => { const x = i % N, y = (i - x) / N; return { i, d: Math.abs(x - hx) + Math.abs(y - hy) }; });
-          sorted.forEach(({ i, d }) => {
+          e.cells.forEach((i) => {
+            const x = i % N, y = (i - x) / N, d = Math.abs(x - hx) + Math.abs(y - hy);
             const img = this.tiles[i];
             this.tweens.killTweensOf(img);
             img.setScale(0.3);
@@ -700,24 +824,23 @@ export default {
             const [wx, wy] = [WM + hx * T + T / 2, WM + hy * T];
             const f = this.txt(wx, wy - 26, `+${n}칸`, n >= 40 ? 18 : 12, '#ffe048', 3).setOrigin(0.5).setDepth(460);
             this.tweens.add({ targets: f, y: wy - 56, alpha: 0, duration: 1100, onComplete: () => f.destroy() });
-            if (n >= 40) { api.sfx.statUp(); this.fx.explode(40, wx, wy); this.cameras.main.flash(120, 255, 248, 200); }
+            if (n >= 40) { api.sfx.statUp(); this.fx.explode(40, wx, wy); }
             else if (n >= 15) { api.sfx.correct(); this.fx.explode(18, wx, wy); }
             else api.sfx.correct();
           }
         } else if (e.t === 'die') {
           const s = this.mons[e.id]; const [wx, wy] = [WM + e.x * T + T / 2, WM + e.y * T + T / 2];
           this.puff.setParticleTint(hex(PAL[e.id].base)); this.puff.explode(18, wx, wy);
-          if (me && e.lives <= 0) {
-            api.sfx.hit(); timers.push(setTimeout(() => !dead && api.sfx.faint(), 260));
-            this.cameras.main.shake(260, 0.012);
-            s.setTint(0xff6060);
-            this.tweens.add({ targets: s, angle: 90, duration: 300, ease: 'Quad.Out' });
-          } else if (me) {
-            api.sfx.hit(); api.sfx.statDown();
-            this.cameras.main.shake(200, 0.01);
-            this.toast(`앗! 남은 목숨 ${e.lives}`, '#ff6c6c', 1300);
+          if (me) {
+            // 차분하게: 작은 흔들림(움직임 줄이기 설정이면 없음) + 0.4초 느린 화면 + 안내판 하나
+            api.sfx.hit();
+            if (e.lives <= 0) timers.push(setTimeout(() => !dead && api.sfx.faint(), 260));
+            if (!reduce) this.cameras.main.shake(150, 0.004);
+            slowUntil = performance.now() + 400;
+            this.showDeath(e);
             this.tweens.killTweensOf(s); s.setTint(0xff6060);
-            this.tweens.add({ targets: s, angle: 360, scale: 0, alpha: 0, duration: 450, onComplete: () => s.setAngle(0) });
+            if (e.lives <= 0) this.tweens.add({ targets: s, angle: 90, duration: 300, ease: 'Quad.Out' });
+            else this.tweens.add({ targets: s, scale: 0, alpha: 0, duration: 450, onComplete: () => s.setAngle(0) });
           } else {
             if (e.by === 0) { api.sfx.ballPop(); this.toast(`${PAL[e.id].name} 탈락!`, PAL[e.id].base); } else if (this.onScreen(wx, wy)) api.sfx.ballThrow();
             this.tweens.killTweensOf(s);
@@ -727,12 +850,18 @@ export default {
           const s = this.mons[e.id];
           this.tweens.killTweensOf(s);
           s.setAlpha(1).setScale(0).setAngle(0).clearTint();
-          if (me) { api.sfx.ballThrow(); this.toast('다시 출발!', '#ffffff', 700); }
           this.tweens.add({ targets: s, scale: 1, duration: 380, ease: 'Back.Out' });
+          if (me) {
+            api.sfx.ballThrow();
+            if (this.deathCount?.active) this.deathCount.setText('다시 출발!').setColor('#2c7c36');
+            this.hideDeath(600);
+          }
         }
       }
+      // 짧은 알림 (위쪽). 탈락 안내판이 떠 있으면 띄우지 않음 — 겹치지 않게
       toast(msg, color, hold = 700) {
-        if (this.lastToast?.active) { this.tweens.killTweensOf(this.lastToast); this.lastToast.destroy(); } // 앞 안내는 바로 지움 (겹치지 않게)
+        if (this.deathBox.visible) return;
+        if (this.lastToast?.active) { this.tweens.killTweensOf(this.lastToast); this.lastToast.destroy(); }
         const t = this.txt(W / 2, VIEW.y + 54, msg, 18, color, 4).setOrigin(0.5).setScrollFactor(0).setDepth(1050);
         this.lastToast = t;
         this.tweens.add({ targets: t, y: VIEW.y + 40, alpha: 0, delay: hold, duration: 500, onComplete: () => t.destroy() });
@@ -758,7 +887,7 @@ export default {
         const vy0 = Math.max(1, Math.round(1 + ((cam.scrollY + VIEW.y - WM) / T) * 2)), vy1 = Math.min(S - 2, Math.round(1 + ((cam.scrollY + VIEW.y + VIEW.h - WM) / T) * 2));
         for (let x = vx0; x <= vx1; x++) { put(x, vy0, [255, 255, 255]); put(x, vy1, [255, 255, 255]); }
         for (let y = vy0; y <= vy1; y++) { put(vx0, y, [255, 255, 255]); put(vx1, y, [255, 255, 255]); }
-        // 머리: 깜빡이는 3×3 점
+        // 머리: 깜빡이는 점
         const on = Math.floor(this.blink * 4) % 2 === 0;
         for (const p of sim.players) {
           if (!p.alive) continue;
@@ -786,10 +915,34 @@ export default {
           const k = Math.min((W / 2 - 14) / Math.abs(dx || 1e-6), (VIEW.h / 2 - 14) / Math.abs(dy || 1e-6));
           const ex = cx + dx * k, ey = cy + dy * k, ang = Math.atan2(dy, dx);
           const pt = (r, t) => [ex + Math.cos(ang + t) * r, ey + Math.sin(ang + t) * r];
-          const [a1, a2, a3] = [pt(10, 0), pt(8, 2.4), pt(8, -2.4)];
           g.fillStyle(0x101828, 1); g.fillTriangle(...pt(13, 0), ...pt(11, 2.4), ...pt(11, -2.4));
-          g.fillStyle(hex(PAL[p.id].base), 1); g.fillTriangle(...a1, ...a2, ...a3);
+          g.fillStyle(hex(PAL[p.id].base), 1); g.fillTriangle(...pt(10, 0), ...pt(8, 2.4), ...pt(8, -2.4));
         }
+      }
+      // 조이스틱: 누르지 않을 때는 아래 칸 가운데에 흐리게, 누르면 그 자리에
+      drawJoy() {
+        const g = this.joyG; g.clear();
+        if (mode === 'result' || mode === 'ready') return;
+        const on = !!joy;
+        const bx = on ? joy.bx : JOY.x, by = on ? joy.by : JOY.y;
+        let kx = bx, ky = by;
+        if (on) {
+          const dx = joy.kx - bx, dy = joy.ky - by, d = Math.hypot(dx, dy), m = JOY.r - JOY.knob / 2;
+          const s = d > m ? m / d : 1; kx = bx + dx * s; ky = by + dy * s;
+        }
+        g.fillStyle(0x101828, on ? 0.3 : 0.18); g.fillCircle(bx, by, JOY.r);
+        g.lineStyle(3, 0xfffaf0, on ? 0.9 : 0.55); g.strokeCircle(bx, by, JOY.r - 2);
+        g.lineStyle(1, 0xfffaf0, 0.35); g.strokeCircle(bx, by, JOY.r - 22);
+        // 네 방향 눈금
+        g.fillStyle(0xfffaf0, on ? 0.8 : 0.5);
+        for (let d = 0; d < 4; d++) {
+          const ox = DX[d] * (JOY.r - 11), oy = DY[d] * (JOY.r - 11), px = -DY[d] * 5, py = DX[d] * 5;
+          g.fillTriangle(bx + ox + DX[d] * 5, by + oy + DY[d] * 5, bx + ox + px, by + oy + py, bx + ox - px, by + oy - py);
+        }
+        g.fillStyle(0x101828, 0.35); g.fillCircle(kx, ky + 3, JOY.knob);
+        g.fillStyle(0xfffaf0, 1); g.fillCircle(kx, ky, JOY.knob);
+        g.lineStyle(3, 0x182030, 1); g.strokeCircle(kx, ky, JOY.knob);
+        g.fillStyle(0xe5534b, 1); g.fillCircle(kx, ky, 7);
       }
       update(_t, delta) {
         let dt = Math.min(0.1, delta / 1000);
@@ -803,7 +956,7 @@ export default {
           mark.forEach((m, i) => { if (before <= m && countT > m) { this.showCount(labels[i]); if (i < 3) api.sfx.blip(); else api.sfx.select(); } });
           if (countT > 1.5) { mode = 'play'; t0 = performance.now(); pausedTotal = 0; clock = 0; acc = 0; timers.push(setTimeout(() => mode === 'play' && this.showCount(''), 500)); }
         } else if (mode === 'play') {
-          dt *= timeScale;
+          dt *= timeScale * (performance.now() < slowUntil ? 0.25 : 1);   // 탈락 순간 0.4초 느린 화면
           clock += dt; acc += dt;
           let ticked = false;
           while (acc >= STEP && mode === 'play') {
@@ -811,12 +964,18 @@ export default {
             sim.tick(); ticked = true;
             const evs = sim.events; sim.events = [];
             evs.forEach((e) => this.handle(e));
-            if (sim.players[0].lives <= 0) finish('dead');
+            if (sim.players[0].lives <= 0) finish('dead', 1400);
           }
           if (ticked) this.refreshTiles();
           if (mode === 'play' && clock >= ROUND) finish('time');
         }
         const a = mode === 'play' ? Math.min(1, acc / STEP) : 1;
+        const me = sim.players[0];
+        // 다시 출발 카운트
+        if (this.deathCount?.active && !me.alive && me.lives > 0) {
+          const left = Math.max(0, (me.respawnAt - sim.steps) * STEP - acc);
+          this.deathCount.setText(`다시 출발까지 ${Math.max(1, Math.ceil(left))}`);
+        }
         // 몬스터 그리기
         this.rings.clear();
         sim.players.forEach((p) => {
@@ -835,7 +994,7 @@ export default {
           this.rings.lineStyle(2, c, 1); this.rings.strokeEllipse(wx, wy + 5, 20, 8);
         });
         // 나 표시 (머리 위 ▼)
-        const me = sim.players[0]; const m = this.marker; m.clear();
+        const m = this.marker; m.clear();
         if (me.alive) {
           const [wx, wy] = this.worldPos(me, a);
           const by = Math.round(wy - 32 + Math.sin(this.blink * 5) * 2);
@@ -846,20 +1005,14 @@ export default {
         // 점수줄
         sim.players.forEach((p, i) => {
           const b = this.badges[i];
-          b.tx.setText(`${((p.land * 100) / (N * N)).toFixed(1)}%`);
+          b.tx.setText(pctText(p.land));
           b.icon.setAlpha(p.alive ? 1 : 0.35);
         });
-        const left = Math.max(0, Math.ceil(ROUND - (mode === 'play' || mode === 'result' ? clock : 0)));
+        const left = Math.max(0, Math.ceil(ROUND - (mode === 'play' || mode === 'result' || mode === 'over' ? clock : 0)));
         this.timerTx.setText(`${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`);
         this.timerTx.setColor(left <= 10 && mode === 'play' ? (Math.floor(this.blink * 4) % 2 ? '#e5534b' : '#b03634') : '#24324a');
         this.hearts.forEach((h, k) => h.setTexture(k < me.lives ? 'heart' : 'heart0'));
-        this.myPct.setText(`${((me.land * 100) / (N * N)).toFixed(1)}%`);
-        this.pads.forEach((q) => {
-          q.flash = Math.max(0, q.flash - dt);
-          const cur = me.dir === q.d && mode === 'play';
-          q.b.setTint(q.flash > 0 ? 0xffd860 : cur ? 0xfff0b0 : 0xffffff);
-          q.b.y = q.y + (q.flash > 0 ? 2 : 0); q.a.y = q.y - 2 + (q.flash > 0 ? 2 : 0);
-        });
+        this.myPct.setText(pctText(me.land));
         // 위험: 내 꼬리 근처에 다른 머리
         this.danger.clear();
         if (mode === 'play' && me.alive && me.trail.length && sim.threat(me) <= 4) {
@@ -868,6 +1021,7 @@ export default {
         }
         this.drawArrows(a);
         this.drawMini();
+        this.drawJoy();
       }
     };
 
@@ -884,7 +1038,7 @@ export default {
       });
       if (dead) { game.destroy(true); game = null; }
     }).catch(() => {
-      if (!dead) box.innerHTML = '<p style="margin:auto;font-size:14px;color:#b03634">게임을 불러오지 못했어요. 인터넷을 확인해 주세요.</p>';
+      if (!dead) box.innerHTML = '<p style="margin:40px 0 0;text-align:center;font-size:14px;color:#b03634">게임을 불러오지 못했어요. 인터넷을 확인해 주세요.</p>';
     });
 
     // 시험용 (개발 페이지에서만)
@@ -894,9 +1048,9 @@ export default {
         get game() { return game; }, get scene() { return scene; },
         speed: (k) => { timeScale = k; },
         start: () => { begin(); },
-        state: () => ({ mode, clock, reason, finalScore, finalMs, paused, sent,
+        state: () => ({ mode, clock, reason, finalScore, finalMs, paused, sent, joy: joy && { ...joy },
           cam: scene ? { x: scene.cameras.main.scrollX, y: scene.cameras.main.scrollY } : null,
-          players: sim.players.map((p) => ({ id: p.id, alive: p.alive, x: p.x, y: p.y, land: p.land, trail: p.trail.length, kills: p.kills })) }),
+          players: sim.players.map((p) => ({ id: p.id, alive: p.alive, x: p.x, y: p.y, dir: p.dir, land: p.land, trail: p.trail.length, kills: p.kills, lives: p.lives })) }),
       };
     }
 
@@ -910,6 +1064,8 @@ export default {
       stage.removeEventListener('mg-pause', onPause);
       stage.removeEventListener('mg-resume', onResume);
       window.removeEventListener('keydown', onKey);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('blur', onBlur);
       if (game) { game.destroy(true); game = null; }
       box.remove();
       if (dev && window.__land) delete window.__land;

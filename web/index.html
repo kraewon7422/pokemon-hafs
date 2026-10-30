@@ -22,9 +22,9 @@
 <body>
   <div id="app"><div class="login"><div class="logo">HAFS 몬스터</div><div class="press blink">LOADING…</div></div></div>
   <noscript>자바스크립트를 켜 주세요.</noscript>
-  <script src="vendor/supabase.js"></script>
-  <script src="vendor/jsQR.js"></script>
-  <script src="vendor/qrcode.js"></script>
+  <script src="vendor/supabase.js" defer></script>
+  <script src="vendor/qrcode.js" defer></script>
+  <!-- jsQR (250KB) 은 카메라를 열 때만 불러옴 (js/scanner.js) -->
   <script type="module" src="js/app.js"></script>
 </body>
 </html>
