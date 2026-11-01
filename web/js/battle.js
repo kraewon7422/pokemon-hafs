@@ -548,7 +548,7 @@ export function openBattle(b0) {
       // PP 가 모두 0 이면 기술 대신 "발버둥" 버튼 하나 (눌러야 씀)
       if (cur.moves.every((x) => x.pp <= 0)) {
         el.menu.replaceChildren(h('div.bt-moves', h('button.bt-move.struggle', { onclick: () => choose({ move: 1, target: liveFoes()[0] ?? 0 }) },
-          h('b', '발버둥'), h('span.bt-mv-info', h('span.type.t-보통', '보통'), h('small', '자신도 다친다')))), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
+          h('span.bt-mv-top', h('b', '발버둥'), h('small.bt-pow', '위력 50')), h('span.bt-mv-info', h('span.type.t-보통', '보통'), h('small', '자신도 다친다')))), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
         el.text.textContent = 'PP가 다 떨어졌다! 발버둥을 쓸 수밖에 없다.';
         return;
       }
@@ -564,7 +564,8 @@ export function openBattle(b0) {
             if (targets && foes.length > 1) { menu.mode = 'target'; menu.move = i + 1; return renderMenu(); }
             choose({ move: i + 1, target: foes[0] ?? 0 });
           },
-        }, h('b', mv.name || '?'), h('span.bt-mv-info', h(`span.type.t-${mv.type}`, mv.type), h('small', `PP ${x.pp}/${mv.pp}`)),
+        // 위력: 공격 기술은 숫자, 상태 변화·방어 기술은 — (실제 포켓몬처럼)
+        }, h('span.bt-mv-top', h('b', mv.name || '?'), h('small.bt-pow', `위력 ${mv.kind === 'attack' && mv.power ? mv.power : '—'}`)), h('span.bt-mv-info', h(`span.type.t-${mv.type}`, mv.type), h('small', `PP ${x.pp}/${mv.pp}`)),
         only && mv.kind === 'attack' ? effTag(effOf(mv.type, only.type)) : null);
       })), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
       el.text.textContent = `${who}어떤 기술을 쓸까?`;

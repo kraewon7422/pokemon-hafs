@@ -536,6 +536,9 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bt-moves { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .bt-move { display: grid; gap: 2px; text-align: left; padding: 6px 8px; min-height: 56px; font: inherit; border: 3px solid #384050; border-radius: 8px; background: #fff; }
 .bt-move:disabled { opacity: .45; }
+.bt-mv-top { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; column-gap: 4px; }
+.bt-mv-top > b { white-space: nowrap; }
+.bt-pow { margin-left: auto; white-space: nowrap; font-size: 12px; color: #505868; }
 .bt-mv-info { display: flex; justify-content: space-between; align-items: center; gap: 4px; }
 .bt-mv-info .type { font-size: 11px; padding: 0 4px; border-radius: 4px; }
 .bt-tgt { display: flex; align-items: center; gap: 6px; }
