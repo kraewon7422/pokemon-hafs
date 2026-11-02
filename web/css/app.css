@@ -408,7 +408,7 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .boot { gap: 18px; }
 .boot-ball { width: 32px; height: 32px; animation: boot-hop .6s steps(6) infinite alternate; }
 .boot-ball i { display: block; width: 32px; height: 32px; box-sizing: border-box; border: 4px solid #182030; border-radius: 50%; image-rendering: pixelated;
-  background: linear-gradient(#e83828 0 13px, #182030 13px 18px, #f8f8f0 18px); position: relative; }
+  background: linear-gradient(#e83828 0 10px, #182030 10px 14px, #f8f8f0 14px); position: relative; }
 .boot-ball i::after { content: ''; position: absolute; left: 50%; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; box-sizing: border-box; background: #f8f8f0; border: 3px solid #182030; border-radius: 50%; }
 @keyframes boot-hop { from { transform: translateY(0); } to { transform: translateY(-14px); } }
 .boot-bar { width: min(220px, 70%); height: 14px; box-sizing: border-box; padding: 2px; background: #182030; border: 3px solid #f8d048; border-radius: 4px; }
@@ -832,3 +832,12 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .bag-screen > * { width: 100%; max-width: 560px; margin-left: auto; margin-right: auto; box-sizing: border-box; }
 .ach-chip { display: inline-flex; align-items: center; gap: 2px; cursor: pointer; }
 .ach-chip svg { width: 14px; height: 14px; }
+/* 도전과제 걸러 보기 · 묶음 제목 */
+.seg.ach-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.seg.ach-tabs button + button { border-left: 3px solid var(--ink); }
+.seg.ach-tabs button { display: grid; justify-items: center; align-content: center; gap: 0; padding: 2px; white-space: nowrap; font-size: 14px; line-height: 1.2; }
+.seg.ach-tabs button small { font-size: 11px; opacity: .8; }
+.ach-all[hidden] { display: none; }
+.ach-group { margin: 6px 2px 0; font-weight: bold; color: #384050; border-bottom: 2px solid #c8ccd8; padding-bottom: 2px; }
+.ach-group small { font-weight: normal; color: #687080; }
+

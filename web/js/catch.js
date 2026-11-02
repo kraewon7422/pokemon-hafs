@@ -1,0 +1,697 @@
+// 잡기 화면: 부스에서 몬스터를 받기 직전, 공을 위로 휙 던져 잡는 짧은 장면 (Phaser 3, 270×480 세로 화면).
+// 몬스터는 이미 정해져 있고 결국 반드시 잡힌다 (공 3개를 다 써도 지쳐서 얌전해짐). 던지기 솜씨는 등급(약간의 EXP)만 정한다.
+//   catchScene({ dex, name, rarity, time }) → Promise<{ grade:'none'|'nice'|'great'|'excellent', curve, throws, skipped }>
+// 배경: img/catch/{day,sunset,night}.png (CC0, tools/draw_catch_bg.py). 공·별·반짝이는 이 파일에서 도트로 그림.
+// Phaser 를 못 불러오거나 무엇이든 실패하면 바로 { grade:'none', skipped:true } 로 끝냄 → 축하 화면을 절대 막지 않음.
+import { sfx } from './sfx.js';
+import { josa, reducedMotion } from './ui.js';
+import { loadPhaser } from './games/common.js';
+
+const W = 270, H = 480;                 // 논리 화면 (배경 그림과 같음)
+const SPOT_X = 135, FEET_Y = 356;       // 몬스터가 서는 밝은 자리 (가운데 y=352, 발은 살짝 아래)
+const HOME = { x: 135, y: 436 };        // 손에 든 공 자리
+const MON_K = 2;                        // 몬스터 배율 (64×64 → 128, 모든 몬스터 같음)
+const BALLS = 3;
+const CYCLE = 1.6;                      // 안쪽 고리가 줄어드는 한 바퀴 (초)
+const S1 = 650;                         // 이 속도(논리 도트/초) 로 던지면 딱 몬스터까지 날아감
+const HIT_PAD = 8;                      // 고리 밖으로 공 반지름만큼은 봐 줌
+const OVER = 0.01;                      // 그보다 세면 조금씩 더 멀리 (아주 아주 세게 던져야 넘어감)
+const ATLAS_URL = new URL('../sprites/atlas.png', import.meta.url).href;
+const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
+// 배경 그림 맨 위 / 맨 아래 색 (화면이 그림보다 길 때 위아래를 채움)
+const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'] };
+const RING = { common: 0x58d858, rare: 0xf8a830, legendary: 0xf04848, mythic: 0xf04848 };
+const BASE_P = { common: 0.6, rare: 0.4, legendary: 0.25, mythic: 0.25 };
+const GRADE_K = { nice: 1.2, great: 1.5, excellent: 2.0 };
+const GRADE_TXT = { nice: ['나이스!', '#ffffff'], great: ['그레이트!', '#98f080'], excellent: ['엑설런트!', '#ffd23f'] };
+const RANK = { none: 0, nice: 1, great: 2, excellent: 3 };
+const vibrate = (p) => { try { navigator.vibrate?.(p); } catch { /* iOS: 없음 */ } };
+const play = (n) => { try { sfx[n]?.(); } catch { /* 소리는 없어도 됨 */ } };
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const CANCEL = Symbol('cancel');
+// 시험용: window.__czRandom = () => 0.3 처럼 주면 잡힘·쳐내기 운을 고정 (평소엔 Math.random)
+const rand = () => (typeof window.__czRandom === 'function' ? window.__czRandom() : Math.random());
+
+export function defaultTime(d = new Date()) {
+  const m = d.getHours() * 60 + d.getMinutes();
+  if (m >= 7 * 60 && m < 16 * 60) return 'day';
+  if (m >= 16 * 60 && m < 19 * 60) return 'sunset';
+  return 'night';
+}
+
+// 스타일은 처음 한 번만 넣음 (.cz- 로 시작)
+function injectStyle() {
+  if (document.getElementById('cz-style')) return;
+  const s = document.createElement('style');
+  s.id = 'cz-style';
+  s.textContent = `
+.cz-layer{position:fixed;inset:0;z-index:10000;overflow:hidden;touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;-webkit-tap-highlight-color:transparent;overscroll-behavior:none;opacity:0;transition:opacity .25s}
+.cz-layer.cz-on{opacity:1}
+.cz-area{position:absolute;top:env(safe-area-inset-top,0px);right:env(safe-area-inset-right,0px);bottom:env(safe-area-inset-bottom,0px);left:env(safe-area-inset-left,0px);display:flex;align-items:center;justify-content:center}
+.cz-box{position:relative;flex:none;overflow:hidden;touch-action:none;image-rendering:pixelated}
+.cz-box canvas{display:block;image-rendering:pixelated;image-rendering:crisp-edges;touch-action:none}
+.cz-skip{position:absolute;top:6px;right:6px;z-index:2;min-width:44px;min-height:44px;padding:0 12px;box-sizing:border-box;border:3px solid #f8f8f8;border-radius:6px;background:rgba(24,32,48,.78);color:#fff;font:bold 16px/1 Galmuri11,'Apple SD Gothic Neo',sans-serif;white-space:nowrap;word-break:keep-all;cursor:pointer;touch-action:manipulation;box-shadow:0 2px 0 rgba(0,0,0,.3)}
+.cz-skip:active{transform:translateY(1px)}
+.cz-skip:focus-visible{outline:3px solid #ffd23f;outline-offset:2px}
+@media (prefers-reduced-motion:reduce){.cz-layer{transition:none}}`;
+  document.head.append(s);
+}
+
+// ───────────── 도트 그림 (캔버스 → Phaser 텍스처) ─────────────
+function sheet(sc, key, fw, fh, frames) {
+  const cv = document.createElement('canvas'); cv.width = fw * frames.length; cv.height = fh;
+  const g = cv.getContext('2d');
+  frames.forEach((fn, i) => fn((x, y, c) => { if (x < 0 || y < 0 || x >= fw || y >= fh || !c) return; g.fillStyle = c; g.fillRect(i * fw + x, y, 1, 1); }));
+  const t = sc.textures.addCanvas(key, cv);
+  frames.forEach((_, i) => t.add(i, 0, i * fw, 0, fw, fh));
+}
+const rowsPx = (rows, pal) => (px) => rows.forEach((r, y) => [...r].forEach((ch, x) => px(x, y, pal[ch])));
+
+// 빨강·하양 공 15×15 (가운데 7,7). 띠는 가운데 줄, 단추는 가운데 점 → 정확히 가운데. 프레임 15×19: 0 닫힘, 1 열림(뚜껑 4칸 위)
+const BALL_OY = 4, BALL_ORIGIN_Y = (BALL_OY + 7.5) / 19;
+function ballFrame(open) {
+  const inside = (x, y) => x >= 0 && y >= 0 && x < 15 && y < 15 && (x - 7) ** 2 + (y - 7) ** 2 <= 51;
+  return (px) => {
+    if (open) for (let y = 1; y <= 3; y++) for (let x = 3; x <= 11; x++) px(x, BALL_OY + 7 - y, y === 3 && (x < 5 || x > 9) ? null : '#fff4a8');
+    for (let y = 0; y < 15; y++) for (let x = 0; x < 15; x++) {
+      if (!inside(x, y)) continue;
+      const dx = x - 7, dy = y - 7, d2 = dx * dx + dy * dy;
+      const edge = !inside(x - 1, y) || !inside(x + 1, y) || !inside(x, y - 1) || !inside(x, y + 1);
+      let c;
+      if (edge) c = '#182030';
+      else if (d2 <= 10) c = d2 <= 1 ? '#ffffff' : d2 <= 4 ? '#e4e8f0' : '#182030';   // 단추
+      else if (dy === 0) c = '#182030';                                                 // 띠
+      else if (dy < 0) c = dx >= -4 && dx <= -2 && dy >= -5 && dy <= -3 ? '#ff8a78' : dy === -1 ? '#b02030' : '#e83838';
+      else c = dy >= 4 || dx >= 5 ? '#c4ccd8' : '#ffffff';
+      px(x, y + BALL_OY - (open && dy < 0 ? 4 : 0), c);
+    }
+  };
+}
+const STAR = rowsPx(['....k....', '...kyk...', '...kyk...', 'kkkywykkk', 'kyywwwyyk', '.kkywykk.', '..kyyyk..', '.kyk.kyk.', '.kk...kk.'], { k: '#5a3a10', y: '#ffd23f', w: '#fff8d0' });
+const SPARK = rowsPx(['..w..', '..y..', 'wyWyw', '..y..', '..w..'], { w: '#fff4a8', y: '#ffd23f', W: '#ffffff' });
+const DOT = rowsPx(['ww', 'ww'], { w: '#ffffff' });
+const ANGER = rowsPx(['.rr.rr.', 'rr...rr', 'r.....r', '.......', 'r.....r', 'rr...rr', '.rr.rr.'], { r: '#ff3040' });
+const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..kwk..', '..kwk..', '..kkk..'], { k: '#182030', w: '#ffffff' });
+
+// ═════════════════════════════ 장면 ═════════════════════════════
+export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
+  const tod = EDGE[time] ? time : defaultTime();
+  const rar = RING[rarity] ? rarity : 'common';
+  const nm = String(name || '몬스터');
+  const rm = (() => { try { return reducedMotion(); } catch { return false; } })();
+  let speed = 1;                        // 바로 잡기 = 두 배 빠르게
+  const D = (ms) => Math.round(ms * (rm ? 0.5 : 1) * speed);
+
+  let done = false, dead = false, game = null, ro = null, bootTimer = 0, resolveP;
+  const result = { grade: 'none', curve: false, throws: 0, skipped: false };
+  const out = new Promise((r) => { resolveP = r; });
+  const listeners = [];
+  const on = (el, ev, fn, opt) => { el.addEventListener(ev, fn, opt); listeners.push([el, ev, fn, opt]); };
+
+  let layer, area, box, skipBtn;
+  const cleanup = () => {
+    dead = true;
+    clearTimeout(bootTimer);
+    ro?.disconnect();
+    for (const [el, ev, fn, opt] of listeners) el.removeEventListener(ev, fn, opt);
+    listeners.length = 0;
+    if (game) { try { game.loop.wake(); } catch { /* */ } try { game.destroy(true); } catch { /* */ } game = null; }
+    layer?.remove();
+  };
+  // 정확히 한 번만 끝냄
+  const finish = (fade = true) => {
+    if (done) return; done = true;
+    const r = { grade: result.grade, curve: result.curve, throws: result.throws, skipped: result.skipped };
+    const end = () => { cleanup(); resolveP(r); };
+    if (fade && layer && !rm) { layer.classList.remove('cz-on'); setTimeout(end, 280); } else end();
+  };
+  const bail = () => { result.skipped = true; result.grade = 'none'; finish(false); };
+
+  try {
+    injectStyle();
+    const [top, bot] = EDGE[tod];
+    layer = document.createElement('div');
+    layer.className = 'cz-layer';
+    layer.setAttribute('role', 'dialog');
+    layer.setAttribute('aria-label', `${nm} 잡기`);
+    layer.style.background = `linear-gradient(${top} 0 50%, ${bot} 50% 100%)`;
+    area = document.createElement('div'); area.className = 'cz-area';
+    box = document.createElement('div'); box.className = 'cz-box';
+    skipBtn = document.createElement('button'); skipBtn.type = 'button'; skipBtn.className = 'cz-skip'; skipBtn.textContent = '바로 잡기';
+    box.append(skipBtn); area.append(box); layer.append(area);
+    document.body.append(layer);
+    requestAnimationFrame(() => layer?.classList.add('cz-on'));
+
+    // 화면에 맞추기: 세로 270×480 을 남는 자리에 꽉 (PC 는 폭 560 까지), 가능하면 기기 픽셀 정수 배
+    const fit = () => {
+      if (dead) return;
+      const r = area.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
+      const k0 = Math.max(0.5, Math.min(Math.min(r.width, 560) / W, r.height / H));
+      const kInt = Math.floor(k0 * dpr) / dpr;
+      const k = kInt >= k0 * 0.8 && kInt > 0 ? kInt : k0;
+      box.style.width = `${Math.round(W * k)}px`; box.style.height = `${Math.round(H * k)}px`;
+      const cv = game?.canvas;
+      if (cv) { cv.style.width = box.style.width; cv.style.height = box.style.height; cv.style.margin = '0'; }
+    };
+    fit();
+    ro = new ResizeObserver(fit); ro.observe(area);
+    on(window, 'resize', fit);
+
+    // 스크롤·확대·길게 누르기 막기
+    const stop = (e) => { if (e.target !== skipBtn) e.preventDefault(); };
+    on(layer, 'touchstart', stop, { passive: false });
+    on(layer, 'touchmove', (e) => e.preventDefault(), { passive: false });
+    on(layer, 'gesturestart', (e) => e.preventDefault());
+    on(layer, 'contextmenu', (e) => e.preventDefault());
+    on(layer, 'dblclick', (e) => e.preventDefault());
+
+    // 바로 잡기 (누르는 순간)
+    let skipFn = null;
+    const doSkip = (e) => { e?.preventDefault?.(); if (done || result.skipped) return; result.skipped = true; play('select'); if (skipFn) skipFn(); else bail(); };
+    on(skipBtn, 'pointerdown', doSkip);
+    on(skipBtn, 'click', doSkip);
+
+    // Phaser 가 8초 안에 안 뜨면 그냥 넘어감
+    let sceneReady = false;
+    bootTimer = setTimeout(() => { if (!sceneReady) bail(); }, 8000);
+    const fonts = document.fonts?.load
+      ? Promise.race([Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}), new Promise((r) => setTimeout(r, 1500))])
+      : Promise.resolve();
+    const [Phaser] = await Promise.all([loadPhaser(), fonts]);
+    if (dead) return out;
+
+    let tick = () => {};
+    game = new Phaser.Game({
+      type: Phaser.AUTO, parent: box, width: W, height: H,
+      pixelArt: true, roundPixels: true, antialias: false, backgroundColor: bot, banner: false,
+      audio: { noAudio: true }, input: { keyboard: false, mouse: false, touch: false, gamepad: false }, disableContextMenu: true,
+      scale: { mode: Phaser.Scale.NONE, autoCenter: Phaser.Scale.NO_CENTER },
+      callbacks: { postBoot: (g) => { if (dead) g.destroy(true); } },
+      scene: {
+        key: 'catch',
+        preload() {
+          this.load.spritesheet('mons', ATLAS_URL, { frameWidth: 64, frameHeight: 64 });
+          this.load.image('bg', BG_URL(tod));
+        },
+        create() {
+          try { setup(this); sceneReady = true; clearTimeout(bootTimer); } catch (e) { console.warn('[catch] setup', e); bail(); }
+        },
+        update(t, d) { try { tick(Math.min(0.05, d / 1000)); } catch (e) { console.warn('[catch] tick', e); bail(); } },
+      },
+    });
+    if (game.canvas) { game.canvas.style.imageRendering = 'pixelated'; box.insertBefore(game.canvas, skipBtn); }
+    game.scale?.on?.('resize', fit);
+    fit();
+
+    // ═══════════════════════ 장면 만들기 ═══════════════════════
+    function setup(sc) {
+      // 텍스처
+      sheet(sc, 'ball', 15, 19, [ballFrame(false), ballFrame(true)]);
+      sheet(sc, 'star', 9, 9, [STAR]);
+      sheet(sc, 'spark', 5, 5, [SPARK]);
+      sheet(sc, 'dot', 2, 2, [DOT]);
+      sheet(sc, 'anger', 7, 7, [ANGER]);
+      sheet(sc, 'arrow', 7, 8, [ARROW]);
+      const monTex = sc.textures.get('mons');
+      const nFrames = Math.max(1, monTex.frameTotal - 1);
+      const frame = clamp((Number(dex) || 1) - 1, 0, nFrames - 1);
+      // 몬스터 모양 (보이는 픽셀 테두리) + 흰 실루엣 (빛으로 변할 때)
+      let bb = { x0: 12, y0: 8, x1: 52, y1: 63 };
+      {
+        const im = monTex.getSourceImage(); const cols = Math.max(1, Math.floor(im.width / 64));
+        const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64;
+        const g = cv.getContext('2d');
+        g.drawImage(im, (frame % cols) * 64, Math.floor(frame / cols) * 64, 64, 64, 0, 0, 64, 64);
+        try {
+          const d = g.getImageData(0, 0, 64, 64).data; let x0 = 64, y0 = 64, x1 = -1, y1 = -1;
+          for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) if (d[(y * 64 + x) * 4 + 3] > 20) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+          if (x1 >= 0) bb = { x0, y0, x1: x1 + 1, y1: y1 + 1 };
+        } catch { /* 기본 모양 */ }
+        g.globalCompositeOperation = 'source-in'; g.fillStyle = '#ffffff'; g.fillRect(0, 0, 64, 64);
+        sc.textures.addCanvas('monW', cv);
+      }
+      const bw = (bb.x1 - bb.x0) * MON_K, bh = (bb.y1 - bb.y0) * MON_K;
+      const bcx = ((bb.x0 + bb.x1) / 2 - 32) * MON_K;          // 발 기준 몸 가운데
+      const bcy = (64 - (bb.y0 + bb.y1) / 2) * MON_K;
+      const footY = FEET_Y - (64 - bb.y1) * MON_K;              // 그림 아래 빈칸이 있어도 발이 자리에 닿게
+      const R = Math.round(clamp(Math.max(bw, bh) / 2 * 0.72 + 4, 28, 48));   // 바깥 고리 반지름 = 맞는 범위
+
+      // 배경 · 그림자 · 몬스터
+      if (sc.textures.exists('bg')) sc.add.image(0, 0, 'bg').setOrigin(0).setDepth(0);
+      const shadow = sc.add.graphics().setDepth(1);
+      const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
+      const monW = sc.add.image(SPOT_X, footY, 'monW').setOrigin(0.5, 1).setScale(0).setDepth(4).setAlpha(0);
+      const rings = sc.add.graphics().setDepth(5);
+      const ball = sc.add.image(HOME.x, H + 30, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setScale(2).setDepth(6);
+      const fx = sc.add.graphics().setDepth(7);   // 할퀴기 등 잠깐 그리는 것
+      const hud = [];
+      for (let i = 0; i < BALLS; i++) hud.push(sc.add.image(16 + i * 19, 18, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setDepth(9).setVisible(false));
+      const TXT = (x, y, s, size = 12, col = '#ffffff') => sc.add.text(x, y, s, { fontFamily: 'Galmuri11', fontSize: `${size}px`, fontStyle: 'bold', color: col, padding: { top: 2, bottom: 1 } })
+        .setShadow(1, 1, '#182030', 0, false, true);
+      // 아래 글상자 (어두운 GBA 상자)
+      const tb = sc.add.graphics().setDepth(9).setVisible(false);
+      tb.fillStyle(0x182030, 1).fillRect(6, 390, W - 12, 80);
+      tb.fillStyle(0xf8f8f8, 1).fillRect(8, 392, W - 16, 76);
+      tb.fillStyle(0x283048, 1).fillRect(11, 395, W - 22, 70);
+      tb.lineStyle(1, 0x586890, 1).strokeRect(13.5, 397.5, W - 27, 65);
+      const tbText = TXT(22, 405, '', 12).setDepth(10).setWordWrapWidth(W - 44, false).setLineSpacing(8).setVisible(false);
+      const hint = TXT(W / 2, 372, '공을 위로 휙!', 12).setOrigin(0.5, 0.5).setDepth(9).setVisible(false);
+      const hintArrow = sc.add.image(W / 2, 396, 'arrow').setScale(2).setDepth(9).setVisible(false);
+      const say = (s) => { tb.setVisible(!!s); tbText.setVisible(!!s).setText(s || ''); };
+
+      // ─────── 흐름 제어: 바로 잡기 하면 지금 하던 연출을 모두 끊음 ───────
+      let seq = 0;
+      const ctl = () => {
+        const my = ++seq;
+        const alive = () => my === seq && !dead;
+        return {
+          alive,
+          wait: (ms) => new Promise((res, rej) => sc.time.delayedCall(D(ms), () => (alive() ? res() : rej(CANCEL)))),
+          tw: (cfg) => new Promise((res, rej) => sc.tweens.add({ ...cfg, duration: D(cfg.duration || 1), onComplete: () => (alive() ? res() : rej(CANCEL)) })),
+        };
+      };
+      const run = (fn) => { const c = ctl(); fn(c).catch((e) => { if (e !== CANCEL) { console.warn('[catch]', e); bail(); } }); };
+
+      // ─────── 상태 ───────
+      let phase = 'intro';            // intro | aim | grab | flight | seq | end
+      let T = 0, ringT = 0, frozen = null; // frozen = 던질 때 안쪽 고리 비율 (날아가는 동안 멈춰 보임)
+      let ringOn = false, ballsLeft = BALLS, grab = null, curveArmed = false, sparkT = 0, idleT = 0, hinted = false;
+      let introSkip = null;
+      const evlog = [];   // 시험용 기록 (던지기·명중·빗나감)
+      const B = { free: false, ox: 0, hop: 0, sx: MON_K, sy: MON_K, ph: 'idle', tm: 1.2, from: 0, to: 0, dur: 0.3, el: 0, h: 0, cr: 0.2 };
+      const ratio = () => (frozen != null ? frozen : 1 - 0.85 * ((ringT % CYCLE) / CYCLE));
+      const center = () => ({ x: mon.x + bcx, y: mon.y - bcy });
+      const ballOk = () => ballsLeft > 0;
+
+      const showHud = (v) => hud.forEach((h, i) => h.setVisible(v).setAlpha(i < ballsLeft ? 1 : 0.28));
+
+      // 몬스터 움직임 (조준하는 동안, 미리 웅크려서 알려 줌)
+      const nextIdle = () => (rar === 'common' ? 2.2 + Math.random() * 1.4 : rar === 'rare' ? 1.0 + Math.random() * 0.8 : 1.2 + Math.random() * 0.8);
+      const startMove = () => {
+        B.from = B.ox; B.el = 0;
+        if (rar === 'common') { B.to = B.ox; B.h = 6; B.dur = 0.32; B.cr = 0.16; }
+        else if (rar === 'rare') { B.to = B.ox > 0 ? -22 : B.ox < 0 ? 22 : (Math.random() < 0.5 ? -22 : 22); B.h = 4; B.dur = 0.36; B.cr = 0.3; }
+        else { B.to = Math.round((Math.random() * 2 - 1) * 12); B.h = 20; B.dur = 0.62; B.cr = 0.34; }
+        B.ph = 'crouch'; B.tm = B.cr;
+      };
+      const behave = (dt) => {
+        if (!B.free) return;
+        B.tm -= dt;
+        if (B.ph === 'idle') { B.sx = MON_K; B.sy = MON_K; if (B.tm <= 0) startMove(); }
+        else if (B.ph === 'crouch') { B.sx = MON_K * 1.07; B.sy = MON_K * 0.9; if (B.tm <= 0) { B.ph = 'move'; B.el = 0; } }
+        else if (B.ph === 'move') {
+          B.el += dt; const u = Math.min(1, B.el / B.dur); const e = u * u * (3 - 2 * u);
+          B.ox = B.from + (B.to - B.from) * e; B.hop = Math.sin(Math.PI * u) * B.h; B.sx = MON_K * 0.95; B.sy = MON_K * 1.06;
+          if (u >= 1) { B.ph = 'land'; B.tm = 0.1; B.hop = 0; }
+        } else if (B.ph === 'land') { B.sx = MON_K * 1.05; B.sy = MON_K * 0.94; if (B.tm <= 0) { B.ph = 'idle'; B.tm = nextIdle(); } }
+        const bob = rm ? 0 : Math.round(Math.sin(T * 3.2));
+        mon.setPosition(SPOT_X + Math.round(B.ox), footY - Math.round(B.hop) + (B.ph === 'idle' ? bob : 0)).setScale(B.sx, B.sy);
+      };
+      const resetMon = () => { B.ox = 0; B.hop = 0; B.ph = 'idle'; B.tm = nextIdle(); B.sx = MON_K; B.sy = MON_K; };
+
+      const draw = () => {
+        // 그림자 (몬스터 발밑, 뛰면 작아짐)
+        shadow.clear();
+        if (mon.visible && mon.scaleX > 0.2) {
+          const k = clamp(1 - B.hop / 40, 0.5, 1) * (mon.scaleX / MON_K);
+          shadow.fillStyle(0x0a1a10, 0.3).fillEllipse(mon.x + bcx, FEET_Y + 2, Math.max(16, bw * 0.85) * k, 9 * k);
+        }
+        rings.clear();
+        if (ringOn) {
+          const c = center(); const r = ratio();
+          rings.lineStyle(4, 0x182030, 0.25).strokeCircle(c.x, c.y + 1, R);
+          rings.lineStyle(2, 0xffffff, 0.95).strokeCircle(c.x, c.y, R);
+          rings.lineStyle(3, RING[rar], 1).strokeCircle(c.x, c.y, Math.max(3, R * r));
+        }
+      };
+
+      tick = (dt) => {
+        T += dt;
+        if (ringOn && frozen == null) ringT += dt;
+        behave(dt);
+        draw();
+        monW.setPosition(mon.x, mon.y).setScale(mon.scaleX, mon.scaleY).setVisible(mon.visible);
+        // 커브볼 반짝이
+        if (curveArmed && ball.visible && (phase === 'grab' || phase === 'flight' || phase === 'aim')) {
+          sparkT -= dt;
+          if (sparkT <= 0) {
+            sparkT = 0.06;
+            const s = sc.add.image(ball.x + (Math.random() - 0.5) * 14 * ball.scaleX / 2, ball.y + (Math.random() - 0.5) * 14 * ball.scaleX / 2, 'spark').setDepth(7);
+            sc.tweens.add({ targets: s, y: s.y - 8, alpha: 0, scale: 0.4, duration: 420, onComplete: () => s.destroy() });
+          }
+        }
+        // 한동안 안 던지면 힌트
+        if (phase === 'aim') {
+          idleT += dt;
+          const show = !hinted || idleT > 6;
+          hint.setVisible(show); hintArrow.setVisible(show);
+          if (show) { const b = rm ? 0 : Math.round(Math.sin(T * 6) * 3); hintArrow.y = 392 + b; }
+        } else { hint.setVisible(false); hintArrow.setVisible(false); }
+      };
+
+      // ─────── 조각 효과 ───────
+      const label = (s, col, x, y, big = true) => {
+        const t = TXT(clamp(x, 70, W - 70), clamp(y, 80, 380), s, 12, col).setOrigin(0.5).setDepth(8).setStroke('#182030', 3);
+        const k = big ? 2 : 1;
+        t.setScale(k * 1.4);
+        sc.tweens.add({ targets: t, scale: k, duration: D(180), ease: 'Back.easeOut' });
+        sc.tweens.add({ targets: t, y: t.y - 14, alpha: 0, delay: D(900), duration: D(400), onComplete: () => t.destroy() });
+        return t;
+      };
+      const burst = (x, y, n = 8) => {
+        for (let i = 0; i < (rm ? 4 : n); i++) {
+          const a = (i / n) * Math.PI * 2 + 0.3; const d = 30 + Math.random() * 16;
+          const s = sc.add.image(x, y, 'star').setDepth(8).setScale(1.5);
+          sc.tweens.add({ targets: s, x: x + Math.cos(a) * d, y: y + Math.sin(a) * d * 0.8, angle: 180, alpha: 0, duration: D(650), ease: 'Quad.easeOut', onComplete: () => s.destroy() });
+        }
+      };
+      const lightStream = (fx0, fy0, tx, ty) => {
+        for (let i = 0; i < (rm ? 4 : 12); i++) {
+          const d = sc.add.image(fx0 + (Math.random() - 0.5) * bw * 0.8, fy0 + (Math.random() - 0.5) * bh * 0.8, 'dot').setDepth(7).setScale(1 + (i % 2));
+          sc.tweens.add({ targets: d, x: tx, y: ty, alpha: 0.2, delay: i * 18, duration: D(320), ease: 'Quad.easeIn', onComplete: () => d.destroy() });
+        }
+      };
+
+      const newBall = async (c) => {
+        ball.setTexture('ball', 0).clearTint().setAngle(0).setAlpha(1).setScale(2).setPosition(HOME.x, H + 24).setVisible(true);
+        curveArmed = false;
+        await c.tw({ targets: ball, y: HOME.y, duration: 260, ease: 'Back.easeOut' });
+      };
+
+      // ─────── 잡는 연출 (공 안으로 빨려 들어감 → 흔들림) ───────
+      // shakes: 흔들 횟수, ok: 잡힘?
+      const suckIn = async (c, bx, by) => {
+        // 공이 몬스터 위로 튀어 올라 열림 → 몬스터가 빛이 되어 빨려 들어감
+        B.free = false; ringOn = false;
+        await c.tw({ targets: ball, x: bx, y: by, scale: 1.4, angle: 0, duration: 200, ease: 'Quad.easeOut' });
+        ball.setFrame(1); play('ballPop'); vibrate(25);
+        await c.tw({ targets: monW, alpha: 1, duration: 120 });
+        const cc = center();
+        lightStream(cc.x, cc.y, bx, by);
+        await c.tw({ targets: [mon, monW], x: bx, y: by + bh * 0.1, scaleX: 0, scaleY: 0, duration: 330, ease: 'Quad.easeIn' });
+        mon.setVisible(false); monW.setAlpha(0);
+        ball.setFrame(0);
+        await c.wait(140);
+        // 땅으로 떨어짐
+        await c.tw({ targets: ball, y: FEET_Y - 4, duration: 320, ease: 'Bounce.easeOut' });
+        play('blip');
+      };
+      const shake = async (c, n) => {
+        for (let i = 0; i < n; i++) {
+          await c.wait(i ? 380 : 450);
+          play('blip'); vibrate(18);
+          const x0 = ball.x;
+          await c.tw({ targets: ball, angle: -24, x: x0 - 2, duration: 110, ease: 'Sine.easeOut' });
+          await c.tw({ targets: ball, angle: 22, x: x0 + 2, duration: 170, ease: 'Sine.easeInOut' });
+          await c.tw({ targets: ball, angle: 0, x: x0, duration: 110, ease: 'Sine.easeIn' });
+        }
+      };
+      const caught = async (c) => {
+        await c.wait(320);
+        play('select'); vibrate([30, 40, 60]);
+        burst(ball.x, ball.y - 8, 8);
+        ball.setTint(0xb8b8c8);
+        say(`${josa(nm, '을', '를')} 잡았다!`);
+        showHud(false);
+        await c.wait(160);
+        play('catch');
+        await c.wait(1150);
+        phase = 'end';
+        finish(true);
+      };
+      const escape = async (c) => {
+        await c.wait(260);
+        ball.setFrame(1); play('ballPop'); vibrate(40);
+        const bx = ball.x, by = ball.y;
+        mon.setVisible(true).setPosition(bx, by).setScale(0); monW.setPosition(bx, by).setScale(0).setAlpha(1);
+        sc.tweens.add({ targets: ball, alpha: 0, y: by + 6, duration: D(300), onComplete: () => ball.setVisible(false) });
+        await c.tw({ targets: [mon, monW], x: SPOT_X + Math.round(B.ox), y: footY, scaleX: MON_K, scaleY: MON_K, duration: 260, ease: 'Back.easeOut' });
+        await c.tw({ targets: monW, alpha: 0, duration: 140 });
+        // 화난 깡충 두 번 + 핏대
+        const cc = center();
+        const ang = sc.add.image(cc.x + bw * 0.35, cc.y - bh * 0.45, 'anger').setDepth(8).setScale(2);
+        sc.tweens.add({ targets: ang, scale: 2.6, yoyo: true, repeat: 2, duration: D(140), onComplete: () => ang.destroy() });
+        label('앗, 튀어나왔다!', '#ffffff', W / 2, cc.y - bh / 2 - 18, false);
+        play('wrong');
+        for (let i = 0; i < 2; i++) {
+          await c.tw({ targets: mon, y: footY - 12, duration: 130, ease: 'Quad.easeOut' });
+          await c.tw({ targets: mon, y: footY, duration: 130, ease: 'Quad.easeIn' });
+        }
+        resetMon();
+      };
+
+      // 다음 공 또는 지쳐서 얌전해짐
+      const nextOrTired = async (c) => {
+        if (ballOk()) {
+          await newBall(c);
+          ringT = 0; frozen = null; ringOn = true; B.free = true; phase = 'aim'; idleT = 0;
+          return;
+        }
+        // 공 3개를 다 썼음 → 반드시 잡힘
+        phase = 'seq'; ringOn = false; B.free = false; showHud(false);
+        await c.tw({ targets: mon, x: SPOT_X, y: footY, scaleX: MON_K * 1.05, scaleY: MON_K * 0.9, duration: 300 });
+        say(`${josa(nm, '은', '는')} 지쳐서 얌전해졌다!`);
+        await c.wait(1200);
+        say('');
+        // 마지막 공이 저절로 굴러옴
+        ball.setTexture('ball', 0).clearTint().setAlpha(1).setVisible(true).setScale(1.4).setAngle(0).setPosition(W + 16, FEET_Y + 20);
+        play('ballThrow');
+        await c.tw({ targets: ball, x: SPOT_X + bw / 2 + 8, y: FEET_Y + 4, angle: -720, duration: 900, ease: 'Quad.easeOut' });
+        const cc = center();
+        await suckIn(c, cc.x, cc.y - bh / 2 - 10);
+        await shake(c, 3);
+        await caught(c);
+      };
+
+      // ─────── 던지기 ───────
+      const throwBall = (rel, vx, vy, curve) => {
+        phase = 'flight'; hinted = true;
+        result.throws++; ballsLeft--; showHud(true);
+        frozen = ratio();
+        const relRatio = frozen;
+        play('ballThrow'); vibrate(10);
+        const sp = Math.hypot(vx, vy) || 1; const ux = vx / sp, uy = vy / sp;
+        const c0 = center();
+        const need = Math.max(30, Math.hypot(c0.x - rel.x, c0.y - rel.y));
+        const dist = sp < S1 ? need * (sp / S1) : need + (sp - S1) * OVER;
+        const L = { x: rel.x + ux * dist, y: rel.y + uy * dist };
+        const side = curve ? (curveArmed === 'cw' ? 1 : -1) : 0;
+        const dur = (0.42 + 0.18 * Math.min(1.4, dist / need)) * 1000;
+        const arcH = 36 + dist * 0.22;
+        const s1 = 2 - 0.95 * Math.min(1, dist / need);
+        evlog.push(['throw', Math.round(sp), Math.round(dist), Math.round(need), !!curve]);
+        const willSwat = (rar === 'legendary' || rar === 'mythic') && rand() < 0.25;
+        const spin = ux >= 0 ? 1 : -1;
+        let swatted = false;
+        const c = ctl();
+        const st = { t: 0 };
+        sc.tweens.add({
+          targets: st, t: 1, duration: D(dur), ease: 'Linear',
+          onUpdate: () => {
+            if (!c.alive() || swatted) return;
+            const t = st.t;
+            const px = -uy, py = ux;                                   // 진행 방향에 수직
+            const bend = side * Math.sin(Math.PI * t) * 18;
+            ball.setPosition(rel.x + (L.x - rel.x) * t + px * bend, rel.y + (L.y - rel.y) * t + py * bend - Math.sin(Math.PI * t) * arcH);
+            ball.setScale(2 + (s1 - 2) * t).setAngle(spin * 900 * t);
+            if (willSwat && t >= 0.72) {
+              const cc = center();
+              if (Math.hypot(L.x - cc.x, L.y - cc.y) <= R + HIT_PAD) { swatted = true; evlog.push(['swat']); run((k) => swat(k)); }
+            }
+          },
+          onComplete: () => {
+            if (!c.alive() || swatted) return;
+            const cc = center();
+            const hit = Math.hypot(L.x - cc.x, L.y - cc.y) <= R + HIT_PAD;
+            evlog.push([hit ? 'hit' : 'miss', Math.round(L.x), Math.round(L.y), Math.round(cc.x), Math.round(cc.y)]);
+            if (hit) run((k) => onHit(k, relRatio, !!curve));
+            else run((k) => onMiss(k, L, ux));
+          },
+        });
+      };
+
+      const swat = async (c) => {
+        phase = 'seq'; frozen = null; ringOn = false;
+        const bx = ball.x, by = ball.y; const dir = bx < mon.x ? -1 : 1;
+        // 몬스터가 번쩍 + 앞발 할퀴기
+        monW.setAlpha(0.85);
+        sc.tweens.add({ targets: monW, alpha: 0, duration: D(260) });
+        mon.setScale(MON_K * 1.12, MON_K * 0.95);
+        // 할퀸 자국 세 줄 (굵은 흰 줄 + 어두운 테두리)
+        fx.clear();
+        const claw = (w, col) => { fx.lineStyle(w, col, 1); for (let i = -1; i <= 1; i++) fx.lineBetween(bx - 14 * dir + i * 9, by - 18, bx + 6 * dir + i * 9, by + 16); };
+        claw(7, 0x182030); claw(3, 0xffffff);
+        fx.setAlpha(1);
+        sc.tweens.add({ targets: fx, alpha: 0, delay: D(140), duration: D(220), onComplete: () => fx.clear() });
+        play('hit'); vibrate([20, 30, 20]);
+        if (!rm) sc.tweens.add({ targets: mon, x: mon.x + 3, duration: 40, yoyo: true, repeat: 3 });
+        label('튕겨냈다!', '#ff8a78', W / 2, mon.y - bh - 14, false);
+        await c.tw({ targets: ball, x: bx + dir * 190, y: by - 150, angle: ball.angle + dir * 720, scale: 0.8, duration: 520, ease: 'Quad.easeOut' });
+        ball.setVisible(false);
+        mon.setScale(MON_K);
+        await c.wait(450);
+        await nextOrTired(c);
+      };
+
+      const onMiss = async (c, L, ux) => {
+        phase = 'seq'; frozen = null;
+        const gy = clamp(Math.max(L.y + 12, 300), 300, 466);
+        const dir = ux >= 0 ? 1 : -1;
+        label('빗나갔다!', '#ffffff', L.x, L.y - 34, false);
+        await c.tw({ targets: ball, x: L.x + ux * 20, y: gy, duration: 220, ease: 'Quad.easeIn' });
+        play('blip');
+        await c.tw({ targets: ball, y: gy - 10, x: ball.x + dir * 10, duration: 140, ease: 'Quad.easeOut' });
+        await c.tw({ targets: ball, y: gy, x: ball.x + dir * 10, duration: 140, ease: 'Quad.easeIn' });
+        await c.tw({ targets: ball, x: ball.x + dir * 150, angle: ball.angle + dir * 600, alpha: 0, duration: 650, ease: 'Quad.easeOut' });
+        ball.setVisible(false);
+        await nextOrTired(c);
+      };
+
+      const onHit = async (c, rr, curve) => {
+        phase = 'seq';
+        const grade = rr < 0.35 ? 'excellent' : rr < 0.65 ? 'great' : 'nice';
+        if (RANK[grade] > RANK[result.grade]) result.grade = grade;
+        if (curve) result.curve = true;
+        play('correct'); vibrate(30);
+        const cc = center();
+        const [txt, col] = GRADE_TXT[grade];
+        label(txt, col, cc.x, cc.y - bh / 2 - 22);
+        if (curve) sc.time.delayedCall(D(260), () => label('커브볼!', '#7fd8ff', cc.x, cc.y - bh / 2 + 6, false));
+        const p = Math.min(0.95, BASE_P[rar] * GRADE_K[grade] * (curve ? 1.3 : 1));
+        const u = rand();
+        const ok = u < p;
+        // 아깝게 놓칠수록 많이 흔들림
+        const close = ok ? 1 : (u - p) / (1 - p);
+        const n = ok ? 3 : close < 0.34 ? 3 : close < 0.67 ? 2 : 1;
+        await suckIn(c, cc.x, cc.y - bh / 2 - 10);
+        await shake(c, n);
+        if (ok) { await caught(c); return; }
+        await escape(c);
+        await nextOrTired(c);
+      };
+
+      // ─────── 입력 (손가락 하나만 기억, 다른 손가락은 무시) ───────
+      const toWorld = (e) => { const r = box.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; };
+      const cancelGrab = () => {
+        grab = null; curveArmed = false;
+        if (phase === 'grab') { phase = 'aim'; sc.tweens.add({ targets: ball, x: HOME.x, y: HOME.y, duration: D(160), ease: 'Quad.easeOut' }); }
+      };
+      on(box, 'pointerdown', (e) => {
+        if (e.target === skipBtn || done) return;
+        e.preventDefault();
+        if (phase === 'intro' && introSkip) { introSkip(); return; }
+        if (phase !== 'aim' || grab || !ballOk()) return;
+        const p = toWorld(e);
+        if (Math.hypot(p.x - HOME.x, p.y - HOME.y) > 40) return;
+        grab = { id: e.pointerId, y0: p.y, last: p, samples: [{ x: p.x, y: p.y, t: e.timeStamp }], spin: 0, ang: null };
+        try { box.setPointerCapture(e.pointerId); } catch { /* */ }
+        phase = 'grab'; idleT = 0; hinted = true;
+        ball.setPosition(p.x, p.y);
+        play('blip');
+      });
+      on(box, 'pointermove', (e) => {
+        if (!grab || e.pointerId !== grab.id || phase !== 'grab') return;
+        e.preventDefault();
+        const evs = e.getCoalescedEvents?.() || [];
+        for (const ev of (evs.length ? evs : [e])) {
+          const p = toWorld(ev);
+          grab.samples.push({ x: p.x, y: p.y, t: ev.timeStamp || e.timeStamp });
+          // 빙글빙글 돌린 각도 합 (한 바퀴 넘으면 커브볼)
+          const dx = p.x - grab.last.x, dy = p.y - grab.last.y;
+          if (dx * dx + dy * dy >= 9) {
+            const a = Math.atan2(dy, dx);
+            if (grab.ang != null) { let d = a - grab.ang; while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2; grab.spin += d; }
+            grab.ang = a; grab.last = p;
+            if (!curveArmed && Math.abs(grab.spin) >= Math.PI * 2 * 0.95) { curveArmed = grab.spin > 0 ? 'cw' : 'ccw'; play('statUp'); vibrate(12); }
+          }
+        }
+        if (grab.samples.length > 40) grab.samples.splice(0, grab.samples.length - 40);
+        const q = grab.samples[grab.samples.length - 1];
+        ball.setPosition(clamp(q.x, 14, W - 14), clamp(q.y, 372, H - 12));   // 공은 아래쪽에서만 따라옴 (몬스터 앞까지 들고 가지 못함)
+      });
+      const up = (e) => {
+        if (!grab || e.pointerId !== grab.id) return;
+        e.preventDefault?.();
+        try { box.releasePointerCapture(e.pointerId); } catch { /* */ }
+        if (phase !== 'grab') { grab = null; return; }
+        const p = toWorld(e);
+        const now = e.timeStamp;
+        grab.samples.push({ x: p.x, y: p.y, t: now });
+        let rec = grab.samples.filter((s) => now - s.t <= 100);
+        if (rec.length < 2) rec = grab.samples.slice(-2);
+        const a = rec[0], b = rec[rec.length - 1];
+        const dt = Math.max(16, b.t - a.t) / 1000;
+        const vx = (b.x - a.x) / dt, vy = (b.y - a.y) / dt;
+        const upTotal = grab.y0 - b.y;
+        const curve = curveArmed;
+        grab = null;
+        if (vy > -180 || upTotal < 14) { evlog.push(['cancel', Math.round(vx), Math.round(vy), Math.round(upTotal)]); cancelGrab(); return; }   // 위로 휙 아님 → 공을 손에 다시
+        throwBall({ x: ball.x, y: ball.y }, vx, vy, curve);
+      };
+      on(box, 'pointerup', up);
+      on(box, 'pointercancel', (e) => { if (grab && e.pointerId === grab.id) cancelGrab(); });
+      on(box, 'lostpointercapture', (e) => { if (grab && e.pointerId === grab.id && phase === 'grab') cancelGrab(); });
+      // PC: 스페이스/엔터/위 화살표 = 똑바로 던지기
+      on(window, 'keydown', (e) => {
+        if (done || !['Space', 'Enter', 'ArrowUp', 'NumpadEnter'].includes(e.code)) return;
+        if (document.activeElement === skipBtn && e.code !== 'ArrowUp') return;
+        e.preventDefault();
+        if (phase === 'intro' && introSkip) { introSkip(); return; }
+        if (phase !== 'aim' || !ballOk()) return;
+        const cc = center(); const dx = cc.x - HOME.x, dy = cc.y - HOME.y; const d = Math.hypot(dx, dy);
+        const sp = S1 * 1.25;
+        throwBall({ x: HOME.x, y: HOME.y }, dx / d * sp, dy / d * sp, false);
+      });
+
+      // ─────── 바로 잡기 ───────
+      skipFn = () => {
+        const c = ctl();                 // 지금 하던 연출은 모두 끊김
+        speed = 0.5;
+        sc.tweens.killAll();
+        grab = null; curveArmed = false; ringOn = false; frozen = null; B.free = false; phase = 'seq';
+        say(''); showHud(false); fx.clear();
+        hint.setVisible(false); hintArrow.setVisible(false);
+        (async () => {
+          mon.setVisible(true).setPosition(SPOT_X, footY).setScale(MON_K).setAngle(0); monW.setAlpha(0);
+          B.ox = 0; B.hop = 0;
+          const cc = center();
+          ball.setTexture('ball', 0).clearTint().setVisible(true).setAlpha(1).setAngle(0).setScale(1.4).setPosition(cc.x, -20);
+          await c.tw({ targets: ball, y: cc.y - bh / 2 - 10, duration: 220, ease: 'Quad.easeOut' });
+          await suckIn(c, ball.x, ball.y);
+          await shake(c, 1);
+          await caught(c);
+        })().catch((e) => { if (e !== CANCEL) bail(); });
+      };
+
+      // ─────── 시작: 나타났다! ───────
+      run(async (c) => {
+        say(`야생의 ${josa(nm, '이', '가')} 나타났다!`);
+        monW.setAlpha(1);
+        play('scan');
+        await c.tw({ targets: [mon, monW], scaleX: MON_K, scaleY: MON_K, duration: 320, ease: 'Back.easeOut' });
+        await c.tw({ targets: monW, alpha: 0, duration: 200 });
+        resetMon(); B.free = true;
+        // 1.4초 (화면을 누르면 바로)
+        await new Promise((res) => {
+          const t = sc.time.delayedCall(D(1400), () => { introSkip = null; res(); });
+          introSkip = () => { introSkip = null; t.remove(false); res(); };
+        });
+        if (!c.alive()) return;
+        say('');
+        showHud(true);
+        await newBall(c);
+        ringOn = true; ringT = 0; phase = 'aim'; idleT = 0;
+      });
+
+      // 시험용 (dev 페이지·자동 시험)
+      layer.__cz = {
+        phase: () => phase, ring: () => ({ ...center(), R, ratio: ratio() }), ball: () => ({ x: ball.x, y: ball.y, visible: ball.visible }),
+        ballsLeft: () => ballsLeft, log: evlog, home: HOME, curve: () => curveArmed, world: { W, H },
+      };
+    }
+  } catch (e) {
+    console.warn('[catch] skipped:', e?.message || e);
+    bail();
+  }
+  return out;
+}

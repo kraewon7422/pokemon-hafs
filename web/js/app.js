@@ -796,7 +796,7 @@ function askClassOnce() {
   let tries = 0;
   const t = setInterval(() => {
     if (++tries > 60 || S.snap?.profile?.grade) { clearInterval(t); return; }
-    if (!document.querySelector('.overlay') && S.snap?.profile) { clearInterval(t); classSheet(true); }
+    if (!document.querySelector('.overlay, .cz-layer') && !celebrating && S.snap?.profile) { clearInterval(t); classSheet(true); }
   }, 3000);
 }
 export function classSheet(first = false) {
@@ -1003,6 +1003,14 @@ export async function celebrate(tickets, prevLines) {
     prevLines.add(sp.line_id);
     const rare = lineOf(sp.line_id)?.rarity !== 'common';
     const secret = isSecret(sp.line_id);
+    // 0028: 먼저 몬스터볼로 잡기 (언제나 잡힘 — 던지기 솜씨는 작은 경험치 보너스). 장면을 못 띄우면 바로 축하로
+    let bonus = null;
+    try {
+      const { catchScene } = await import('./catch.js');
+      const rarity = secret ? 'legendary' : lineOf(sp.line_id)?.mythic ? 'mythic' : lineOf(sp.line_id)?.rarity || 'common';
+      const c = await catchScene({ dex: sp.id, name: sp.name, rarity });
+      if (c && t.nonce && S.online) bonus = await rpc('catch_bonus', { p_nonce: t.nonce, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 0 }).catch(() => null);
+    } catch { /* 잡기 장면 없이 */ }
     const lucky = luckyMoment();
     const canvas = spriteCanvas(sp.id, 200, 'white');
     const scene = h(`div.scene${lucky ? '.golden' : ''}`, h('div.rays'), h('span.spr', canvas, isNew && h('span.new-badge', 'NEW!')));
@@ -1016,7 +1024,8 @@ export async function celebrate(tickets, prevLines) {
     // 등급 표시는 첫 줄에 따로 (문장 끝에 붙이면 좁은 폰에서 혼자 다음 줄로 떨어짐)
     const tag = secret ? '★비밀 몬스터 발견★' : lineOf(sp.line_id)?.mythic ? '★환상의 몬스터★'
       : lineOf(sp.line_id)?.rarity === 'legendary' ? '★전설의 몬스터★' : rare ? '★희귀 몬스터★' : '';
-    await typeText(text, `${tag ? `${tag}\n` : ''}축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!\n(${t.qr_name})${lucky ? `\n✦ ${lucky} ✦` : ''}`);
+    const throwLine = bonus?.exp > 0 ? `\n${{ nice: '나이스', great: '그레이트', excellent: '엑설런트' }[bonus.grade] || ''} 던지기! 경험치 +${bonus.exp}${bonus.levels ? ` (Lv.${bonus.level})` : ''}` : '';
+    await typeText(text, `${tag ? `${tag}\n` : ''}축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!\n(${t.qr_name})${throwLine}${lucky ? `\n✦ ${lucky} ✦` : ''}`);
     text.append(h('span.more', '▼'));
     S.celebrated.add(t.nonce);
     await kv.set('celebrated', [...S.celebrated]);

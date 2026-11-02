@@ -1223,7 +1223,7 @@ console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
   ok((await anon.rpc('achievements')).error, 'anon cannot read achievements');
   const al = (await C.rpc('achievements')).data;
   const hatch5 = al?.find((x) => x.key === 'hatch5');
-  ok(al?.length === 18 && hatch5?.done === true && hatch5.progress === 5 && !hatch5.claimed, '18 achievements, hatch 5 done', hatch5);
+  ok(al?.length === 95 && hatch5?.done === true && hatch5.progress === 5 && !hatch5.claimed && al.every((a) => a.kind && a.title), '95 achievements (with kind), hatch 5 done', hatch5);
   ok((await C.rpc('claim_achievement', { p_key: 'dex60' })).error === 'NOT_DONE', 'unfinished achievement cannot be claimed');
   ok((await C.rpc('claim_achievement', { p_key: 'nope' })).error === 'BAD_KEY', 'unknown achievement');
   const before = ((await C.rpc('bag_state')).data.items.find((i) => i.key === 'candy')?.qty) || 0;
@@ -1254,6 +1254,32 @@ console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
   ok((await N.rpc('set_class', { p_grade: 1, p_class: 1 })).error === 'NOT_STUDENT', 'non-student id account cannot set a class');
   ok((await N.rpc('class_ranking')).data?.can_set === false, 'non-student sees can_set false');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid, `g:${nid}`], p_confirm: '삭제' });
+}
+
+console.log('\n[38] 몬스터 잡기 장면 보너스 (0028)');
+{
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'ct1234' })).error);
+  const C = client(await pwLogin(`${sid}@code.local`, 'ct1234'));
+  await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '잡기테스트' });
+  const q = Object.keys(T).find((k) => /^A\d+$/.test(k));
+  const n1 = nonce();
+  const s1 = await C.rpc('sync', { p_scans: [{ n: n1, q, t: T[q].token }] });
+  ok(s1.data?.acks?.[0]?.status === 'ok', 'scan a place QR', s1.data?.acks);
+  ok((await C.rpc('catch_bonus', { p_nonce: n1, p_grade: 'great' })).error === 'NOT_FOUND', 'no bonus before the booth hands the monster over');
+  const red = await booth.rpc('booth_redeem', { p_payload: sid });
+  ok(red.data?.results?.some((x) => x.species_id), 'booth redeems the ticket', red.data?.results);
+  ok((await C.rpc('catch_bonus', { p_nonce: n1, p_grade: 'perfect' })).error === 'BAD_GRADE', 'unknown grade refused');
+  ok((await anon.rpc('catch_bonus', { p_nonce: n1, p_grade: 'nice' })).error, 'anon cannot claim a catch bonus');
+  const st0 = (await C.rpc('sync')).data.state;
+  const tk = st0.tickets.find((x) => x.nonce === n1);
+  const line = (await admin.select(`species?id=eq.${tk.species_id}&select=line_id`)).data[0].line_id;
+  const before = (await C.rpc('bag_state')).data.box.find((m) => m.line === line);
+  const b = (await C.rpc('catch_bonus', { p_nonce: n1, p_grade: 'excellent', p_curve: true })).data;
+  ok(b?.exp === 100 && b.line === line, 'excellent + curveball → 100 EXP to that monster', b);
+  const after = (await C.rpc('bag_state')).data.box.find((m) => m.line === line);
+  ok(after.level > before.level || after.exp > before.exp, 'monster got the EXP', { before: [before.level, before.exp], after: [after.level, after.exp] });
+  ok((await C.rpc('catch_bonus', { p_nonce: n1, p_grade: 'excellent' })).error === 'ALREADY_CLAIMED', 'one bonus per ticket');
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);
