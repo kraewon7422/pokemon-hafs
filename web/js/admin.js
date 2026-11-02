@@ -203,7 +203,7 @@ function modal(title, body, buttons) {
       h('div.box.modal', { role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, h('h2', title), body, h('div.modal-btns', btns)));
     document.body.append(ov);
     document.addEventListener('keydown', onKey);
-    (ov.querySelector('input:not([type=radio]):not([type=checkbox]),textarea,select') || btns.at(-1)).focus();
+    (ov.querySelector('input:not([type=radio]):not([type=checkbox]),textarea,select') || btns[btns.length - 1]).focus();
   });
 }
 
@@ -421,7 +421,7 @@ async function refreshStats(redraw = true) {
   }
   setBanner(S.stats.festival_open, S.stats.self_redeem);
   const el = $('#dash');
-  if (redraw && el && S.tab === 'dash') el.replaceChildren(...dashBody());
+  if (redraw && el && S.tab === 'dash') el.replaceChildren(...dashBody().filter(Boolean));
 }
 
 setInterval(() => {
@@ -572,7 +572,7 @@ async function tabQr() {
   const listBox = h('div');
   const editBox = h('div');
   const drawList = () => listBox.replaceChildren(qrList(() => { drawList(); drawEdit(); }));
-  const drawEdit = () => editBox.replaceChildren(...qrEditor(refresh));
+  const drawEdit = () => editBox.replaceChildren(...qrEditor(refresh).filter(Boolean));
   const refresh = async () => { await loadQrData(); drawList(); drawEdit(); };
   drawList(); drawEdit();
   return h('div.cols', h('div', createQrForm(refresh), listBox), editBox);
@@ -1478,7 +1478,7 @@ function parseCodeList(text) {
 
 async function tabCodes() {
   const out = h('div');
-  const drawResult = () => out.replaceChildren(...codeResult(drawResult));
+  const drawResult = () => out.replaceChildren(...codeResult(drawResult).filter(Boolean));
   drawResult();
 
   // (a) range generator
@@ -1716,8 +1716,8 @@ async function tabStaff() {
 }
 
 // 미니게임 (0023·0025): 관리 방법 안내 · 열리는 몬스터 수 · 게임 켜고 끄기 · 게임별 기록 (부정 기록 지우기) · 랭킹 초기화
-const MG = [['surf', '몬스터 서핑'], ['dodge', '폭탄 피하기'], ['maze', '자이로 미로 (랭킹 모드)'], ['land', '땅따먹기']];
-const mgFmt = (id, v) => (id === 'maze' ? `${(v / 1000).toFixed(2)}초` : id === 'land' ? `${(v / 10).toFixed(1)}%` : `${Number(v).toLocaleString()}${id === 'surf' ? 'm' : '점'}`);
+const MG = [['surf', '몬스터 서핑'], ['dodge', '폭탄 피하기'], ['maze', '자이로 미로 (랭킹 모드)'], ['land', '땅따먹기'], ['cross', '몬스터 등굣길']];
+const mgFmt = (id, v) => (id === 'maze' ? `${(v / 1000).toFixed(2)}초` : id === 'land' ? `${(v / 10).toFixed(1)}%` : `${Number(v).toLocaleString()}${id === 'surf' ? 'm' : id === 'cross' ? '칸' : '점'}`);
 async function tabMg() {
   let ov = await rpc('admin_minigame_overview');
   let game = S.mgGame || 'surf';

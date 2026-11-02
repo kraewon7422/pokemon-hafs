@@ -423,6 +423,15 @@ export default {
     box.style.cssText = 'flex:1 1 auto;align-self:stretch;width:100%;min-height:0;position:relative;touch-action:none;overflow:hidden;';
     box.innerHTML = '<p style="margin:40px 0 0;text-align:center;font-size:14px;color:#384050">불러오는 중…</p>';
     stage.append(box);
+    // 캔버스 화면 크기는 직접 맞춤 (Phaser FIT 은 폰을 돌린 뒤 한 박자 늦은 box 크기를 써서 넘치거나 작게 남음)
+    const sizeCanvas = () => {
+      const cv = game?.canvas; if (!cv) return;
+      const bw = box.clientWidth, bh = box.clientHeight; if (!bw || !bh) return;
+      const k = Math.min(bw / W, bh / H);
+      cv.style.width = `${W * k}px`; cv.style.height = `${H * k}px`;
+      cv.style.marginLeft = `${Math.floor((bw - W * k) / 2)}px`; cv.style.marginTop = '0px'; cv.style.display = 'block';
+    };
+    const boxRo = new ResizeObserver(() => sizeCanvas()); boxRo.observe(box);
 
     let dead = false, game = null, scene = null, paused = false;
     let endTimer = 0, sent = false;
@@ -1031,12 +1040,13 @@ export default {
       if (dead) return;
       game = new Phaser.Game({
         type: Phaser.AUTO, parent: box, width: W, height: H, pixelArt: true, backgroundColor: '#74c050',
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_HORIZONTALLY },
+        scale: { mode: Phaser.Scale.NONE, autoCenter: Phaser.Scale.NO_CENTER },
         audio: { noAudio: true }, banner: false,
         input: { keyboard: false, mouse: false, touch: false, gamepad: false },
         scene: makeScene(Phaser),
       });
-      if (dead) { game.destroy(true); game = null; }
+      if (dead) { game.destroy(true); game = null; return; }
+      game.scale.on('resize', sizeCanvas); sizeCanvas();
     }).catch(() => {
       if (!dead) box.innerHTML = '<p style="margin:40px 0 0;text-align:center;font-size:14px;color:#b03634">게임을 불러오지 못했어요. 인터넷을 확인해 주세요.</p>';
     });
@@ -1055,7 +1065,7 @@ export default {
     }
 
     return () => {
-      dead = true; clearTimeout(endTimer); timers.forEach(clearTimeout);
+      dead = true; boxRo.disconnect(); clearTimeout(endTimer); timers.forEach(clearTimeout);
       box.removeEventListener('pointerdown', onDown);
       box.removeEventListener('pointermove', onMove);
       box.removeEventListener('pointerup', onUp);

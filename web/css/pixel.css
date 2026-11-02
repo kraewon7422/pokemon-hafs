@@ -43,7 +43,7 @@ body {
   overscroll-behavior: none;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
-img, canvas.sprite { image-rendering: pixelated; image-rendering: crisp-edges; -webkit-touch-callout: none; user-select: none; }
+img, canvas.sprite { image-rendering: pixelated; image-rendering: crisp-edges; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* GBA text shadow */

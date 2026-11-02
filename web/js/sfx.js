@@ -2,10 +2,17 @@
 let ctx = null;
 let muted = (() => { try { return localStorage.getItem('mute') === '1'; } catch { return false; } })();
 
+// iPhone Safari: 소리는 손가락을 뗄 때(touchend/click) 만 켤 수 있고, 전화·화면 잠금 뒤에는 'interrupted' 로 멈춤 → 매번 다시 깨움.
+// 처음 만들 때 아주 짧은 빈 소리를 한 번 틀어야 옛 iOS 에서도 열림
 export function unlockAudio() {
-  if (ctx) { if (ctx.state === 'suspended') ctx.resume(); return; }
+  if (ctx) { if (ctx.state !== 'running') ctx.resume?.().catch?.(() => {}); return; }
   const AC = window.AudioContext || window.webkitAudioContext;
-  if (AC) ctx = new AC();
+  if (!AC) return;
+  try {
+    ctx = new AC();
+    const src = ctx.createBufferSource(); src.buffer = ctx.createBuffer(1, 1, 22050); src.connect(ctx.destination); src.start(0);
+    if (ctx.state !== 'running') ctx.resume?.().catch?.(() => {});
+  } catch { ctx = null; }
 }
 export const isMuted = () => muted;
 export function setMuted(v) {

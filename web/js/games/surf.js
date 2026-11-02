@@ -528,9 +528,15 @@ export default {
     const fit = () => {
       const box = stage.getBoundingClientRect(); const dpr = window.devicePixelRatio || 1;
       const k0 = Math.min((box.width - 6) / GW, ((box.height || 9999) - 6) / GH);
-      const k = Math.max(1 / dpr, Math.floor(k0 * dpr) / dpr);
+      // 기기 픽셀 정수 배가 제일 선명하지만, 그러면 20% 넘게 작아지는 작은 폰(아이폰 SE 등)은 남는 자리를 그대로 씀 (pixelated 라 그래도 또렷)
+      const kInt = Math.max(1 / dpr, Math.floor(k0 * dpr) / dpr); const k = kInt >= k0 * 0.8 ? kInt : Math.max(kInt, k0);
       wrap.style.width = `${GW * k}px`; wrap.style.height = `${GH * k}px`;
-      game?.scale?.refresh();
+      sizeCanvas();
+    };
+    // 캔버스 화면 크기는 직접 맞춤 (Phaser FIT 은 폰을 돌린 뒤 한 박자 늦은 부모 크기를 써서 캔버스가 넘치거나 작게 남음)
+    const sizeCanvas = () => {
+      const cv = game?.canvas; if (!cv) return;
+      cv.style.width = wrap.style.width; cv.style.height = wrap.style.height; cv.style.marginLeft = '0px'; cv.style.marginTop = '0px';
     };
     fit();
     const ro = new ResizeObserver(fit); ro.observe(stage);
@@ -555,11 +561,12 @@ export default {
         type: Phaser.AUTO, parent: wrap, width: GW, height: GH,
         pixelArt: true, roundPixels: true, antialias: false, backgroundColor: '#0d6d91', banner: false,
         audio: { noAudio: true }, input: { keyboard: false, gamepad: false, activePointers: 3 }, disableContextMenu: true,
-        scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+        scale: { mode: Phaser.Scale.NONE, autoCenter: Phaser.Scale.NO_CENTER },
         callbacks: { postBoot: (g) => { if (dead) g.destroy(true); else if (paused) g.loop.sleep(); } },
         scene: { key: 'surf', preload() { this.load.spritesheet('mons', ATLAS_URL, { frameWidth: 64, frameHeight: 64 }); this.load.image('props', PROPS_URL); }, create() { setup(this, Phaser); }, update(t, d) { tick(d); } },
       });
       if (game.canvas) game.canvas.style.imageRendering = 'pixelated';
+      game.scale.on('resize', sizeCanvas); sizeCanvas();
     }).catch(() => { if (!dead) wrap.textContent = '게임을 불러오지 못했어요'; });
 
     // ─────────── 장면 ───────────

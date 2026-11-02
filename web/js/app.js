@@ -40,6 +40,9 @@ export async function boot() {
   window.addEventListener('error', (e) => reportError(`${e.message} @${e.filename}:${e.lineno}`));
   window.addEventListener('unhandledrejection', (e) => reportError(`unhandled: ${e.reason?.message || e.reason}`));
   document.addEventListener('pointerdown', unlockAudio, { passive: true });
+  // iPhone: touchend/click 에서만 소리를 켤 수 있음 · 앱으로 돌아오면 다시 깨움
+  for (const ev of ['touchend', 'click', 'keydown']) document.addEventListener(ev, unlockAudio, { passive: true });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) unlockAudio(); });
   window.addEventListener('online', () => { S.online = true; renderStatus(); sync(); });
   window.addEventListener('offline', () => { S.online = false; renderStatus(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
@@ -367,7 +370,15 @@ export function viewHome() {
   const normal = items.filter((t) => !t.special);
   const visited = new Set((S.snap.tickets || []).map((t) => t.qr_id));
   const hints = S.catalog.qrs.filter((q) => q.hint && !visited.has(q.id));
-  const hint = hints.length ? hints[new Date().getMinutes() % hints.length] : null;
+  // 아주 가끔 (약 13분에 한 번, QR 힌트를 다 찾았으면 더 자주) 이스터에그 수수께끼. 이미 찾은 알은 안 나옴
+  const EGG_RIDDLES = [[80, '트레이너 카드의 내 친구 몬스터를 톡톡톡… 일곱 번 두드리면 무슨 일이 생길까?'],
+    [81, '배틀 탭 타입 상성표의 한가운데, 지리와 지리가 만나는 칸을 여러 번 눌러 보면…?'],
+    [82, '지도 오른쪽 위 숲 모서리를 가만히 여러 번 두드려 보면…?']];
+  const eggFound = (l) => !!owned(l) || (S.snap.tickets || []).some((t) => t.special?.special === 'egg' && speciesOf(t.special.species_id)?.line_id === l);
+  const riddles = EGG_RIDDLES.filter(([l]) => !eggFound(l)).map(([, t]) => ({ hint: t, egg: true }));
+  const tick = Math.floor(Date.now() / 60_000);
+  const hint = riddles.length && (!hints.length || tick % 13 === 0) ? riddles[tick % riddles.length]
+    : hints.length ? hints[new Date().getMinutes() % hints.length] : null;
   const [icon, label, kind, act] = nextAction();
   const closeAt = R.festival_close_at ? new Date(R.festival_close_at) : null;
   const minsLeft = closeAt ? Math.round((closeAt - Date.now()) / 60000) : null;
@@ -424,7 +435,7 @@ export function viewHome() {
 
     rouletteBox(),
 
-    hint && h('section.box.hint', h('b', pix('bulb'), '힌트  '), hint.hint),
+    hint && h('section.box.hint', h('b', pix(hint.egg ? 'gift' : 'bulb'), hint.egg ? '수수께끼  ' : '힌트  '), hint.hint),
   ];
 }
 

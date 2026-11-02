@@ -1137,5 +1137,20 @@ console.log('\n[35] 미니게임 운영 · 연습 배틀 공정 모드 (0025)');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
+console.log('\n[36] 미니게임 몬스터 등굣길 (0026)');
+{
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'cr1234' })).error);
+  const C = client(await pwLogin(`${sid}@code.local`, 'cr1234'));
+  await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '등굣길테스트' });
+  for (let l = 1; l <= 10; l++) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l, p_stage: 1 });
+  ok((await C.rpc('submit_minigame_score', { p_game: 'cross', p_score: 200, p_ms: 10000 })).error === 'BAD_SCORE', 'cross: 20 rows a second is refused');
+  const r = (await C.rpc('submit_minigame_score', { p_game: 'cross', p_score: 42, p_ms: 30000 })).data;
+  ok(r?.me?.score === 42 && r.lower_better === false, 'cross: a real run is saved (bigger is better)', r?.me);
+  ok((await C.rpc('minigame_ranking', { p_game: 'cross' })).data?.game === 'cross', 'cross ranking opens');
+  ok('cross' in ((await admin.rpc('admin_minigame_overview')).data?.games || {}), 'admin overview lists cross');
+  ok(((await admin.rpc('admin_minigame_scores', { p_game: 'cross' })).data || []).some((x) => x.student_id === sid), 'admin sees the cross record');
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
