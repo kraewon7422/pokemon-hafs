@@ -1,4 +1,5 @@
-// Operator (admin) page: dashboard, QR management + print sheet, monsters/quizzes, students, login codes, settings.
+// Operator (admin) page. Tabs: 현황 · 축제 운영 · 장소·QR(관리/인쇄) · 몬스터·퀴즈 · 레이드 · 학생·계정(학생/요청/쪽지) · 미니게임 · 성장·보상 · 운영진 · 고급 설정.
+// Old hashes (#qr #print #stu #code #req #set) still open the right tab (TAB_ALIAS). Settings forms + DEFAULTS live near the end of the file.
 // Reads/writes catalog tables directly (RLS admin policies) and calls admin_* RPCs (supabase/migrations/0001_init.sql, 0003_review_fixes.sql).
 import { CONFIG } from './config.js';
 import { sb, rpc, errorText } from './sb.js';
@@ -14,6 +15,8 @@ const TSTATUS = { pending: ['대기', 'warn'], redeemed: ['사용', 'ok'], expir
 const SETTING_HELP = {
   festival_open: '게임 동작 ON/OFF (비상 스위치)',
   email_domains: '(0008부터 사용 안 함 — 모든 구글 계정 로그인 가능)',
+  battle_daily_max: '배틀: 하루에 보상(진화권)을 받는 승리 수 (기본 3)', battle_turn_sec: '실시간 대전: 한 턴 제한 시간(초). 지나면 AI가 대신 골라요 (기본 30)',
+  battle_invite_sec: '실시간 대전 신청: 이 시간(초) 안에 수락해야 시작 (기본 60)',
   email_regex: '(0008부터 사용 안 함 — 학번은 첫 로그인 때 직접 입력)',
   admin_emails: '운영자 이메일 목록 (그 구글 계정으로 첫 로그인할 때 운영자가 됨)',
   booth_emails: '부스 스태프 이메일 목록 (구글 계정)',
@@ -30,7 +33,7 @@ const SETTING_HELP = {
   roulette_enabled: '진화권 룰렛 ON/OFF (true/false)',
   code_self_signup: '구글 없이 고유번호 + 비밀번호로 새 계정을 만들 수 있게 할지 ON/OFF',
   reset_requests_per_10min: '비밀번호 초기화 요청을 10분 동안 전체에서 최대 몇 개 받을지 (장난 방지, 기본 30)',
-  raid_slots: '시간대 전설 레이드: [{"line":38,"from":"09:00","until":"11:00"}, …] — 라인 38 소디포(아침)·39 유리프(점심)·40 TTU(저녁). TV 화면이 이 시간에 자동으로 레이드를 열어요',
+  raid_slots: '시간대 전설 레이드 시간표 ([레이드] 탭에서 표로 고쳐요)',
   raid_slot_hp: '시간대 전설 레이드 보스 체력', raid_slot_minutes: '시간대 전설 레이드 한 판 길이(분)', raid_cooldown_min: '시간대 레이드가 끝나고 다음 판까지(분)',
   raid_slot_open: '시간대 전설 레이드(아침·점심·저녁)를 QR 없이 앱에서 바로 참가하게 할지 ON/OFF (true/false)',
   raid_tap_cap: '레이드: 1초에 인정하는 탭 수 (오토클릭 방지)', raid_min_taps: '레이드 보상 받으려면 최소 탭 수',
@@ -42,10 +45,10 @@ const SETTING_HELP = {
   roulette_every_min: '룰렛을 한 번 돌린 뒤 다음까지 기다리는 시간(분, 기본 5)',
   roulette_daily_max: '한 사람이 하루에 돌릴 수 있는 룰렛 횟수 (기본 12)',
   roulette_odds: '룰렛 칸 [진화권 수, 가중치] 목록. 기본 [[0,60],[1,30],[3,8],[5,2]] = 꽝60% 1장30% 3장8% 5장2%',
-  battle_stage_mult: '배틀용 단계별 능력치 배율 (아직 안 씀)',
+  battle_stage_mult: '(사용 안 함) 예전 배틀용 단계별 능력치 배율',
   rotating_window_sec: '대형 화면 QR이 바뀌는 간격(초)',
   rotating_accept_sec: '대형 화면 QR을 찍은 뒤 인정되는 시간(초). 짧을수록 사진 공유가 어려워요',
-  self_redeem: '셀프 지급 모드 (위 스위치로 바꾸세요)',
+  self_redeem: '셀프 지급 모드 ([축제 운영] 탭의 스위치)',
   festival_close_at: '축제 종료 시각 — 예: "2026-11-07T16:00:00+09:00" (따옴표 포함), 없으면 null',
   min_client_version: '앱 최소 버전 숫자. 올리면 옛 버전 폰에 "업데이트" 배너가 떠요',
   lv_from_battle: '레벨: 배틀 경험치로 레벨이 오르게 할지 ON/OFF (true/false)',
@@ -66,15 +69,58 @@ const SETTING_HELP = {
   practice_exp_daily: '연습 배틀: 경험치·물건을 받는 판 수 (하루, 기본 10). 넘으면 연습은 할 수 있지만 경험치는 없어요',
 };
 const TABS = [
-  ['dash', '현황판'], ['qr', 'QR 관리'], ['print', 'QR 인쇄'], ['mon', '몬스터·퀴즈'], ['stu', '학생'], ['code', '로그인 코드'], ['raid', '레이드'], ['req', '요청'], ['mg', '미니게임'], ['staff', '운영진'], ['set', '설정'],
+  ['dash', '현황'], ['ops', '축제 운영'], ['place', '장소·QR'], ['mon', '몬스터·퀴즈'], ['raid', '레이드'], ['people', '학생·계정'],
+  ['mg', '미니게임'], ['grow', '성장·보상'], ['staff', '운영진'], ['adv', '고급 설정'],
 ];
+// 예전 탭 주소(#qr, #set …) → 새 탭 [탭, 작은 탭]. 북마크·옛 링크가 계속 열리게.
+const TAB_ALIAS = {
+  qr: ['place', 'qr'], print: ['place', 'print'], stu: ['people', 'stu'], code: ['people', 'code'], req: ['people', 'req'], set: ['ops', null],
+};
+const SUBTABS = {
+  place: [['qr', 'QR 관리'], ['print', 'QR 인쇄']],
+  people: [['stu', '학생 찾기·고치기'], ['req', '비밀번호 요청·문의'], ['code', '임시 비밀번호 쪽지']],
+};
+// 탭마다 맨 위 "이 탭에서 하는 일" (접을 수 있음, 접은 상태는 이 브라우저에 기억)
+const GUIDES = {
+  dash: ['지금 축제가 잘 돌아가는지 한눈에 봐요 (10초마다 저절로 새로 고침).',
+    '빨간 칸·빨간 안내가 보이면 먼저 처리하세요: 게임 정지, 몬스터 미설정 QR, 앱 오류 등.',
+    '교장·교감 선생님 레이드를 TV에 바로 띄울 수 있어요.'],
+  ops: ['축제 당일에 자주 만지는 스위치가 모두 여기 있어요.',
+    '비상 스위치(게임 정지), 셀프 지급(부스가 너무 밀릴 때), 공지, 축제 끝나는 시각, 상품 안내.',
+    '레이드 보상 방식과 부스 몬스터가 도망갈 확률도 여기서 바로 바꿀 수 있어요.'],
+  place: ['학교 곳곳에 붙이는 장소 QR을 만들고, 이름·지도 위치·나오는 몬스터를 정해요.',
+    'QR이 유출(사진 공유)됐으면 [토큰 교체]로 새 QR을 만들고 다시 인쇄해서 붙여요.',
+    '[QR 인쇄]에서 A4에 2장씩 인쇄하거나 PNG로 저장해요.'],
+  mon: ['선생님 몬스터(계열)의 이름·설명·진화 단계를 고쳐요.',
+    '계열마다 퀴즈를 넣어요. 퀴즈를 맞히면 진화권을 받아요.',
+    '선생님이 동의를 철회하면 [선생님 동의 철회]를 켜서 숨겨요.'],
+  raid: ['레이드 = 모두가 함께 보스를 탭해서 쓰러뜨리는 이벤트예요.',
+    '[레이드 열기]로 아무 몬스터나 지금 바로 열 수 있어요 (TV 화면 또는 인쇄 QR).',
+    '[시간대 전설]은 정해 둔 시간에 TV 화면이 저절로 여는 레이드예요. TV 화면이 켜져 있어야 해요.',
+    '이긴 학생이 받는 보상(특별 티켓 또는 앱에서 잡기)도 여기서 정해요.'],
+  people: ['학생을 찾아서 진화권·몬스터·물건·알·반·역할을 고쳐요.',
+    '비밀번호를 잊은 학생의 초기화 요청을 허용하거나, 학생 문의에 답해요.',
+    '급할 때는 임시 비밀번호 쪽지를 인쇄해서 줄 수도 있어요.',
+    '최종 랭킹(상품용 실명) CSV도 [학생 찾기·고치기]에 있어요.'],
+  mg: ['미니게임이 열리는 몬스터 수를 정하고, 문제가 생긴 게임만 잠깐 꺼요.',
+    '이상한(부정) 기록을 지우거나, 연습 기간이 끝나면 랭킹을 초기화해요.'],
+  grow: ['알 부화 걸음 수, 반짝이 확률, 잡기 경험치, 레벨이 오르는 방법, 물건이 나올 확률 등을 정해요.',
+    '숫자 칸 옆에 단위와 설명이 있어요. 묶음마다 [저장]을 눌러야 반영돼요.',
+    '잘못된 숫자(범위 밖)는 저장 전에 빨갛게 표시돼요.'],
+  staff: ['운영자·부스 스태프 계정을 만들거나 지워요.',
+    '아이디로 만들면 서버가 비밀번호를 만들어 줘요 (한 번만 보여요).',
+    '구글 이메일로 등록할 수도 있어요. 운영 화면 주소도 여기 있어요.'],
+  adv: ['다른 탭에 따로 칸이 없는 설정을 그대로(JSON) 고쳐요.',
+    '잘 모르는 값은 바꾸지 마세요. 저장 전에 형식을 검사해요.',
+    '다른 탭에 칸이 있는 설정은 기본으로 숨겨져 있어요 (보이기 버튼).'],
+};
 const CODE_BATCH = 700;   // admin_make_login_codes accepts at most 700 ids per call
 
 const S = {
   view: 'boot', booting: false, me: null, email: '', tab: 'dash', renderId: 0,
   lines: [], species: [], lineById: new Map(), spById: new Map(),
   qrs: [], qrById: new Map(), secrets: new Map(), rewards: [],
-  stats: null, statsFailed: false, grace: 30, dailyCap: 3, selQr: null, selLine: null, stuQuery: '', stuSel: null,
+  stats: null, statsFailed: false, grace: 30, dailyCap: 3, selQr: null, selLine: null, stuQuery: '', stuSel: null, sub: {},
   codes: null, codesSaved: true,   // last generated login codes (shown once, kept only in this tab)
 };
 
@@ -120,7 +166,7 @@ const msgOf = (e) => {
 };
 // admin-only server error codes (0003/0005) not in sb.js
 const ADMIN_ERR = {
-  NO_ACCOUNT: '그 이메일로 로그인한 적이 없어요. 학생이 새 로그인으로 한 번 로그인을 시도하게 하거나, [로그인 코드] 탭에서 코드를 먼저 만드세요.',
+  NO_ACCOUNT: '그 이메일로 로그인한 적이 없어요. 학생이 새 로그인으로 한 번 로그인을 시도하게 하거나, [학생·계정 → 임시 비밀번호 쪽지]에서 그 번호 쪽지를 먼저 만드세요.',
   ACCOUNT_IN_USE: '그 로그인에는 이미 게임 기록(도감·티켓)이 있어요. 옮길 수 없어요.',
   NO_LINE: '없는 몬스터 계열이에요.',
   TOO_MANY: '한 번에 너무 많이 보냈어요.',
@@ -345,14 +391,25 @@ async function showApp() {
       h('span.spacer'),
       h('span.who', S.email),
       h('button.btn.small', { onclick: logout }, '로그아웃')),
-    h('div#festival-banner', { role: 'alert' }, '⚠ 게임 정지 중 — festival_open이 꺼져 있어요 (설정 탭에서 켤 수 있어요)'),
-    h('div#self-banner', { role: 'status' }, '셀프 지급 모드 켜짐 — 학생이 앱에서 직접 몬스터를 받고 있어요 (설정 탭에서 끌 수 있어요)'),
+    h('div#festival-banner', { role: 'alert' }, '⚠ 게임 정지 중 — 비상 스위치가 꺼져 있어요 ([축제 운영] 탭에서 켤 수 있어요)'),
+    h('div#self-banner', { role: 'status' }, '셀프 지급 모드 켜짐 — 학생이 부스 없이 앱에서 직접 몬스터를 받고 있어요 ([축제 운영] 탭에서 끌 수 있어요)'),
     nav,
     h('main#main', h('p.loading', '불러오는 중…')));
   try { await loadCatalog(); } catch (e) { fail(e); }
-  const want = location.hash.slice(1);
-  go(TABS.some(([id]) => id === want) ? want : 'dash');
+  goHash();
   rpc('admin_stats').then((s) => { S.stats = s; setBanner(s.festival_open, s.self_redeem); }, () => {});
+}
+
+// "#tab" 또는 "#tab/sub" (예전 탭 이름도 받음) → [tab, sub]
+function parseHash(hash) {
+  const [a, b] = String(hash || '').replace(/^#/, '').split('/');
+  if (TAB_ALIAS[a]) return [TAB_ALIAS[a][0], b || TAB_ALIAS[a][1]];
+  if (TABS.some(([id]) => id === a)) return [a, b || null];
+  return ['dash', null];
+}
+function goHash() {
+  const [t, sub] = parseHash(location.hash);
+  go(t, sub);
 }
 
 // selfRedeem undefined = leave that banner as it is
@@ -363,19 +420,52 @@ function setBanner(open, selfRedeem) {
   if (sr && selfRedeem !== undefined) sr.classList.toggle('on', isOn(selfRedeem));
 }
 
-const RENDER = { dash: tabDash, qr: tabQr, print: tabPrint, mon: tabMon, stu: tabStu, code: tabCodes, raid: tabRaid, req: tabReq, mg: tabMg, staff: tabStaff, set: tabSet };
+const RENDER = {
+  dash: tabDash, ops: tabOps, place: tabSub, mon: tabMon, raid: tabRaid, people: tabSub,
+  mg: tabMg, grow: tabGrow, staff: tabStaff, adv: tabAdv,
+};
+const SUB_RENDER = { qr: tabQr, print: tabPrint, stu: tabStu, code: tabCodes, req: tabReq };
 
-async function go(tab) {
+// 탭 맨 위 안내 (접으면 이 브라우저에 기억)
+function guideBox(tab) {
+  const items = GUIDES[tab];
+  if (!items) return null;
+  const k = 'admin_guide_closed_' + tab;
+  let closed = false;
+  try { closed = localStorage.getItem(k) === '1'; } catch { /* private mode */ }
+  const d = h('details.box.guide', { open: !closed },
+    h('summary', '이 탭에서 하는 일'),
+    h('ul', items.map((t) => h('li', t))));
+  d.addEventListener('toggle', () => { try { localStorage.setItem(k, d.open ? '0' : '1'); } catch { /* ignore */ } });
+  return d;
+}
+
+// 작은 탭(장소·QR, 학생·계정): 위에 작은 탭 버튼 줄 + 고른 화면
+async function tabSub() {
+  const items = SUBTABS[S.tab];
+  const cur = items.some(([id]) => id === S.sub[S.tab]) ? S.sub[S.tab] : items[0][0];
+  S.sub[S.tab] = cur;
+  const bar = h('div.subtabs', { role: 'tablist', 'aria-label': '작은 메뉴' }, items.map(([id, label]) =>
+    h('button', { type: 'button', role: 'tab', 'aria-selected': String(id === cur), onclick: () => go(S.tab, id) }, label)));
+  return [bar, ...[].concat(await SUB_RENDER[cur]())];
+}
+
+async function go(tab, sub) {
+  if (TAB_ALIAS[tab]) [tab, sub] = [TAB_ALIAS[tab][0], sub || TAB_ALIAS[tab][1]];
+  if (!RENDER[tab]) tab = 'dash';
   S.tab = tab;
+  if (sub) S.sub[tab] = sub;
   const id = ++S.renderId;
-  history.replaceState(null, '', '#' + tab);
+  const hash = '#' + tab + (SUBTABS[tab] && S.sub[tab] ? '/' + S.sub[tab] : '');
+  if (location.hash !== hash) history.replaceState(null, '', hash);
   document.querySelectorAll('nav.tabs button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tab === tab)));
   const main = $('#main');
   main.replaceChildren(h('p.loading', '불러오는 중…'));
   try {
     const nodes = await RENDER[tab]();
     if (id !== S.renderId) return;            // user switched tabs meanwhile
-    main.replaceChildren(...[].concat(nodes));
+    if (SUBTABS[tab] && location.hash !== '#' + tab + '/' + S.sub[tab]) history.replaceState(null, '', '#' + tab + '/' + S.sub[tab]);
+    main.replaceChildren(...[guideBox(tab), ...[].concat(nodes)].filter(Boolean));
   } catch (e) {
     if (id !== S.renderId) return;
     console.warn(e);
@@ -405,7 +495,7 @@ function legendCard() {
   };
   return h('div.box.stack',
     h('h2', '⚡ 전설 레이드 (TV 대형 화면)'),
-    h('p.small-txt.muted', '누르면 TV에 보스와 30초마다 바뀌는 참가 QR이 떠요. 학생들이 찍고 다 같이 탭해서 쓰러뜨리면 모두 전설 티켓을 받아요. 자세한 설정은 "레이드" 탭.'),
+    h('p.small-txt.muted', '누르면 TV에 보스와 30초마다 바뀌는 참가 QR이 떠요. 학생들이 찍고 다 같이 탭해서 쓰러뜨리면 모두 보상을 받아요 (특별 티켓 또는 앱에서 잡기 — [레이드] 탭의 보상 방식).'),
     h('div.row', quick(106, '교장'), quick(103, '교감')));
 }
 
@@ -455,7 +545,7 @@ function dashBody() {
   const emptyPool = qrs.filter(noPool);
 
   const tiles = h('div.tiles',
-    tile('게임 상태', open ? 'ON' : 'OFF', open ? '운영 중' : '정지됨 (설정 탭)', open ? 'good' : 'alert'),
+    tile('게임 상태', open ? 'ON' : 'OFF', open ? '운영 중' : '정지됨 (축제 운영 탭)', open ? 'good' : 'alert'),
     tile('셀프 지급', selfOn ? 'ON' : 'OFF', selfOn ? '셀프 지급 모드 켜짐' : '부스에서만 지급', selfOn ? 'alert' : ''),
     tile('몬스터 미설정 QR', emptyPool.length, '활성인데 풀이 비어 있음', emptyPool.length ? 'alert' : ''),
     tile('학생 수', s.students),
@@ -476,7 +566,7 @@ function dashBody() {
     h('div.row', h('h2', `QR 상태 (${qrs.length}개)`),
       emptyPool.length ? chip(`몬스터 미설정 ${emptyPool.length}`, 'hot') : null,
       nCheck ? chip(`점검 필요 ${nCheck}`, 'warn') : null, nHot ? chip(`급증 ${nHot}`, 'hot') : null),
-    h('p.small-txt.muted', '몬스터 미설정 = 몬스터 풀이 비어 있음(그 QR 티켓은 부스에서 취소돼요 — QR 관리에서 풀을 채우세요) · 점검 필요 = 45분 넘게 아무도 안 찍음(떨어졌거나 가려졌을 수 있음) · 급증 = 10분에 15회 이상(사진 공유 의심)'),
+    h('p.small-txt.muted', '몬스터 미설정 = 몬스터 풀이 비어 있음(그 QR 티켓은 부스에서 취소돼요 — 장소·QR 탭에서 풀을 채우세요) · 점검 필요 = 45분 넘게 아무도 안 찍음(떨어졌거나 가려졌을 수 있음) · 급증 = 10분에 15회 이상(사진 공유 의심)'),
     h('div.tbl-wrap.scroll-y', h('table.tbl',
       h('thead', h('tr', h('th', 'ID'), h('th', '이름'), h('th', '상태'), h('th.num', '오늘'), h('th.num', '10분'), h('th.num', '대기'), h('th', '마지막 스캔'), h('th', '알림'))),
       h('tbody', qrs.map((q) => h('tr',
@@ -517,9 +607,9 @@ function dashBody() {
       h('tbody', errs.map((e) => h('tr', h('td', { style: { whiteSpace: 'nowrap' } }, fmtTime(e.at)), h('td.small-txt', e.msg)))))) : h('p.muted', '오류 없음 👍'));
 
   const notices = [
-    selfOn ? h('p.notice.red', h('b', '셀프 지급 모드 켜짐'), ' — 학생이 부스에 오지 않고 앱에서 직접 몬스터를 받아요. 부스가 한가해지면 설정 탭에서 꺼 주세요.') : null,
+    selfOn ? h('p.notice.red', h('b', '셀프 지급 모드 켜짐'), ' — 학생이 부스에 오지 않고 앱에서 직접 몬스터를 받아요. 부스가 한가해지면 [축제 운영] 탭에서 꺼 주세요.') : null,
     emptyPool.length ? h('p.notice.red', h('b', `몬스터 미설정 QR ${emptyPool.length}개: `), emptyPool.map((q) => `${q.id} ${q.name}`).join(', '),
-      ' — 이 QR로 받은 티켓은 부스에서 취소돼요. QR 관리 탭에서 몬스터 풀을 채우세요.') : null,
+      ' — 이 QR로 받은 티켓은 부스에서 취소돼요. [장소·QR] 탭에서 몬스터 풀을 채우세요.') : null,
   ].filter(Boolean);
 
   // 오늘(한국 시간)의 게임 숫자 (0019 admin_game_stats)
@@ -678,7 +768,7 @@ function tokenBox(q, refresh) {
     const ok = await confirmBox(hard ? '토큰 즉시 폐기 (유출됐을 때)' : '토큰 교체', [
       hard ? '옛 QR은 지금 바로 못 쓰게 돼요. 이미 찍어 둔 오프라인 티켓도 무효가 될 수 있어요.'
         : `옛 QR은 앞으로 ${S.grace}분 동안만 더 인식돼요.`,
-      h('p.warn-txt', '인쇄된 QR을 다시 붙여야 해요. 교체 후 [QR 인쇄] 탭에서 새 카드를 출력하세요.'),
+      h('p.warn-txt', '인쇄된 QR을 다시 붙여야 해요. 교체 후 위의 [QR 인쇄]에서 새 카드를 출력하세요.'),
       q.kind === 'rotating' ? '대형 화면 QR은 화면이 자동으로 새 토큰을 써요.' : null,
     ].filter(Boolean), { ok: hard ? '지금 폐기' : '교체하기', danger: true });
     if (!ok) return;
@@ -811,7 +901,7 @@ async function tabPrint() {
 
   const cards = statics.map((q) => {
     const sec = S.secrets.get(q.id);
-    if (!sec) return h('div.qr-card', h('div.qc-title', CONFIG.GAME_TITLE), h('p.warn-txt', `${q.id} ${q.name}: 토큰 없음 — QR 관리에서 토큰을 교체하세요.`));
+    if (!sec) return h('div.qr-card', h('div.qc-title', CONFIG.GAME_TITLE), h('p.warn-txt', `${q.id} ${q.name}: 토큰 없음 — [QR 관리]에서 토큰을 교체하세요.`));
     const url = placeUrl(site, q.id, sec.token);
     const cv = drawQR(document.createElement('canvas'), url, { cell: 10, margin: 4 });
     cv.setAttribute('aria-label', `${q.id} QR 코드`);
@@ -1247,7 +1337,7 @@ async function studentDetail(sid, reload) {
 
   const info = h('div.box.stack',
     h('h2', `${p.student_id} ${p.name || ''}`),
-    isGuest(p.student_id) ? h('p.small-txt.muted', '로그인 코드로 만든 손님·선생님 계정이에요 (기수 없음).') : null,
+    isGuest(p.student_id) ? h('p.small-txt.muted', '비학생 계정이에요 (앱에서 만든 아이디, 또는 예전 로그인 코드 · 기수 없음).') : null,
     h('dl.kv',
       h('dt', '기수'), h('dd', p.gen ? `${p.gen}기` : '–'),
       h('dt', '역할'), h('dd', ROLE[p.role] || p.role),
@@ -1283,11 +1373,12 @@ async function studentDetail(sid, reload) {
     });
   };
   const relinkBox = h('div.box.stack',
-    h('h3', '다른 로그인으로 옮기기 (폰 분실·새 폰)'),
+    h('h3', '다른 로그인으로 옮기기 (드문 경우)'),
+    h('p.small-txt', '고유번호 계정은 폰을 잃어버리거나 바꿔도 ', h('b', '새 폰에서 고유번호 + 비밀번호로 로그인'), '하면 기록이 그대로예요. 비밀번호를 잊었으면 [비밀번호 요청·문의]에서 허용해 주세요. 이 기능은 기록이 다른 로그인(예전 구글 계정 등)에 있을 때만 써요.'),
     h('ol.small-txt.steps',
       h('li', '새 로그인 계정을 준비해요: ',
         h('b', '구글'), ' — 학생이 새 폰에서 구글 로그인을 한 번 시도하게 하세요 ("이미 다른 계정에 연결돼 있어요"가 떠도 괜찮아요). ',
-        h('b', '또는 코드'), ` — [로그인 코드] 탭에서 이 학번 코드를 만들면 ${codeEmail} 계정이 생겨요.`),
+        h('b', '또는 코드'), ` — [임시 비밀번호 쪽지]에서 이 번호 쪽지를 만들면 ${codeEmail} 계정이 생겨요 (이미 있으면 비밀번호가 쪽지 코드로 바뀌어요).`),
       h('li', '그 이메일을 아래에 넣고 [옮기기]. 모든 게임 기록이 새 로그인으로 옮겨져요.'),
       h('li', '학생이 새 로그인으로 앱을 열면 끝! 예전 로그인은 이 학번과 끊겨요.')),
     h('div.row', h('div', { style: { flex: '1 1 220px' } }, email),
@@ -1385,7 +1476,7 @@ async function studentDetail(sid, reload) {
     h('div.row', h('div', { style: { flex: '1 1 220px' } }, lvLine), lvInp, lvBtn));
 
   // 알 주기 · 반 고치기 (0027)
-  const eggTier = h('select.inp', { 'aria-label': '알 종류' }, [['green', '초록 점박이 알 (1,000걸음)'], ['yellow', '노랑 점박이 알 (2,500걸음)'], ['purple', '보라 점박이 알 (5,000걸음)']]
+  const eggTier = h('select.inp', { 'aria-label': '알 종류' }, [['green', '초록 점박이 알'], ['yellow', '노랑 점박이 알'], ['purple', '보라 점박이 알']]
     .map(([v, t]) => h('option', { value: v }, t)));
   const eggN = h('input.inp', { type: 'number', min: 1, max: 20, value: 1, style: { width: '72px' }, 'aria-label': '개수' });
   const eggBtn = h('button.btn.go', '알 주기');
@@ -1394,20 +1485,35 @@ async function studentDetail(sid, reload) {
     toast(r.given ? `알 ${r.given}개를 줬어요. (알 주머니가 꽉 차면 덜 들어가요)` : '알 주머니가 꽉 차서 못 줬어요 (9개).');
   });
   const isStu = /^\d{6}$/.test(p.student_id || '') && p.role === 'student';
-  const grSel = h('select.inp', { 'aria-label': '학년', style: { width: '96px' } }, h('option', { value: '' }, '학년 없음'), [1, 2, 3].map((n) => h('option', { value: n, selected: p.grade === n }, `${n}학년`)));
-  const clSel = h('select.inp', { 'aria-label': '반', style: { width: '96px' } }, h('option', { value: '' }, '반 없음'), Array.from({ length: 20 }, (_, i) => i + 1).map((n) => h('option', { value: n, selected: p.class_no === n }, `${n}반`)));
+  // 반 = 글자 이름 (0030: 1A · 10B · 3 …, 숫자·영어 대문자·한글 1~4자)
+  const curClass = p.class_name ?? (p.class_no != null ? String(p.class_no) : '');
+  const grSel = h('select.inp', { 'aria-label': '학년', style: { width: '110px' } }, h('option', { value: '' }, '학년 없음'), [1, 2, 3].map((n) => h('option', { value: n, selected: p.grade === n }, `${n}학년`)));
+  const clIn = h('input.inp', { value: curClass, maxlength: 4, placeholder: '예: 1A', autocapitalize: 'characters', autocomplete: 'off', spellcheck: 'false', 'aria-label': '반 이름', style: { width: '110px' } });
+  const CLASS_CHIPS = ['1A', '1B', '2', '3', '4', '5', '6', '7', '8', '9', '10A', '10B'];
+  const clChips = h('div.chips', CLASS_CHIPS.map((c) => h('button.btn.small', { type: 'button', onclick: () => { clIn.value = c; clIn.classList.remove('bad'); } }, c)));
+  const clNow = h('span.small-txt.muted', curClass ? `지금: ${p.grade ?? '?'}학년 ${curClass}반` : '지금: 반 없음');
   const clBtn = h('button.btn', '반 저장');
-  clBtn.onclick = () => busy(clBtn, async () => {
-    const g = grSel.value ? Number(grSel.value) : null; const c = clSel.value ? Number(clSel.value) : null;
-    if ((g == null) !== (c == null)) { toast('학년과 반을 둘 다 고르거나, 둘 다 비워 주세요.'); return; }
-    await rpc('admin_set_class', { p_student_id: sid, p_grade: g, p_class: c });
-    toast(g ? `${g}학년 ${c}반으로 고쳤어요.` : '반을 지웠어요.');
-  });
+  clBtn.onclick = () => {
+    const g = grSel.value ? Number(grSel.value) : null;
+    const c = clIn.value.trim().toUpperCase() || null;
+    if ((g == null) !== (c == null)) { toast('학년과 반을 둘 다 넣거나, 둘 다 비워 주세요.'); return; }
+    if (c && !/^[0-9A-Z가-힣]{1,4}$/.test(c)) { clIn.classList.add('bad'); toast('반 이름은 숫자·영어 대문자·한글 1~4글자예요 (예: 1A, 10B, 3).'); return; }
+    clIn.classList.remove('bad');
+    busy(clBtn, async () => {
+      await rpc('admin_set_class', { p_student_id: sid, p_grade: g, p_class: c });
+      clIn.value = c || '';
+      clNow.textContent = c ? `지금: ${g}학년 ${c}반` : '지금: 반 없음';
+      toast(g ? `${g}학년 ${c}반으로 고쳤어요.` : '반을 지웠어요.');
+    });
+  };
   const eggBox = h('div.box.stack',
     h('h3', '알 주기 · 반 고치기'),
-    h('p.small-txt.muted', '알은 학생 가방 → 알에 들어가요 (최대 9개). 반은 학생 계정만 (반별 랭킹용, 학생이 잘못 골랐을 때).'),
+    h('p.small-txt.muted', '알은 학생 가방 → 알에 들어가요 (알 주머니가 꽉 차면 덜 들어가요). 반은 학생 계정만 (반별 랭킹용, 학생이 잘못 골랐을 때).'),
     h('div.row', h('div', { style: { flex: '1 1 220px' } }, eggTier), eggN, eggBtn),
-    isStu ? h('div.row', { style: { flexWrap: 'wrap', gap: '8px' } }, grSel, clSel, clBtn) : h('small.muted', '비학생 계정은 반이 없어요.'));
+    isStu ? h('div.stack',
+      h('div.row', grSel, clIn, clBtn, clNow),
+      h('div.small-txt.muted', '빠르게 고르기:'), clChips)
+      : h('small.muted', '비학생 계정은 반이 없어요.'));
 
   return [info, relinkBox, grantBox, growBox, eggBox, tBox, cBox, eBox, dangerBox];
 }
@@ -1473,9 +1579,10 @@ function downloadCsv(filename, table) {
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 
-// ───────────────────────── 6. 로그인 코드 ─────────────────────────
-// Backup login (admin_make_login_codes): <id>@code.local accounts whose password is a printed code.
-// id = 5–6 digit student id (5 digits → zero-padded) or 2–12 letters/digits for teachers/guests (profile 'g:<id>', no 기수).
+// ───────────────────────── 6. 임시 비밀번호 쪽지 (옛 이름: 로그인 코드) ─────────────────────────
+// admin_make_login_codes: <id>@code.local 계정의 비밀번호를 인쇄용 코드로 정함.
+// 0011 부터 고유번호 계정 = <번호>@code.local 이라서, 이미 가입한 번호에 만들면 그 학생 비밀번호가 쪽지 코드로 바뀐다 (= 운영자 초기화).
+// 선생님·손님 아이디(영문) 쪽지는 지금 앱에 로그인할 곳이 없어서 (비학생은 @id.local) 만들지 않는다.
 
 function normCodeId(raw) {
   const v = String(raw || '').trim().toLowerCase();
@@ -1496,6 +1603,7 @@ function parseCodeList(text) {
       if (!(i === 0 && /아이디|학번|id/i.test(rawId))) bad.push(`${i + 1}줄: ${line.trim()}`);   // a header row is skipped quietly
       return;
     }
+    if (!isStudentCodeId(id)) { bad.push(`${i + 1}줄: ${rawId.trim()} (선생님·손님 아이디는 안 돼요)`); return; }
     items.push({ id, name: rest.join(',').trim().slice(0, 40) });
   });
   return { items, bad };
@@ -1532,7 +1640,7 @@ async function tabCodes() {
   h('div.row.end', rangeBtn));
 
   // (b) pasted list
-  const ta = h('textarea.inp.mono', { rows: 8, spellcheck: 'false', placeholder: '022001,김하프\n022002,이외대\nT01,수학 선생님\nGUEST1,학부모' });
+  const ta = h('textarea.inp.mono', { rows: 8, spellcheck: 'false', placeholder: '022001,김하프\n022002,이외대' });
   const preview = h('p.small-txt');
   const showPreview = () => {
     const { items, bad } = parseCodeList(ta.value);
@@ -1554,18 +1662,20 @@ async function tabCodes() {
     },
   },
   h('h2', '(나) 목록 붙여넣기'),
-  h('p.small-txt.muted', '한 줄에 한 명: 아이디,이름 (엑셀에서 두 칸을 복사해 붙여도 돼요). 아이디 = 5~6자리 학번, 또는 선생님·손님용 영문/숫자 2~12자 (예: T01, GUEST1).'),
+  h('p.small-txt.muted', '한 줄에 한 명: 고유번호,이름 (엑셀에서 두 칸을 복사해 붙여도 돼요). 고유번호 = 5~6자리 숫자.'),
   field('아이디,이름', ta), preview,
   h('div.row.end', listBtn));
 
   const help = h('div.box.stack.no-print',
-    h('h2', '로그인 코드 (예비 로그인)'),
-    h('p', '구글 비밀번호를 잊은 학생, 학교 구글 계정이 없는 선생님·손님을 위한 예비 로그인이에요. 코드를 쪽지로 인쇄해서 나눠 주세요.'),
+    h('h2', '임시 비밀번호 쪽지 (옛 이름: 로그인 코드)'),
+    h('p', '학생은 보통 ', h('b', '고유번호 + 자기가 정한 비밀번호'), '로 로그인해요. 이 화면은 그 비밀번호 대신 쓸 ', h('b', '8글자 코드'), '를 만들어 쪽지로 인쇄해요.'),
     h('ul.small-txt',
-      h('li', '앱 로그인 화면 → "구글 로그인이 안 되면: 학번·코드로 로그인" → 아이디와 코드 입력.'),
-      h('li', h('b', '코드는 만든 직후 이 화면에서 딱 한 번만 보여요.'), ' 바로 인쇄하거나 CSV로 저장하세요. 나중에 다시 볼 방법이 없어요.'),
-      h('li.warn-txt', '같은 아이디로 다시 만들면 코드가 바뀌고, 예전 코드는 바로 못 써요 (잃어버린 쪽지를 무효로 만들 때 쓰세요).'),
-      h('li', '선생님·손님 아이디(예: T01)는 학생 목록에서 ', h('span.mono', 'g:t01'), ' 같은 계정이 되고, 기수가 없어요. 학생 탭에서 "g:"로 찾을 수 있어요.'),
+      h('li', '쓰는 법: 앱 로그인 화면 → "학생 · 고유번호로 로그인" → 고유번호 + 쪽지 코드를 비밀번호 칸에. 로그인한 뒤 ⚙ 설정 → "비밀번호 바꾸기"로 바꾸게 하세요.'),
+      h('li.warn-txt', '이미 가입한 번호에 만들면 그 학생이 정한 비밀번호가 쪽지 코드로 바뀌어요 (예전 비밀번호는 더 이상 안 돼요). 본인 확인을 한 뒤에만!'),
+      h('li', '비밀번호를 잊은 학생 한 명이면 보통 [비밀번호 요청·문의]에서 허용하는 게 더 쉬워요. 쪽지는 한 반을 미리 만들어 나눠 줄 때나 급할 때 써요.'),
+      h('li', h('b', '코드는 만든 직후 이 화면에서 딱 한 번만 보여요.'), ' 바로 인쇄하거나 CSV로 저장하세요.'),
+      h('li', '같은 번호로 다시 만들면 코드가 바뀌고, 예전 쪽지는 바로 못 써요 (잃어버린 쪽지를 무효로 만들 때).'),
+      h('li', '선생님·손님은 쪽지가 필요 없어요: 앱의 "비학생 · 아이디로 로그인"에서 스스로 아이디를 만들어요. 운영진은 [운영진] 탭에서 아이디를 만들어 주세요.'),
       h('li', `서버에는 한 번에 최대 ${CODE_BATCH}명씩 보내요 (더 많으면 자동으로 나눠서 보내요).`)));
 
   return [help, h('div.cols', rangeForm, listForm), out];
@@ -1581,10 +1691,21 @@ async function makeCodes(items, drawResult) {
     const again = await confirmBox('아직 저장 안 한 코드가 있어요', ['지금 보이는 코드를 인쇄하거나 CSV로 저장하지 않았어요. 새로 만들면 지금 코드는 화면에서 사라져요 (다시 볼 수 없어요).'], { ok: '그래도 새로 만들기', danger: true });
     if (!again) return;
   }
-  const ok = await confirmBox(`로그인 코드 ${list.length}명 만들기`, [
-    `아이디: ${sample}`,
+  // 이미 게임을 하는 번호 = 그 학생 비밀번호가 바뀜 → 숫자로 알려 줌
+  let joined = [];
+  try {
+    for (let i = 0; i < list.length; i += 300) {
+      const part = list.slice(i, i + 300).map((x) => codeProfileId(x.id));
+      joined.push(...(await tq(sb.from('profiles').select('student_id').in('student_id', part))).map((r) => r.student_id));
+    }
+  } catch { joined = null; }
+  const ok = await confirmBox(`임시 비밀번호 쪽지 ${list.length}명 만들기`, [
+    `고유번호: ${sample}`,
     guests.length ? `이 중 ${guests.length}명은 선생님·손님 계정(g:…, 기수 없음)이 돼요.` : null,
-    h('p.warn-txt', '이미 코드가 있던 아이디는 새 코드로 바뀌고, 예전 코드는 바로 못 써요.'),
+    joined == null ? h('p.warn-txt', '이미 가입한 학생이 있는지 확인하지 못했어요. 가입한 번호는 비밀번호가 쪽지 코드로 바뀌어요.')
+      : joined.length ? h('p.warn-txt', `이 중 ${joined.length}명은 이미 게임을 하고 있어요 (${joined.slice(0, 8).join(', ')}${joined.length > 8 ? ' …' : ''}). 그 학생들이 정한 비밀번호가 쪽지 코드로 바뀌어요!`)
+        : h('p.small-txt', '모두 아직 가입하지 않은 번호예요.'),
+    h('p.warn-txt', '이미 쪽지가 있던 번호는 새 코드로 바뀌고, 예전 쪽지는 바로 못 써요.'),
     '만든 코드는 지금 한 번만 보여요. 바로 인쇄하거나 CSV로 저장하세요.',
   ].filter(Boolean), { ok: '만들기' });
   if (!ok) return;
@@ -1606,7 +1727,7 @@ async function makeCodes(items, drawResult) {
     }
   }
   const skipped = list.length - rows.length;
-  toast(`로그인 코드 ${rows.length}개를 만들었어요.${skipped ? ` (${skipped}개는 형식이 맞지 않아 건너뜀)` : ''} 지금 인쇄하거나 CSV로 저장하세요!`, 6000);
+  toast(`임시 비밀번호 쪽지 ${rows.length}개를 만들었어요.${skipped ? ` (${skipped}개는 형식이 맞지 않아 건너뜀)` : ''} 지금 인쇄하거나 CSV로 저장하세요!`, 6000);
 }
 
 function codeResult(drawResult) {
@@ -1618,7 +1739,7 @@ function codeResult(drawResult) {
     S.codes = null; S.codesSaved = true; drawResult();
   };
   const bar = h('div.box.stack.no-print',
-    h('div.row', h('h2', `만든 로그인 코드 (${rows.length}명)`), h('span', { style: { flex: 1 } }),
+    h('div.row', h('h2', `만든 임시 비밀번호 쪽지 (${rows.length}명)`), h('span', { style: { flex: 1 } }),
       h('button.btn.go', { onclick: print }, '🖨 쪽지 인쇄'),
       h('button.btn', { onclick: () => { downloadCodesCsv(rows, at); S.codesSaved = true; } }, 'CSV 저장'),
       h('button.btn.small', { onclick: clear }, '화면에서 지우기')),
@@ -1627,10 +1748,10 @@ function codeResult(drawResult) {
   const slips = h('div.slip-grid', rows.map((r) => {
     const guest = !isStudentCodeId(r.id);
     return h('div.slip',
-      h('div.slip-title', `${CONFIG.GAME_TITLE} 로그인 코드`),
+      h('div.slip-title', `${CONFIG.GAME_TITLE} 임시 비밀번호`),
       h('div.slip-who', h('span.slip-id.mono', guest ? r.id.toUpperCase() : r.id), r.name ? h('span.slip-name', r.name) : null),
       h('div.slip-code.mono', r.code),
-      h('div.slip-help', "앱 로그인 화면 → '학번·코드로 로그인' → 아이디와 코드 입력"),
+      h('div.slip-help', "앱 로그인 → '학생 · 고유번호로 로그인' → 고유번호 + 이 코드(비밀번호). 들어간 뒤 ⚙에서 비밀번호를 바꾸세요"),
       h('div.slip-note', guest ? `선생님·손님 계정 (${codeProfileId(r.id)}) · 다시 발급하면 이 코드는 못 써요` : '다시 발급하면 이 코드는 못 써요 · 남에게 보여 주지 마세요'));
   }));
   return [bar, slips];
@@ -1746,7 +1867,6 @@ const mgFmt = (id, v) => (id === 'maze' ? `${(v / 1000).toFixed(2)}초` : id ===
 async function tabMg() {
   let ov = await rpc('admin_minigame_overview');
   let game = S.mgGame || 'surf';
-  const saveSetting = (key, value) => tq(sb.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', key));
 
   const help = h('details.box', { open: true },
     h('summary', h('b', '미니게임 관리 방법 (처음이면 읽어 주세요)')),
@@ -1764,7 +1884,7 @@ async function tabMg() {
   saveUnlock.onclick = () => {
     const v = Number(unlock.value);
     if (!Number.isInteger(v) || v < 0 || v > 300) { toast('0~300 사이 숫자로 넣어 주세요.'); return; }
-    busy(saveUnlock, async () => { await saveSetting('minigame_unlock', v); toast(`몬스터 ${v}마리부터 미니게임이 열려요.`); });
+    busy(saveUnlock, async () => { await saveSetting('minigame_unlock', v); toast(`몬스터 ${v}마리부터 미니게임이 열려요.`); rerender(); });
   };
   const toggles = h('div.row', { style: { flexWrap: 'wrap', gap: '6px' } });
   const drawToggles = () => toggles.replaceChildren(...MG.map(([id, label]) => {
@@ -1772,7 +1892,7 @@ async function tabMg() {
     const b = h(`button.btn.small${off ? '.danger' : '.go'}`, `${label.replace(' (랭킹 모드)', '')}: ${off ? '꺼짐' : '켜짐'}`);
     b.onclick = () => busy(b, async () => {
       const next = off ? (ov.off || []).filter((x) => x !== id) : [...(ov.off || []), id];
-      await saveSetting('minigame_off', next); ov = { ...ov, off: next }; drawToggles();
+      await saveSetting('minigame_off', next); ov = { ...ov, off: next }; rerender();
       toast(`${label.replace(' (랭킹 모드)', '')}: ${off ? '켰어요' : '껐어요 (학생 앱에 "쉬는 중")'}`);
     });
     return b;
@@ -1781,7 +1901,9 @@ async function tabMg() {
   const settings = h('div.box.stack',
     h('h2', '설정'),
     h('div.row', { style: { flexWrap: 'wrap', gap: '8px', alignItems: 'center' } }, h('span', '미니게임이 열리는 몬스터 수'), unlock, h('span', '마리'), saveUnlock),
-    h('small.muted', '게임 켜고 끄기 (누르면 바로 바뀌어요)'), toggles);
+    h('div.row', resetBtn('minigame_unlock', ov.unlock)),
+    h('small.muted', '게임 켜고 끄기 (누르면 바로 바뀌어요)'), toggles,
+    h('div.row', resetBtn('minigame_off', ov.off || [])));
 
   // 현황
   const stats = h('div.box.stack', h('h2', '현황'),
@@ -1872,7 +1994,7 @@ async function tabReq() {
   draw(await rpc('admin_list_requests'));
   const reload = h('button.btn.small', '새로 고침');
   reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_requests')));
-  return [h('div.row', reload), box];
+  return [h('div.row', reload), box, settingsGroup(GROUPS.account, await loadSettings())];
 }
 
 // 레이드: 아무 몬스터로 레이드 열기 (TV = 현장 QR, 인쇄 = 고정 QR) + 진행 중인 레이드 (0013)
@@ -1892,9 +2014,12 @@ function spriteImg(id, size = 56) {
 
 async function tabRaid() {
   if (!S.species?.length) await loadCatalog();
+  const set = await loadSettings();
+  const minTaps = Number(set.raid_min_taps?.value ?? 10);
+  const catchMode = set.raid_reward_mode?.value === 'catch';
   const list = h('div');
   const STATUS = { active: ['진행 중', 'hot'], won: ['승리', 'ok'], failed: ['끝 (실패)', 'off'] };
-  const draw = (rows) => list.replaceChildren(rows.length ? h('div.tbl-wrap', h('table.tbl',
+  const draw = (rows) => list.replaceChildren(rows.length ? h('div.tbl-wrap.scroll-y', h('table.tbl',
     h('thead', h('tr', h('th', ''), h('th', '레이드'), h('th', '상태'), h('th', '체력'), h('th.num', '참가'), h('th.num', '보상'), h('th', '끝나는 시각'), h('th', ''))),
     h('tbody', rows.map((r) => {
       const end = h('button.btn.small.danger', '끝내기');
@@ -1951,16 +2076,18 @@ async function tabRaid() {
     },
   },
     h('h2', '레이드 열기'),
-    h('p.small-txt', '아무 몬스터(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, 10번 이상 공격한 모두가 그 몬스터 특별 티켓을 받아요 (가방 5칸 제한 없음). 시간 안에 못 잡으면 실패.'),
+    h('p.small-txt', `아무 몬스터(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, ${minTaps}번 이상 공격한 모두가 ${catchMode ? '앱에서 그 몬스터를 잡을 기회' : '그 몬스터 특별 티켓 (주머니 칸 제한 없음)'}를 받아요 (오른쪽 "보상 방식"). 시간 안에 못 잡으면 실패.`),
     h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 몬스터'), sel)),
     h('div.row', h('label.field', h('span', '보스 체력'), hp.el), h('label.field', h('span', '시간'), mins.el)),
     h('label.field', h('span', 'QR 방식'), mode), title,
-    h('label.row', { style: { gap: '8px', alignItems: 'center' } }, openChk, h('span', h('b', 'QR 없이 참가'), ' — 학생 앱 레이드 탭에 "참가" 버튼이 떠요 (아침·점심·저녁에 모두에게 주는 레이드용)')),
+    h('label.chk.chk-top', openChk, h('span', h('b', 'QR 없이 참가'), ' — 학생 앱 레이드 탭에 "참가" 버튼이 떠요 (아침·점심·저녁에 모두에게 주는 레이드용)')),
     go);
   const reload = h('button.btn.small', '새로 고침');
   reload.onclick = () => busy(reload, async () => draw(await rpc('admin_list_raids')));
-  return [form, h('div.box.stack', h('div.row', h('h2', { style: { flex: 1 } }, '레이드 목록'), reload), list,
-    h('p.small-txt.muted', '시간대 전설 레이드(아침 소디포·점심 유리프·저녁 TTU)는 TV 화면이 켜져 있으면 설정 raid_slots 시간에 자동으로 열려요. 설정 raid_slot_open 을 true 로 하면 처음부터 QR 없이 참가할 수 있어요 (목록에서 하나씩 켜고 꺼도 돼요).'))];
+  return [h('div.cols', form, raidRewardBox(set)),
+    h('div.box.stack', h('div.row', h('h2', { style: { flex: 1 } }, '레이드 목록'), reload), list,
+      h('p.small-txt.muted', '시간대 전설 레이드는 아래 [시간대 전설]에서 정한 시간에 TV 화면이 저절로 열어요. "QR 없이 참가"는 목록에서 레이드마다 켜고 끌 수 있어요.')),
+    h('div.cols.wide-left', slotEditor(set), settingsGroup(GROUPS.raidSlot, set))];
 }
 
 function showRaidQr(r) {
@@ -1975,43 +2102,366 @@ function showRaidQr(r) {
   w.document.body.append(img);
 }
 
-async function tabSet() {
+// ───────────────────────── 설정 공통 (불러오기 · 저장 · 기본값) ─────────────────────────
+
+// 기본값 = 그 설정을 처음 넣은 마이그레이션의 값 (뒤 마이그레이션이 바꿨으면 바뀐 값). "기본값으로 되돌리기" 버튼에 씀.
+// 없는 키 = 버튼 없이 "기본값 없음". festival_open · self_redeem 은 자기 스위치가 있어서 일부러 뺌.
+// admin_emails · booth_emails 도 뺌 (기본값 [] 로 되돌리면 구글로 등록한 운영진이 모두 지워짐 → 운영진 탭에서 관리).
+const DEFAULTS = {
+  // supabase/migrations/0001_init.sql
+  email_domains: ['test.local'], email_regex: '^([0-9]{5,6})@',
+  stage_points: [0, 1, 3, 6], rarity_bonus: { common: 0, rare: 2, legendary: 10 },
+  evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2],
+  qr_daily_cap: 3, bag_max: 5, ticket_ttl_hours: 10, token_grace_minutes: 30, rotating_window_sec: 30,
+  quiz_ticket_daily_cap: 30,                 // 0001 은 20 → 0005_festival_ops.sql 에서 30 으로
+  // 0003_review_fixes.sql
+  rotating_accept_sec: 90, festival_close_at: null, min_client_version: 1,
+  // 0005_festival_ops.sql
+  notice: null, prize_note: null, dup_bonus_every: 3, battle_stage_mult: [0, 1, 1.4, 1.9],
+  // 0007_roulette.sql
+  roulette_enabled: true, roulette_every_min: 5, roulette_daily_max: 12, roulette_odds: [[0, 60], [1, 30], [3, 8], [5, 2]],
+  // 0008_open_login.sql (code_signup_per_10min 60 → 0019_ops_polish.sql 에서 1000)
+  code_self_signup: true, code_signup_per_10min: 1000, dev_login: false,
+  // 0010_allowed_gens.sql
+  allowed_gens: [20, 21, 22],
+  // 0011_number_accounts.sql
+  reset_requests_per_10min: 30, roulette_777_per_mille: 10,
+  // 0013_raids.sql (raid_slots 의 야자 시간대 77·78 은 0024_mythic.sql 이 더함)
+  raid_slots: [
+    { line: 38, from: '09:00', until: '11:00' }, { line: 39, from: '12:00', until: '13:30' }, { line: 40, from: '16:00', until: '18:00' },
+    { line: 77, from: '19:00', until: '20:20' }, { line: 78, from: '20:50', until: '23:00' },
+  ],
+  raid_slot_minutes: 10, raid_slot_hp: 20000, raid_cooldown_min: 5, raid_tap_cap: 8, raid_min_taps: 10, dex_rewards: { 50: 41, 100: 42 },
+  // 0015_battles.sql (battle_turn_sec 45 → 0020_growth.sql 에서 30)
+  battle_daily_max: 3, battle_turn_sec: 30, battle_invite_sec: 60,
+  // 0020_growth.sql
+  lv_from_battle: true, lv_from_raid: true, lv_from_places: true, lv_from_catch: true, lv_places_n: 3, raid_levels: 1,
+  exp_need_mul: 8, exp_battle_mul: 4, exp_practice: 0.5, exp_lose: 0.4,
+  drop_place: 0.3, drop_quiz: 0.4, drop_battle: 0.5, drop_practice: 0.15, drop_raid_tm: 0.3,
+  battle_item_max: 2, battle_field_mult: 1.3, battle_turn_cap: 20,
+  battle_fields: [
+    { from: '08:00', to: '10:00', name: '아침 조회', types: ['국어', '윤리'] },
+    { from: '10:00', to: '12:00', name: '오전 수업', types: ['수학', '물리', '화학'] },
+    { from: '12:00', to: '13:30', name: '점심시간', types: ['음악', '체육'] },
+    { from: '13:30', to: '16:00', name: '오후 수업', types: ['영어', '외국어', '역사'] },
+    { from: '16:00', to: '18:30', name: '방과후', types: ['정보', '지구', '생명'] },
+    { from: '18:30', to: '23:00', name: '야간 자율학습', types: ['지리', '정치경제'] },
+  ],
+  // 0021_battle_end.sql · 0022_open_raids.sql · 0023_minigames.sql · 0025_minigame_admin.sql
+  practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
+  // 0027_eggs_class_achievements.sql
+  egg_steps: { green: 1000, yellow: 2500, purple: 5000 }, egg_qr_bonus: 300, steps_per_min_max: 200, steps_day_max: 30000,
+  egg_hold_max: 9, egg_incubators: 3, egg_drop_place: 0.25, egg_shiny: { green: 0.1, yellow: 0.25, purple: 0.5 }, egg_legend: 0.1,
+  // 0028_catch.sql
+  catch_exp: { none: 0, nice: 20, great: 40, excellent: 80, curve: 20 },
+  // 0030_catch_raid_class.sql
+  catch_flee: 0.05, raid_reward_mode: 'ticket', raid_catch_balls: 10, raid_catch_flee: true,
+};
+const hasDefault = (key) => Object.prototype.hasOwnProperty.call(DEFAULTS, key);
+const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, sortKeys(v[k])])) : v);
+const sameVal = (a, b) => JSON.stringify(sortKeys(a ?? null)) === JSON.stringify(sortKeys(b ?? null));
+
+// settings 표 전체 → { key: row }
+async function loadSettings() {
   const rows = await tq(sb.from('settings').select('*').order('key'));
-  const fo = rows.find((r) => r.key === 'festival_open');
+  return Object.fromEntries(rows.map((r) => [r.key, r]));
+}
+
+// 설정 하나 저장. 서버에 그 줄이 없으면(마이그레이션 전) 조용히 넘어가지 않고 알려 줌. value null = 비우기 (0005부터 가능)
+async function saveSetting(key, value) {
+  const rows = await tq(sb.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', key).select('key'));
+  if (!rows?.length) throw Object.assign(new Error(`"${key}" 설정이 서버에 아직 없어요 (새 마이그레이션이 필요해요).`), { ready: true });
+  if (key === 'token_grace_minutes') S.grace = Number(value) || 30;
+  if (key === 'qr_daily_cap') S.dailyCap = Number(value) || S.dailyCap;
+}
+
+// ── 칸 정의: kind = int(정수) · num(소수) · pct(0~1 을 %로) · bool(켜짐/꺼짐) · choice(고르기) · obj(여러 칸 묶음) ──
+const P = (key, label, kind, extra = {}) => ({ key, label, kind, ...extra });
+const EGG_PARTS = [['green', '초록 알'], ['yellow', '노랑 알'], ['purple', '보라 알']];
+const GROUPS = {
+  // 축제 운영
+  opsCatch: {
+    tab: '축제 운영', title: '부스 몬스터 잡기 · 레이드 보상',
+    intro: '학생은 부스(또는 셀프 지급)에서 몬스터를 받으면 폰에서 몬스터볼 3개로 잡아요. 레이드 보상 방식은 [레이드] 탭에 자세한 설명이 있어요.',
+    fields: [
+      P('catch_flee', '볼 3개가 다 빗나가면 도망칠 확률', 'pct', { max: 100, help: '0% = 언제나 잡혀요 (예전처럼). 도망가면 그 티켓으로 받은 몬스터·점수가 없던 일이 돼요. 너무 높으면 학생이 속상해요 (추천 5% 이하).' }),
+      P('raid_reward_mode', '레이드 이긴 학생 보상', 'choice', { options: [['ticket', '특별 티켓 (부스에서 바꾸기)'], ['catch', '앱에서 바로 잡기 (HAFS 볼)']] }),
+    ],
+  },
+  // 레이드
+  raidReward: {
+    tab: '레이드', title: '레이드 보상 방식',
+    fields: [
+      P('raid_reward_mode', '이긴 학생이 받는 것', 'choice', { options: [['ticket', '특별 티켓 (부스에서 바꾸기)'], ['catch', '앱에서 바로 잡기 (HAFS 볼)']] }),
+      P('raid_catch_balls', '앱에서 잡기: HAFS 볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '"앱에서 바로 잡기"일 때만 써요.' }),
+      P('raid_catch_flee', '앱에서 잡기: 볼을 다 쓰면 보스가 도망', 'bool', { help: '켜짐 = 다 빗나가면 도망 (못 받음) · 꺼짐 = 다 빗나가도 결국 잡혀요.' }),
+    ],
+  },
+  raidSlot: {
+    tab: '레이드', title: '시간대 전설 · 레이드 공통 숫자',
+    fields: [
+      P('raid_slot_open', '시간대 전설: QR 없이 앱에서 참가', 'bool', { help: '켜짐 = 학생 앱 레이드 탭에 "참가" 버튼 (TV 앞에 안 와도 됨) · 꺼짐 = TV 화면 QR을 찍어야 참가.' }),
+      P('raid_slot_hp', '시간대 전설: 보스 체력', 'int', { min: 100, max: 10000000, help: '참가자 20~30명이면 12,000~20,000 정도.' }),
+      P('raid_slot_minutes', '시간대 전설: 한 판 길이', 'int', { unit: '분', min: 1, max: 600 }),
+      P('raid_cooldown_min', '시간대 전설: 끝나고 다음 판까지', 'int', { unit: '분', min: 0, max: 600, help: '시간대가 아직 안 끝났으면 이만큼 쉬고 또 열려요.' }),
+      P('raid_min_taps', '보상 받는 최소 탭 수 (모든 레이드)', 'int', { unit: '번', min: 0, max: 1000 }),
+      P('raid_tap_cap', '1초에 인정하는 탭 수 (모든 레이드, 오토클릭 방지)', 'int', { unit: '번', min: 1, max: 30 }),
+    ],
+  },
+  // 학생·계정
+  account: {
+    tab: '학생·계정', title: '계정 만들기 · 비밀번호 요청 제한',
+    fields: [
+      P('code_self_signup', '새 계정 만들기 허용', 'bool', { help: '꺼짐 = 처음 쓰는 고유번호·아이디로는 로그인(가입)이 안 돼요. 이미 만든 계정은 그대로 로그인돼요.' }),
+      P('code_signup_per_10min', '10분 동안 새 계정 최대 수 (전체)', 'int', { unit: '개', min: 1, max: 100000, help: '번호 선점 장난 방지. 아침 가입이 몰리면 크게.' }),
+      P('reset_requests_per_10min', '10분 동안 비밀번호 초기화 요청 최대 수 (전체)', 'int', { unit: '개', min: 1, max: 10000 }),
+    ],
+  },
+  // 성장·보상
+  eggs: {
+    tab: '성장·보상', title: '알 · 걸음',
+    intro: '걸음은 학생이 앱을 켜 둔 채 걸으면 폰 센서로 세요. 알은 부화기에 넣고 걸으면 깨어나요.',
+    fields: [
+      P('egg_steps', '부화에 필요한 걸음', 'obj', { parts: EGG_PARTS, partKind: 'int', unit: '걸음', min: 100, max: 100000 }),
+      P('egg_qr_bonus', '새 장소 QR 하나 찍을 때 보너스 걸음', 'int', { unit: '걸음', min: 0, max: 10000 }),
+      P('steps_per_min_max', '1분에 인정하는 최대 걸음 (흔들기 방지)', 'int', { unit: '걸음', min: 30, max: 1000 }),
+      P('steps_day_max', '하루에 인정하는 최대 걸음', 'int', { unit: '걸음', min: 1000, max: 200000 }),
+      P('egg_hold_max', '한 사람이 가질 수 있는 알 수', 'int', { unit: '개', min: 1, max: 30 }),
+      P('egg_incubators', '부화기 칸 수', 'int', { unit: '칸', min: 1, max: 3, help: '서버가 1~3칸만 써요.' }),
+      P('egg_drop_place', '새 장소 QR에서 알이 나올 확률', 'pct'),
+      P('egg_shiny', '알에서 반짝이(색 다른 몬스터)가 나올 확률', 'obj', { parts: EGG_PARTS, partKind: 'pct' }),
+      P('egg_legend', '보라 알에서 전설이 나올 확률', 'pct'),
+    ],
+  },
+  catchExp: {
+    tab: '성장·보상', title: '잡기 경험치 (몬스터볼 던지기 솜씨)',
+    intro: '잡기 장면에서 원이 작을 때 맞히면 나이스 → 그레이트 → 엑설런트. 받은 몬스터가 이만큼 경험치를 받아요 (티켓 하나에 한 번). 폰이 보내는 값이라 너무 크게 하지 마세요.',
+    fields: [
+      P('catch_exp', '던지기 등급별 경험치', 'obj', {
+        parts: [['none', '그냥 잡음'], ['nice', '나이스'], ['great', '그레이트'], ['excellent', '엑설런트'], ['curve', '커브볼 추가']], partKind: 'int', unit: '경험치', min: 0, max: 1000,
+      }),
+    ],
+  },
+  level: {
+    tab: '성장·보상', title: '레벨 · 경험치',
+    intro: '몬스터 레벨은 1~100. 아래 방법으로 오르고, 하나씩 끌 수 있어요.',
+    fields: [
+      P('lv_from_battle', '배틀 경험치로 레벨 오르기', 'bool'),
+      P('lv_from_raid', '레이드 참가로 레벨 오르기', 'bool'),
+      P('raid_levels', '레이드 한 판에 오르는 레벨', 'int', { unit: '레벨', min: 0, max: 10 }),
+      P('lv_from_places', '여러 장소 QR 찍으면 배틀 팀 레벨 +1', 'bool'),
+      P('lv_places_n', '하루에 서로 다른 장소 몇 곳마다 +1', 'int', { unit: '곳', min: 1, max: 20 }),
+      P('lv_from_catch', '같은 몬스터를 또 잡으면 레벨 +1', 'bool'),
+      P('exp_need_mul', '레벨업에 필요한 경험치 배수', 'int', { min: 1, max: 100, help: '레벨 L → L+1 에 이 값 × L 만큼. 크면 레벨이 느리게 올라요.' }),
+      P('exp_battle_mul', '배틀 한 판 경험치 배수', 'num', { min: 0, max: 100, help: '이 값 × 상대 평균 레벨.' }),
+      P('exp_practice', '연습 배틀 경험치 배율', 'num', { unit: '배', min: 0, max: 2 }),
+      P('exp_lose', '졌을 때 경험치 배율', 'num', { unit: '배', min: 0, max: 2 }),
+      P('practice_exp_daily', '연습 배틀: 경험치·물건 받는 판 수 (하루)', 'int', { unit: '판', min: 0, max: 100 }),
+    ],
+  },
+  drops: {
+    tab: '성장·보상', title: '물건이 나올 확률',
+    fields: [
+      P('drop_place', '장소 QR 찍을 때', 'pct'), P('drop_quiz', '퀴즈 정답일 때', 'pct'),
+      P('drop_battle', '친구·실시간 배틀 이겼을 때', 'pct'), P('drop_practice', '연습 배틀 이겼을 때', 'pct'),
+      P('drop_raid_tm', '레이드 이겼을 때 특별 기술머신 (이상한사탕은 항상)', 'pct'),
+    ],
+  },
+  tickets: {
+    tab: '성장·보상', title: '진화권 · 룰렛',
+    fields: [
+      P('roulette_enabled', '진화권 룰렛', 'bool'),
+      P('roulette_every_min', '룰렛: 다음 판까지 기다리는 시간', 'int', { unit: '분', min: 1, max: 240 }),
+      P('roulette_daily_max', '룰렛: 하루에 돌리는 횟수', 'int', { unit: '번', min: 0, max: 100 }),
+      P('quiz_ticket_daily_cap', '퀴즈로 받는 진화권 (하루 최대)', 'int', { unit: '장', min: 0, max: 500 }),
+      P('battle_daily_max', '배틀 승리 보상 (하루 최대)', 'int', { unit: '번', min: 0, max: 50 }),
+    ],
+  },
+};
+const SPEC_BY_KEY = {};
+for (const g of Object.values(GROUPS)) for (const f of g.fields) if (!SPEC_BY_KEY[f.key]) SPEC_BY_KEY[f.key] = f;
+// 다른 탭에 전용 칸이 있는 설정 → 그 탭 이름 (고급 설정 표에서 기본으로 숨김)
+const KEY_HOME = {
+  festival_open: '축제 운영', self_redeem: '축제 운영', notice: '축제 운영', prize_note: '축제 운영', festival_close_at: '축제 운영', dup_bonus_every: '축제 운영',
+  raid_slots: '레이드', minigame_unlock: '미니게임', minigame_off: '미니게임', admin_emails: '운영진', booth_emails: '운영진',
+};
+for (const g of Object.values(GROUPS)) for (const f of g.fields) KEY_HOME[f.key] = KEY_HOME[f.key] || g.tab;
+// 더 이상 서버가 읽지 않는 설정 (지우지 않고 표시만)
+const UNUSED_KEYS = ['email_domains', 'email_regex', 'battle_stage_mult', 'rotating_accept_minutes'];
+const KEY_TITLE = { notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 몬스터 수', minigame_off: '꺼 둔 미니게임' };
+const keyTitle = (key) => SPEC_BY_KEY[key]?.label || KEY_TITLE[key] || key;
+
+const pctTxt = (v) => `${+(Number(v) * 100).toFixed(2)}%`;
+function fmtPart(kind, v, unit) {
+  if (v == null || v === '') return '없음';
+  if (kind === 'pct') return pctTxt(v);
+  if (kind === 'bool') return isOn(v) ? '켜짐' : '꺼짐';
+  return `${Number(v).toLocaleString()}${unit ? ' ' + unit : ''}`;
+}
+// 화면에 보여 줄 값 (기본값 안내·확인 창)
+function fmtVal(key, v) {
+  const sp = SPEC_BY_KEY[key];
+  if (sp) {
+    if (sp.kind === 'choice') return sp.options.find(([k]) => k === v)?.[1] || JSON.stringify(v);
+    if (sp.kind === 'obj') return sp.parts.map(([k, l]) => `${l} ${fmtPart(sp.partKind, v?.[k], sp.unit)}`).join(' · ');
+    return fmtPart(sp.kind, v, sp.unit);
+  }
+  if (key === 'raid_slots' && Array.isArray(v)) return v.map((x) => `${legendName(x.line)} ${x.from}~${x.until}`).join(', ') || '없음';
+  if (key === 'minigame_off' && Array.isArray(v)) return v.length ? `${v.map((id) => MG.find(([i]) => i === id)?.[1] || id).join(', ')} 꺼짐` : '모두 켜짐';
+  if (key === 'festival_close_at') return v ? new Date(v).toLocaleString('ko-KR') : '없음 (자동 종료 안 함)';
+  if (key === 'notice' || key === 'prize_note') return v ? `"${v}"` : '비어 있음';
+  if (key === 'dup_bonus_every') return Number(v) ? `${v}번째마다` : '끔 (0)';
+  if (typeof v === 'number') return v.toLocaleString();
+  const s = JSON.stringify(v);
+  return s.length > 90 ? s.slice(0, 88) + '…' : s;
+}
+
+// "기본값으로 되돌리기" (지금 값이 기본값이면 버튼 대신 안내만)
+function resetBtn(key, cur, after = rerender) {
+  if (!hasDefault(key)) return h('span.small-txt.muted.reset-note', '기본값 없음');
+  const d = DEFAULTS[key];
+  if (sameVal(cur, d)) return h('span.small-txt.muted.reset-note', `기본값 그대로예요 (${fmtVal(key, d)})`);
+  const b = h('button.btn.small', { type: 'button' }, '기본값으로 되돌리기');
+  b.onclick = async () => {
+    const ok = await confirmBox('기본값으로 되돌리기', [
+      h('p', h('b', keyTitle(key)), ` (${key}) 을(를) 기본값으로 바꿀까요?`),
+      h('p.small-txt', `지금: ${fmtVal(key, cur)}`), h('p.small-txt', `기본값: ${fmtVal(key, d)}`),
+    ], { ok: '되돌리기' });
+    if (!ok) return;
+    busy(b, async () => { await saveSetting(key, d); toast(`${keyTitle(key)}: 기본값으로 되돌렸어요.`); await after(); });
+  };
+  return h('span.reset', b, h('span.small-txt.muted', `기본값: ${fmtVal(key, d)}`));
+}
+
+// 숫자 칸 (pct 는 % 로 보여 주고 0~1 로 저장)
+function numInput(kind, v, sp, label) {
+  const pct = kind === 'pct';
+  const shown = v == null || v === '' ? '' : pct ? +(Number(v) * 100).toFixed(2) : v;
+  return h('input.inp.w-num', {
+    type: 'number', inputmode: kind === 'int' ? 'numeric' : 'decimal', step: kind === 'int' ? 1 : 'any',
+    min: pct ? (sp.min ?? 0) : sp.min, max: pct ? (sp.max ?? 100) : sp.max, value: shown, 'aria-label': label,
+  });
+}
+function readNum(inp, kind, sp) {
+  const raw = inp.value.trim();
+  const n = Number(raw);
+  const pct = kind === 'pct';
+  const lo = pct ? (sp.min ?? 0) : sp.min ?? -Infinity, hi = pct ? (sp.max ?? 100) : sp.max ?? Infinity;
+  const ok = raw !== '' && Number.isFinite(n) && (kind !== 'int' || Number.isInteger(n)) && n >= lo && n <= hi;
+  inp.classList.toggle('bad', !ok);
+  if (!ok) return { ok, err: `${lo.toLocaleString()}~${hi.toLocaleString()}${pct ? '%' : ''} 사이${kind === 'int' ? ' 정수' : ' 숫자'}로 넣어 주세요` };
+  return { ok, value: pct ? +(n / 100).toFixed(4) : n };
+}
+const unitSpan = (kind, unit) => (kind === 'pct' ? h('span.unit', '%') : unit ? h('span.unit', unit) : null);
+
+// 설정 하나 → { el, read() }
+function makeField(sp, row) {
+  if (!row) return { el: h('span.warn-txt.small-txt', '서버에 아직 이 설정이 없어요 (새 마이그레이션 필요)'), read: () => ({ skip: true }) };
+  const v = row.value;
+  if (sp.kind === 'bool' || sp.kind === 'choice') {
+    const opts = sp.kind === 'bool' ? [['true', '켜짐'], ['false', '꺼짐']] : sp.options;
+    const cur = sp.kind === 'bool' ? String(isOn(v)) : v;
+    const sel = h('select.inp.w-sel', { 'aria-label': sp.label }, opts.map(([k, l]) => h('option', { value: k, selected: k === cur }, l)));
+    return { el: sel, read: () => ({ ok: true, value: sp.kind === 'bool' ? sel.value === 'true' : sel.value }) };
+  }
+  if (sp.kind === 'obj') {
+    const ins = sp.parts.map(([k, l]) => [k, numInput(sp.partKind, v?.[k], sp, `${sp.label} ${l}`), l]);
+    return {
+      el: h('div.parts', ins.map(([, inp, l]) => h('label.part', h('span', l), h('span.part-in', inp, unitSpan(sp.partKind, sp.unit))))),
+      read: () => {
+        const out = { ...(v && typeof v === 'object' ? v : {}) };
+        for (const [k, inp, l] of ins) {
+          const r = readNum(inp, sp.partKind, sp);
+          if (!r.ok) return { ok: false, err: `${l}: ${r.err}` };
+          out[k] = r.value;
+        }
+        return { ok: true, value: out };
+      },
+    };
+  }
+  const inp = numInput(sp.kind, v, sp, sp.label);
+  return { el: h('span.part-in', inp, unitSpan(sp.kind, sp.unit)), read: () => readNum(inp, sp.kind, sp) };
+}
+
+// 설정 묶음 카드: 줄마다 이름·설명 | 입력 | 기본값 버튼, 맨 아래 [저장] (바뀐 것만 저장)
+function settingsGroup(g, set) {
+  const rows = g.fields.map((sp) => {
+    const r = set[sp.key];
+    const f = makeField(sp, r);
+    return {
+      sp, r, f,
+      el: h('div.setrow',
+        h('div.setlbl', h('b', sp.label), sp.help ? h('div.small-txt.muted', sp.help) : null, h('div.keyname', sp.key)),
+        h('div.setctl', f.el),
+        h('div.setreset', r ? resetBtn(sp.key, r.value) : null)),
+    };
+  });
+  const save = h('button.btn.go', '저장');
+  save.onclick = () => {
+    const changed = [];
+    let bad = null;
+    for (const x of rows) {
+      if (!x.r) continue;
+      const v = x.f.read();
+      if (!v.ok) { bad = bad || `${x.sp.label}: ${v.err}`; continue; }
+      if (!sameVal(v.value, x.r.value)) changed.push([x.sp.key, v.value]);
+    }
+    if (bad) { toast(bad, 5000); return; }
+    if (!changed.length) { toast('바뀐 값이 없어요.'); return; }
+    busy(save, async () => {
+      for (const [k, v] of changed) await saveSetting(k, v);
+      toast(`${changed.length}개 저장했어요.`);
+      rerender();
+    });
+  };
+  return h('div.box.stack.setgroup',
+    h('h2', g.title), g.intro ? h('p.small-txt', g.intro) : null,
+    h('div.setrows', rows.map((x) => x.el)),
+    h('div.row.end', save));
+}
+
+// ───────────────────────── 축제 운영 ─────────────────────────
+
+async function tabOps() {
+  const set = await loadSettings();
+  const fo = set.festival_open;
   const open = fo ? isOn(fo.value) : false;
-  const sr = rows.find((r) => r.key === 'self_redeem');
+  const sr = set.self_redeem;
   const selfOn = sr ? isOn(sr.value) : false;
   setBanner(open, selfOn);
 
   const toggle = h('button.btn' + (open ? '.primary' : '.go'), open ? '게임 정지 (OFF)' : '게임 재개 (ON)');
   toggle.onclick = async () => {
     const ok = await confirmBox(open ? '게임을 정지할까요?' : '게임을 다시 시작할까요?', open
-      ? ['정지하면 학생 스캔 업로드, 부스 몬스터 지급, 진화가 모두 멈춰요.', '문제가 생겼을 때만 쓰는 비상 스위치예요.']
+      ? ['정지하면 학생 스캔 업로드, 부스 몬스터 지급, 진화, 시간대 레이드가 모두 멈춰요.', '문제가 생겼을 때만 쓰는 비상 스위치예요.']
       : ['다시 켜면 모든 기능이 바로 동작해요.'], { ok: open ? '정지하기' : '다시 켜기', danger: open });
     if (!ok) return;
     busy(toggle, async () => {
-      await tq(sb.from('settings').update({ value: !open, updated_at: new Date().toISOString() }).eq('key', 'festival_open'));
+      await saveSetting('festival_open', !open);
       toast(open ? '게임을 정지했어요.' : '게임을 다시 켰어요.');
       rerender();
     });
   };
-
   const kill = h('div.box.stack',
     h('h2', '비상 스위치 (festival_open)'),
     h('div.kill', h('div.state', { class: open ? 'ok-txt' : 'warn-txt' }, open ? '● 운영 중 (ON)' : '■ 정지됨 (OFF)'), toggle),
     h('p.small-txt.muted', fo ? `마지막 변경: ${fmtTime(fo.updated_at)}` : 'festival_open 설정이 없어요.'));
 
   const selfBtn = h('button.btn' + (selfOn ? '.primary' : '.gold'), { disabled: !sr }, selfOn ? '셀프 지급 끄기' : '셀프 지급 켜기');
+  const selfHow = [
+    '켜면 학생 앱 홈의 티켓 주머니 아래에 "지금은 앱에서 바로 받기" 버튼이 생겨요.',
+    '누르면 부스 확인 없이 주머니의 티켓이 몬스터로 바뀌고, 부스에서 받을 때와 똑같이 폰에서 몬스터볼 잡기 장면이 나와요 (볼 3개, 잘 던지면 경험치 보너스).',
+    '볼 3개가 모두 빗나가면 아래 "도망칠 확률"만큼 몬스터가 도망가요 (부스에서 받을 때도 똑같아요).',
+  ];
   selfBtn.onclick = async () => {
     const ok = await confirmBox(selfOn ? '셀프 지급을 끌까요?' : '셀프 지급을 켤까요?', selfOn
-      ? ['끄면 다시 부스에서만 몬스터를 받을 수 있어요.', '학생 앱의 "직접 받기" 버튼은 앱이 다음에 동기화할 때 사라져요.']
-      : [h('p.warn-txt', '부스 줄이 너무 길 때만 쓰세요!'),
-        '켜면 학생이 부스에 오지 않고 앱에서 직접 대기 티켓을 몬스터로 바꿀 수 있어요.',
-        '부스에서 확인하지 않으니, 줄이 줄어들면 꼭 다시 꺼 주세요.'],
+      ? ['끄면 다시 부스에서만 몬스터를 받을 수 있어요.', '학생 앱의 "앱에서 바로 받기" 버튼은 앱이 다음에 동기화할 때 사라져요.']
+      : [h('p.warn-txt', '부스 줄이 너무 길 때만 쓰세요!'), ...selfHow.slice(0, 2), '부스에서 확인하지 않으니, 줄이 줄어들면 꼭 다시 꺼 주세요.'],
     { ok: selfOn ? '끄기' : '켜기', danger: !selfOn });
     if (!ok) return;
     busy(selfBtn, async () => {
-      await tq(sb.from('settings').update({ value: !selfOn, updated_at: new Date().toISOString() }).eq('key', 'self_redeem'));
+      await saveSetting('self_redeem', !selfOn);
       toast(selfOn ? '셀프 지급을 껐어요.' : '셀프 지급을 켰어요. 부스가 한가해지면 꺼 주세요.');
       rerender();
     });
@@ -2020,61 +2470,16 @@ async function tabSet() {
     h('h2', '셀프 지급 모드 (self_redeem)'),
     h('p.small-txt', h('b', '부스가 너무 밀릴 때만: 학생이 앱에서 직접 몬스터 받기')),
     h('div.kill', h('div.state', { class: selfOn ? 'warn-txt' : 'muted' }, selfOn ? '● 켜짐 (학생 직접 받기)' : '○ 꺼짐 (부스에서만)'), selfBtn),
+    h('ul.small-txt', selfHow.map((t) => h('li', t))),
     h('p.small-txt.muted', sr ? `마지막 변경: ${fmtTime(sr.updated_at)}` : 'self_redeem 설정이 없어요 (마이그레이션 0003 필요).'));
 
-  const table = h('div.box',
-    h('h2', '설정값 (JSON)'),
-    h('p.small-txt.muted', '값은 JSON 형식이에요: 숫자 3, 참/거짓 true, 글자 "abc", 목록 ["a","b"], 없음 null. 저장 전에 형식을 검사해요.'),
-    h('p.small-txt.muted', 'festival_close_at = 축제 끝나는 시각 · min_client_version = 올리면 옛 버전 폰에 "업데이트" 배너 · rotating_accept_sec = 대형 화면 QR 인정 시간(초)'),
-    h('div.tbl-wrap', h('table.tbl',
-      h('thead', h('tr', h('th', '키'), h('th', '값'), h('th', ''))),
-      h('tbody', rows.filter((r) => !CARD_KEYS.includes(r.key)).map((r) => {
-        const ta = h('textarea.inp.json', { rows: 1, spellcheck: 'false', 'aria-label': r.key }, JSON.stringify(r.value));
-        const msg = h('div.small-txt');
-        const valid = () => {
-          try { JSON.parse(ta.value); ta.classList.remove('bad'); msg.textContent = ''; return true; } catch { ta.classList.add('bad'); msg.textContent = 'JSON 형식이 아니에요'; msg.className = 'small-txt warn-txt'; return false; }
-        };
-        ta.addEventListener('input', valid);
-        const save = h('button.btn.small.go', '저장');
-        save.onclick = () => {
-          if (!valid()) { toast(`${r.key}: JSON 형식이 아니에요.`); return; }
-          const value = JSON.parse(ta.value);
-          if (r.key === 'festival_close_at' && value !== null && (typeof value !== 'string' || Number.isNaN(Date.parse(value)))) {
-            toast('festival_close_at은 "2026-11-07T16:00:00+09:00"처럼 따옴표로 감싼 시각, 또는 null이에요.', 5000);
-            ta.classList.add('bad');
-            return;
-          }
-          busy(save, async () => {
-            await tq(sb.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', r.key));
-            if (r.key === 'token_grace_minutes') S.grace = Number(value) || 30;
-            if (r.key === 'qr_daily_cap') S.dailyCap = Number(value) || S.dailyCap;
-            ta.value = JSON.stringify(value);
-            msg.className = 'small-txt ok-txt'; msg.textContent = '저장됨';
-            toast(`${r.key} 저장했어요.`);
-          });
-        };
-        const when = r.key === 'festival_close_at' && typeof r.value === 'string' && !Number.isNaN(Date.parse(r.value))
-          ? h('div.small-txt', `= ${new Date(r.value).toLocaleString('ko-KR')}`) : null;
-        return h('tr',
-          h('td', h('b.mono', r.key), h('div.small-txt.muted', SETTING_HELP[r.key] || ''), h('div.small-txt.muted', `변경 ${timeAgo(r.updated_at)}`)),
-          h('td', { style: { minWidth: '180px', width: '50%' } }, ta, when, msg),
-          h('td', save));
-      })))));
-  const byKey = Object.fromEntries(rows.map((r) => [r.key, r]));
   return [h('div.cols', kill, selfCard),
     h('div.cols',
-      h('div', textSettingCard(byKey.notice, 'notice', '공지 (notice)', '모든 폰 상단에 1분 안에 표시돼요. 예: "13:00 본관 앞 전설 출현!" 비우면 공지가 사라져요.', 2),
-        textSettingCard(byKey.prize_note, 'prize_note', '상품 안내 (prize_note)', '축제가 끝난 뒤 학생 폰의 "축제 종료" 화면에 보여요. 예: 상품 받는 곳·시간.', 3)),
-      h('div', closeAtCard(byKey.festival_close_at), dupBonusCard(byKey.dup_bonus_every))),
-    table];
+      h('div', textSettingCard(set.notice, 'notice', '공지 (notice)', '모든 폰 상단에 1분 안에 표시돼요. 예: "13:00 본관 앞 전설 출현!" 비우면 공지가 사라져요.', 2),
+        textSettingCard(set.prize_note, 'prize_note', '상품 안내 (prize_note)', '축제가 끝난 뒤 학생 폰의 "축제 종료" 화면에 보여요. 예: 상품 받는 곳·시간.', 3)),
+      h('div', closeAtCard(set.festival_close_at), dupBonusCard(set.dup_bonus_every), settingsGroup(GROUPS.opsCatch, set)))];
 }
 
-const CARD_KEYS = ['festival_open', 'self_redeem', 'notice', 'prize_note', 'festival_close_at', 'dup_bonus_every'];
-
-// save one setting; value null = clear (settings.value is nullable since 0005)
-async function saveSetting(key, value) {
-  await tq(sb.from('settings').update({ value, updated_at: new Date().toISOString() }).eq('key', key));
-}
 const missingCard = (key, title) => h('div.box.stack', h('h2', title), h('p.warn-txt', `${key} 설정이 없어요 (마이그레이션 0005 필요).`));
 const changedTxt = (r) => h('p.small-txt.muted', `마지막 변경: ${fmtTime(r.updated_at)}`);
 
@@ -2096,7 +2501,8 @@ function textSettingCard(r, key, title, help, rows) {
     toast(`${key}를 비웠어요.`);
     rerender();
   });
-  return h('div.box.stack', h('h2', title), h('p.small-txt', help), state, ta, h('div.row.end', clear, save), changedTxt(r));
+  return h('div.box.stack', h('h2', title), h('p.small-txt', help), state, ta, h('div.row.end', clear, save),
+    h('div.row', resetBtn(key, r.value)), changedTxt(r));
 }
 
 // festival_close_at: datetime-local (KST) ↔ "YYYY-MM-DDTHH:MM:00+09:00"
@@ -2118,7 +2524,7 @@ function closeAtCard(r) {
     busy(save, async () => { await saveSetting(r.key, v); toast('축제 종료 시각을 저장했어요.'); rerender(); });
   };
   clear.onclick = async () => {
-    if (!(await confirmBox('종료 시각 비우기', ['자동 종료가 없어져요. 게임은 festival_open 스위치로만 멈춰요.'], { ok: '비우기' }))) return;
+    if (!(await confirmBox('종료 시각 비우기', ['자동 종료가 없어져요. 게임은 비상 스위치로만 멈춰요.'], { ok: '비우기' }))) return;
     busy(clear, async () => { await saveSetting(r.key, null); toast('종료 시각을 비웠어요.'); rerender(); });
   };
   return h('div.box.stack',
@@ -2126,7 +2532,7 @@ function closeAtCard(r) {
     h('p.small-txt', '이 시각이 지나면 스캔·부스 지급·퀴즈·진화가 자동으로 멈추고, 학생 폰에는 "축제 종료" 화면(상품 안내)이 떠요.'),
     h('p.small-txt', iso ? h('span', ended ? chip('종료됨', 'hot') : chip('예정', 'blue'), ` ${new Date(iso).toLocaleString('ko-KR')}`) : chip('설정 안 됨 (자동 종료 없음)', 'off')),
     field('종료 시각 (한국 시간)', inp),
-    h('div.row.end', clear, save), changedTxt(r));
+    h('div.row.end', clear, save), h('div.row', resetBtn(r.key, r.value)), changedTxt(r));
 }
 
 function dupBonusCard(r) {
@@ -2142,13 +2548,193 @@ function dupBonusCard(r) {
     h('h2', '중복 보너스 (dup_bonus_every)'),
     h('p.small-txt', '같은 쌤 몬스터를 N번째로 또 잡을 때마다 진화권 +1. 0 = 끔.'),
     h('div.row', '같은 쌤', inp, '번째 중복마다 진화권 +1', h('span', { style: { flex: 1 } }), save),
+    h('div.row', resetBtn(r.key, r.value)), changedTxt(r));
+}
+
+// ───────────────────────── 레이드: 보상 방식 · 시간대 전설 편집 ─────────────────────────
+
+const legendLines = () => S.lines.filter((l) => l.rarity === 'legendary' && !l.secret);
+const legendDex = (line) => (Number(line) - 1) * 3 + 1;
+const legendName = (line) => S.spById.get(legendDex(line))?.name || `#${line}`;
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const kstNowHHMM = () => new Date(Date.now() + KST).toISOString().slice(11, 16);
+
+function raidRewardBox(set) {
+  const mode = set.raid_reward_mode?.value === 'catch' ? 'catch' : 'ticket';
+  const g = settingsGroup(GROUPS.raidReward, set);
+  g.insertBefore(h('div.stack.small-txt',
+    h('p', '지금: ', set.raid_reward_mode ? chip(mode === 'catch' ? '앱에서 바로 잡기' : '특별 티켓', 'blue') : chip('서버에 설정 없음 → 특별 티켓', 'off')),
+    h('ul',
+      h('li', h('b', '특별 티켓'), ' — 이긴 학생(최소 탭 수 이상 공격)의 티켓 주머니에 보스 특별 티켓이 들어가요. 부스(또는 셀프 지급)에서 몬스터로 바꿀 때 잡기 장면이 나와요. 주머니 칸 제한·만료 없음.'),
+      h('li', h('b', '앱에서 바로 잡기'), ' — 레이드에서 이기면 학생 폰에 바로 잡기 장면이 떠요. HAFS 볼을 아래 개수만큼 던져서 잡아요. 부스에 안 가도 돼요.'),
+      h('li', '바꾸면 ', h('b', '앞으로 끝나는 레이드부터'), ' 적용돼요. 이미 받은 티켓은 그대로예요.'))),
+  g.querySelector('.setrows'));
+  return g;
+}
+
+function slotEditor(set) {
+  const r = set.raid_slots;
+  if (!r) return h('div.box', h('h2', '시간대 전설'), h('p.warn-txt', 'raid_slots 설정이 없어요.'));
+  const legends = legendLines();
+  let rows = (Array.isArray(r.value) ? r.value : []).map((x) => ({ line: Number(x.line), from: String(x.from || ''), until: String(x.until || '') }));
+  const box = h('div.box.stack.slot-box');
+  const msg = h('div.slot-msg', { role: 'alert' });
+  const dirty = h('span.small-txt');
+  const tbody = h('tbody');
+
+  const validate = () => {
+    const errs = [];
+    const bad = new Set();
+    rows.forEach((x, i) => {
+      const n = i + 1;
+      if (!S.lineById.has(x.line)) { errs.push(`${n}번째 줄: 전설을 고르세요.`); bad.add(i); }
+      if (!HHMM.test(x.from) || !HHMM.test(x.until)) { errs.push(`${n}번째 줄: 시각은 "09:00"처럼 HH:MM으로 넣어 주세요.`); bad.add(i); return; }
+      if (x.from >= x.until) { errs.push(`${n}번째 줄: 끝 시각(${x.until})이 시작(${x.from})보다 늦어야 해요. 자정을 넘길 수는 없어요 → 두 줄로 나누세요.`); bad.add(i); }
+    });
+    rows.forEach((a, i) => rows.forEach((b, j) => {
+      if (j <= i || a.line !== b.line || !HHMM.test(a.from) || !HHMM.test(b.from) || !HHMM.test(a.until) || !HHMM.test(b.until)) return;
+      if (a.from < b.until && b.from < a.until) { errs.push(`${i + 1}·${j + 1}번째 줄: 같은 전설(${legendName(a.line)})의 시간이 겹쳐요.`); bad.add(i); bad.add(j); }
+    }));
+    [...tbody.children].forEach((tr, i) => tr.classList.toggle('bad', bad.has(i)));
+    msg.replaceChildren(...errs.map((t) => h('p.warn-txt.small-txt', t)));
+    dirty.replaceChildren(sameVal(rows, r.value) ? '' : chip('저장 안 한 변경이 있어요', 'warn'));
+    return errs;
+  };
+
+  const draw = () => {
+    const now = kstNowHHMM();
+    tbody.replaceChildren(...rows.map((x, i) => {
+      const pic = h('span.slot-pic', spriteImg(legendDex(x.line), 40));
+      const sel = h('select.inp', { 'aria-label': `${i + 1}번째 줄 전설` },
+        legends.some((l) => l.id === x.line) ? null : h('option', { value: x.line, selected: true }, `#${x.line} (전설 아님)`),
+        legends.map((l) => h('option', { value: l.id, selected: l.id === x.line }, `${legendName(l.id)} · ${l.teacher}`)));
+      sel.onchange = () => { x.line = Number(sel.value); pic.replaceChildren(spriteImg(legendDex(x.line), 40)); validate(); };
+      const tIn = (k) => {
+        const inp = h('input.inp.w-time', { type: 'time', step: 60, value: x[k], 'aria-label': `${i + 1}번째 줄 ${k === 'from' ? '시작' : '끝'} 시각` });
+        inp.oninput = () => { x[k] = inp.value; validate(); };
+        return inp;
+      };
+      const live = HHMM.test(x.from) && HHMM.test(x.until) && x.from <= now && now < x.until;
+      return h('tr',
+        h('td', pic),
+        h('td', sel),
+        h('td', tIn('from')), h('td', tIn('until')),
+        h('td', live ? chip('지금 시간대', 'ok') : null),
+        h('td', h('button.btn.small', { type: 'button', onclick: () => { rows.splice(i, 1); draw(); } }, '빼기')));
+    }));
+    validate();
+  };
+  const add = h('button.btn.small', { type: 'button' }, '+ 시간대 추가');
+  add.onclick = () => {
+    const used = new Set(rows.map((x) => x.line));
+    const l = legends.find((x) => !used.has(x.id)) || legends[0];
+    rows.push({ line: l?.id ?? 38, from: '12:00', until: '13:00' });
+    draw();
+  };
+  const save = h('button.btn.go', '시간대 저장');
+  save.onclick = () => {
+    const errs = validate();
+    if (errs.length) { toast(errs[0], 5000); return; }
+    busy(save, async () => {
+      const v = rows.slice().sort((a, b) => a.from.localeCompare(b.from) || a.line - b.line).map(({ line, from, until }) => ({ line, from, until }));
+      await saveSetting('raid_slots', v);
+      toast(`시간대 전설 ${v.length}개를 저장했어요.`);
+      rerender();
+    });
+  };
+  draw();
+  box.append(
+    h('h2', '⏰ 시간대 전설 (raid_slots)'),
+    h('details.how', { open: true }, h('summary', '시간대 전설은 이렇게 열려요 (꼭 읽기)'),
+      h('ul.small-txt',
+        h('li', '정해 둔 시간(한국 시간) 안에 ', h('b', 'TV 화면(screen.html)이 켜져 있으면'), ', TV가 3초마다 서버에 물어볼 때 그 전설 레이드를 저절로 열어요.'),
+        h('li.warn-txt', 'TV 화면이 꺼져 있으면 열리지 않아요. 운영자 페이지나 학생 앱만 켜 둬서는 안 열려요. TV 화면은 운영자·부스 스태프 계정으로 로그인해 둬야 해요.'),
+        h('li', '한 판 = "한 판 길이"(아래 숫자 카드, 기본 10분) 또는 시간대 끝 시각 중 먼저 오는 때까지. 끝나면 "다음 판까지" 분만큼 쉬고, 아직 시간대 안이면 또 열려요.'),
+        h('li', '게임 정지(비상 스위치 OFF) 중에는 열리지 않아요. 자정을 넘는 시간대(예: 23:00~01:00)는 안 돼요 → 두 줄로 나누세요.'),
+        h('li', '"QR 없이 앱에서 참가"가 켜져 있으면 학생 앱 레이드 탭에서 바로 참가하고, 꺼져 있으면 TV 앞에서 QR을 찍어야 참가해요.'),
+        h('li', '같은 전설이 겹치는 시간은 안 돼요. 다른 전설끼리는 겹쳐도 돼요 (두 레이드가 같이 열려요).'))),
+    h('p.small-txt.muted', `지금 한국 시간 ${kstNowHHMM()} · 시간대 ${rows.length}개`),
+    h('div.tbl-wrap', h('table.tbl.slot-tbl',
+      h('thead', h('tr', h('th', ''), h('th', '전설'), h('th', '시작'), h('th', '끝'), h('th', '지금'), h('th', ''))), tbody)),
+    msg,
+    h('div.row', add, dirty, h('span', { style: { flex: 1 } }), save),
+    h('div.row', resetBtn('raid_slots', r.value)),
     changedTxt(r));
+  return box;
+}
+
+// ───────────────────────── 성장·보상 ─────────────────────────
+
+async function tabGrow() {
+  const set = await loadSettings();
+  return [
+    h('div.cols', h('div', settingsGroup(GROUPS.eggs, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
+    h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
+      h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),
+  ];
+}
+
+// ───────────────────────── 고급 설정 (JSON) ─────────────────────────
+
+async function tabAdv() {
+  const set = await loadSettings();
+  const all = Object.values(set);
+  const own = all.filter((r) => !KEY_HOME[r.key]);
+  const elsewhere = all.filter((r) => KEY_HOME[r.key]);
+  const showAll = !!S.advAll;
+  const toggleBtn = h('button.btn.small', { onclick: () => { S.advAll = !showAll; rerender(); } },
+    showAll ? '다른 탭에 있는 설정 숨기기' : `다른 탭에 있는 설정도 보기 (${elsewhere.length}개)`);
+
+  const rowFor = (r) => {
+    const home = KEY_HOME[r.key];
+    const unused = UNUSED_KEYS.includes(r.key);
+    const label = h('td',
+      h('b.mono', r.key), unused ? [' ', chip('사용 안 함', 'off')] : null,
+      h('div.small-txt.muted', SETTING_HELP[r.key] || SPEC_BY_KEY[r.key]?.label || KEY_TITLE[r.key] || ''),
+      h('div.small-txt.muted', `변경 ${timeAgo(r.updated_at)}`));
+    if (home) {
+      return h('tr.ro', label,
+        h('td.small-txt', h('div.mono.json-ro', JSON.stringify(r.value))),
+        h('td', chip(`[${home}] 탭에서 바꿔요`, 'blue')));
+    }
+    const ta = h('textarea.inp.json', { rows: 1, spellcheck: 'false', 'aria-label': r.key }, JSON.stringify(r.value));
+    const msg = h('div.small-txt');
+    const valid = () => {
+      try { JSON.parse(ta.value); ta.classList.remove('bad'); msg.textContent = ''; return true; } catch { ta.classList.add('bad'); msg.textContent = 'JSON 형식이 아니에요'; msg.className = 'small-txt warn-txt'; return false; }
+    };
+    ta.addEventListener('input', valid);
+    const save = h('button.btn.small.go', '저장');
+    save.onclick = () => {
+      if (!valid()) { toast(`${r.key}: JSON 형식이 아니에요.`); return; }
+      const value = JSON.parse(ta.value);
+      busy(save, async () => {
+        await saveSetting(r.key, value);
+        ta.value = JSON.stringify(value);
+        msg.className = 'small-txt ok-txt'; msg.textContent = '저장됨';
+        toast(`${r.key} 저장했어요.`);
+        rerender();
+      });
+    };
+    return h('tr',
+      label,
+      h('td.json-cell', ta, msg, h('div.adv-reset', resetBtn(r.key, r.value))),
+      h('td', save));
+  };
+
+  return [h('div.box',
+    h('div.row', h('h2', { style: { flex: '1 1 200px' } }, '설정값 (JSON)'), toggleBtn),
+    h('p.small-txt.muted', '값은 JSON 형식이에요: 숫자 3, 참/거짓 true, 글자 "abc", 목록 ["a","b"], 없음 null. 저장 전에 형식을 검사해요.'),
+    h('p.small-txt.muted', '"사용 안 함" = 예전 설정이라 지금은 서버가 읽지 않아요 (바꿔도 아무 일 없음).'),
+    h('div.tbl-wrap', h('table.tbl.adv-tbl',
+      h('thead', h('tr', h('th', '키'), h('th', '값'), h('th', ''))),
+      h('tbody', [...own, ...(showAll ? elsewhere : [])].map(rowFor)))))];
 }
 
 // ───────────────────────── start ─────────────────────────
 window.addEventListener('hashchange', () => {
-  const t = location.hash.slice(1);
-  if (S.view === 'app' && t !== S.tab && RENDER[t]) go(t);
+  if (S.view !== 'app') return;
+  const [t, sub] = parseHash(location.hash);
+  if (t !== S.tab || (sub && sub !== S.sub[t])) go(t, sub);
 });
 window.addEventListener('unhandledrejection', (e) => console.warn('[admin] unhandled', e.reason));
 boot();

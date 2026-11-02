@@ -4,7 +4,7 @@ import { spriteCanvas } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, pix } from './ui.js';
 import { S, collection, dexOf, isWithdrawn, owned, speciesOf, vibrate } from './state.js';
-import { closeOverlay, fmtWait, openScanner, overlay, renderTab, say, sync } from './app.js';
+import { catchEncounter, closeOverlay, fmtWait, openScanner, overlay, renderTab, say, sync } from './app.js';
 import { lv50, typeOf } from './dex.js';
 
 // ───────── 레이드: 큰 보스를 다 같이 탭해서 쓰러뜨리기 (0013) ─────────
@@ -88,6 +88,16 @@ setInterval(() => {
   }
 }, 1000);
 
+// 레이드에서 이긴 뒤 잡기 기회 (0030 my_encounters). 서버가 예전이면 null → 예전 티켓 문구
+async function findEncounter(speciesId) {
+  try {
+    const list = await rpc('my_encounters', {}, { retries: 1 });
+    if (!Array.isArray(list)) return null;
+    if (S.snap) S.snap.encounters = list;
+    return list.find((e) => e.species_id === speciesId) || null;
+  } catch { return null; }
+}
+
 export async function joinRaid(q, t) {
   if (!S.online) return say('레이드는 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   try {
@@ -147,6 +157,19 @@ export function openRaid(r0) {
     if (r.status === 'won') {
       boss.classList.add('faint');
       sfx.catch(); vibrate([80, 60, 80, 60, 200]);
+      // 0030 잡기 모드: 보상이 티켓 대신 '보스 잡기 기회' (HAFS 볼). 서버에 물어서 있으면 버튼으로 바로 잡으러 감
+      const enc = r.me?.rewarded ? await findEncounter(r.species_id) : null;
+      if (enc) {
+        await typeText(text, `${josa(sp.name, '을', '를')} 쓰러뜨렸다!!
+★ 레이드 보상: ${josa(sp.name, '을', '를')} 잡을 기회!
+HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 해도 돼요.`);
+        text.append(h('div.raid-enc-btns',
+          h('button.btn.big.primary', { onclick: () => { closeOverlay(); catchEncounter(enc); } }, '보스 잡으러 가기'),
+          h('button.btn.small.ghost', { onclick: () => closeOverlay() }, '나중에')));
+        sync({ force: true });
+        loadMyRaids();
+        return;
+      }
       await typeText(text, r.me?.rewarded
         ? `${josa(sp.name, '을', '를')} 쓰러뜨렸다!!\n★ 레이드 보상: ${sp.name} 티켓이 티켓 주머니에 들어왔어요!\n메인 부스에서 몬스터로 바꿔요. (가방 칸은 안 차지해요)`
         : `${josa(sp.name, '을', '를')} 쓰러뜨렸다!\n하지만 공격이 조금 부족해서 보상은 못 받았어요. 다음엔 더 많이 탭해요!`);

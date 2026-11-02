@@ -34,13 +34,62 @@ export function josa(word, a, b) {
   return word + ((c - 0xac00) % 28 ? a : b);
 }
 
-export function toast(msg, ms = 2600) {
+// 알림 (토스트): 한 번에 3개까지만 보이고 나머지는 줄을 섬. 같은 글이 보이는 중에 또 오면 하나로 합쳐 "×N".
+// 줄이 밀리면 짧게 보여 주고 빨리 넘김. 오류 (errorText 에서 온 글, 또는 { kind: 'error' }) 는 적어도 3초.
+//   toast('글') · toast('글', 4000) · toast('글', { ms: 4000, kind: 'error' })
+const TOAST_MAX = 3, TOAST_ERR_MIN = 3000, TOAST_RUSH = 1100;
+const ERR_TEXTS = new Set();
+export const markError = (text) => { ERR_TEXTS.add(String(text)); return text; };
+const toasts = [];   // { text, n, ms, err, el, num, end, timer, out }
+const tq = [];       // 아직 못 보인 것
+function toastBox() {
   let box = document.getElementById('toast');
   if (!box) { box = h('div#toast', { role: 'status', 'aria-live': 'polite' }); document.body.append(box); }
-  const t = h('div.toast', msg);
-  box.append(t);
-  setTimeout(() => t.classList.add('out'), ms);
-  setTimeout(() => t.remove(), ms + 400);
+  return box;
+}
+function toastTimer(t, ms) {
+  clearTimeout(t.timer);
+  t.end = Date.now() + ms;
+  t.timer = setTimeout(() => toastHide(t), ms);
+}
+function toastHide(t) {
+  if (t.out) return;
+  t.out = true; clearTimeout(t.timer);
+  t.el.classList.add('out');
+  setTimeout(() => { t.el.remove(); const i = toasts.indexOf(t); if (i >= 0) toasts.splice(i, 1); toastPump(); }, 320);
+}
+const toastDur = (t) => Math.max(t.err ? TOAST_ERR_MIN : 0, tq.length ? Math.min(t.ms, TOAST_RUSH) : t.ms);
+function toastPump() {
+  while (tq.length && toasts.filter((x) => !x.out).length < TOAST_MAX) {
+    const t = tq.shift();
+    t.num = h('b.toast-n', t.n > 1 ? `×${t.n}` : '');
+    t.el = h(`div.toast${t.err ? '.toast-err' : ''}`, h('span', t.text), t.num);
+    toastBox().append(t.el);
+    toasts.push(t);
+    t.start = Date.now();
+    toastTimer(t, toastDur(t));
+  }
+  // 줄이 밀려 있으면 지금 보이는 것도 빨리 넘김 (오류는 3초는 지킴)
+  if (tq.length) for (const t of toasts) if (!t.out && t.end - Date.now() > TOAST_RUSH) toastTimer(t, Math.max(TOAST_RUSH, t.err ? TOAST_ERR_MIN - (Date.now() - t.start) : 0));
+}
+export function toast(msg, ms = 2600) {
+  let opt = {};
+  if (ms && typeof ms === 'object') { opt = ms; ms = opt.ms ?? 2600; }
+  const text = String(msg);
+  const err = opt.kind === 'error' || ERR_TEXTS.has(text);
+  // 같은 글이 보이는 중 → 합치고 조금 늘림
+  const live = toasts.find((t) => !t.out && t.text === text);
+  if (live) {
+    live.n++; live.num.textContent = `×${live.n}`;
+    live.num.classList.remove('bump'); void live.num.offsetWidth; live.num.classList.add('bump');
+    const left = live.end - Date.now();
+    toastTimer(live, Math.max(left, Math.min(left + 800, Math.max(live.ms, 1500)), err ? 1500 : 900));
+    return;
+  }
+  const queued = tq.find((t) => t.text === text);
+  if (queued) { queued.n++; return; }
+  tq.push({ text, n: 1, ms: Math.max(800, Number(ms) || 2600), err });
+  toastPump();
 }
 
 export const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;

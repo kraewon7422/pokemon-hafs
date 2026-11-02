@@ -841,3 +841,36 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .ach-group { margin: 6px 2px 0; font-weight: bold; color: #384050; border-bottom: 2px solid #c8ccd8; padding-bottom: 2px; }
 .ach-group small { font-weight: normal; color: #687080; }
 
+
+/* 0030 반 이름 (글자로 적기 + 빠른 고르기) */
+.class-field { display: grid; gap: 6px; }
+.class-field small { word-break: keep-all; }
+.sheet input.class-inp { font-size: var(--fs-xl); text-align: center; letter-spacing: 4px; min-height: 56px; text-transform: uppercase; }
+.class-chips { display: grid; grid-template-columns: repeat(auto-fill, minmax(58px, 1fr)); gap: 6px; }
+.class-chips button { min-height: 44px; min-width: 0; padding: 0 2px; font: inherit; font-weight: bold; white-space: nowrap; background: #fff; border: 3px solid var(--ink); border-radius: 8px; cursor: pointer; color: var(--ink); }
+.class-chips button[aria-pressed="true"] { background: var(--ink); color: #fff; }
+
+/* 0030 알림: 최대 3개, 같은 글은 ×N, 오류는 붉게 */
+.toast { display: flex; align-items: baseline; gap: 8px; box-sizing: border-box; }
+.toast > span { min-width: 0; word-break: keep-all; overflow-wrap: anywhere; }
+.toast-n { flex: none; white-space: nowrap; color: #ffd23f; }
+.toast-n:empty { display: none; }
+.toast-n.bump { display: inline-block; animation: pop .18s steps(3); }
+.toast.toast-err { background: #702030; border-color: #3a0c14; color: #fff; }
+
+/* 0030 잡기: 도망 · 여러 마리 한 번에 · 레이드 보스 잡기 */
+.stage .scene.fled .spr canvas { filter: grayscale(1) brightness(.85); opacity: .55; animation: fled-away 1.4s ease-in forwards; }
+@keyframes fled-away { 0% { transform: translateX(0); } 30% { transform: translateX(-8px); } 100% { transform: translateX(60px) scale(.8); opacity: .3; } }
+.stage.group { height: 100%; grid-template-rows: minmax(0, 1fr) auto; box-sizing: border-box; }
+.stage .group-scene { grid-template-columns: minmax(0, 1fr); align-content: center; min-height: 0; overflow: hidden auto; }
+.group-scene .rays { top: 50%; left: 50%; margin: -160px 0 0 -160px; }
+.catch-grid { position: relative; z-index: 1; display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 10px; width: 100%; max-width: 520px; padding: 18px 4px 4px; box-sizing: border-box; }
+.catch-cell { display: grid; justify-items: center; gap: 4px; min-width: 0; padding: 8px 4px; background: rgba(255,255,255,.88); border: 3px solid var(--ink); border-radius: 10px; }
+.catch-cell canvas { width: 96px; height: 96px; max-width: 100%; }
+.catch-cell small { max-width: 100%; text-align: center; word-break: keep-all; overflow-wrap: anywhere; line-height: 1.25; }
+.new-badge.small { top: -6px; right: -10px; padding: 0 6px; font-size: var(--fs-s); border-width: 2px; }
+.enc-banner { background: linear-gradient(90deg, #183c88, #2f64c8); text-shadow: 1px 1px 0 #0a1a40; }
+.enc-banner > div { flex: 1; min-width: 0; word-break: keep-all; }
+.enc-banner .enc-go { display: table; margin-top: 6px; background: #ffd23f; color: #3a2400; border-color: #9a6a10; text-shadow: none; font-weight: bold; }
+.raid-enc-btns { display: grid; gap: 8px; margin-top: 10px; }
+@media (prefers-reduced-motion: reduce) { .stage .scene.fled .spr canvas { animation: none; } .enc-banner { animation: none; } }
