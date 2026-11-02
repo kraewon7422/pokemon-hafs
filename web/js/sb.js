@@ -1,5 +1,6 @@
 // Supabase client + RPC helper. Requires vendor/supabase.js (UMD) loaded before this module.
 import { CONFIG } from './config.js';
+import { markError } from './ui.js';
 
 export const sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
@@ -71,7 +72,12 @@ const MESSAGES = {
   EMPTY_POOL: '지금은 알에서 나올 몬스터가 없어요. 운영진에게 알려 주세요.',
   SHINY_LOCKED: '알에서 반짝이로 태어난 몬스터만 색을 바꿀 수 있어요.',
   NOT_STUDENT: '반은 학생 계정(고유번호)만 정할 수 있어요.',
-  BAD_CLASS: '학년과 반을 다시 골라 주세요.',
+  BAD_CLASS: '학년(1~3)을 고르고, 반 이름은 1~4글자 (숫자·영어 대문자·한글)로 적어 주세요. 예: 1A, 3, 10B',
+  BAD_GRADE: '학년은 1·2·3학년 중에서 골라 주세요.',
+  ENCOUNTER_NOT_FOUND: '이미 끝났거나 없는 레이드 보스 잡기예요. 새로 고침해 주세요.',
+  ENCOUNTER_DONE: '이미 결과가 나온 레이드 보스 잡기예요.',
+  NOT_REDEEMED: '아직 부스에서 받지 않은 티켓이에요.',
+  ALREADY_REPORTED: '이미 잡기 결과를 보냈어요.',
   ALREADY_CLAIMED: '이미 받은 보상이에요.',
   NOT_DONE: '아직 조건을 채우지 못했어요.',
   BAD_STEPS: '걸음 수가 이상해요.',
@@ -97,7 +103,8 @@ const MESSAGES = {
   BAD_ROLE: '역할은 운영자 또는 부스 스태프만 고를 수 있어요.',
   CANNOT_CHANGE_SELF: '내 계정의 역할은 여기서 바꿀 수 없어요. 다른 운영자에게 부탁하세요.',
 };
-export const errorText = (code) => MESSAGES[code] || `오류가 났어요 (${code})`;
+// 오류 글은 토스트에서 적어도 3초 보이게 표시해 둠 (ui.js markError)
+export const errorText = (code) => markError(MESSAGES[code] || `오류가 났어요 (${code})`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 

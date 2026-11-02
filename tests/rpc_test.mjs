@@ -1236,22 +1236,22 @@ console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
   ok((await C.rpc('claim_achievement', { p_key: 'hatch1' })).error === 'EGG_FULL', 'egg reward with a full egg box → EGG_FULL (not claimed)');
   ok((await C.rpc('achievements')).data.find((x) => x.key === 'hatch1')?.claimed === false, 'EGG_FULL claim did not count');
   // 반
-  ok((await C.rpc('set_class', { p_grade: 4, p_class: 1 })).error === 'BAD_CLASS', 'grade 4 refused');
-  const pc = (await C.rpc('set_class', { p_grade: 2, p_class: 7 })).data;
-  ok(pc?.grade === 2 && pc.class_no === 7, 'student sets grade/class', pc);
+  ok((await C.rpc('set_class', { p_grade: 4, p_class: '1' })).error === 'BAD_CLASS', 'grade 4 refused');
+  const pc = (await C.rpc('set_class', { p_grade: 2, p_class: '7' })).data;
+  ok(pc?.grade === 2 && pc.class_name === '7', 'student sets grade/class', pc);
   const cr = (await C.rpc('class_ranking')).data;
-  const mine = cr?.classes?.find((x) => x.grade === 2 && x.class_no === 7);
+  const mine = cr?.classes?.find((x) => x.grade === 2 && x.class_name === '7');
   ok(mine?.me === true && mine.players >= 1 && mine.score >= 1 && mine.top?.display && cr.mine?.rank === mine.rank && cr.can_set === true,
      'class ranking lists my class (score sum, top player)', { mine, me: cr?.mine });
   ok((await anon.rpc('class_ranking')).error, 'anon cannot read class ranking');
-  ok((await C.rpc('admin_set_class', { p_student_id: sid, p_grade: 3, p_class: 1 })).error === 'NOT_ADMIN', 'students cannot use admin_set_class');
-  ok((await admin.rpc('admin_set_class', { p_student_id: sid, p_grade: 3, p_class: 1 })).data?.grade === 3
-     && (await C.rpc('sync')).data.state.profile.class_no === 1, 'admin sets class (profile shows it)');
+  ok((await C.rpc('admin_set_class', { p_student_id: sid, p_grade: 3, p_class: '1' })).error === 'NOT_ADMIN', 'students cannot use admin_set_class');
+  ok((await admin.rpc('admin_set_class', { p_student_id: sid, p_grade: 3, p_class: '1' })).data?.grade === 3
+     && (await C.rpc('sync')).data.state.profile.class_name === '1', 'admin sets class (profile shows it)');
   const nid = 'tcl' + Math.random().toString(36).slice(2, 9);
   await anon.rpc('create_id_account', { p_id: nid, p_password: 'idpass1' });
   const N = client(await pwLogin(`${nid}@id.local`, 'idpass1'));
   await N.rpc('register_profile', { p_kind: 'id', p_student_id: null, p_name: '반손님' });
-  ok((await N.rpc('set_class', { p_grade: 1, p_class: 1 })).error === 'NOT_STUDENT', 'non-student id account cannot set a class');
+  ok((await N.rpc('set_class', { p_grade: 1, p_class: '1' })).error === 'NOT_STUDENT', 'non-student id account cannot set a class');
   ok((await N.rpc('class_ranking')).data?.can_set === false, 'non-student sees can_set false');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid, `g:${nid}`], p_confirm: '삭제' });
 }
@@ -1280,6 +1280,147 @@ console.log('\n[38] 몬스터 잡기 장면 보너스 (0028)');
   ok(after.level > before.level || after.exp > before.exp, 'monster got the EXP', { before: [before.level, before.exp], after: [after.level, after.exp] });
   ok((await C.rpc('catch_bonus', { p_nonce: n1, p_grade: 'excellent' })).error === 'ALREADY_CLAIMED', 'one bonus per ticket');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+}
+
+console.log('\n[39] 잡기 도망 · 레이드 보스 잡기 · 반 이름 (0030)');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'cr1234' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'cr1234'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const A = await mk('도망테스트'), B = await mk('도망비');
+  const st = async () => (await A.c.rpc('sync')).data.state;
+  // 설정
+  ok((await anon.rpc('catch_config')).error, 'anon cannot read catch config');
+  const cfg = (await A.c.rpc('catch_config')).data;
+  ok(typeof cfg?.flee === 'number' && cfg.flee >= 0 && cfg.flee <= 1 && cfg.raid_mode === 'ticket' && Number.isInteger(cfg.raid_balls)
+     && cfg.raid_balls > 0 && typeof cfg.raid_flee === 'boolean', 'catch_config → {flee, raid_mode, raid_balls, raid_flee}', cfg);
+  const places = Object.keys(T).filter((k) => /^A\d+$/.test(k));
+  let pi = 0;
+  const catchOne = async () => {     // 새 장소 QR 하나 찍고 부스에서 받기 → { n, res }
+    const q = places[pi++];
+    const n = nonce();
+    await A.c.rpc('sync', { p_scans: [{ n, q, t: T[q].token }] });
+    const res = (await booth.rpc('booth_redeem', { p_payload: A.sid })).data?.results?.find((x) => x.nonce === n);
+    return { n, q, res };
+  };
+  // 1) 보통 잡기 (경험치) + 한 번만
+  const c1 = await catchOne();
+  ok(c1.res?.species_id, 'booth hands over a monster', c1.res);
+  ok((await A.c.rpc('catch_result', { p_nonce: c1.n, p_grade: 'perfect' })).error === 'BAD_GRADE', 'catch_result: unknown grade refused');
+  ok((await anon.rpc('catch_result', { p_nonce: c1.n, p_grade: 'nice' })).error, 'anon cannot send a catch result');
+  const r1 = (await A.c.rpc('catch_result', { p_nonce: c1.n, p_grade: 'great' })).data;
+  ok(r1?.fled === false && r1.grade === 'great' && r1.exp === 40 && r1.line === c1.res.line_id && Number.isInteger(r1.level), 'catch_result (caught): great → 40 EXP', r1);
+  ok((await A.c.rpc('catch_result', { p_nonce: c1.n, p_grade: 'great' })).error === 'ALREADY_CLAIMED', 'catch_result once per ticket');
+  ok((await A.c.rpc('catch_result', { p_nonce: c1.n, p_grade: 'none', p_fled: true })).error === 'ALREADY_CLAIMED', 'cannot flee after it was caught');
+  // 2) 새 몬스터가 도망 → 도감 칸이 사라지고 점수·도감 수가 내려감
+  let c2; for (let i = 0; i < 6; i++) { c2 = await catchOne(); if (c2.res?.is_new) break; }
+  ok(c2.res?.is_new === true, 'a NEW monster from the booth', c2.res);
+  const s2a = await st();
+  const r2 = (await A.c.rpc('catch_result', { p_nonce: c2.n, p_grade: 'none', p_fled: true })).data;
+  const s2b = await st();
+  ok(r2?.fled === true && r2.removed === true && r2.line === c2.res.line_id, 'flee on a new monster → removed', r2);
+  ok(!s2b.collection.some((c) => c.line_id === c2.res.line_id) && s2b.profile.dex_count === s2a.profile.dex_count - 1
+     && s2b.profile.score < s2a.profile.score, 'collection row gone, dex_count and score lower',
+     { dex: [s2a.profile.dex_count, s2b.profile.dex_count], score: [s2a.profile.score, s2b.profile.score] });
+  ok(!(s2b.quizzes || []).some((z) => z.line_id === c2.res.line_id), 'its unanswered quiz is gone too');
+  ok((await A.c.rpc('catch_result', { p_nonce: c2.n, p_grade: 'none', p_fled: true })).error === 'ALREADY_CLAIMED', 'flee is recorded once');
+  ok(s2b.tickets.find((t) => t.nonce === c2.n)?.status === 'redeemed', 'ticket status unchanged (redeemed, fled flag only)');
+  // 3) 이미 있는 몬스터가 도망 → 칸은 남고 catch_count·레벨·진화권 원래대로
+  const q3 = places[pi++];
+  const pool3 = (await admin.select(`qr_rewards?qr_id=eq.${q3}&select=line_id`)).data.map((x) => x.line_id);
+  for (const l of pool3) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 1 });
+  const n3 = nonce();
+  await A.c.rpc('sync', { p_scans: [{ n: n3, q: q3, t: T[q3].token }] });   // 찍기만 (장소 수 레벨 보너스는 여기서) → 그 뒤를 기준으로
+  const s3a = await st();
+  const box3a = (await A.c.rpc('bag_state')).data.box;
+  const res3 = (await booth.rpc('booth_redeem', { p_payload: A.sid })).data?.results?.find((x) => x.nonce === n3);
+  ok(res3?.is_new === false, 'duplicate monster from the booth', res3);
+  const r3 = (await A.c.rpc('catch_result', { p_nonce: n3, p_grade: 'none', p_fled: true })).data;
+  const s3b = await st();
+  const box3b = (await A.c.rpc('bag_state')).data.box;
+  const before3 = s3a.collection.find((c) => c.line_id === res3?.line_id), after3 = s3b.collection.find((c) => c.line_id === res3?.line_id);
+  ok(r3?.fled === true && r3.removed === false && after3 && after3.catch_count === before3.catch_count, 'flee on a duplicate → row kept, catch_count back', { r3, before3, after3 });
+  ok(box3b.find((m) => m.line === res3?.line_id)?.level === box3a.find((m) => m.line === res3?.line_id)?.level, 'dup-catch level +1 taken back');
+  ok(s3b.profile.dex_count === s3a.profile.dex_count && s3b.profile.score === s3a.profile.score && s3b.profile.evo_tickets === s3a.profile.evo_tickets,
+     'dex / score / evo tickets same as before the catch', { a: [s3a.profile.dex_count, s3a.profile.score, s3a.profile.evo_tickets], b: [s3b.profile.dex_count, s3b.profile.score, s3b.profile.evo_tickets] });
+  // 4) 옛 앱의 catch_bonus 도 그대로
+  const c4 = await catchOne();
+  const b4 = (await A.c.rpc('catch_bonus', { p_nonce: c4.n, p_grade: 'nice' })).data;
+  ok(b4?.exp === 20 && b4.line === c4.res?.line_id, 'old catch_bonus still works', b4);
+  ok((await A.c.rpc('catch_result', { p_nonce: c4.n, p_grade: 'nice' })).error === 'ALREADY_CLAIMED', 'catch_bonus and catch_result share the once-per-ticket rule');
+  // 5) 레이드 잡기 모드
+  const winRaid = async () => {
+    const rd = (await admin.rpc('admin_create_raid', { p_species: 3, p_hp: 400, p_minutes: 5, p_tv: false, p_title: '잡기 레이드 테스트' })).data;
+    await A.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t });
+    let r;
+    for (let i = 0; i < 40; i++) {
+      await new Promise((res) => setTimeout(res, 700));
+      r = await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 8 });
+      if (r.data?.status !== 'active') break;
+    }
+    return { rd, r: (await A.c.rpc('raid_state', { p_raid: rd.id })).data };
+  };
+  await patchSetting('raid_reward_mode', 'catch');
+  try {
+    ok((await A.c.rpc('catch_config')).data?.raid_mode === 'catch', 'admin switches raid reward to catch (settings row)');
+    const w1 = await winRaid();
+    ok(w1.r?.status === 'won' && w1.r.me?.rewarded, 'raid won and rewarded', { status: w1.r?.status, me: w1.r?.me });
+    const s5 = await st();
+    const me5 = (await A.c.rpc('my_encounters')).data;
+    ok(me5?.length === 1 && me5[0].species_id === 3 && me5[0].balls === cfg.raid_balls && me5[0].raid_title === '잡기 레이드 테스트' && me5[0].id && me5[0].created_at,
+       'my_encounters: one pending boss encounter', me5);
+    ok(s5.encounters?.length === 1 && s5.encounters[0].id === me5[0].id, 'sync state carries the pending encounter', s5.encounters);
+    ok(!(s5.special || []).some((x) => x.special === 'raid') && !s5.tickets.some((t) => t.status === 'pending' && t.qr_id === 'RAID'), 'no special raid ticket in catch mode', s5.special);
+    ok((await anon.rpc('my_encounters')).error, 'anon cannot list encounters');
+    ok((await B.c.rpc('encounter_result', { p_id: me5[0].id, p_caught: true })).error === 'NOT_FOUND', 'someone else cannot resolve my encounter');
+    const e1 = (await A.c.rpc('encounter_result', { p_id: me5[0].id, p_caught: true, p_grade: 'nice' })).data;
+    const s5b = await st();
+    ok(e1?.caught === true && e1.fled === false && e1.species_id === 3 && e1.line === 1 && typeof e1.new === 'boolean' && e1.exp === 20 && Number.isInteger(e1.level),
+       'encounter_result caught → boss monster + EXP', e1);
+    ok(s5b.collection.find((c) => c.line_id === 1)?.stage === 3 && s5b.encounters.length === 0 && s5b.profile.dex_count >= s5.profile.dex_count + (e1.new ? 3 : 0),
+       'boss arrives at its stage, encounter no longer pending, dex updated', s5b.encounters);
+    ok((await A.c.rpc('encounter_result', { p_id: me5[0].id, p_caught: true })).error === 'NOT_FOUND', 'an encounter resolves once');
+    const cc1 = s5b.collection.find((c) => c.line_id === 1).catch_count;
+    const w2 = await winRaid();
+    const me6 = (await A.c.rpc('my_encounters')).data;
+    ok(w2.r?.status === 'won' && me6?.length === 1, 'second raid → second encounter', me6);
+    const e2 = (await A.c.rpc('encounter_result', { p_id: me6[0].id, p_caught: false })).data;
+    const s6 = await st();
+    ok(e2?.caught === false && e2.fled === true && e2.species_id === 3, 'all balls missed → boss fled', e2);
+    ok(s6.collection.find((c) => c.line_id === 1)?.catch_count === cc1 && s6.encounters.length === 0, 'fled boss: no monster given');
+    const enc = (await admin.select(`raid_encounters?id=in.(${me5[0].id},${me6[0].id})&select=id`));
+    ok(enc.status >= 400 || (enc.data || []).length === 0, 'raid_encounters table not readable directly (functions only)', enc.status);
+  } finally {
+    await patchSetting('raid_reward_mode', 'ticket');
+  }
+  ok((await A.c.rpc('catch_config')).data?.raid_mode === 'ticket', 'raid reward mode restored to ticket');
+  // 6) 반 = 이름
+  const k1 = (await A.c.rpc('set_class', { p_grade: 1, p_class: '1a' })).data;
+  ok(k1?.grade === 1 && k1.class_name === '1A', 'set_class text "1a" → stored 1A', k1);
+  const k2 = (await A.c.rpc('set_class', { p_grade: 2, p_class: '10B' })).data;
+  ok(k2?.grade === 2 && k2.class_name === '10B', 'set_class 10B', k2);
+  ok((await A.c.rpc('set_class', { p_grade: 2, p_class: '12345' })).error === 'BAD_CLASS', 'too long class name refused');
+  ok((await A.c.rpc('set_class', { p_grade: 2, p_class: '!!' })).error === 'BAD_CLASS', 'symbols refused');
+  ok((await A.c.rpc('set_class', { p_grade: 2, p_class: null })).error === 'BAD_CLASS', 'grade without class refused');
+  ok((await A.c.rpc('set_class', { p_grade: 2, p_class: '가나' })).data?.class_name === '가나', 'Korean class name ok');
+  await A.c.rpc('set_class', { p_grade: 2, p_class: '10B' });
+  const kr = (await A.c.rpc('class_ranking')).data;
+  const mineK = kr?.classes?.find((x) => x.grade === 2 && x.class_name === '10B');
+  ok(mineK?.me === true && mineK.players >= 1 && kr.mine?.class_name === '10B' && kr.mine.rank === mineK.rank, 'class_ranking groups by class_name', { mineK, mine: kr?.mine });
+  const ak = (await admin.rpc('admin_set_class', { p_student_id: A.sid, p_grade: 3, p_class: '2c' })).data;
+  ok(ak?.class_name === '2C' && ak.grade === 3 && (await st()).profile.class_name === '2C', 'admin_set_class with a text class', ak);
+  ok((await admin.rpc('admin_set_class', { p_student_id: A.sid, p_grade: 3, p_class: 'ABCDE' })).error === 'BAD_CLASS', 'admin_set_class validates too');
+  const kc = (await A.c.rpc('set_class', { p_grade: null, p_class: null })).data;
+  ok(kc?.grade === null && kc.class_name === null, 'both null clears the class', kc);
+  const nid = 'tcn' + Math.random().toString(36).slice(2, 9);
+  await anon.rpc('create_id_account', { p_id: nid, p_password: 'idpass1' });
+  const N = client(await pwLogin(`${nid}@id.local`, 'idpass1'));
+  await N.rpc('register_profile', { p_kind: 'id', p_student_id: null, p_name: '반손님' });
+  ok((await N.rpc('set_class', { p_grade: 1, p_class: '1A' })).error === 'NOT_STUDENT', 'non-student: NOT_STUDENT');
+  await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid, `g:${nid}`], p_confirm: '삭제' });
 }
 
 console.log(`\n${pass} passed, ${fail} failed`);

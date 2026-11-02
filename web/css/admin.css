@@ -245,3 +245,85 @@ ol.steps { margin: 4px 0; padding-left: 20px; display: grid; gap: 4px; }
 .tbl td.chk input, .tbl th.chk input { width: 18px; height: 18px; }
 .danger-zone { border-color: var(--red); }
 .danger-zone h2 { color: var(--red); }
+
+/* ── 탭 안내 · 작은 탭 ── */
+details.guide { background: #f3f7ff; border-color: #c9d8fb; padding: 10px 16px; }
+details.guide > summary { cursor: pointer; font-weight: 700; color: var(--brand-dark); }
+details.guide ul { margin: 8px 0 2px; padding-left: 20px; font-size: 14px; display: grid; gap: 2px; }
+.subtabs { display: flex; gap: 6px; flex-wrap: wrap; }
+.subtabs button { flex: 0 1 auto; border: 1px solid #cfd5de; background: #fff; border-radius: 999px; padding: 6px 14px; min-height: 36px; cursor: pointer; font-weight: 600; color: var(--sub); }
+.subtabs button[aria-selected='true'] { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.cols.wide-left { grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); }
+@media (max-width: 960px) { .cols.wide-left { grid-template-columns: minmax(0, 1fr); } }
+
+/* ── 설정 묶음 카드 (이름·설명 | 입력 | 기본값) ── */
+.setrows { display: grid; gap: 0; }
+.setrow { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); grid-template-areas: 'lbl ctl' 'lbl rst'; gap: 6px 14px; padding: 10px 0; border-top: 1px solid var(--line); align-items: start; }
+.setrow:first-child { border-top: 0; }
+.setlbl { grid-area: lbl; min-width: 0; }
+.setctl { grid-area: ctl; min-width: 0; }
+.setreset { grid-area: rst; min-width: 0; }
+.keyname { font-family: Consolas, Menlo, monospace; font-size: 11px; color: #98a2b3; overflow-wrap: anywhere; }
+.part-in { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; }
+.unit { font-size: 13px; color: var(--sub); white-space: nowrap; }
+.parts { display: grid; gap: 6px; }
+.part { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: 14px; }
+.part > span:first-child { word-break: keep-all; }
+.w-sel { width: auto; max-width: 100%; }
+.w-time { width: 120px; }
+.reset { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+.reset-note { word-break: keep-all; overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .setrow { grid-template-columns: minmax(0, 1fr); grid-template-areas: 'lbl' 'ctl' 'rst'; }
+}
+
+/* ── 시간대 전설 편집 ── */
+.slot-tbl td { vertical-align: middle; }
+.slot-tbl select.inp { min-width: 170px; }
+.slot-tbl tr.bad td { background: #fff1f1; }
+.slot-pic { display: inline-block; width: 40px; height: 40px; }
+details.how > summary { cursor: pointer; font-weight: 600; }
+details.how ul { margin: 6px 0; padding-left: 20px; display: grid; gap: 3px; }
+
+/* ── 고급 설정 ── */
+.adv-tbl td.json-cell { min-width: 200px; width: 50%; }
+.adv-tbl tr.ro td { background: #fafbfc; }
+table.tbl.adv-tbl td { overflow-wrap: anywhere; }
+.json-ro { word-break: break-all; color: var(--sub); max-height: 6em; overflow: auto; }
+.adv-reset { margin-top: 4px; }
+.chk.chk-top { align-items: flex-start; }
+.chk.chk-top input { flex: none; margin-top: 3px; }
+/* 한국어 낱말이 줄 끝에서 쪼개지지 않게 (넘칠 때만 .box 의 overflow-wrap 이 자름) */
+body.admin { word-break: keep-all; }
+/* 폰: 탭 10개가 옆으로 숨지 않게 여러 줄로 */
+@media (max-width: 600px) {
+  nav.tabs { flex-wrap: wrap; padding: 4px 8px; gap: 2px 4px; overflow-x: visible; }
+  nav.tabs button { padding: 6px 10px; min-height: 38px; border-bottom-width: 2px; }
+  main#main { padding: 12px; }
+  .box { padding: 14px; }
+}
+/* 폰: 시간대 전설 표 → 줄마다 카드 (옆으로 밀지 않아도 시각 칸이 보이게) */
+@media (max-width: 600px) {
+  .slot-tbl thead { display: none; }
+  .slot-tbl, .slot-tbl tbody { display: block; }
+  .slot-tbl tr { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 6px 10px; padding: 10px 0; border-bottom: 1px solid var(--line); align-items: center; }
+  table.tbl.slot-tbl td { border: 0; padding: 0; min-width: 0; }
+  .slot-tbl td:nth-child(1) { grid-column: 1; grid-row: 1 / 4; align-self: start; }
+  .slot-tbl td:nth-child(n+2) { grid-column: 2; }
+  .slot-tbl td:nth-child(3), .slot-tbl td:nth-child(4) { display: flex; align-items: center; gap: 8px; }
+  .slot-tbl td:nth-child(3)::before { content: '시작'; flex: 0 0 28px; font-size: 13px; color: var(--sub); }
+  .slot-tbl td:nth-child(4)::before { content: '끝'; flex: 0 0 28px; font-size: 13px; color: var(--sub); }
+  .slot-tbl td:nth-child(5):empty { display: none; }
+  .slot-tbl td:nth-child(6) { justify-self: end; }
+  .slot-tbl select.inp { min-width: 0; }
+  .slot-tbl .w-time { width: auto; flex: 1 1 auto; min-width: 0; }
+}
+/* 폰: 고급 설정 표도 줄마다 위아래로 */
+@media (max-width: 600px) {
+  .adv-tbl thead { display: none; }
+  .adv-tbl, .adv-tbl tbody, .adv-tbl tr, .adv-tbl td { display: block; width: 100%; }
+  table.tbl.adv-tbl td { border: 0; padding: 4px 0; }
+  .adv-tbl td.json-cell { width: 100%; min-width: 0; }
+  .adv-tbl tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
+}
