@@ -24,7 +24,7 @@ export const GAMES = [
     fmt: (v) => `${(v / 1000).toFixed(2)}초`, lower: true, free: true, load: () => import('./maze.js') },
   { id: 'land', short: '땅따먹기', title: '땅따먹기', dex: 76, desc: '내 땅 밖으로 선을 그리고 돌아오면 그 안이 내 땅! 꼬리를 밟히면 목숨 하나 (3개). AI 3명과 90초 대결.',
     fmt: (v) => `${(v / 10).toFixed(1)}%`, load: () => import('./land.js') },
-  { id: 'cross', short: '등굣길', title: '몬스터 등굣길', dex: 4, desc: '내 몬스터와 학교 가는 길! 찻길·개울·기찻길을 한 칸씩 건너요. 멈춰 있으면 지각 종이 울려요.',
+  { id: 'cross', short: '등굣길', title: '몬스터 등굣길', dex: 4, desc: '내 몬스터와 학교 가는 길! 학교 → 바닷가 → 화산 → 우주를 한 칸씩 건너요. 멈춰 있으면 지각 괴물이 잡아가요.',
     fmt: (v) => `${v.toLocaleString()}칸`, load: () => import('./cross.js') },
 ];
 // 오프라인 기록: 인터넷이 없을 때 끝난 판은 폰에 (게임마다 가장 좋은 것 하나만) 두었다가 연결되면 보냄

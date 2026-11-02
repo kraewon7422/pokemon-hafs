@@ -1,7 +1,7 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v47';
+const VERSION = 'hafsmon-v48';
 // 설치할 때 바로 받는 것 = 첫 화면(로그인·홈)에 필요한 것만 (약 1MB)
 const CORE = [
   './', 's/', 'manifest.webmanifest',   // not index.html: Cloudflare Pages redirects it, and a redirected response can't answer a navigation
@@ -17,7 +17,7 @@ const CORE = [
 const EXTRA = [
   'vendor/jsQR.js', 'img/map.webp', 'img/eggs.png', 'js/catch.js', 'img/catch/day.png', 'img/catch/sunset.png', 'img/catch/night.png', 'img/fx/status.png',
   ...['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'].map((n) => `img/battle/${n}.png`),
-  'js/games/surf.js', 'js/games/dodge.js', 'js/games/maze.js', 'js/games/land.js', 'js/games/cross.js',
+  'js/games/surf.js', 'js/games/dodge.js', 'js/games/maze.js', 'js/games/land.js', 'js/games/cross.js', 'img/games/cross/cross-props.png',
   'vendor/phaser.min.js', 'img/games/dodge/dodge-bg.png', 'img/games/surf/surf-props.png',
 ];
 

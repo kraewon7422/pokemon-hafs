@@ -2,6 +2,7 @@
 // 몬스터는 이미 정해져 있고 결국 반드시 잡힌다 (공 3개를 다 써도 지쳐서 얌전해짐). 던지기 솜씨는 등급(약간의 EXP)만 정한다.
 //   catchScene({ dex, name, rarity, time }) → Promise<{ grade:'none'|'nice'|'great'|'excellent', curve, throws, skipped }>
 // 배경: img/catch/{day,sunset,night}.png (CC0, tools/draw_catch_bg.py). 공·별·반짝이는 이 파일에서 도트로 그림.
+// 공은 3D 로 날아감: x 좌우 · y 높이 · z 깊이, 중력 + 약한 공기 저항 + 커브볼 회전(마그누스 힘), 원근으로 화면에 그림.
 // Phaser 를 못 불러오거나 무엇이든 실패하면 바로 { grade:'none', skipped:true } 로 끝냄 → 축하 화면을 절대 막지 않음.
 import { sfx } from './sfx.js';
 import { josa, reducedMotion } from './ui.js';
@@ -13,9 +14,27 @@ const HOME = { x: 135, y: 436 };        // 손에 든 공 자리
 const MON_K = 2;                        // 몬스터 배율 (64×64 → 128, 모든 몬스터 같음)
 const BALLS = 3;
 const CYCLE = 1.6;                      // 안쪽 고리가 줄어드는 한 바퀴 (초)
-const S1 = 650;                         // 이 속도(논리 도트/초) 로 던지면 딱 몬스터까지 날아감
 const HIT_PAD = 8;                      // 고리 밖으로 공 반지름만큼은 봐 줌
-const OVER = 0.01;                      // 그보다 세면 조금씩 더 멀리 (아주 아주 세게 던져야 넘어감)
+
+// ─────── 3D 세계 → 화면 (원근 카메라, 배경 그림에 맞춤) ───────
+// 세계 단위 ≈ 미터. x 오른쪽 · y 높이 (땅 0) · z 앞쪽 (던지는 곳 z=0 → 몬스터 z=ZM).
+// 카메라: z=-ZC, 높이 CAM_H 에서 수평으로 봄 → 지평선 화면 y=HY.  땅의 z=0 → 화면 y=HOME.y, 땅의 z=ZM → 자리 가운데 y=352.
+const HY = 236, SPOT_Y = 352, ZC = 5;
+const ZM = ZC * ((HOME.y - HY) / (SPOT_Y - HY) - 1);      // ≈ 3.62
+const CAM_H = 0.22 * (ZC + ZM);                           // 자리 타원 (세로/가로 ≈ 0.22) 에서 나온 카메라 높이 ≈ 1.9
+const FOC = (HOME.y - HY) * ZC / CAM_H;                   // 초점 거리 (도트) ≈ 527
+const BALL_K = 2;                                         // z=0 에서 공 배율 (15 도트 → 30)
+const BR = 7.5 * BALL_K * ZC / FOC;                       // 공 반지름 (세계) ≈ 0.14
+const GRAV = 9.8, DRAG = 0.03;                            // 중력, 공기 저항 (a = -DRAG·|v|·v)
+const LAUNCH = 38 * Math.PI / 180;                        // 던지는 각 (위로)
+const CURVE_M = 0.75;                                     // 커브볼 옆 가속 = CURVE_M · 앞 속도 (≈ 4 m/s²)
+const STEP = 1 / 240;                                     // 물리 한 걸음 (초)
+const BOUNCE = 0.45, SKID = 0.78, ROLL = 4;             // 땅에 튈 때 위아래 반발 · 앞뒤 마찰 · 구르는 마찰 (m/s²)
+// 휙 속도 (CSS px/초) → 힘. S_MID 로 던지면 딱 고리 가운데. 500~2500 은 늘 맞음 (힘 0.945~1.10배),
+// 그 밖에서는 빨리 변해 약하면 앞에 떨어지고 (몬스터 크기에 따라 ≈310~470 아래) 아주 세면 넘어감 (≈2700~4200 위).
+const S_MID = 1118, S_SPAN = Math.sqrt(5);
+const PW_LO = -Math.log(0.945), PW_HI = Math.log(1.10);
+
 const ATLAS_URL = new URL('../sprites/atlas.png', import.meta.url).href;
 const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
 // 배경 그림 맨 위 / 맨 아래 색 (화면이 그림보다 길 때 위아래를 채움)
@@ -31,6 +50,49 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const CANCEL = Symbol('cancel');
 // 시험용: window.__czRandom = () => 0.3 처럼 주면 잡힘·쳐내기 운을 고정 (평소엔 Math.random)
 const rand = () => (typeof window.__czRandom === 'function' ? window.__czRandom() : Math.random());
+
+// ─────── 물리 (순수 함수) ───────
+const proj = (x, y, z) => { const d = Math.max(0.6, z + ZC); return { x: SPOT_X + FOC * x / d, y: HY + FOC * (CAM_H - y) / d, d }; };
+// 공기 중 한 걸음: 중력 + 공기 저항 + 커브 (옆 가속은 앞 속도에 비례 — 세로축으로 도는 공의 마그누스 힘)
+function physStep(p, ax, h) {
+  const sp = Math.hypot(p.vx, p.vy, p.vz);
+  p.vx += (ax * p.vz - DRAG * sp * p.vx) * h;
+  p.vy += (-GRAV - DRAG * sp * p.vy) * h;
+  p.vz += (-DRAG * sp * p.vz) * h;
+  p.x += p.vx * h; p.y += p.vy * h; p.z += p.vz * h;
+}
+// 땅을 무시하고 몬스터 면 (z=ZM) 을 지나는 점 (못 가면 null)
+function simCross(p0, vx, vy, vz, ax) {
+  const p = { x: p0.x, y: p0.y, z: p0.z, vx, vy, vz };
+  for (let t = 0; t < 4; t += STEP) {
+    const { x, y, z } = p;
+    physStep(p, ax, STEP);
+    if (p.z >= ZM) { const k = (ZM - z) / (p.z - z || 1); return { x: x + (p.x - x) * k, y: y + (p.y - y) * k, t: t + STEP * k }; }
+    if (p.vz <= 0.05) break;
+  }
+  return null;
+}
+// 손을 놓은 화면 점 → 세계 점 (z=0 면 위, 땅보다 낮으면 땅 위에 놓고 그만큼 앞쪽으로)
+function releaseAt(sx, sy) {
+  let z = 0, y = CAM_H - (sy - HY) * ZC / FOC;
+  if (y < BR) { y = BR; z = FOC * (CAM_H - BR) / Math.max(1, sy - HY) - ZC; }
+  const d = z + ZC;
+  return { x: (sx - SPOT_X) * d / FOC, y, z };
+}
+const power = (s) => {
+  const u = clamp(Math.log(Math.max(1, s) / S_MID) / Math.log(S_SPAN), -3, 3);
+  return Math.exp((u < 0 ? PW_LO : PW_HI) * (0.6 * u + 0.4 * u ** 3));
+};
+// 이 자리에서 LAUNCH 각으로 던져 화면 y=cy (고리 가운데 높이) 를 지나게 하는 속력
+function nominalSpeed(p0, cy) {
+  const yt = CAM_H - (cy - HY) * (ZM + ZC) / FOC;
+  let lo = 1.5, hi = 25;
+  for (let i = 0; i < 28; i++) {
+    const v = (lo + hi) / 2; const r = simCross(p0, 0, v * Math.sin(LAUNCH), v * Math.cos(LAUNCH), 0);
+    if (!r || r.y < yt) lo = v; else hi = v;
+  }
+  return (lo + hi) / 2;
+}
 
 export function defaultTime(d = new Date()) {
   const m = d.getHours() * 60 + d.getMinutes();
@@ -239,10 +301,11 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
       // 배경 · 그림자 · 몬스터
       if (sc.textures.exists('bg')) sc.add.image(0, 0, 'bg').setOrigin(0).setDepth(0);
       const shadow = sc.add.graphics().setDepth(1);
+      const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (몬스터 뒤로 가면 1.5)
       const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
       const monW = sc.add.image(SPOT_X, footY, 'monW').setOrigin(0.5, 1).setScale(0).setDepth(4).setAlpha(0);
       const rings = sc.add.graphics().setDepth(5);
-      const ball = sc.add.image(HOME.x, H + 30, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setScale(2).setDepth(6);
+      const ball = sc.add.image(HOME.x, H + 30, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setScale(2).setDepth(6);   // 몬스터 뒤로 가면 2
       const fx = sc.add.graphics().setDepth(7);   // 할퀴기 등 잠깐 그리는 것
       const hud = [];
       for (let i = 0; i < BALLS; i++) hud.push(sc.add.image(16 + i * 19, 18, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setDepth(9).setVisible(false));
@@ -278,6 +341,7 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
       let ringOn = false, ballsLeft = BALLS, grab = null, curveArmed = false, sparkT = 0, idleT = 0, hinted = false;
       let introSkip = null;
       const evlog = [];   // 시험용 기록 (던지기·명중·빗나감)
+      let traj = [];      // 시험용: 마지막 공의 화면 궤적
       const B = { free: false, ox: 0, hop: 0, sx: MON_K, sy: MON_K, ph: 'idle', tm: 1.2, from: 0, to: 0, dur: 0.3, el: 0, h: 0, cr: 0.2 };
       const ratio = () => (frozen != null ? frozen : 1 - 0.85 * ((ringT % CYCLE) / CYCLE));
       const center = () => ({ x: mon.x + bcx, y: mon.y - bcy });
@@ -325,10 +389,76 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         }
       };
 
+      // ─────── 나는 공 (3D 물리 → 원근 그림) ───────
+      // fly = { p:{x,y,z,vx,vy,vz}, ax(커브 옆 가속 계수), spin(도/초), mode: throw|miss|deflect|rebound, c(흐름), ev(종류, 정보) }
+      let fly = null;
+      const placeBall = (f) => {
+        const p = f.p; const q = proj(p.x, p.y, p.z); const behind = p.z > ZM + 0.02;
+        ball.setPosition(q.x, q.y).setScale(BALL_K * ZC / q.d).setDepth(behind ? 2 : 6);
+        // 땅 그림자: 공 바로 아래 (x,0,z), 높이 올라갈수록 옅어짐
+        const g = proj(p.x, 0, p.z); const w = 2 * BR * FOC / g.d * 1.1;
+        bsh.clear().setDepth(behind ? 1.5 : 2.5);
+        bsh.fillStyle(0x0a1a10, 0.34 * clamp(1 - (p.y - BR) / 2.2, 0.22, 1)).fillEllipse(g.x, g.y, w, Math.max(2, w * CAM_H / g.d));
+        if (traj.length < 900) traj.push({ t: +f.t.toFixed(3), x: +q.x.toFixed(1), y: +q.y.toFixed(1), s: +(BALL_K * ZC / q.d).toFixed(3), gx: +g.x.toFixed(1), gy: +g.y.toFixed(1), h: +p.y.toFixed(3), z: +p.z.toFixed(3), wx: +p.x.toFixed(3), a: Math.round(ball.angle), m: f.mode });
+        return q;
+      };
+      const endFly = (f, how) => {   // how: keep (공 그대로) | hide | fade
+        if (f.over) return; f.over = true;
+        if (fly === f) fly = null;
+        bsh.clear();
+        if (how === 'fade' && f.c.alive()) {
+          sc.tweens.add({ targets: ball, alpha: 0, duration: D(260), onComplete: () => { if (!f.c.alive()) return; ball.setVisible(false).setAlpha(1); f.res(how); } });
+          return;
+        }
+        if (how === 'hide') ball.setVisible(false);
+        f.res(how);
+      };
+      const flyDone = async (c, f) => { await f.done; if (!c.alive()) throw CANCEL; };
+      const stepFly = (dt) => {
+        const f = fly; if (!f) return;
+        if (!f.c.alive()) { fly = null; bsh.clear(); return; }
+        f.acc += dt * 1000 / D(1000);                      // 움직임 줄이기 = 다른 연출처럼 두 배 빨리
+        const p = f.p;
+        while (f.acc >= STEP && fly === f) {
+          f.acc -= STEP; f.t += STEP;
+          const { x: px, y: py, z: pz } = p; const pvy = p.vy;
+          physStep(p, f.onGround ? 0 : f.ax, STEP);
+          f.angle += f.spin * STEP;
+          if ((pz < ZM) !== (p.z < ZM)) {                  // 몬스터 면을 지남 (앞→뒤 또는 뒤→앞)
+            const k = (ZM - pz) / (p.z - pz || 1);
+            const w = { x: px + (p.x - px) * k, y: py + (p.y - py) * k, z: ZM };
+            f.ev('cross', { w, q: proj(w.x, w.y, w.z) });
+            if (fly !== f) break;
+          }
+          if (p.y < BR) {                                  // 땅
+            p.y = BR;
+            if (p.vy < -0.9) {
+              const imp = -p.vy; p.vy = imp * BOUNCE; p.vx *= SKID; p.vz *= SKID; if (!f.onGround) f.landT = f.t; f.onGround = true;
+              f.spin = f.spin * 0.6 + (p.vx >= 0 ? 1 : -1) * Math.hypot(p.vx, p.vz) / BR * 57.3 * 0.4;
+              f.ev('bounce', { imp, q: proj(p.x, p.y, p.z) });
+              if (fly !== f) break;
+            } else {                                         // 구름 (미끄럼 마찰로 멈춤)
+              p.vy = 0; if (!f.onGround) f.landT = f.t; f.onGround = true; f.rolling = true;
+              const hs = Math.hypot(p.vx, p.vz); const ns = Math.max(0, hs - ROLL * STEP);
+              if (hs > 0) { p.vx *= ns / hs; p.vz *= ns / hs; }
+              f.spin = (p.vx >= 0 ? 1 : -1) * ns / BR * 57.3 * 0.4;
+            }
+          }
+          if (pvy > 0 && p.vy <= 0 && !f.onGround) { f.ev('apex', {}); if (fly !== f) break; }
+        }
+        if (f.over) return;
+        ball.setAngle(f.angle);
+        const q = placeBall(f);
+        if (f.rolling && Math.hypot(p.vx, p.vz) < 0.04) f.ev('stop', { q });
+        else if (q.x < -24 || q.x > W + 24 || q.y > H + 24 || q.y < -40) f.ev('out', { q, fade: false });
+        else if (p.z > ZM + 5.5 || f.t > 5 || (f.onGround && f.t - f.landT > 1.1)) f.ev('out', { q, fade: true });   // 땅에 떨어진 뒤 1.1초면 사라짐
+      };
+
       tick = (dt) => {
         T += dt;
         if (ringOn && frozen == null) ringT += dt;
         behave(dt);
+        stepFly(dt);
         draw();
         monW.setPosition(mon.x, mon.y).setScale(mon.scaleX, mon.scaleY).setVisible(mon.visible);
         // 커브볼 반짝이
@@ -336,7 +466,7 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
           sparkT -= dt;
           if (sparkT <= 0) {
             sparkT = 0.06;
-            const s = sc.add.image(ball.x + (Math.random() - 0.5) * 14 * ball.scaleX / 2, ball.y + (Math.random() - 0.5) * 14 * ball.scaleX / 2, 'spark').setDepth(7);
+            const s = sc.add.image(ball.x + (Math.random() - 0.5) * 14 * ball.scaleX / 2, ball.y + (Math.random() - 0.5) * 14 * ball.scaleX / 2, 'spark').setDepth(ball.depth + 0.5);
             sc.tweens.add({ targets: s, y: s.y - 8, alpha: 0, scale: 0.4, duration: 420, onComplete: () => s.destroy() });
           }
         }
@@ -373,17 +503,17 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
       };
 
       const newBall = async (c) => {
-        ball.setTexture('ball', 0).clearTint().setAngle(0).setAlpha(1).setScale(2).setPosition(HOME.x, H + 24).setVisible(true);
+        ball.setTexture('ball', 0).clearTint().setAngle(0).setAlpha(1).setScale(2).setDepth(6).setPosition(HOME.x, H + 24).setVisible(true);
         curveArmed = false;
         await c.tw({ targets: ball, y: HOME.y, duration: 260, ease: 'Back.easeOut' });
       };
 
       // ─────── 잡는 연출 (공 안으로 빨려 들어감 → 흔들림) ───────
-      // shakes: 흔들 횟수, ok: 잡힘?
-      const suckIn = async (c, bx, by) => {
-        // 공이 몬스터 위로 튀어 올라 열림 → 몬스터가 빛이 되어 빨려 들어감
+      // bx,by: 공이 열리는 자리, k0: 그때 공 크기, gy: 공이 떨어질 땅 (화면 y)
+      const suckIn = async (c, bx, by, k0 = 1.4, gy = FEET_Y - 4) => {
+        // 공이 몬스터 위에서 열림 → 몬스터가 빛이 되어 빨려 들어감
         B.free = false; ringOn = false;
-        await c.tw({ targets: ball, x: bx, y: by, scale: 1.4, angle: 0, duration: 200, ease: 'Quad.easeOut' });
+        await c.tw({ targets: ball, x: bx, y: by, scale: k0, angle: 0, duration: 200, ease: 'Quad.easeOut' });
         ball.setFrame(1); play('ballPop'); vibrate(25);
         await c.tw({ targets: monW, alpha: 1, duration: 120 });
         const cc = center();
@@ -393,7 +523,7 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         ball.setFrame(0);
         await c.wait(140);
         // 땅으로 떨어짐
-        await c.tw({ targets: ball, y: FEET_Y - 4, duration: 320, ease: 'Bounce.easeOut' });
+        await c.tw({ targets: ball, y: gy, duration: 320, ease: 'Bounce.easeOut' });
         play('blip');
       };
       const shake = async (c, n) => {
@@ -454,7 +584,7 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         await c.wait(1200);
         say('');
         // 마지막 공이 저절로 굴러옴
-        ball.setTexture('ball', 0).clearTint().setAlpha(1).setVisible(true).setScale(1.4).setAngle(0).setPosition(W + 16, FEET_Y + 20);
+        ball.setTexture('ball', 0).clearTint().setAlpha(1).setVisible(true).setScale(1.4).setAngle(0).setDepth(6).setPosition(W + 16, FEET_Y + 20);
         play('ballThrow');
         await c.tw({ targets: ball, x: SPOT_X + bw / 2 + 8, y: FEET_Y + 4, angle: -720, duration: 900, ease: 'Quad.easeOut' });
         const cc = center();
@@ -464,55 +594,81 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
       };
 
       // ─────── 던지기 ───────
-      const throwBall = (rel, vx, vy, curve) => {
+      // rel: 손을 놓은 화면 점, (dx,dy): 휙 방향 (화면), css: 휙 속도 (CSS px/초), curve: false | 'cw' | 'ccw'
+      const throwBall = (rel, dx, dy, css, curve) => {
         phase = 'flight'; hinted = true;
         result.throws++; ballsLeft--; showHud(true);
         frozen = ratio();
         const relRatio = frozen;
         play('ballThrow'); vibrate(10);
-        const sp = Math.hypot(vx, vy) || 1; const ux = vx / sp, uy = vy / sp;
-        const c0 = center();
-        const need = Math.max(30, Math.hypot(c0.x - rel.x, c0.y - rel.y));
-        const dist = sp < S1 ? need * (sp / S1) : need + (sp - S1) * OVER;
-        const L = { x: rel.x + ux * dist, y: rel.y + uy * dist };
-        const side = curve ? (curveArmed === 'cw' ? 1 : -1) : 0;
-        const dur = (0.42 + 0.18 * Math.min(1.4, dist / need)) * 1000;
-        const arcH = 36 + dist * 0.22;
-        const s1 = 2 - 0.95 * Math.min(1, dist / need);
-        evlog.push(['throw', Math.round(sp), Math.round(dist), Math.round(need), !!curve]);
+        const cc = center();
+        const p0 = releaseAt(rel.x, rel.y);
+        // 손가락이 가리킨 곳: 휙 선이 고리 가운데 높이에 닿는 화면 x → 몬스터 깊이의 세계 x
+        const up = Math.max(1e-3, -dy);
+        const sxT = clamp(rel.x + (dx / up) * (rel.y - cc.y), SPOT_X - 700, SPOT_X + 700);
+        const xT = (sxT - SPOT_X) * (ZM + ZC) / FOC;
+        // 힘: 기준 속력 (이 자리에서 고리 가운데 높이로 가는 속력) × 휙 속도 배율
+        const pw = power(css);
+        const v = nominalSpeed(p0, cc.y) * pw;
+        const vy = v * Math.sin(LAUNCH), vz = v * Math.cos(LAUNCH);
+        // 커브볼: 회전 방향으로 휘는 옆 가속. 처음엔 반대쪽으로 나가서 휘어 들어와 가리킨 곳을 지나게 옆 속도를 맞춤
+        const side = curve === 'cw' ? 1 : curve === 'ccw' ? -1 : 0;
+        const ax = side * CURVE_M;
+        let vx = 0;
+        for (let i = 0; i < 4; i++) {
+          const r = simCross(p0, vx, vy, vz, ax);
+          if (!r) { vx = vz * (xT - p0.x) / Math.max(0.5, ZM - p0.z); break; }
+          vx += (xT - r.x) / Math.max(0.05, r.t);
+        }
+        evlog.push(['throw', Math.round(css), +pw.toFixed(3), side, Math.round(sxT)]);
         const willSwat = (rar === 'legendary' || rar === 'mythic') && rand() < 0.25;
-        const spin = ux >= 0 ? 1 : -1;
-        let swatted = false;
-        const c = ctl();
-        const st = { t: 0 };
-        sc.tweens.add({
-          targets: st, t: 1, duration: D(dur), ease: 'Linear',
-          onUpdate: () => {
-            if (!c.alive() || swatted) return;
-            const t = st.t;
-            const px = -uy, py = ux;                                   // 진행 방향에 수직
-            const bend = side * Math.sin(Math.PI * t) * 18;
-            ball.setPosition(rel.x + (L.x - rel.x) * t + px * bend, rel.y + (L.y - rel.y) * t + py * bend - Math.sin(Math.PI * t) * arcH);
-            ball.setScale(2 + (s1 - 2) * t).setAngle(spin * 900 * t);
-            if (willSwat && t >= 0.72) {
-              const cc = center();
-              if (Math.hypot(L.x - cc.x, L.y - cc.y) <= R + HIT_PAD) { swatted = true; evlog.push(['swat']); run((k) => swat(k)); }
-            }
-          },
-          onComplete: () => {
-            if (!c.alive() || swatted) return;
-            const cc = center();
-            const hit = Math.hypot(L.x - cc.x, L.y - cc.y) <= R + HIT_PAD;
-            evlog.push([hit ? 'hit' : 'miss', Math.round(L.x), Math.round(L.y), Math.round(cc.x), Math.round(cc.y)]);
-            if (hit) run((k) => onHit(k, relRatio, !!curve));
-            else run((k) => onMiss(k, L, ux));
-          },
-        });
+        traj = [];
+        let res; const doneP = new Promise((r) => { res = r; });
+        const f = {
+          p: { ...p0, vx, vy, vz }, ax, spin: side ? side * 1440 : (dx >= 0 ? 1 : -1) * 600, angle: ball.angle,
+          mode: 'throw', t: 0, acc: 0, onGround: false, rolling: false, over: false, c: ctl(), done: doneP, res,
+        };
+        const toMiss = (q, why) => {
+          f.mode = 'miss';
+          evlog.push(['miss', why, Math.round(q.x), Math.round(q.y)]);
+          run((k) => { f.c = k; return onMiss(k, f, q); });
+        };
+        f.ev = (type, info) => {
+          if (f.mode === 'throw') {
+            if (type === 'cross') {
+              const q = info.q; const c2 = center();
+              const hit = Math.hypot(q.x - c2.x, q.y - c2.y) <= R + HIT_PAD;
+              if (hit && willSwat) {
+                f.mode = 'deflect'; evlog.push(['swat']);
+                run((k) => { f.c = k; return swat(k, f, q); });
+              } else if (hit) {
+                evlog.push(['hit', Math.round(q.x), Math.round(q.y), Math.round(c2.x), Math.round(c2.y)]);
+                f.mode = 'rebound';
+                run((k) => { f.c = k; return onHit(k, relRatio, !!curve, f, q); });
+              } else {
+                // 고리 아래로 몸에 맞으면 (발치) 툭 튕겨 나옴, 위·옆이면 그냥 지나감
+                if (q.y > c2.y && Math.abs(q.x - c2.x) < bw / 2) { f.p.vz = -0.3 * Math.abs(f.p.vz); f.p.vx *= 0.5; play('blip'); }
+                toMiss(q, q.y < c2.y - R ? 'over' : Math.abs(q.x - c2.x) > R ? 'wide' : 'low');
+              }
+            } else if (type === 'bounce') { play('blip'); toMiss(info.q, 'short'); }
+            else if (type === 'stop' || type === 'out') { toMiss(info.q, type === 'out' ? 'out' : 'short'); f.ev(type, info); }
+          } else if (f.mode === 'miss' || f.mode === 'deflect') {
+            if (type === 'bounce') { if (info.imp > 1.2) play('blip'); }
+            else if (type === 'cross' && f.onGround && f.p.vz > 0 && Math.abs(info.q.x - center().x) < bw / 2) { f.p.vz = -0.3 * Math.abs(f.p.vz); f.p.vx *= 0.5; }   // 굴러가다 발에 막힘
+            else if (type === 'stop') endFly(f, 'fade');
+            else if (type === 'out') endFly(f, info.fade ? 'fade' : 'hide');
+          } else if (f.mode === 'rebound') {
+            if (type === 'apex' || type === 'bounce' || type === 'stop' || type === 'out') endFly(f, 'keep');
+          }
+        };
+        fly = f;
+        placeBall(f);
       };
 
-      const swat = async (c) => {
+      // 전설: 맞기 직전 앞발로 쳐냄 → 맞은 자리에서 옆·위로 튕겨 날아감 (속도가 바뀜)
+      const swat = async (c, f, q) => {
         phase = 'seq'; frozen = null; ringOn = false;
-        const bx = ball.x, by = ball.y; const dir = bx < mon.x ? -1 : 1;
+        const bx = q.x, by = q.y; const dir = bx < mon.x ? -1 : 1;
         // 몬스터가 번쩍 + 앞발 할퀴기
         monW.setAlpha(0.85);
         sc.tweens.add({ targets: monW, alpha: 0, duration: D(260) });
@@ -526,29 +682,26 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         play('hit'); vibrate([20, 30, 20]);
         if (!rm) sc.tweens.add({ targets: mon, x: mon.x + 3, duration: 40, yoyo: true, repeat: 3 });
         label('튕겨냈다!', '#ff8a78', W / 2, mon.y - bh - 14, false);
-        await c.tw({ targets: ball, x: bx + dir * 190, y: by - 150, angle: ball.angle + dir * 720, scale: 0.8, duration: 520, ease: 'Quad.easeOut' });
-        ball.setVisible(false);
+        // 맞은 자리에서 새 속도: 옆으로 세게, 위로, 앞으로 오던 힘은 반대로 조금
+        const p = f.p; p.z = Math.min(p.z, ZM - 0.02);
+        p.vx = dir * 6.5 + 0.2 * p.vx; p.vy = 4.2; p.vz = -0.35 * Math.abs(p.vz);
+        f.ax = 0; f.spin = dir * 1800;
+        await flyDone(c, f);
         mon.setScale(MON_K);
         await c.wait(450);
         await nextOrTired(c);
       };
 
-      const onMiss = async (c, L, ux) => {
+      const onMiss = async (c, f, q) => {
         phase = 'seq'; frozen = null;
-        const gy = clamp(Math.max(L.y + 12, 300), 300, 466);
-        const dir = ux >= 0 ? 1 : -1;
-        label('빗나갔다!', '#ffffff', L.x, L.y - 34, false);
-        await c.tw({ targets: ball, x: L.x + ux * 20, y: gy, duration: 220, ease: 'Quad.easeIn' });
-        play('blip');
-        await c.tw({ targets: ball, y: gy - 10, x: ball.x + dir * 10, duration: 140, ease: 'Quad.easeOut' });
-        await c.tw({ targets: ball, y: gy, x: ball.x + dir * 10, duration: 140, ease: 'Quad.easeIn' });
-        await c.tw({ targets: ball, x: ball.x + dir * 150, angle: ball.angle + dir * 600, alpha: 0, duration: 650, ease: 'Quad.easeOut' });
+        label('빗나갔다!', '#ffffff', q.x, q.y - 34, false);
+        await flyDone(c, f);   // 공이 땅에 튀고 굴러 멈추거나 화면 밖으로 나갈 때까지
         ball.setVisible(false);
         await nextOrTired(c);
       };
 
-      const onHit = async (c, rr, curve) => {
-        phase = 'seq';
+      const onHit = async (c, rr, curve, f, q) => {
+        phase = 'seq'; B.free = false;
         const grade = rr < 0.35 ? 'excellent' : rr < 0.65 ? 'great' : 'nice';
         if (RANK[grade] > RANK[result.grade]) result.grade = grade;
         if (curve) result.curve = true;
@@ -557,13 +710,21 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         const [txt, col] = GRADE_TXT[grade];
         label(txt, col, cc.x, cc.y - bh / 2 - 22);
         if (curve) sc.time.delayedCall(D(260), () => label('커브볼!', '#7fd8ff', cc.x, cc.y - bh / 2 + 6, false));
-        const p = Math.min(0.95, BASE_P[rar] * GRADE_K[grade] * (curve ? 1.3 : 1));
+        const pc = Math.min(0.95, BASE_P[rar] * GRADE_K[grade] * (curve ? 1.3 : 1));
         const u = rand();
-        const ok = u < p;
+        const ok = u < pc;
         // 아깝게 놓칠수록 많이 흔들림
-        const close = ok ? 1 : (u - p) / (1 - p);
+        const close = ok ? 1 : (u - pc) / (1 - pc);
         const n = ok ? 3 : close < 0.34 ? 3 : close < 0.67 ? 2 : 1;
-        await suckIn(c, cc.x, cc.y - bh / 2 - 10);
+        // 맞은 자리에서 몬스터 몸에 맞고 위로 톡 튀어 오름 (머리 위쯤까지, 최대 60 도트) → 꼭대기에서 열림
+        const p = f.p; p.z = Math.min(p.z, ZM - 0.03);
+        const rise = clamp(q.y - (cc.y - bh / 2 - 10), 14, 60);
+        p.vy = Math.sqrt(2 * GRAV * rise * q.d / FOC) * 1.03;
+        p.vz = -0.12 * Math.abs(p.vz); p.vx *= 0.15; f.ax = 0; f.spin *= -0.3;
+        play('blip');
+        await flyDone(c, f);
+        const gy = proj(p.x, BR, p.z).y;
+        await suckIn(c, ball.x, ball.y, ball.scaleX, gy);
         await shake(c, n);
         if (ok) { await caught(c); return; }
         await escape(c);
@@ -572,9 +733,10 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
 
       // ─────── 입력 (손가락 하나만 기억, 다른 손가락은 무시) ───────
       const toWorld = (e) => { const r = box.getBoundingClientRect(); return { x: (e.clientX - r.left) / r.width * W, y: (e.clientY - r.top) / r.height * H }; };
+      const heldScale = (x, y) => BALL_K * ZC / (releaseAt(x, y).z + ZC);   // 손에 든 공도 같은 원근 크기
       const cancelGrab = () => {
         grab = null; curveArmed = false;
-        if (phase === 'grab') { phase = 'aim'; sc.tweens.add({ targets: ball, x: HOME.x, y: HOME.y, duration: D(160), ease: 'Quad.easeOut' }); }
+        if (phase === 'grab') { phase = 'aim'; sc.tweens.add({ targets: ball, x: HOME.x, y: HOME.y, scale: 2, duration: D(160), ease: 'Quad.easeOut' }); }
       };
       on(box, 'pointerdown', (e) => {
         if (e.target === skipBtn || done) return;
@@ -586,7 +748,8 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         grab = { id: e.pointerId, y0: p.y, last: p, samples: [{ x: p.x, y: p.y, t: e.timeStamp }], spin: 0, ang: null };
         try { box.setPointerCapture(e.pointerId); } catch { /* */ }
         phase = 'grab'; idleT = 0; hinted = true;
-        ball.setPosition(p.x, p.y);
+        const bx = clamp(p.x, 14, W - 14), by = clamp(p.y, 372, H - 12);
+        ball.setPosition(bx, by).setScale(heldScale(bx, by));
         play('blip');
       });
       on(box, 'pointermove', (e) => {
@@ -607,7 +770,9 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         }
         if (grab.samples.length > 40) grab.samples.splice(0, grab.samples.length - 40);
         const q = grab.samples[grab.samples.length - 1];
-        ball.setPosition(clamp(q.x, 14, W - 14), clamp(q.y, 372, H - 12));   // 공은 아래쪽에서만 따라옴 (몬스터 앞까지 들고 가지 못함)
+        const bx = clamp(q.x, 14, W - 14), by = clamp(q.y, 372, H - 12);   // 공은 아래쪽에서만 따라옴 (몬스터 앞까지 들고 가지 못함)
+        ball.setPosition(bx, by).setScale(heldScale(bx, by));
+        if (curveArmed) ball.setAngle(ball.angle + (curveArmed === 'cw' ? 24 : -24));   // 커브볼 준비: 돌린 방향으로 빙글
       });
       const up = (e) => {
         if (!grab || e.pointerId !== grab.id) return;
@@ -625,22 +790,22 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         const upTotal = grab.y0 - b.y;
         const curve = curveArmed;
         grab = null;
-        if (vy > -180 || upTotal < 14) { evlog.push(['cancel', Math.round(vx), Math.round(vy), Math.round(upTotal)]); cancelGrab(); return; }   // 위로 휙 아님 → 공을 손에 다시
-        throwBall({ x: ball.x, y: ball.y }, vx, vy, curve);
+        const k = box.getBoundingClientRect().width / W;     // 논리 도트 → CSS px (손가락 실제 빠르기, 화면 크기와 상관없이)
+        if (vy * k > -240 || upTotal < 14) { evlog.push(['cancel', Math.round(vx), Math.round(vy), Math.round(upTotal)]); cancelGrab(); return; }   // 위로 휙 아님 → 공을 손에 다시
+        throwBall({ x: ball.x, y: ball.y }, vx, vy, Math.hypot(vx, vy) * k, curve);
       };
       on(box, 'pointerup', up);
       on(box, 'pointercancel', (e) => { if (grab && e.pointerId === grab.id) cancelGrab(); });
       on(box, 'lostpointercapture', (e) => { if (grab && e.pointerId === grab.id && phase === 'grab') cancelGrab(); });
-      // PC: 스페이스/엔터/위 화살표 = 똑바로 던지기
+      // PC: 스페이스/엔터/위 화살표 = 똑바로 던지기 (기준 힘)
       on(window, 'keydown', (e) => {
         if (done || !['Space', 'Enter', 'ArrowUp', 'NumpadEnter'].includes(e.code)) return;
         if (document.activeElement === skipBtn && e.code !== 'ArrowUp') return;
         e.preventDefault();
         if (phase === 'intro' && introSkip) { introSkip(); return; }
         if (phase !== 'aim' || !ballOk()) return;
-        const cc = center(); const dx = cc.x - HOME.x, dy = cc.y - HOME.y; const d = Math.hypot(dx, dy);
-        const sp = S1 * 1.25;
-        throwBall({ x: HOME.x, y: HOME.y }, dx / d * sp, dy / d * sp, false);
+        const cc = center();
+        throwBall({ x: HOME.x, y: HOME.y }, cc.x - HOME.x, cc.y - HOME.y, S_MID, false);
       });
 
       // ─────── 바로 잡기 ───────
@@ -648,6 +813,7 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
         const c = ctl();                 // 지금 하던 연출은 모두 끊김
         speed = 0.5;
         sc.tweens.killAll();
+        fly = null; bsh.clear();
         grab = null; curveArmed = false; ringOn = false; frozen = null; B.free = false; phase = 'seq';
         say(''); showHud(false); fx.clear();
         hint.setVisible(false); hintArrow.setVisible(false);
@@ -655,7 +821,7 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
           mon.setVisible(true).setPosition(SPOT_X, footY).setScale(MON_K).setAngle(0); monW.setAlpha(0);
           B.ox = 0; B.hop = 0;
           const cc = center();
-          ball.setTexture('ball', 0).clearTint().setVisible(true).setAlpha(1).setAngle(0).setScale(1.4).setPosition(cc.x, -20);
+          ball.setTexture('ball', 0).clearTint().setVisible(true).setAlpha(1).setAngle(0).setScale(1.4).setDepth(6).setPosition(cc.x, -20);
           await c.tw({ targets: ball, y: cc.y - bh / 2 - 10, duration: 220, ease: 'Quad.easeOut' });
           await suckIn(c, ball.x, ball.y);
           await shake(c, 1);
@@ -685,8 +851,9 @@ export async function catchScene({ dex, name, rarity = 'common', time } = {}) {
 
       // 시험용 (dev 페이지·자동 시험)
       layer.__cz = {
-        phase: () => phase, ring: () => ({ ...center(), R, ratio: ratio() }), ball: () => ({ x: ball.x, y: ball.y, visible: ball.visible }),
-        ballsLeft: () => ballsLeft, log: evlog, home: HOME, curve: () => curveArmed, world: { W, H },
+        phase: () => phase, ring: () => ({ ...center(), R, ratio: ratio() }), ball: () => ({ x: ball.x, y: ball.y, visible: ball.visible, scale: ball.scaleX, depth: ball.depth }),
+        ballsLeft: () => ballsLeft, log: evlog, home: HOME, curve: () => curveArmed, world: { W, H }, traj: () => traj,
+        freeze: (v) => { B.free = !v; if (v) { resetMon(); mon.setPosition(SPOT_X, footY).setScale(MON_K); } },   // 시험용: 몬스터를 가운데에 세워 둠 (궤적 비교용)
       };
     }
   } catch (e) {

@@ -1,0 +1,28 @@
+몬스터 등굣길 (cross) art credits
+=================================
+
+cross-props.png is a small packed atlas (cropped with Python Pillow by .work/cross/build_props.py; soft
+anti-alias pixels removed, nothing else changed). All source art is CC0 1.0 (public domain); no attribution
+is required, but we credit the authors with thanks. The atlas rectangles are listed in web/js/games/cross.js
+(const PROPS).
+
+1) bucketR, bucketB (beach buckets), pileB, pileR (spade in a sand pile), pebL, pebS (pebbles), star1, star2 (starfish)
+   Pack:    "Beach tileset" (beach_tiles_1.png)
+   Author:  ChikenwingJJA
+   Source:  https://opengameart.org/content/beach-tileset
+   License: CC0 1.0 Universal (Public Domain Dedication), as stated on the page
+
+2) aster (asteroid), rockS, rockT (small rocks), spark, fire1, fire2, fire3 (meteor flames)
+   Pack:    "i are spaceship (16x16 space sprites)" (i_are_spaceship.png)
+   Author:  bart
+   Source:  https://opengameart.org/content/i-are-spaceship-16x16-space-sprites
+   License: CC0 1.0 Universal (Public Domain Dedication), as stated on the page
+
+Downloaded 2026-11-02 from opengameart.org.
+
+Everything else in the game is original code-drawn pixel art in web/js/games/cross.js: all four themes'
+ground, roads, water/sea/lava/void lanes, bridges, rails, trains, the meteor body, cars, boats, minecarts,
+UFOs, logs, surfboards, turtle shells, basalt and asteroid rafts, stepping stones, trees, palms, sandcastles,
+umbrellas, boulders, steam vents, moon rocks, dishes, antennas, stars, the HUD and the chaser monster
+"지각 괴물" (an original monster made of school bells and alarm clocks). The player is their own monster from
+web/sprites/atlas.png, shrunk with a per-block majority filter.
