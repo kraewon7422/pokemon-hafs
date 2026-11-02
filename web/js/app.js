@@ -5,7 +5,7 @@ import { sb, rpc, errorText, reportError } from './sb.js';
 import { kv, persist } from './db.js';
 import { parsePlace, isBag, makeNonce, bagPayload, drawQR } from './qrfmt.js';
 import { Scanner } from './scanner.js';
-import { spriteCanvas, paint } from './sprites.js';
+import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio, isMuted, setMuted } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
@@ -15,6 +15,7 @@ import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
 import { loadBag, openBagScreen } from './bag.js';
 import { minigameButton } from './games/hub.js';
+import { loadAchievements, openAchievements, startSteps } from './eggs.js';
 import { clearGoogleIntents, linkIntent, maskName, maybeOnboard, renderConsent, renderInApp, renderLogin, renderRegister, showOnboarding, withEye } from './login.js';
 
 // ───────────────────────── boot ─────────────────────────
@@ -283,6 +284,10 @@ export function renderShell() {
   history.replaceState({ tab: S.tab }, '');
   renderStatus();
   go(S.tab, { push: false });
+  startSteps();
+  askClassOnce();
+  // 트레이너 카드의 도전과제 배지용 (한 번만, 조용히)
+  if (S.online && !S.ach) loadAchievements().then(() => { if (S.tab === 'home') renderTab(); }).catch(() => {});
 }
 
 // 이스터에그 1: 제목을 빠르게 7번 누르면 몬스터가 화면을 가로질러 달려간다
@@ -409,8 +414,9 @@ export function viewHome() {
     h(`section.trainer${D.complete ? '.gold-card' : ''}`, { 'aria-label': '트레이너 카드' },
       h('div.idno', h('span', 'TRAINER CARD'), h('span', p.student_id.startsWith('g:') ? 'GUEST' : `ID No. ${p.student_id}`)),
       h('div', h('div.name', p.name || '트레이너'), h('div', { style: { fontSize: '13px' } }, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너'),
-        titles.length ? h('div.titles', titles.map((t) => h('span.title-chip', t))) : null),
-      h('div.partner', { onclick: () => eggTap('card') }, partner ? spriteCanvas(dexOf(partner.line_id, partner.stage), 88) : spriteCanvas(1, 88, 'silhouette'),
+        titles.length ? h('div.titles', titles.map((t) => h('span.title-chip', t))) : null,
+        S.ach?.some((a) => a.claimed) && h('div.titles', h('span.title-chip.ach-chip', { onclick: (e) => { e.stopPropagation(); openAchievements(); } }, pix('gold'), ` 도전과제 ${S.ach.filter((a) => a.claimed).length}/${S.ach.length}`))),
+      h('div.partner', { onclick: () => eggTap('card') }, partner ? monSprite(dexOf(partner.line_id, partner.stage), 88, partner) : spriteCanvas(1, 88, 'silhouette'),
         partner && h('button.partner-edit', { 'aria-label': '카드 몬스터 바꾸기', onclick: (e) => { e.stopPropagation(); pickPartner(); } }, pix('pencil'))),
       h('div.stats',
         h('span', '도감', h('b', `${D.found}/${total}`)), h('span', '점수', h('b', p.score)),
@@ -432,6 +438,7 @@ export function viewHome() {
 
     h('button.btn.big.bag-btn', { onclick: () => openBagScreen() }, pix('bag', 'l'), h('span.btn-label', '가방')),
     minigameButton(),
+    h('button.btn.big.ach-btn', { onclick: openAchievements }, pix('gold', 'l'), h('span.btn-label', '도전과제')),
 
     rouletteBox(),
 
@@ -541,6 +548,9 @@ export function openSettings() {
         h('button', { 'aria-pressed': String(!!p.show_on_board), onclick: () => setPublic(true) }, h('span', '공개'), h('small', masked)),
         h('button', { 'aria-pressed': String(!p.show_on_board), onclick: () => setPublic(false) }, h('span', '비공개'), h('small', '익명 트레이너'))),
       h('small', '공개해도 이름 가운데 글자는 가려져요. 언제든 바꿀 수 있어요.')),
+    isStudentAcct(p) && h('section.box.class-row',
+      h('span', h('b', '우리 반'), h('br'), h('small', p.grade ? `${p.grade}학년 ${p.class_no}반 (반별 랭킹)` : '아직 안 정했어요')),
+      h('button.btn.small', { onclick: () => { closeOverlay({ replacing: true }); classSheet(); } }, p.grade ? '바꾸기' : '정하기')),
     ['number', 'id'].includes(p.login) && p.role === 'student' && h('section.box.stack.setting-login',
       h('b', '로그인 정보'),
       h('span', p.login === 'number' ? `학생 · 고유번호 ${p.login_key}` : `비학생 · 아이디 ${p.login_key}`),
@@ -708,7 +718,7 @@ export function confirmLogout() {
 // ───────────────────────── 랭킹 ─────────────────────────
 
 // 랭킹 3가지: 도감 / 점수 / 배틀 승리 × 전체 / 우리 기수
-export const RANK_KINDS = [['dex', '도감'], ['score', '점수'], ['battle', '배틀']];
+export const RANK_KINDS = [['dex', '도감'], ['score', '점수'], ['battle', '배틀'], ['class', '반별']];
 export async function loadRanking() {
   S.rankKind ||= 'score';
   const scope = `${S.rankKind}:${S.rankScope}`;
@@ -716,7 +726,8 @@ export async function loadRanking() {
   S.rank[scope] ||= await kv.get(key);
   if (S.tab === 'rank') renderTab();
   try {
-    const data = await rpc('get_ranking_by', { p_gen: S.rankScope === 'gen' ? S.snap.profile.gen : null, p_kind: S.rankKind }, { retries: 0 });
+    const data = S.rankKind === 'class' ? await rpc('class_ranking', {}, { retries: 0 })
+      : await rpc('get_ranking_by', { p_gen: S.rankScope === 'gen' ? S.snap.profile.gen : null, p_kind: S.rankKind }, { retries: 0 });
     S.rank[scope] = data;
     await kv.set(key, data);
     S.online = true;
@@ -728,6 +739,7 @@ export function viewRank() {
   S.rankKind ||= 'score';
   const r = S.rank[`${S.rankKind}:${S.rankScope}`];
   const p = S.snap.profile;
+  if (S.rankKind === 'class') return viewClassRank(r, p);
   const unit = { dex: (t) => `도감 ${t.value}`, score: (t) => `${t.value}점`, battle: (t) => `${t.value}승` }[S.rankKind];
   const sub = { dex: (t) => `${t.score}점`, score: (t) => `도감 ${t.dex}`, battle: (t) => `도감 ${t.dex} · ${t.score}점` }[S.rankKind];
   return [
@@ -749,6 +761,71 @@ export function viewRank() {
       score: '점수: 1단계 1점 · 2단계 3점 · 3단계 6점 (+희귀·전설 보너스). 동점이면 먼저 도달한 사람이 위. 상품은 점수 순위 기준.',
       battle: '배틀 승리: 다른 트레이너·선생님과의 배틀에서 이긴 횟수. 동점이면 먼저 이긴 사람이 위.' }[S.rankKind]),
   ];
+}
+
+// 반별 랭킹 (0027): 반마다 점수 합계 · 참가자 · 1등
+function viewClassRank(r, p) {
+  const kinds = h('div.seg.rank-kinds', { role: 'group', 'aria-label': '랭킹 종류' }, RANK_KINDS.map(([k, label]) =>
+    h('button', { 'aria-pressed': String(S.rankKind === k), onclick: () => { S.rankKind = k; sfx.blip(); loadRanking(); } }, label)));
+  if (!r) return [kinds, h('div.box', S.online ? '불러오는 중…' : '오프라인이에요. 인터넷이 연결되면 랭킹을 불러와요.')];
+  const mine = r.mine;
+  return [
+    kinds,
+    isStudentAcct(p) && (p.grade
+      ? h('div.box.banner', h('span', `우리 반 ${p.grade}학년 ${p.class_no}반 `, h('b', mine?.rank ? `#${mine.rank}` : '-'), ` / ${r.classes.length}반`), h('small', `${timeAgo(r.at)} 기준`))
+      : h('div.box.banner', h('span', '반을 정하면 우리 반 순위가 보여요.'), h('button.btn.small.primary', { onclick: () => classSheet() }, '반 정하기'))),
+    r.classes.length ? h('ol.rank-list', r.classes.map((c) => h(`li${c.me ? '.me' : ''}`,
+      h(`span.rank-no.r${c.rank}`, c.rank <= 3 ? pix(['gold', 'silver', 'bronze'][c.rank - 1], 'l') : `#${c.rank}`),
+      h('span', h('div', `${c.grade}학년 ${c.class_no}반`, c.me ? ' (우리 반)' : ''),
+        h('div.rank-sub', `${c.players}명 · 1등 ${c.top?.display || '-'} (${c.top?.score ?? 0}점)`)),
+      h('b', `${c.score}점`))))
+      : h('div.box', '아직 반을 정한 학생이 없어요. 설정에서 우리 반을 정해 보세요!'),
+    h('p', { style: { fontSize: '13px', margin: 0 } }, '반별: 그 반 학생들 점수의 합계 (랭킹에 나오는 학생만). 반은 학생 계정만 정할 수 있어요.'),
+  ];
+}
+
+// 우리 반 정하기 — 학생 계정(고유번호)만. 처음 한 번 묻고, 다음부터는 ⚙ 설정에서
+export const isStudentAcct = (p) => p?.role === 'student' && /^\d{6}$/.test(p.student_id || '');
+function askClassOnce() {
+  const p = S.snap?.profile;
+  let later = false;
+  try { later = localStorage.getItem('classLater') === '1'; } catch { /* */ }
+  if (!isStudentAcct(p) || p.grade || later || !S.online || S.classAsked) return;
+  S.classAsked = true;
+  // 처음 안내 등 다른 창이 열려 있으면 닫힐 때까지 기다렸다가 (최대 3분) 한 번만
+  let tries = 0;
+  const t = setInterval(() => {
+    if (++tries > 60 || S.snap?.profile?.grade) { clearInterval(t); return; }
+    if (!document.querySelector('.overlay') && S.snap?.profile) { clearInterval(t); classSheet(true); }
+  }, 3000);
+}
+export function classSheet(first = false) {
+  const p = S.snap.profile;
+  let g = p.grade || null; let c = p.class_no || null;
+  const gSeg = h('div.seg.class-grade', { role: 'group', 'aria-label': '학년' });
+  const cGrid = h('div.class-grid', { role: 'group', 'aria-label': '반' });
+  const ok = h('button.btn.big.primary', '저장');
+  const draw = () => {
+    gSeg.replaceChildren(...[1, 2, 3].map((n) => h('button', { 'aria-pressed': String(g === n), onclick: () => { g = n; sfx.blip(); draw(); } }, `${n}학년`)));
+    cGrid.replaceChildren(...Array.from({ length: 15 }, (_, i) => i + 1).map((n) => h('button', { 'aria-pressed': String(c === n), onclick: () => { c = n; sfx.blip(); draw(); } }, `${n}반`)));
+    ok.disabled = !g || !c;
+    ok.textContent = g && c ? `${g}학년 ${c}반으로 저장` : '학년과 반을 골라요';
+  };
+  ok.onclick = async () => {
+    ok.disabled = true;
+    try {
+      await rpc('set_class', { p_grade: g, p_class: c }, { retries: 0 });
+      Object.assign(S.snap.profile, { grade: g, class_no: c }); kv.set('snap', S.snap);
+      closeOverlay(); sfx.correct();
+      toast(`${g}학년 ${c}반으로 정했어요! 랭킹 → 반별에서 우리 반 순위를 봐요.`, 3500);
+      if (S.tab === 'rank') loadRanking(); else renderTab();
+    } catch (e) { ok.disabled = false; toast(errorText(e.message)); }
+  };
+  draw();
+  sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '우리 반 정하기'),
+    h('p', { style: { margin: 0 } }, '반별 랭킹에서 내 점수가 우리 반 점수로 더해져요. 나중에 ⚙ 설정에서 바꿀 수 있어요.'),
+    gSeg, cGrid, ok,
+    first && h('button.btn.small.ghost', { onclick: () => { try { localStorage.setItem('classLater', '1'); } catch { /* */ } closeOverlay(); } }, '나중에 할게요')]);
 }
 
 // ───────────────────────── 스캔 ─────────────────────────

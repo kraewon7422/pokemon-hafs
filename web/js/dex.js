@@ -1,7 +1,7 @@
 // 지도 · 도감 · 요약 화면 · 진화.
 import { rpc, errorText } from './sb.js';
 import { kv } from './db.js';
-import { spriteCanvas, paint } from './sprites.js';
+import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
 import { S, bag, dexNo, dexOf, dexStats, evolvable, isMythic, isSecret, isWithdrawn, lineOf, maxStage, owned, rules, speciesOf, vibrate } from './state.js';
@@ -136,7 +136,7 @@ export function openDetail(sp) {
   const chance = canEvolve ? evoChance(c) : 0;
   sheet([
     h('div.grab'),
-    h(`div.habitat.t-${line.subject}`, spriteCanvas(sp.id, 176),
+    h(`div.habitat.t-${line.subject}`, c ? monSprite(sp.id, 176, c) : spriteCanvas(sp.id, 176),
       // 잡은 몬스터만: 가방(상태·레벨·기술)으로 바로 가기 — 가방의 '도감' 탭과 짝
       c && h('button.habitat-bag', { type: 'button', onclick: () => toBag(sp.line_id) }, h('span.hb-arrow', '◀'), pix('bag'), '가방')),
     h('div.box',
