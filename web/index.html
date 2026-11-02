@@ -20,7 +20,13 @@
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <div id="app"><div class="login"><div class="logo">HAFS 몬스터</div><div class="press blink">LOADING…</div></div></div>
+  <!-- 첫 화면 (자바스크립트가 뜨기 전): 지금 타이틀 화면과 같은 하늘·풀밭·간판 + 통통 튀는 볼 + 불러오는 막대 -->
+  <div id="app"><div class="login title-screen boot" role="status" aria-label="불러오는 중">
+    <div class="title-plate"><div class="logo">HAFS 몬스터</div><div class="logo-sub">학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!</div></div>
+    <div class="boot-ball" aria-hidden="true"><i></i></div>
+    <div class="boot-bar" aria-hidden="true"><i></i></div>
+    <div class="press">불러오는 중…</div>
+  </div></div>
   <noscript>자바스크립트를 켜 주세요.</noscript>
   <script src="vendor/supabase.js" defer></script>
   <script src="vendor/qrcode.js" defer></script>

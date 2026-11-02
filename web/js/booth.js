@@ -9,7 +9,7 @@ import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, sleep, pixelFontScale } from './ui.js';
 import { idLogin, renderGoogleButton, signOut } from './auth.js';
 // names are shown masked everywhere outside the admin page (강래원 → 강*원)
-const maskName = (n = '') => { n = String(n || '').trim(); return n.length >= 3 ? n[0] + '*'.repeat(n.length - 2) + n.at(-1) : n.length === 2 ? n[0] + '*' : n || '트레이너'; };
+const maskName = (n = '') => { n = String(n || '').trim(); return n.length >= 3 ? n[0] + '*'.repeat(n.length - 2) + n.slice(-1) : n.length === 2 ? n[0] + '*' : n || '트레이너'; };
 
 const root = $('#root');
 let species = [];
@@ -30,7 +30,7 @@ let pendingConfirm = null;   // the student card waiting for 확인 (Enter/Space
 
 async function boot() {
   pixelFontScale();
-  document.addEventListener('pointerdown', unlockAudio);
+  for (const ev of ['pointerdown', 'touchend', 'click']) document.addEventListener(ev, unlockAudio, { passive: true });
   const img = new Image();
   img.onload = () => { gifOk = true; };
   img.src = GIF;

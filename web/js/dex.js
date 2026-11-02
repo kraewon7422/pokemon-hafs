@@ -136,7 +136,9 @@ export function openDetail(sp) {
   const chance = canEvolve ? evoChance(c) : 0;
   sheet([
     h('div.grab'),
-    h(`div.habitat.t-${line.subject}`, spriteCanvas(sp.id, 176)),
+    h(`div.habitat.t-${line.subject}`, spriteCanvas(sp.id, 176),
+      // 잡은 몬스터만: 가방(상태·레벨·기술)으로 바로 가기 — 가방의 '도감' 탭과 짝
+      c && h('button.habitat-bag', { type: 'button', onclick: () => toBag(sp.line_id) }, h('span.hb-arrow', '◀'), pix('bag'), '가방')),
     h('div.box',
       h('div.banner', h('b', `${dexNo(sp)} ${sp.name}`), h(`span.type.t-${line.subject}`, line.subject)),
       h('div.kv',
@@ -157,6 +159,17 @@ export function openDetail(sp) {
     h('button.btn', { onclick: () => closeOverlay() }, '닫기'),
   ]);
   typeText(flavor, sp.flavor);
+}
+
+// 도감 → 가방의 그 몬스터 (가방 목록을 아직 안 받았으면 먼저 받음)
+async function toBag(line) {
+  sfx.blip();
+  try {
+    const { loadBag, openMon } = await import('./bag.js');
+    if (!(S.bag?.box || []).some((x) => x.line === line)) await loadBag({ notify: false });
+    closeOverlay({ replacing: true });
+    openMon(line);
+  } catch (e) { toast(errorText(e.message)); }
 }
 
 // ───────── 요약 화면 (3세대 START → 요약 느낌): 정보 / 능력치 / 기술 ─────────
@@ -193,7 +206,7 @@ export function openSummary(sp, page = 0) {
     page = (i + PAGES.length) % PAGES.length;
     tabs.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === page)));
     sfx.blip();
-    body.replaceChildren(...[sumInfo, sumStats, sumMoves][page](sp, type));
+    body.replaceChildren(...[sumInfo, sumStats, sumMoves][page](sp, type).filter(Boolean));
   };
   const ov = sheet([
     h('div.summary',

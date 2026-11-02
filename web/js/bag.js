@@ -73,8 +73,8 @@ export async function openBagScreen(pocket = 'box', selected = null) {
   const draw = () => {
     last = { pocket: cur, sel };
     tabs.replaceChildren(...POCKETS.map(([k, t]) => h('button', { role: 'tab', 'aria-selected': String(k === cur), onclick: () => { sfx.blip(); cur = k; sel = null; draw(); } }, t)));
-    list.replaceChildren(...pocketList(cur, sel, (k) => { sfx.blip(); sel = k; draw(); }, draw));
-    panel.replaceChildren(...pocketPanel(cur, sel, draw));
+    list.replaceChildren(...pocketList(cur, sel, (k) => { sfx.blip(); sel = k; draw(); }, draw).filter(Boolean));
+    panel.replaceChildren(...pocketPanel(cur, sel, draw).filter(Boolean));
     panel.hidden = cur === 'box' || cur === 'key' || !sel;
   };
   const ov = overlay(h('div.bag-screen',
@@ -202,7 +202,8 @@ export async function openMon(line, page = 0) {
     page = i;
     tabs.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === page)));
     sfx.blip();
-    body.replaceChildren(...[monState, monStats, monMoves][page](boxOf(line), sp, () => openMon(line, page)));
+    // replaceChildren 은 null 을 글자 "null" 로 그림 → 빈 칸(지닌 물건 없음 등)은 빼고 넣음
+    body.replaceChildren(...[monState, monStats, monMoves][page](boxOf(line), sp, () => openMon(line, page)).filter(Boolean));
   };
   const ov = sheet([
     h('div.summary',
@@ -293,7 +294,7 @@ function monMoves(m, sp, reopen) {
   const later = h('div.move-list.later');
   learnset().then((L) => {
     const rows = L.filter((x) => x.how === 'level' && x.line_id === m.line && x.lv > m.level && !m.known.includes(x.move_id)).sort((a, b) => a.lv - b.lv);
-    later.replaceChildren(...rows.map((x) => { const mv = moveOf(x.move_id); return mv ? moveRow(mv, h('span.kind', `Lv.${x.lv}`), () => { sfx.blip(); detail.replaceChildren(moveInfo(mv)); }) : null; }));
+    later.replaceChildren(...rows.map((x) => { const mv = moveOf(x.move_id); return mv ? moveRow(mv, h('span.kind', `Lv.${x.lv}`), () => { sfx.blip(); detail.replaceChildren(moveInfo(mv)); }) : null; }).filter(Boolean));
   }).catch(() => {});
   return [
     h('small.muted', '기술을 누르고 "잊고 다른 기술 배우기"로 바꿔요.'),

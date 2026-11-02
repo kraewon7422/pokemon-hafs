@@ -42,7 +42,7 @@ export function renderConsent() {
 }
 export const maskName = (raw = '') => {
   const n = String(raw || '').trim();
-  return n.length >= 3 ? n[0] + '*'.repeat(n.length - 2) + n.at(-1) : n.length === 2 ? n[0] + '*' : n || '트레이너';
+  return n.length >= 3 ? n[0] + '*'.repeat(n.length - 2) + n.slice(-1) : n.length === 2 ? n[0] + '*' : n || '트레이너';
 };
 
 export function maybeOnboard() {
@@ -159,7 +159,7 @@ export function renderLogin(error = '') {
 
 // 학생: 고유번호 + 내가 정한 비밀번호. 처음 쓰는 번호면 이 비밀번호로 계정이 만들어진다 (0011)
 export function studentLogin(err) {
-  const cid = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, autocomplete: 'username', 'aria-label': '고유번호' });
+  const cid = h('input', { placeholder: '고유번호 (예: 022001)', inputmode: 'numeric', maxlength: 6, autocomplete: 'username', 'aria-label': '고유번호' });
   const pw = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'current-password', maxlength: 72, 'aria-label': '비밀번호' });
   const help = h('div');
   const go = h('button.btn.primary', { type: 'submit' }, '학생 로그인');
@@ -196,7 +196,7 @@ export function studentLogin(err) {
 
 // 비학생 (선생님·학부모·손님·운영진): 아이디 + 비밀번호. 처음 쓰는 아이디면 계정이 만들어진다. 운영진 아이디는 운영자가 만들어 준다 (0018)
 export function idLogin(err) {
-  const idIn = h('input', { placeholder: '아이디 (영문으로 시작, 4~16자)', autocapitalize: 'off', autocomplete: 'username', spellcheck: 'false', maxlength: 16, 'aria-label': '아이디' });
+  const idIn = h('input', { placeholder: '아이디 (영문 4~16자)', autocapitalize: 'off', autocomplete: 'username', spellcheck: 'false', maxlength: 16, 'aria-label': '아이디' });
   const pw = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'current-password', maxlength: 72, 'aria-label': '비밀번호' });
   const help = h('div');
   const go = h('button.btn', { type: 'submit' }, '아이디 로그인');
@@ -319,8 +319,8 @@ export function renderRegister(info) {
   let kind = fixed?.kind === 'id' ? 'id' : 'student';
   const err = h('div.err', { role: 'alert' });
   const help = h('div.stack');
-  const sidIn = h('input', { placeholder: '고유번호 6자리 (예: 022001)', inputmode: 'numeric', maxlength: 6, value: info.school_id || '' });
-  const idIn = h('input', { placeholder: '아이디 (영문으로 시작, 4~16자)', autocapitalize: 'off', spellcheck: 'false', maxlength: 16 });
+  const sidIn = h('input', { placeholder: '고유번호 (예: 022001)', inputmode: 'numeric', maxlength: 6, value: info.school_id || '' });
+  const idIn = h('input', { placeholder: '아이디 (영문 4~16자)', autocapitalize: 'off', spellcheck: 'false', maxlength: 16 });
   const pwIn = h('input', { type: 'password', placeholder: '비밀번호 (6자 이상)', autocomplete: 'new-password', maxlength: 72 });
   const nameIn = h('input', { placeholder: '이름 (예: 홍길동)', maxlength: 20, value: info.name || '', autocomplete: 'name' });
   const show = h('input', { type: 'checkbox', checked: true });
