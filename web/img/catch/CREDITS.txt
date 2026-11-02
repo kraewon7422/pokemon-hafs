@@ -1,0 +1,6 @@
+Catch-scene backgrounds (day.png, sunset.png, night.png) are assembled by tools/draw_catch_bg.py from public-domain (CC0) packs:
+- Day sky and clouds: "Sunny Land" by Luis Zuno (ansimuz) — https://opengameart.org/content/sunny-land-2d-pixel-art-pack
+- Sunset clouds and green mountains: "Background Clouds And Mountains Parallax" by FabinhoSC — https://opengameart.org/content/background-clouds-and-mountains-parallax
+- Night sky, moon, mountains and pines: "Mountain at Dusk Background" by Luis Zuno (ansimuz) — https://opengameart.org/content/mountain-at-dusk-background
+- Grass field: "Tiny Town" by Kenney — https://kenney.nl/assets/tiny-town
+All CC0. Credit is not required but given with thanks. Sky gradients, sun, stars and the monster's spot are drawn in the script.

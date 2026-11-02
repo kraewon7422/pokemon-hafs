@@ -170,8 +170,15 @@ async function hatch(x, redraw) {
 }
 
 // ───────────── 도전과제 ─────────────
-const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item === 'candy' ? `이상한사탕 ×${r.n || 1}` : r?.item ? `물건 ×${r.n || 1}` : r?.evo ? `진화권 ×${r.evo}` : '');
+// 95개 → 묶음(종류) 제목 + 걸러 보기 (받기 / 진행 중 / 완료 / 전체) + 모두 받기
+const ITEM_NAME = { candy: '이상한사탕', energy: '에너지 드링크', bandage: '반창고', mint: '박하사탕', firstaid: '구급상자', lucky: '행운 부적', glasses: '집중 안경', choco: '초코우유', clock: '알람시계' };
+const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item ? `${ITEM_NAME[r.item] || '물건'} ×${r.n || 1}` : r?.evo ? `진화권 ×${r.evo}` : '');
 const rewardIcon = (r) => (r?.egg ? eggImg('egg', r.egg, 0.8) : r?.evo ? pix('ticket', 'l') : pix('gift', 'l'));
+const GROUPS = [['도감', ['dex']], ['장소 · QR', ['places', 'scans', 'days']], ['배틀', ['wins']], ['레이드', ['raids']],
+  ['알 · 걸음', ['eggsgot', 'hatch', 'purplehatch', 'steps']], ['몬스터 키우기', ['shiny', 'evolves', 'stage3', 'rare', 'legend', 'maxlv', 'types', 'learned', 'held']],
+  ['퀴즈 · 룰렛', ['quiz', 'spins']], ['미니게임', ['games', 'mgplays', 'surf', 'dodge', 'land', 'cross']], ['비밀', ['secrets']]];
+const groupOf = (kind) => GROUPS.find(([, ks]) => ks.includes(kind))?.[0] || '기타';
+const ready = (a) => a.done && !a.claimed;
 
 export async function loadAchievements() {
   S.ach = await rpc('achievements', {}, { retries: 0 });
@@ -182,25 +189,57 @@ export async function openAchievements() {
   sfx.select();
   if (!S.online) return toast('도전과제는 인터넷이 필요해요.');
   try { await loadAchievements(); } catch (e) { return toast(errorText(e.message)); }
+  let filter = (S.ach || []).some(ready) ? 'ready' : 'todo';
   const body = h('div.ach-list');
   const head = h('div.ach-head');
+  const tabs = h('div.seg.ach-tabs', { role: 'group', 'aria-label': '도전과제 걸러 보기' });
+  const allBtn = h('button.btn.gold.ach-all');
   const draw = () => {
     const L = S.ach || [];
-    head.replaceChildren(h('b', pix('gold', 'l'), ' 도전과제'), h('span.chip', `${L.filter((a) => a.claimed).length} / ${L.length} 완료`));
-    body.replaceChildren(...[...L].sort((a, b) => (b.done && !b.claimed) - (a.done && !a.claimed) || a.claimed - b.claimed).map((a) => {
-      const pct = Math.min(100, (a.progress / a.target) * 100);
-      return h(`div.ach-row${a.claimed ? '.claimed' : a.done ? '.done' : ''}`,
-        h('span.ach-ico', rewardIcon(a.reward)),
-        h('span.ach-main', h('b', a.title), h('small', a.desc),
-          h('span.ach-bar', h('i', { style: { width: `${pct}%` } })),
-          h('small.muted', `${Math.min(a.progress, a.target).toLocaleString()} / ${a.target.toLocaleString()} · 보상 ${rewardText(a.reward)}`)),
-        a.claimed ? h('span.chip.ach-ok', '받음') : a.done
-          ? h('button.btn.small.gold', { onclick: (e) => claim(a, e.currentTarget, draw) }, '받기')
-          : null);
-    }));
+    const n = { ready: L.filter(ready).length, todo: L.filter((a) => !a.done).length, done: L.filter((a) => a.claimed).length, all: L.length };
+    if (filter === 'ready' && !n.ready) filter = 'todo';
+    head.replaceChildren(h('b', pix('gold', 'l'), ' 도전과제'), h('span.chip', `${n.done} / ${n.all} 완료`));
+    tabs.replaceChildren(...[['ready', '받기'], ['todo', '진행 중'], ['done', '완료'], ['all', '전체']].map(([k, t]) =>
+      h('button', { 'aria-pressed': String(filter === k), onclick: () => { sfx.blip(); filter = k; draw(); body.scrollTop = 0; } }, h('span', t), h('small', String(n[k])))));
+    allBtn.hidden = n.ready < 2;
+    allBtn.textContent = `보상 ${n.ready}개 모두 받기`;
+    const shown = L.filter((a) => (filter === 'ready' ? ready(a) : filter === 'todo' ? !a.done : filter === 'done' ? a.claimed : true));
+    // 진행 중은 거의 다 된 것부터
+    if (filter === 'todo') shown.sort((a, b) => b.progress / b.target - a.progress / a.target);
+    const rows = [];
+    if (filter === 'todo') rows.push(...shown.map(row));
+    else for (const [g] of [...GROUPS, ['기타']]) {
+      const inG = shown.filter((a) => groupOf(a.kind) === g);
+      if (inG.length) rows.push(h('div.ach-group', g, h('small', ` ${inG.filter((a) => a.claimed).length}/${L.filter((a) => groupOf(a.kind) === g).length}`)), ...inG.map(row));
+    }
+    body.replaceChildren(...(rows.length ? rows : [h('p.muted', { style: { textAlign: 'center' } }, filter === 'done' ? '아직 받은 보상이 없어요.' : '여기에 보일 도전과제가 없어요.')]));
+  };
+  const row = (a) => {
+    const pct = Math.min(100, (a.progress / a.target) * 100);
+    return h(`div.ach-row${a.claimed ? '.claimed' : a.done ? '.done' : ''}`,
+      h('span.ach-ico', rewardIcon(a.reward)),
+      h('span.ach-main', h('b', a.title), h('small', a.desc),
+        h('span.ach-bar', h('i', { style: { width: `${pct}%` } })),
+        h('small.muted', `${Math.min(a.progress, a.target).toLocaleString()} / ${a.target.toLocaleString()} · `, h('span.nw', `보상 ${rewardText(a.reward)}`))),
+      a.claimed ? h('span.chip.ach-ok', '받음') : a.done
+        ? h('button.btn.small.gold', { onclick: (e) => claim(a, e.currentTarget, draw) }, '받기')
+        : null);
+  };
+  allBtn.onclick = async () => {
+    allBtn.disabled = true; let got = 0;
+    for (const a of (S.ach || []).filter(ready)) {
+      try {
+        const r = await rpc('claim_achievement', { p_key: a.key }, { retries: 0 });
+        S.ach = r.list || S.ach; got += 1;
+        if (r.evo_tickets != null && S.snap?.profile) S.snap.profile.evo_tickets = r.evo_tickets;
+      } catch (e) { if (e.message === 'EGG_FULL') { toast('알 주머니가 꽉 찼어요 (9개). 알 보상은 부화시킨 뒤에 받아요.', 4000); continue; } toast(errorText(e.message)); break; }
+    }
+    if (got) { sfx.correct(); toast(`보상 ${got}개를 받았어요!`, 3000); loadEggs().catch(() => {}); }
+    allBtn.disabled = false; draw();
+    if (S.tab === 'home') renderTab();
   };
   draw();
-  sheet([h('div.grab'), head, h('small.muted', '조건을 채우면 "받기"를 눌러 보상을 받아요. 알은 가방 → 알에 들어가요.'), body,
+  sheet([h('div.grab'), head, tabs, allBtn, h('small.muted', '조건을 채우면 "받기"를 눌러 보상을 받아요. 알은 가방 → 알에 들어가요.'), body,
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')]);
 }
 
