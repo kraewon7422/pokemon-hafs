@@ -1,13 +1,14 @@
 // 가방 (0020): 몬스터 박스 · 도구 · 회복약 · 기술머신 · 티켓. 3·4세대 가방처럼 주머니 탭 → 목록 → 아래 설명·버튼.
 // 몬스터를 누르면 상태(레벨·경험치·지닌 물건) / 능력치 / 기술(잊고 배우기) / 도감.
 import { sb, rpc, errorText } from './sb.js';
-import { spriteCanvas } from './sprites.js';
+import { spriteCanvas, monSprite } from './sprites.js';
 import { sfx } from './sfx.js';
 import { h, josa, toast, pix } from './ui.js';
-import { S, collection, speciesOf, dexOf } from './state.js';
+import { S, collection, speciesOf, dexOf, owned } from './state.js';
 import { overlay, sheet, closeOverlay, openBag } from './app.js';
 import { openDetail, typeOf, STAT_KEYS, CAT_LABEL, KIND_LABEL } from './dex.js';
 import { moveOf } from './battle.js';
+import { eggPocket, loadEggs, TIER } from './eggs.js';
 
 // 아이콘 순서 = tools/draw_fx.py ITEM_ICONS (web/img/items.png, 16px 칸)
 const TM_TYPES = ['국어', '수학', '영어', '물리', '화학', '생명', '지구', '지리', '정치경제', '윤리', '역사', '외국어', '정보', '체육', '음악', '보통', '전설'];
@@ -48,6 +49,8 @@ export async function loadBag({ notify = true } = {}) {
     if (notify && seen > 0) {
       for (const e of r.log || []) {
         if (e.item === '_team_level') toast(`장소 ${e.qty}곳 방문! 배틀 팀 몬스터의 레벨이 올랐다!`, 4000);
+        else if (e.item === '_egg_steps') toast(`새 장소 방문! 부화기 알이 ${e.qty}걸음 자랐다!`, 4000);
+        else if (e.item?.startsWith('_egg_')) toast(`${josa(TIER[e.item.slice(5)] || '알', '을', '를')} 받았다! (${WHY[e.why] || (e.why === 'achievement' ? '도전과제' : '')}) 가방 → 알`, 4500);
         else if (itemOf(e.item)) toast(`${josa(itemOf(e.item).name, '을', '를')} 주웠다! (${WHY[e.why] || ''})`, 4000);
       }
     }
@@ -57,7 +60,7 @@ export async function loadBag({ notify = true } = {}) {
   return loading;
 }
 
-const POCKETS = [['box', '몬스터'], ['tool', '도구'], ['med', '회복약'], ['tm', '기술머신'], ['key', '티켓']];
+const POCKETS = [['box', '몬스터'], ['egg', '알'], ['tool', '도구'], ['med', '회복약'], ['tm', '기술머신'], ['key', '티켓']];
 
 let last = { pocket: 'box', sel: null };
 const backToBag = () => openBagScreen(last.pocket, last.sel);
@@ -65,7 +68,7 @@ const backToBag = () => openBagScreen(last.pocket, last.sel);
 export async function openBagScreen(pocket = 'box', selected = null) {
   sfx.select();
   if (!S.online) return toast('가방은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.');
-  try { await loadBag(); } catch (e) { return toast(errorText(e.message)); }
+  try { await Promise.all([loadBag(), loadEggs().catch(() => null)]); } catch (e) { return toast(errorText(e.message)); }
   let cur = pocket; let sel = selected;
   const tabs = h('div.bag-tabs', { role: 'tablist' });
   const list = h('div.bag-list');
@@ -75,7 +78,7 @@ export async function openBagScreen(pocket = 'box', selected = null) {
     tabs.replaceChildren(...POCKETS.map(([k, t]) => h('button', { role: 'tab', 'aria-selected': String(k === cur), onclick: () => { sfx.blip(); cur = k; sel = null; draw(); } }, t)));
     list.replaceChildren(...pocketList(cur, sel, (k) => { sfx.blip(); sel = k; draw(); }, draw).filter(Boolean));
     panel.replaceChildren(...pocketPanel(cur, sel, draw).filter(Boolean));
-    panel.hidden = cur === 'box' || cur === 'key' || !sel;
+    panel.hidden = cur === 'box' || cur === 'key' || cur === 'egg' || !sel;
   };
   const ov = overlay(h('div.bag-screen',
     h('div.bag-head', h('b', pix('bag'), ' 가방'), h('button.btn.small', { onclick: () => closeOverlay() }, '닫기')),
@@ -86,13 +89,14 @@ export async function openBagScreen(pocket = 'box', selected = null) {
 }
 
 function pocketList(cur, sel, pick, redraw) {
+  if (cur === 'egg') return eggPocket(redraw);
   if (cur === 'box') {
     const box = [...(S.bag?.box || [])].sort((a, b) => b.level - a.level || a.line - b.line);
     if (!box.length) return [h('p.muted', '아직 몬스터가 없어요. QR을 찍어 모아요!')];
     return [h('div.box-grid', box.map((m) => {
       const sp = speciesOf(dexOf(m.line, m.stage));
       return h('button.box-cell', { onclick: () => openMon(m.line) },
-        spriteCanvas(sp.id, 48), h('small', `Lv.${m.level}`), m.held ? h('span.box-held', itemIcon(m.held, 16)) : null);
+        monSprite(sp.id, 48, owned(m.line)), h('small', `Lv.${m.level}`), m.held ? h('span.box-held', itemIcon(m.held, 16)) : null);
     })), h('small.muted', '몬스터를 누르면 상태 · 능력치 · 기술 · 도감을 볼 수 있어요.')];
   }
   if (cur === 'key') {
@@ -208,7 +212,8 @@ export async function openMon(line, page = 0) {
   const ov = sheet([
     h('div.summary',
       h('div.sum-top', h('span', sp.name), h(`span.type.t-${type}`, type), h('span.sum-lv', `Lv.${m.level}`)),
-      h('div.sum-main', h(`div.sum-pic.t-bg-${type}`, spriteCanvas(sp.id, 112)), h('div.sum-right', tabs, body))),
+      h('div.sum-main', h(`div.sum-pic.t-bg-${type}`, monSprite(sp.id, 112, owned(line)),
+        owned(line)?.from_egg && h('span.egg-born', { title: '알에서 태어남' }, '알에서 태어남')), h('div.sum-right', tabs, body))),
     h('button.btn', { onclick: backToBag }, '가방으로'),
   ]);
   ov.classList.add('sum-overlay', 'mon-view');
@@ -227,6 +232,7 @@ function monState(m, sp, reopen) {
         catch (e) { toast(errorText(e.message)); }
       } }, '빼기') : null),
     held && h('small.muted', held.description),
+    shinyRow(m.line, reopen),
     h('b', '레벨 올리는 법'),
     h('ul.lv-src',
       src.battle !== false && h('li', '배틀 (이기면 더 많이, 실시간 배틀은 1.5배)'),
@@ -235,6 +241,17 @@ function monState(m, sp, reopen) {
       src.catch !== false && h('li', '같은 선생님 몬스터를 또 잡기 +1'),
       h('li', '이상한사탕 +1 (가방 → 도구)')),
   ];
+}
+
+// 반짝 색 (알에서 반짝으로 태어난 몬스터만): 켜고 끄기
+function shinyRow(line, reopen) {
+  const c = owned(line);
+  if (!c?.shiny) return null;
+  return h('div.bag-item.slim.shiny-row', h('i.shiny-ico', pix('spark')), h('span', h('small', '반짝이는 색'), h('br'), h('b', c.shiny_on ? '켜짐' : '꺼짐')),
+    h('button.btn.small', { onclick: async () => {
+      try { await rpc('set_shiny', { p_line: line, p_on: !c.shiny_on }, { retries: 0 }); c.shiny_on = !c.shiny_on; sfx.blip(); reopen(); }
+      catch (e) { toast(errorText(e.message)); }
+    } }, c.shiny_on ? '보통 색으로' : '반짝 색으로'));
 }
 
 function monStats(m, sp) {

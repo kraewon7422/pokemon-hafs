@@ -1384,7 +1384,32 @@ async function studentDetail(sid, reload) {
     h('div.row', h('div', { style: { flex: '1 1 220px' } }, itemSel), itemQty, itemBtn),
     h('div.row', h('div', { style: { flex: '1 1 220px' } }, lvLine), lvInp, lvBtn));
 
-  return [info, relinkBox, grantBox, growBox, tBox, cBox, eBox, dangerBox];
+  // 알 주기 · 반 고치기 (0027)
+  const eggTier = h('select.inp', { 'aria-label': '알 종류' }, [['green', '초록 점박이 알 (1,000걸음)'], ['yellow', '노랑 점박이 알 (2,500걸음)'], ['purple', '보라 점박이 알 (5,000걸음)']]
+    .map(([v, t]) => h('option', { value: v }, t)));
+  const eggN = h('input.inp', { type: 'number', min: 1, max: 20, value: 1, style: { width: '72px' }, 'aria-label': '개수' });
+  const eggBtn = h('button.btn.go', '알 주기');
+  eggBtn.onclick = () => busy(eggBtn, async () => {
+    const r = await rpc('admin_give_egg', { p_student_id: sid, p_tier: eggTier.value, p_n: Number(eggN.value) });
+    toast(r.given ? `알 ${r.given}개를 줬어요. (알 주머니가 꽉 차면 덜 들어가요)` : '알 주머니가 꽉 차서 못 줬어요 (9개).');
+  });
+  const isStu = /^\d{6}$/.test(p.student_id || '') && p.role === 'student';
+  const grSel = h('select.inp', { 'aria-label': '학년', style: { width: '96px' } }, h('option', { value: '' }, '학년 없음'), [1, 2, 3].map((n) => h('option', { value: n, selected: p.grade === n }, `${n}학년`)));
+  const clSel = h('select.inp', { 'aria-label': '반', style: { width: '96px' } }, h('option', { value: '' }, '반 없음'), Array.from({ length: 20 }, (_, i) => i + 1).map((n) => h('option', { value: n, selected: p.class_no === n }, `${n}반`)));
+  const clBtn = h('button.btn', '반 저장');
+  clBtn.onclick = () => busy(clBtn, async () => {
+    const g = grSel.value ? Number(grSel.value) : null; const c = clSel.value ? Number(clSel.value) : null;
+    if ((g == null) !== (c == null)) { toast('학년과 반을 둘 다 고르거나, 둘 다 비워 주세요.'); return; }
+    await rpc('admin_set_class', { p_student_id: sid, p_grade: g, p_class: c });
+    toast(g ? `${g}학년 ${c}반으로 고쳤어요.` : '반을 지웠어요.');
+  });
+  const eggBox = h('div.box.stack',
+    h('h3', '알 주기 · 반 고치기'),
+    h('p.small-txt.muted', '알은 학생 가방 → 알에 들어가요 (최대 9개). 반은 학생 계정만 (반별 랭킹용, 학생이 잘못 골랐을 때).'),
+    h('div.row', h('div', { style: { flex: '1 1 220px' } }, eggTier), eggN, eggBtn),
+    isStu ? h('div.row', { style: { flexWrap: 'wrap', gap: '8px' } }, grSel, clSel, clBtn) : h('small.muted', '비학생 계정은 반이 없어요.'));
+
+  return [info, relinkBox, grantBox, growBox, eggBox, tBox, cBox, eBox, dangerBox];
 }
 
 const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자' };

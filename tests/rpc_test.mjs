@@ -1152,5 +1152,109 @@ console.log('\n[36] 미니게임 몬스터 등굣길 (0026)');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
+console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
+{
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'eg1234' })).error);
+  const C = client(await pwLogin(`${sid}@code.local`, 'eg1234'));
+  await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '알테스트' });
+  ok((await anon.rpc('egg_state')).error, 'anon cannot read eggs');
+  const st0 = (await C.rpc('egg_state')).data;
+  ok(st0?.eggs?.length === 0 && st0.hold_max === 9 && st0.incubators === 3 && st0.need?.green === 1000 && st0.day_max === 30000,
+     'empty egg state with the settings', st0);
+  ok((await C.rpc('admin_give_egg', { p_student_id: sid, p_tier: 'green', p_n: 1 })).error === 'NOT_ADMIN', 'students cannot give eggs');
+  ok((await admin.rpc('admin_give_egg', { p_student_id: sid, p_tier: 'pink', p_n: 1 })).error === 'BAD_TIER', 'unknown egg tier refused');
+  const g = (await admin.rpc('admin_give_egg', { p_student_id: sid, p_tier: 'green', p_n: 4 })).data;
+  ok(g?.given === 4 && g.eggs === 4, 'admin gives 4 green eggs', g);
+  const ids = (await C.rpc('egg_state')).data.eggs.map((e) => e.id);
+  for (const id of ids.slice(0, 3)) await C.rpc('egg_incubate', { p_egg: id });
+  ok((await C.rpc('egg_incubate', { p_egg: ids[3] })).error === 'NO_SLOT', 'fourth egg: NO_SLOT (3 incubators full)');
+  ok((await C.rpc('egg_incubate', { p_egg: 999999999 })).error === 'NOT_FOUND', 'someone else\'s / missing egg: NOT_FOUND');
+  ok((await C.rpc('egg_hatch', { p_egg: ids[0] })).error === 'NOT_READY', 'cannot hatch before enough steps');
+  ok((await C.rpc('egg_add_steps', { p_steps: -5 })).error === 'BAD_STEPS', 'negative steps refused');
+  const a1 = (await C.rpc('egg_add_steps', { p_steps: 50000 })).data;
+  ok(a1?.accepted > 0 && a1.accepted <= 2000 && a1.steps_today === a1.accepted, 'huge burst only partly accepted (≤ 200/min × 10 min)', a1?.accepted);
+  ok(a1?.eggs?.filter((e) => e.slot).every((e) => e.steps === e.need) && a1.ready.length === 3
+     && a1.eggs.find((e) => e.id === ids[3]).steps === 0, 'incubating eggs progress (capped at need), the 4th does not; ready list', a1?.eggs);
+  const a2 = (await C.rpc('egg_add_steps', { p_steps: 5000 })).data;
+  ok(a2?.accepted < 100, 'right after: almost nothing more accepted', a2?.accepted);
+  const h = (await C.rpc('egg_hatch', { p_egg: ids[0] })).data;
+  ok(h?.new === true && h.tier === 'green' && h.level === 8 && h.rarity === 'common' && typeof h.shiny === 'boolean' && h.egg_move === null,
+     'green egg → new common monster at Lv.8', h);
+  const s1 = (await C.rpc('sync')).data.state;
+  const col = s1.collection.find((c) => c.line_id === h.line);
+  ok(col?.from_egg === true && typeof col.shiny === 'boolean' && typeof col.shiny_on === 'boolean', 'collection row from_egg (+ shiny flags in sync)', col);
+  ok(s1.profile.score >= 1 && s1.profile.dex_count === 1, 'score / dex updated like a catch', s1.profile);
+  ok((await C.rpc('egg_hatch', { p_egg: ids[0] })).error === 'NOT_FOUND', 'an egg hatches only once');
+  ok((await C.rpc('set_shiny', { p_line: 99, p_on: true })).error === 'NOT_OWNED', 'set_shiny: not owned');
+  const other = h.line === 1 ? 2 : 1;
+  await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: other, p_stage: 1 });
+  ok((await C.rpc('set_shiny', { p_line: other, p_on: true })).error === 'SHINY_LOCKED', 'set_shiny refused while the shiny colour is locked');
+  if (col?.shiny) ok((await C.rpc('set_shiny', { p_line: h.line, p_on: false })).data?.on === false, 'shiny unlocked → can turn it off');
+  await C.rpc('egg_hatch', { p_egg: ids[1] }); await C.rpc('egg_hatch', { p_egg: ids[2] });
+  // 노랑·보라 (짧은 걸음으로 만들어서) + 처음 가 보는 장소 QR = 보너스 걸음 · 알
+  await patchSetting('egg_steps', { green: 1000, yellow: 300, purple: 300 });
+  await admin.rpc('admin_give_egg', { p_student_id: sid, p_tier: 'yellow', p_n: 1 });
+  await admin.rpc('admin_give_egg', { p_student_id: sid, p_tier: 'purple', p_n: 1 });
+  await patchSetting('egg_steps', { green: 1000, yellow: 2500, purple: 5000 });
+  const st2 = (await C.rpc('egg_state')).data;
+  const yid = st2.eggs.find((e) => e.tier === 'yellow').id, pid = st2.eggs.find((e) => e.tier === 'purple').id;
+  for (const id of [yid, pid, ids[3]]) await C.rpc('egg_incubate', { p_egg: id });
+  await patchSetting('egg_drop_place', 1);
+  const sc = (await C.rpc('sync', { p_scans: [{ n: nonce(), q: 'A05', t: T.A05.token }] })).data;
+  await patchSetting('egg_drop_place', 0.25);
+  ok(sc?.acks?.[0]?.status === 'ok', 'place scan still works (ack ok)', sc?.acks);
+  const st3 = (await C.rpc('egg_state')).data;
+  ok(st3.eggs.find((e) => e.id === ids[3])?.steps === 300 && st3.eggs.find((e) => e.id === yid)?.steps === 300,
+     'new place QR: +300 steps to incubating eggs (not counted in the daily steps)', st3.eggs);
+  ok(st3.eggs.length === 4 && st3.eggs.some((e) => !e.slot && ['green', 'yellow'].includes(e.tier)), 'new place QR: an egg dropped', st3.eggs);
+  const lg = (await C.rpc('bag_state', { p_since: 0 })).data.log.map((x) => x.item + ':' + x.why);
+  ok(lg.includes('_egg_steps:place') && lg.some((x) => /^_egg_(green|yellow):place$/.test(x)), 'phone notice in bag log (_egg_steps / _egg_<tier>)', lg);
+  const sc2 = (await C.rpc('sync', { p_scans: [{ n: nonce(), q: 'A05', t: T.A05.token }] })).data;
+  const st4 = (await C.rpc('egg_state')).data;
+  ok(st4.eggs.find((e) => e.id === ids[3])?.steps === 300, 'same place again: no bonus steps', sc2?.acks);
+  const hy = (await C.rpc('egg_hatch', { p_egg: yid })).data;
+  const box = (await C.rpc('bag_state', { p_since: 0 })).data.box.find((b) => b.line === hy?.line);
+  ok(hy?.tier === 'yellow' && hy.rarity === 'rare' && Number.isInteger(hy.egg_move) && box?.learned.includes(hy.egg_move) && box.moves.includes(hy.egg_move),
+     'yellow egg → rare monster + egg move learned and in the 4 moves', { hy, box });
+  const hp = (await C.rpc('egg_hatch', { p_egg: pid })).data;
+  ok(hp?.tier === 'purple' && ['rare', 'legendary'].includes(hp.rarity) && hp.held && ['held', 'bag'].includes(hp.held_to),
+     'purple egg → rare/legend + held item', hp);
+  // 도전과제
+  ok((await anon.rpc('achievements')).error, 'anon cannot read achievements');
+  const al = (await C.rpc('achievements')).data;
+  const hatch5 = al?.find((x) => x.key === 'hatch5');
+  ok(al?.length === 18 && hatch5?.done === true && hatch5.progress === 5 && !hatch5.claimed, '18 achievements, hatch 5 done', hatch5);
+  ok((await C.rpc('claim_achievement', { p_key: 'dex60' })).error === 'NOT_DONE', 'unfinished achievement cannot be claimed');
+  ok((await C.rpc('claim_achievement', { p_key: 'nope' })).error === 'BAD_KEY', 'unknown achievement');
+  const before = ((await C.rpc('bag_state')).data.items.find((i) => i.key === 'candy')?.qty) || 0;
+  const cl = (await C.rpc('claim_achievement', { p_key: 'hatch5' })).data;
+  const after = ((await C.rpc('bag_state')).data.items.find((i) => i.key === 'candy')?.qty) || 0;
+  ok(cl?.list?.find((x) => x.key === 'hatch5')?.claimed === true && after === before + 2, 'claim → reward once (2 candies)', { before, after });
+  ok((await C.rpc('claim_achievement', { p_key: 'hatch5' })).error === 'ALREADY_CLAIMED', 'second claim refused');
+  const fill = (await admin.rpc('admin_give_egg', { p_student_id: sid, p_tier: 'green', p_n: 20 })).data;
+  ok(fill?.eggs === 9 && fill.given < 20, 'eggs stop at hold max (9)', fill);
+  ok((await C.rpc('claim_achievement', { p_key: 'hatch1' })).error === 'EGG_FULL', 'egg reward with a full egg box → EGG_FULL (not claimed)');
+  ok((await C.rpc('achievements')).data.find((x) => x.key === 'hatch1')?.claimed === false, 'EGG_FULL claim did not count');
+  // 반
+  ok((await C.rpc('set_class', { p_grade: 4, p_class: 1 })).error === 'BAD_CLASS', 'grade 4 refused');
+  const pc = (await C.rpc('set_class', { p_grade: 2, p_class: 7 })).data;
+  ok(pc?.grade === 2 && pc.class_no === 7, 'student sets grade/class', pc);
+  const cr = (await C.rpc('class_ranking')).data;
+  const mine = cr?.classes?.find((x) => x.grade === 2 && x.class_no === 7);
+  ok(mine?.me === true && mine.players >= 1 && mine.score >= 1 && mine.top?.display && cr.mine?.rank === mine.rank && cr.can_set === true,
+     'class ranking lists my class (score sum, top player)', { mine, me: cr?.mine });
+  ok((await anon.rpc('class_ranking')).error, 'anon cannot read class ranking');
+  ok((await C.rpc('admin_set_class', { p_student_id: sid, p_grade: 3, p_class: 1 })).error === 'NOT_ADMIN', 'students cannot use admin_set_class');
+  ok((await admin.rpc('admin_set_class', { p_student_id: sid, p_grade: 3, p_class: 1 })).data?.grade === 3
+     && (await C.rpc('sync')).data.state.profile.class_no === 1, 'admin sets class (profile shows it)');
+  const nid = 'tcl' + Math.random().toString(36).slice(2, 9);
+  await anon.rpc('create_id_account', { p_id: nid, p_password: 'idpass1' });
+  const N = client(await pwLogin(`${nid}@id.local`, 'idpass1'));
+  await N.rpc('register_profile', { p_kind: 'id', p_student_id: null, p_name: '반손님' });
+  ok((await N.rpc('set_class', { p_grade: 1, p_class: 1 })).error === 'NOT_STUDENT', 'non-student id account cannot set a class');
+  ok((await N.rpc('class_ranking')).data?.can_set === false, 'non-student sees can_set false');
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid, `g:${nid}`], p_confirm: '삭제' });
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -264,6 +264,115 @@ FX = [('par', fx_par), ('brn', fx_brn), ('psn', fx_psn), ('frz', fx_frz), ('heal
       ('flinch', lambda f: kenney('emote_drops', None, f))]
 
 
+
+# ── 알 (0027): web/img/eggs.png — 칸 32×40, 순서 EGG_CELLS (앱의 web/js/eggs.js 와 같아야 함)
+# 초록·노랑·보라 점박이 알 (흰 바탕 + 색 점), 금 간 알 (부화 직전), 부화기 (유리 덮개 + 받침) 안의 알, 빈 부화기
+EGG_TIER = {'green': '#58b848', 'yellow': '#f0c030', 'purple': '#9a58d0'}
+EGG_W, EGG_H = 32, 40
+
+
+def egg_body(d, ox, oy, col, crack=False):
+    """알 하나 (18×22) 를 (ox, oy) 왼쪽 위에. 위가 좁은 달걀 모양 + 왼쪽 위 빛 + 오른쪽 아래 그늘 + 색 점."""
+    base = rgb('#f8f4e8'); lit = rgb('#ffffff'); dark = rgb('#d8d0bc'); c = rgb(col); cd = shade(c, .78)
+    w, h = 18, 22
+    import math
+    for y in range(h):
+        v = (y + .5) / h * 2 - 1                         # -1 (위) … 1 (아래)
+        # 달걀 곡선: 타원에 아래쪽을 조금 더 넓게 (위는 뾰족, 아래는 둥글게)
+        half = (w / 2) * math.sqrt(max(0, 1 - v * v)) * (1 + .16 * v) / 1.06
+        x0 = int(round(w / 2 - half)); x1 = int(round(w / 2 + half)) - 1
+        for x in range(x0, x1 + 1):
+            u = (x - x0) / max(1, x1 - x0)
+            col_ = base
+            if u + (v + 1) * .18 > .95: col_ = dark                       # 오른쪽 아래 그늘
+            if u < .32 and -.75 < v < -.1 and u > .08: col_ = lit         # 왼쪽 위 빛
+            d.point((ox + x, oy + y), fill=col_)
+    # 색 점 (크기 다른 점 6개)
+    for sx, sy, r in ((4, 5, 2), (11, 3, 1), (12, 10, 3), (4, 13, 2), (9, 17, 2), (14, 16, 1)):
+        for yy in range(-r, r + 1):
+            for xx in range(-r, r + 1):
+                if xx * xx + yy * yy <= r * r + (1 if r > 1 else 0):
+                    px_, py_ = ox + sx + xx, oy + sy + yy
+                    if d.im.getpixel((px_, py_))[3] > 0:
+                        d.point((px_, py_), fill=cd if xx + yy > 0 else c)
+    if crack:
+        for x, y in ((3, 9), (4, 10), (5, 9), (6, 8), (7, 9), (8, 10), (9, 11), (10, 10), (11, 9), (12, 10), (13, 11), (14, 10), (8, 11), (8, 12), (12, 11), (12, 12)):
+            d.point((ox + x, oy + y), fill=OUTLINE)
+
+
+def incubator(d, ox, oy, glow):
+    """부화기: 아래 받침 (짙은 남색 + 빛나는 띠) + 위 유리 덮개 (밝은 하늘색 테두리)."""
+    g = rgb(glow); gd = shade(g, .7)
+    # 받침
+    for y in range(31, 39):
+        inset = 3 if y < 33 else 2
+        for x in range(inset, EGG_W - inset):
+            c = rgb('#2c3c5c') if y >= 34 else rgb('#46587c')
+            d.point((ox + x, oy + y), fill=c)
+    for x in range(5, EGG_W - 5):
+        d.point((ox + x, oy + 33), fill=g if (x // 2) % 2 == 0 else gd)
+    # 유리 덮개 (반투명) + 테
+    glass = (176, 224, 248, 46); rim = (220, 244, 255, 230); shine = (255, 255, 255, 170)
+    for y in range(4, 31):
+        for x in range(5, EGG_W - 5):
+            top = y < 8
+            if top and (x - 16) ** 2 / 121 + (y - 8) ** 2 / 16 > 1: continue
+            edge = x in (5, EGG_W - 6) or (top and (x - 16) ** 2 / 121 + (y - 8) ** 2 / 16 > .72)
+            d.point((ox + x, oy + y), fill=rim if edge else glass)
+    for y in range(9, 26):
+        d.point((ox + 8, oy + y), fill=shine)
+    for y in range(11, 18):
+        d.point((ox + 10, oy + y), fill=shine)
+
+
+def egg_cell(kind, tier=None):
+    im = Image.new('RGBA', (EGG_W, EGG_H), (0, 0, 0, 0)); d = ImageDraw.Draw(im)
+    if kind == 'inc':
+        incubator(d, 0, 0, '#58d0f0' if tier is None else EGG_TIER[tier])
+        if tier:
+            e = Image.new('RGBA', (EGG_W, EGG_H), (0, 0, 0, 0)); ed = ImageDraw.Draw(e)
+            egg_body(ed, 7, 9, EGG_TIER[tier]); outline(e)
+            # 덮개 뒤에 알 → 알을 먼저, 그 위에 반투명 유리
+            back = Image.new('RGBA', (EGG_W, EGG_H), (0, 0, 0, 0)); bd = ImageDraw.Draw(back)
+            incubator(bd, 0, 0, EGG_TIER[tier])
+            px = back.load()
+            out = Image.new('RGBA', (EGG_W, EGG_H), (0, 0, 0, 0))
+            out.alpha_composite(back)
+            # 유리 부분은 알 위에 다시 칠함 (알 → 유리 순)
+            solid = back.copy(); sp = solid.load()
+            for y in range(EGG_H):
+                for x in range(EGG_W):
+                    if sp[x, y][3] < 200: sp[x, y] = (0, 0, 0, 0)
+            out = Image.new('RGBA', (EGG_W, EGG_H), (0, 0, 0, 0))
+            out.alpha_composite(solid)
+            out.alpha_composite(e)
+            glass_only = back.copy(); gp = glass_only.load()
+            for y in range(EGG_H):
+                for x in range(EGG_W):
+                    if gp[x, y][3] >= 200: gp[x, y] = (0, 0, 0, 0)
+            out.alpha_composite(glass_only)
+            return out
+        return im
+    egg_body(d, 7, 16, EGG_TIER[tier], crack=(kind == 'crack'))
+    # 바닥 그림자
+    for x in range(9, 23):
+        d.point((x, 38), fill=(0, 0, 0, 60))
+    return outline(im)
+
+
+EGG_CELLS = [('egg', t) for t in EGG_TIER] + [('crack', t) for t in EGG_TIER] + [('inc', t) for t in EGG_TIER] + [('inc', None)]
+
+
+def draw_eggs():
+    sheet = Image.new('RGBA', (EGG_W * len(EGG_CELLS), EGG_H), (0, 0, 0, 0))
+    for i, (k, t) in enumerate(EGG_CELLS):
+        sheet.alpha_composite(egg_cell(k, t), (EGG_W * i, 0))
+    sheet.save(os.path.join(ROOT, 'web', 'img', 'eggs.png'))
+    prev = Image.new('RGBA', sheet.size, (240, 236, 216, 255)); prev.alpha_composite(sheet)
+    prev.resize((prev.width * 6, prev.height * 6), Image.NEAREST).save(os.path.join(ROOT, '.work', 'eggs_preview.png'))
+    print('eggs', EGG_CELLS)
+
+
 def main():
     sheet = Image.new('RGBA', (16 * len(ITEM_ICONS), 16), (0, 0, 0, 0))
     for i, (k, fn) in enumerate(ITEM_ICONS):
@@ -281,6 +390,7 @@ def main():
     prev.resize((prev.width * 4, prev.height * 4), Image.NEAREST).save(os.path.join(ROOT, '.work', 'items_preview.png'))
     print('items', [k for k, _ in ITEM_ICONS])
     print('fx', [k for k, _ in FX])
+    draw_eggs()
 
 
 if __name__ == '__main__':
