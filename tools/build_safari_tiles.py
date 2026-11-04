@@ -776,8 +776,8 @@ HAT_BACK = [
     '.khhhhh',
     '..khhhh',
 ]
-BODY_FRONT = [
-    '..kBYwS',
+BODY_FRONT = [   # 목 (살색) 줄 → 어깨 높이에서 작은 흰 V (얼굴에 흰 칸이 닿지 않게) · 남색 깃 · 넥타이
+    '..kBBSS',
     '.kBkYwT',
     'kBkBBYT',
     'kBkBBBY',
