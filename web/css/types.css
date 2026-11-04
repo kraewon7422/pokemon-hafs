@@ -1,4 +1,4 @@
-/* Subject (type) colours — shared by the student app and the admin page.
+/* Subject colours (선생님 과목, 운영자 페이지) + 포켓몬 타입 colours — shared by the student app and the admin page.
    Light backgrounds get dark text so every chip passes 4.5:1 contrast. */
 .t-국어 { background: #d84a78; color: #fff; }
 .t-수학 { background: #4a5cc8; color: #fff; }
@@ -22,4 +22,26 @@
 .t-윤리 { background: #e8b8e0; color: #1e2433; }
 .t-역사 { background: #6a5a7a; color: #fff; }
 .t-전설 { background: linear-gradient(90deg, #f8d048, #f0a040, #c8a0f0); color: #1e2433; }
+/* 포켓몬 타입 18개 (0032) — 공식 색에 가깝게, 글자 대비 4.5:1 이상 */
+.t-노말 { background: #a8a77a; color: #1e2433; }
+.t-불꽃 { background: #d42020; color: #fff; }
+.t-물 { background: #1f6fd6; color: #fff; }
+.t-풀 { background: #2e7d1f; color: #fff; }
+.t-전기 { background: #f7c815; color: #1e2433; }
+.t-얼음 { background: #6fd3e8; color: #1e2433; }
+.t-격투 { background: #f08a2c; color: #1e2433; }
+.t-독 { background: #8a3fc0; color: #fff; }
+.t-땅 { background: #8a5524; color: #fff; }
+.t-비행 { background: #9ec2f0; color: #1e2433; }
+.t-에스퍼 { background: #d6336a; color: #fff; }
+.t-벌레 { background: #a4b81c; color: #1e2433; }
+.t-바위 { background: #b8a85f; color: #1e2433; }
+.t-고스트 { background: #6a4778; color: #fff; }
+.t-드래곤 { background: #4c5adb; color: #fff; }
+.t-악 { background: #5a4a46; color: #fff; }
+.t-강철 { background: #8fb5c8; color: #1e2433; }
+.t-페어리 { background: #f0a8e8; color: #1e2433; }
+.t-야생 { background: #7aa860; color: #1e2433; }
+.t-\?\?\? { background: #68a090; color: #fff; }
+.types { display: inline-flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
 .type[class*='t-'] { text-shadow: none; }

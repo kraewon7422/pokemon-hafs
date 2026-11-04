@@ -1,7 +1,7 @@
 // Main booth: scan a student's bag QR (camera or USB barcode scanner) → confirm the person → redeem every ticket
 // in one server call (booth_redeem is atomic + idempotent) → pokéball reveal → "축하합니다!".
 import { CONFIG } from './config.js';
-import { sb, rpc, errorText } from './sb.js';
+import { sb, rpc, errorText, selectAll } from './sb.js';
 import { isBag, fixKoreanIME } from './qrfmt.js';
 import { Scanner } from './scanner.js';
 import { spriteCanvas } from './sprites.js';
@@ -23,7 +23,7 @@ const STATUS = {
   new: ['받을 수 있음', 'st-new'], pending: ['받을 수 있음', 'st-pending'], redeemed: ['이미 받음', 'st-done'],
   invalid_token: ['가짜·교체된 QR', 'st-bad'], nonce_conflict: ['다른 학생의 티켓', 'st-bad'], expired: ['만료됨', 'st-bad'],
   cancelled: ['취소됨', 'st-bad'], already_pending: ['같은 장소 중복', 'st-bad'], daily_cap: ['오늘 횟수 초과', 'st-bad'],
-  bag_full: ['티켓 주머니 초과', 'st-bad'], empty_pool: ['QR에 몬스터 미설정(운영자 확인)', 'st-bad'], bad_format: ['형식 오류', 'st-bad'],
+  bag_full: ['티켓 주머니 초과', 'st-bad'], empty_pool: ['QR에 포켓몬 미설정(운영자 확인)', 'st-bad'], bad_format: ['형식 오류', 'st-bad'],
 };
 
 let pendingConfirm = null;   // the student card waiting for 확인 (Enter/Space also confirms → one-key booth)
@@ -43,7 +43,7 @@ async function start() {
   try {
     const p = await rpc('ensure_profile');
     if (!['booth', 'admin'].includes(p.role)) { await signOut(); return renderLogin('부스 스태프 계정이 아니에요.'); }
-    const { data } = await sb.from('species').select('id,name').order('id');
+    const { data } = await selectAll('species', 'id,name', (q) => q.order('id'));
     species = data || [];
     renderBooth(p);
     rpc('sync').catch(() => {});
@@ -125,7 +125,7 @@ async function onPayload(text) {
     area.replaceChildren(
       card(look, h('p', h('b', '이 학생이 맞나요? '), '얼굴/명찰을 확인해 주세요.')),
       h('div', { style: { display: 'flex', gap: '10px' } },
-        h('button.btn.big.go', { onclick: () => pendingConfirm?.() }, `✔ 확인 (Enter) - 몬스터 ${usable.length}마리 받기`),
+        h('button.btn.big.go', { onclick: () => pendingConfirm?.() }, `✔ 확인 (Enter) - 포켓몬 ${usable.length}마리 받기`),
         h('button.btn', { onclick: reset }, '취소')));
   } catch (e) {
     sfx.error();
@@ -163,7 +163,7 @@ async function redeem(text, look) {
   const name = (id) => species.find((s) => s.id === id)?.name || `No.${id}`;
   const title = got.length === 1
     ? `축하합니다! ${josa(name(got[0].species_id), '을', '를')} 획득했습니다!`
-    : got.length ? `축하합니다! 몬스터 ${got.length}마리를 획득했습니다!` : '받은 몬스터가 없어요';
+    : got.length ? `축하합니다! 포켓몬 ${got.length}마리를 획득했습니다!` : '받은 포켓몬이 없어요';
   if (got.length) sfx.catch();
   anim.replaceChildren(h('div', { style: { display: 'grid', justifyItems: 'center', gap: '10px' } },
     h('div.congrats', title),
@@ -171,7 +171,7 @@ async function redeem(text, look) {
     h('div.cards',
       got.map((r, i) => h(`div.mcard${r.is_new ? '.new' : ''}`, { style: { animationDelay: `${i * 0.35}s` } },
         spriteCanvas(r.species_id, 128), h('b', name(r.species_id)),
-        h('small', r.qr_name || ''), r.special && h('span.chip.special', '★ 특별 티켓'), r.is_new && h('span.chip', 'NEW!'), r.bonus_ticket && h('span.chip', '중복 보너스: 진화권 +1'), r.replay && h('span.chip', '이미 받은 결과'))),
+        h('small', r.qr_name || ''), r.special && h('span.chip.special', '★ 특별 티켓'), r.is_new && h('span.chip', 'NEW!'), r.bonus_ticket && h('span.chip', '중복 보너스: 진화의돌 +1'), r.replay && h('span.chip', '이미 받은 결과'))),
       bad.map((r) => h('div.mcard.err', h('b', '✕'), h('small', (STATUS[r.error] || [r.error])[0])))),
     h('button.btn.big.gold', { style: { maxWidth: '320px' }, onclick: () => { anim.remove(); reset(); } }, '다음 학생 (자동 6초)')));
   setTimeout(() => { if (anim.isConnected) { anim.remove(); reset(); } }, 6_000);

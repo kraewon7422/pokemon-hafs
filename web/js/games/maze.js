@@ -738,7 +738,7 @@ export default {
         g.fillStyle = TH.rail; g.fillRect(x, y, w.w, 1);
       }
 
-      // 위쪽 정보: 판 · 시간 · 응원하는 내 몬스터
+      // 위쪽 정보: 판 · 시간 · 응원하는 내 포켓몬
       g.fillStyle = TH.hud; g.fillRect(0, 0, W, HUD);
       g.fillStyle = TH.hudLine; g.fillRect(0, HUD - 1, W, 1);
       const lab = RANKED ? `${Math.min(st.no, RANK.length)}/${RANK.length}` : `${st.no}단계`;

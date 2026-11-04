@@ -9,7 +9,7 @@
 import { loadPhaser } from './common.js';
 import { atlasURL } from '../sprites.js';
 
-let ATLAS = '';   // 몬스터 그림 (원래 아틀라스 또는 올린 그림을 합친 것, 게임을 시작할 때 정함)
+let SHEET = { url: '', frame: () => 0 };   // 이 판에 나오는 포켓몬만 담은 그림판 (sprites.js atlasURL)
 
 export const N = 30;                        // 판 크기 (칸)
 const K = 4;                                // 처음 땅 (K×K)
@@ -443,8 +443,8 @@ export default {
     const sim = new LandSim();
     const owned = api.mons?.() || [];
     const partner = api.partner?.() || 4;
-    const pool = [...new Set(owned.filter((d) => d !== partner && d >= 1 && d <= 252))].sort(() => Math.random() - 0.5);
-    for (const d of [1, 7, 10, 25, 39]) if (pool.length < 3 && d !== partner && !pool.includes(d)) pool.push(d);
+    const pool = [...new Set(owned.filter((d) => d !== partner && d >= 1))].sort(() => Math.random() - 0.5);
+    for (const d of [1, 7, 10, 25, 37]) if (pool.length < 3 && d !== partner && !pool.includes(d)) pool.push(d);
     const dex = [partner, ...pool.slice(0, 3)];
     let mode = 'ready';   // ready → count → play → (over →) result
     let clock = 0;        // 게임 시간 (초)
@@ -542,16 +542,16 @@ export default {
     // ── Phaser 장면 ──
     const makeScene = (Phaser) => class LandScene extends Phaser.Scene {
       constructor() { super('land'); }
-      preload() { this.load.spritesheet('mons', ATLAS, { frameWidth: 64, frameHeight: 64 }); }
+      preload() { this.load.spritesheet('mons', SHEET.url, { frameWidth: 64, frameHeight: 64 }); }
       canvasTex(key, w, h, draw) { const t = this.textures.createCanvas(key, w, h); draw(t.getContext(), w, h); t.refresh(); return t; }
       txt(x, y, s, size = 12, color = '#ffffff', stroke = 3) {
         return this.add.text(x, y, s, { fontFamily: FONT, fontSize: `${size}px`, color, stroke: '#182030', strokeThickness: stroke, align: 'center' });
       }
-      // 몬스터 그림이 실제로 차지하는 사각형 (64×64 칸 안) — 칸에 꼭 맞게 넣을 때 씀
+      // 포켓몬 그림이 실제로 차지하는 사각형 (64×64 칸 안) — 칸에 꼭 맞게 넣을 때 씀
       monBox(d) {
         this.boxes ||= {};
         if (this.boxes[d]) return this.boxes[d];
-        const f = Math.max(0, Math.min(this.textures.get('mons').frameTotal - 2, d - 1));
+        const f = SHEET.frame(d);
         const img = this.textures.get('mons').getSourceImage();
         const c = document.createElement('canvas'); c.width = 64; c.height = 64;
         const g = c.getContext('2d'); g.drawImage(img, (f % 12) * 64, Math.floor(f / 12) * 64, 64, 64, 0, 0, 64, 64);
@@ -561,11 +561,11 @@ export default {
         const b = x1 < 0 ? { x: 0, y: 0, w: 64, h: 64 } : { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
         this.boxes[d] = b; return b;
       }
-      // 몬스터를 (cx,cy) 가운데, w×h 칸 안에 통째로 (배율은 1 · 0.5 · 0.25 중 들어가는 가장 큰 것)
+      // 포켓몬을 (cx,cy) 가운데, w×h 칸 안에 통째로 (배율은 1 · 0.5 · 0.25 중 들어가는 가장 큰 것)
       monIcon(cx, cy, d, w, h) {
         const b = this.monBox(d);
         const s = [1, 0.5, 0.25].find((k) => b.w * k <= w && b.h * k <= h) || 0.25;
-        const spr = this.add.sprite(0, 0, 'mons', Math.max(0, Math.min(this.textures.get('mons').frameTotal - 2, d - 1))).setOrigin(0).setScale(s).setCrop(b.x, b.y, b.w, b.h);
+        const spr = this.add.sprite(0, 0, 'mons', SHEET.frame(d)).setOrigin(0).setScale(s).setCrop(b.x, b.y, b.w, b.h);
         spr.setPosition(Math.round(cx - (b.x + b.w / 2) * s), Math.round(cy - (b.y + b.h / 2) * s));
         return spr;
       }
@@ -634,9 +634,9 @@ export default {
           this.keys.push('');
         }
         this.refreshTiles();
-        // 몬스터 + 발밑 고리
+        // 포켓몬 + 발밑 고리
         this.rings = this.add.graphics().setDepth(5);
-        this.mons = sim.players.map((p) => this.add.sprite(0, 0, 'mons', Math.max(0, Math.min(this.textures.get('mons').frameTotal - 2, dex[p.id] - 1))).setOrigin(0.5, 1));
+        this.mons = sim.players.map((p) => this.add.sprite(0, 0, 'mons', SHEET.frame(dex[p.id])).setOrigin(0.5, 1));
         this.marker = this.add.graphics().setDepth(400);
         this.fx = this.add.particles(0, 0, 'px', {
           lifespan: { min: 600, max: 1100 }, speed: { min: 70, max: 190 }, angle: { min: 200, max: 340 }, gravityY: 320,
@@ -774,7 +774,7 @@ export default {
         this.tweens.add({ targets: box, alpha: 0, delay: after, duration: 220, onComplete: () => { box.setVisible(false); box.removeAll(true); this.deathCount = null; } });
       }
       resultAge() { return this.resultAt ? performance.now() - this.resultAt : 0; }
-      // 결과: 순위표 (메달 · 몬스터 · 이름 · 땅 %) — 몬스터는 칸 안에 통째로
+      // 결과: 순위표 (메달 · 포켓몬 · 이름 · 땅 %) — 포켓몬은 칸 안에 통째로
       showResult() {
         this.deathBox.setVisible(false).removeAll(true);
         this.clearOverlay(); this.resultAt = performance.now();
@@ -797,7 +797,7 @@ export default {
           // 메달 (1~3등) / 숫자
           g.fillStyle(i < 3 ? MED[i] : 0xd4d8e0, 1); g.fillCircle(rx + 20, y + rh / 2, 13);
           g.lineStyle(2, 0x182030, 1); g.strokeCircle(rx + 20, y + rh / 2, 13);
-          // 몬스터 칸
+          // 포켓몬 칸
           g.fillStyle(0xffffff, 1); g.fillRoundedRect(rx + 40, y + 4, 44, rh - 8, 5);
           g.lineStyle(1, hex(c.base), 1); g.strokeRoundedRect(rx + 40, y + 4, 44, rh - 8, 5);
           const pct = (p.land * 100) / (N * N);
@@ -987,7 +987,7 @@ export default {
           const left = Math.max(0, (me.respawnAt - sim.steps) * STEP - acc);
           this.deathCount.setText(`다시 출발까지 ${Math.max(1, Math.ceil(left))}`);
         }
-        // 몬스터 그리기
+        // 포켓몬 그리기
         this.rings.clear();
         sim.players.forEach((p) => {
           const s = this.mons[p.id];
@@ -1037,7 +1037,7 @@ export default {
     };
 
     loadPhaser().then(async (Phaser) => {
-      ATLAS = await atlasURL();
+      SHEET = await atlasURL(dex);
       if (dead) return;
       try { await Promise.race([document.fonts?.load?.(`12px ${FONT}`), new Promise((r) => setTimeout(r, 1500))]); } catch { /* 글꼴 없어도 진행 */ }
       if (dead) return;

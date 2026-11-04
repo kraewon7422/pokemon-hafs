@@ -31,7 +31,9 @@ export const $ = (sel, root = document) => root.querySelector(sel);
 export function josa(word, a, b) {
   const c = String(word).trim().slice(-1).charCodeAt(0);
   if (c < 0xac00 || c > 0xd7a3) return word + b;
-  return word + ((c - 0xac00) % 28 ? a : b);
+  const jong = (c - 0xac00) % 28;
+  if (a === '으로' && jong === 8) return word + b;      // ㄹ 받침 + (으)로 → '로' (예: 파이어로)
+  return word + (jong ? a : b);
 }
 
 // 알림 (토스트): 한 번에 3개까지만 보이고 나머지는 줄을 섬. 같은 글이 보이는 중에 또 오면 하나로 합쳐 "×N".

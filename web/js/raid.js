@@ -5,7 +5,7 @@ import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, pix } from './ui.js';
 import { S, collection, dexOf, isWithdrawn, owned, speciesOf, vibrate } from './state.js';
 import { catchEncounter, closeOverlay, fmtWait, openScanner, overlay, renderTab, say, sync } from './app.js';
-import { lv50, typeOf } from './dex.js';
+import { lv50, typeOf, typeMult } from './dex.js';
 
 // ───────── 레이드: 큰 보스를 다 같이 탭해서 쓰러뜨리기 (0013) ─────────
 export const isRaidQr = (q) => /^R\d{1,5}$/.test(q);
@@ -15,7 +15,7 @@ export function estimatePerTap(line, bossId) {
   const a = curSpecies(line); const b = speciesOf(bossId);
   if (!a || !b) return 3;
   const tp = (sp) => typeOf(sp);
-  const m = Number((S.catalog.typeChart || []).find((c) => c.atk === tp(a) && c.def === tp(b))?.mult || 1);
+  const m = typeMult(tp(a), tp(b));   // 서버 _bt_tm: 공격 쪽 타입 중 가장 센 것 × 방어 타입 두 개의 곱
   const phys = (a.atk || 0) >= (a.spa || 0);
   const atk = lv50('atk', phys ? a.atk : a.spa); const def = lv50('def', phys ? b.def : b.spd);
   return Math.max(1, Math.round((10 * atk / Math.max(def, 1)) * m));
@@ -43,7 +43,7 @@ export function viewRaid() {
   return [
     h('div.box.stack',
       h('div.banner', h('b', pix('bolt'), ' 레이드'), live.length ? h('span.chip.hot', '보스 출현 중!') : null),
-      h('p', { style: { margin: 0 } }, '대형 화면이나 운영진이 보여 주는 레이드 QR을 찍으면 참가해요. 다 같이 보스를 마구 탭해서 체력을 0으로 만들면, 열심히 싸운 모두가 그 몬스터 티켓을 받아요!'),
+      h('p', { style: { margin: 0 } }, '대형 화면이나 운영진이 보여 주는 레이드 QR을 찍으면 참가해요. 다 같이 보스를 마구 탭해서 체력을 0으로 만들면, 열심히 싸운 모두가 그 포켓몬 티켓을 받아요!'),
       h('button.btn.big.primary', { onclick: openScanner }, pix('camera'), '레이드 QR 찍기')),
     open.length > 0 && h('div.box.stack.raid-open',
       h('b', pix('spark'), ' QR 없이 바로 참가할 수 있는 레이드'),
@@ -142,7 +142,7 @@ export function openRaid(r0) {
     hpText.textContent = `HP ${hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`;
     info.replaceChildren(h('span', `참가 ${r.players}명`), h('span', `내 데미지 ${((r.me?.damage || 0) + pending * per()).toLocaleString()}`), h('span', `탭당 ${per()}`));
     const sp = curSpecies(line);
-    pickBtn.replaceChildren(...(sp ? [spriteCanvas(sp.id, 28), ` ${sp.name} ▾`] : ['내 몬스터 고르기 ▾']));
+    pickBtn.replaceChildren(...(sp ? [spriteCanvas(sp.id, 28), ` ${sp.name} ▾`] : ['내 포켓몬 고르기 ▾']));
   };
   const tick = () => {
     const ms = new Date(r.ends_at) - (Date.now() + skew);
@@ -171,7 +171,7 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
         return;
       }
       await typeText(text, r.me?.rewarded
-        ? `${josa(sp.name, '을', '를')} 쓰러뜨렸다!!\n★ 레이드 보상: ${sp.name} 티켓이 티켓 주머니에 들어왔어요!\n메인 부스에서 몬스터로 바꿔요. (가방 칸은 안 차지해요)`
+        ? `${josa(sp.name, '을', '를')} 쓰러뜨렸다!!\n★ 레이드 보상: ${sp.name} 티켓이 티켓 주머니에 들어왔어요!\n메인 부스에서 포켓몬으로 바꿔요. (가방 칸은 안 차지해요)`
         : `${josa(sp.name, '을', '를')} 쓰러뜨렸다!\n하지만 공격이 조금 부족해서 보상은 못 받았어요. 다음엔 더 많이 탭해요!`);
       sync({ force: true });
     } else {
@@ -216,7 +216,7 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
       const sp = curSpecies(l);
       return h(`button.raid-opt${l === line ? '.on' : ''}`, { onclick: () => { line = l; picker.hidden = true; draw(); sfx.select(); } },
         spriteCanvas(sp.id, 40), h('small', sp.name), h('b', `탭당 ${d}`));
-    }) : [h('small', '아직 몬스터가 없어요. 몬스터가 없어도 탭당 3씩 공격할 수 있어요!')]));
+    }) : [h('small', '아직 포켓몬이 없어요. 포켓몬이 없어도 탭당 3씩 공격할 수 있어요!')]));
   };
   const ov = overlay(h('div.raid-stage',
     h('div.raid-top', h('b', r.title), timer),
@@ -234,8 +234,8 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
   draw(); tick();
   const sp = speciesOf(r.species_id);
   const mine = curSpecies(line);
-  const m = mine ? Number((S.catalog.typeChart || []).find((c) => c.atk === typeOf(mine) && c.def === typeOf(sp))?.mult || 1) : 1;
+  const m = mine ? typeMult(typeOf(mine), typeOf(sp)) : 1;
   typeText(text, r.status !== 'active' ? '이미 끝난 레이드예요.'
-    : `앗! 레이드 보스 ${josa(sp.name, '이', '가')} 나타났다!\n보스를 마구 탭해서 공격해!${m > 1 ? '\n(내 몬스터는 이 보스에게 효과가 굉장해!)' : m < 1 ? '\n(내 몬스터는 이 보스에게 효과가 별로야… 다른 몬스터를 골라 봐)' : ''}`);
+    : `앗! 레이드 보스 ${josa(sp.name, '이', '가')} 나타났다!\n보스를 마구 탭해서 공격해!${m > 1 ? '\n(내 포켓몬은 이 보스에게 효과가 굉장해!)' : m < 1 ? '\n(내 포켓몬은 이 보스에게 효과가 별로야… 다른 포켓몬을 골라 봐)' : ''}`);
   if (r.status !== 'active') finish();
 }

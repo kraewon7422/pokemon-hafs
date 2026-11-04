@@ -1,19 +1,19 @@
-// 몬스터 서핑: 내 몬스터가 서프보드를 타고 끝없는 바다를 내려간다. 좌우 5단계로 방향을 바꿔 바위·섬·통나무를 피하고,
-// 500m 부터는 문어 몬스터가 뒤쫓아 온다. 점수 = 내려간 거리(m). (Phaser 3. 바다·섬·문어는 이 파일에서 도트로 그리고,
+// 포켓몬 서핑: 내 포켓몬이 서프보드를 타고 끝없는 바다를 내려간다. 좌우 5단계로 방향을 바꿔 바위·섬·통나무를 피하고,
+// 500m 부터는 문어 포켓몬이 뒤쫓아 온다. 점수 = 내려간 거리(m). (Phaser 3. 바다·섬·문어는 이 파일에서 도트로 그리고,
 // 바위·통나무·뗏목·통·상자·연잎·모래 무늬·조개·양동이는 CC0 도트 그림 — img/games/surf/CREDITS.txt)
 // 서버 상한: 점수 ≤ 초×40+50 → 최고 속도(부스트 포함) 26.4 m/s 로 묶음. 숨긴 탭·멈춤(mg-pause) 시간은 ms 에 안 들어감.
 import { loadPhaser } from './common.js';
 import { atlasURL } from '../sprites.js';
 
 const GW = 160, GH = 288;          // 논리 해상도 (정수 배로 키움)
-const PY = 96;                      // 플레이 중 내 몬스터 화면 y
+const PY = 96;                      // 플레이 중 내 포켓몬 화면 y
 const PX_PER_M = 10;                // 10 도트 = 1 m
 const HEAD = [-62, -32, 0, 32, 62]; // 방향 5단계 (도, 0 = 똑바로 아래)
 const BOOST_T = 2.2, BOOST_K = 1.6, MAX_BASE = 165; // 165×1.6 = 264 px/s = 26.4 m/s
 const PROPS_URL = new URL('../../img/games/surf/surf-props.png', import.meta.url).href;
 const PROPS = { rockBig: [0, 0, 25, 21], rock1: [26, 0, 16, 14], rock2: [43, 0, 15, 13], rock3: [59, 0, 11, 9], log: [71, 0, 44, 15], raft: [116, 0, 32, 26], barrel: [149, 0, 17, 24], crate: [167, 0, 16, 18], pad2: [0, 27, 9, 9], pad3: [10, 27, 11, 11], sandTile: [22, 27, 16, 16], pebbleS: [39, 27, 7, 5], pebbleL: [47, 27, 12, 7], shell1: [60, 27, 7, 5], shell2: [68, 27, 12, 7], shell3: [81, 27, 7, 5], shell4: [89, 27, 12, 7], bucket: [102, 27, 10, 17], bucketB: [113, 27, 10, 17], shovel: [124, 27, 18, 17], star1: [143, 27, 5, 5], star2: [149, 27, 5, 5] };
 const JUMP_T = 1.0; // 파도 점프 체공 시간 (초)
-const PR = 2; // 내 몬스터 부딪힘 반지름 (보이는 몸보다 훨씬 작게 = 너그럽게)
+const PR = 2; // 내 포켓몬 부딪힘 반지름 (보이는 몸보다 훨씬 작게 = 너그럽게)
 const TAU = Math.PI * 2;
 
 // ───────────────────────── 색 ─────────────────────────
@@ -362,7 +362,7 @@ function rampFrames() {
   });
 }
 
-// ───────────────────────── 문어 몬스터 (작게) ─────────────────────────
+// ───────────────────────── 문어 포켓몬 (작게) ─────────────────────────
 function tube(g, pts, w0, w1, light = false) {
   pts.forEach(([x, y], i) => {
     const t = i / (pts.length - 1); const rad = w0 + (w1 - w0) * t;
@@ -462,7 +462,7 @@ function boardFrames() {
   });
 }
 
-// 내 몬스터 2:1 줄이기 — 2×2 칸마다 가장 많은 색, 테두리·눈 같은 어두운 점은 남김 (흐리게 안 섞음)
+// 내 포켓몬 2:1 줄이기 — 2×2 칸마다 가장 많은 색, 테두리·눈 같은 어두운 점은 남김 (흐리게 안 섞음)
 function shrinkMon(img, frame) {
   const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64; const x = cv.getContext('2d');
   x.drawImage(img, (frame % 12) * 64, Math.floor(frame / 12) * 64, 64, 64, 0, 0, 64, 64);
@@ -515,7 +515,7 @@ const shine = (g, pts) => pts.forEach(([x, y]) => g.set(x, y, C.white));
 // ═══════════════════════════ 게임 ═══════════════════════════
 export default {
   id: 'surf',
-  title: '몬스터 서핑',
+  title: '포켓몬 서핑',
   start(stage, api) {
     let dead = false, game = null, paused = false, endTimer = 0, ended = false;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -554,7 +554,9 @@ export default {
     window.addEventListener('keydown', onKey);
 
     const fontsReady = (document.fonts?.load ? Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}) : Promise.resolve());
-    Promise.all([loadPhaser(), fontsReady, atlasURL()]).then(([Phaser, , ATLAS_URL]) => {
+    const pDex = Math.max(1, Number(api.partner?.()) || 1);
+    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex])]).then(([Phaser, , SHEET]) => {
+      const ATLAS_URL = SHEET.url;
       if (dead) return;
       wrap.textContent = '';
       game = new Phaser.Game({
@@ -630,10 +632,10 @@ export default {
       const cr = [0, 1, 2].map((f) => { const g = new G(9, 3); const n = [1, 3, 4][f]; for (let x = 4 - n; x <= 4 + n; x++) { g.set(x, 1 - (Math.abs(x - 4) < n - 1 ? 1 : 0), f === 2 && x === 4 ? C.white : '#9fe6df'); if (Math.abs(x - 4) < n) g.set(x, 2, '#0f7898'); } return g; });
       addSheet(sc, 'spark', [...sp, ...cr]);
 
-      // 내 몬스터: 몸 부분만 2:1 로 깔끔하게 줄임 (임의 배율 금지)
+      // 내 포켓몬: 몸 부분만 2:1 로 깔끔하게 줄임 (임의 배율 금지)
       const dex = Math.max(1, Number(api.partner?.()) || 1);
       let meG;
-      try { meG = shrinkMon(sc.textures.get('mons').getSourceImage(), dex - 1); } catch { meG = new G(12, 14); meG.disc(6, 7, 5, C.octoL); meG.outline(C.ink); }
+      try { meG = shrinkMon(sc.textures.get('mons').getSourceImage(), SHEET.frame(dex)); } catch { meG = new G(12, 14); meG.disc(6, 7, 5, C.octoL); meG.outline(C.ink); }
       addSheet(sc, 'me', [meG]);
       const footY = meG.h;
 
@@ -660,7 +662,7 @@ export default {
       const btnIcon = sc.add.image(GW - 18, GH - 18, 'pbolt', 0).setScrollFactor(0).setDepth(1e6 + 1);
       // 알림 글씨: 띠보다 넓으면 띄어쓰기에서만 줄을 바꿈 (단어 중간에서 안 끊김)
       const tBan = TXT(GW / 2, 208, '').setOrigin(0.5, 0.5).setDepth(1e6 + 3).setAlign('center').setWordWrapWidth(GW - 24, false);
-      const tTitle = TXT(GW / 2, 24, '몬스터 서핑').setOrigin(0.5, 0).setScale(2).setColor('#fff6b0').setShadow(1, 1, '#0a3a52', 0, false, true);
+      const tTitle = TXT(GW / 2, 24, '포켓몬 서핑').setOrigin(0.5, 0).setScale(2).setColor('#fff6b0').setShadow(1, 1, '#0a3a52', 0, false, true);
       const tSub = TXT(GW / 2, 56, '문어를 피해 멀리멀리!', 12, false, '#d8fbf4').setOrigin(0.5, 0);
       const help = ['끌거나 좌우를 눌러', '방향 바꾸기', '번개 단추 = 부스트', '하트 3개를 지켜요']
         .map((s, i) => TXT(GW / 2, 178 + i * 14, s, 12, false, i === 2 ? '#fff3a0' : '#ffffff').setOrigin(0.5, 0));
@@ -878,7 +880,7 @@ export default {
         const k = Math.floor((m - 500) / 1000), inWin = m >= 500 && m - 500 - k * 1000 < 200;
         if (inWin && O.st === 'off' && O.win !== k && !O.noOcto) {
           O.st = 'enter'; O.win = k; O.y = P.y - 190; O.x = P.x; O.tent = 2.5; O.a = 1;
-          show('문어 몬스터가 쫓아온다!', 3, 2.6); api.sfx.wrong?.();
+          show('문어 포켓몬이 쫓아온다!', 3, 2.6); api.sfx.wrong?.();
         }
         if ((O.st === 'enter' || O.st === 'chase') && !inWin) { // 구간 끝 → 물속으로 사라짐 (그 뒤로는 못 잡음)
           O.st = 'leave'; show('문어를 따돌렸다!', 2, 2); api.sfx.correct?.();
@@ -970,7 +972,7 @@ export default {
           wake.fillStyle(0x053a54, 0.6 - hgt * 0.2); wake.fillEllipse(Math.round(P.x), Math.round(P.y + 2), Math.round(14 - hgt * 4), Math.round(5 - hgt));
           wake.fillStyle(0x053a54, 0.35); wake.fillEllipse(Math.round(P.x), Math.round(P.y + 2), Math.round(18 - hgt * 4), Math.round(7 - hgt));
         }
-        // 내 몬스터
+        // 내 포켓몬
         const jh = P.jump > 0 ? Math.round(Math.sin(Math.PI * (1 - P.jump / JUMP_T)) * 12) : 0;
         const bob = mode === 'ready' ? Math.round(Math.sin(T * 3) * 1.5) : Math.round(Math.sin(T * 7)) * (P.jump > 0 ? 0 : 1);
         let sink = 0;

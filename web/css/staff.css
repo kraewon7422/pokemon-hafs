@@ -92,3 +92,6 @@ input::placeholder, textarea::placeholder { color: #6a7490; }
 .raid-tv .qr { display: grid; justify-items: center; gap: 4px; background: #fff; color: #101828; padding: 8px; border-radius: 10px; }
 .raid-tv .qr canvas { width: 170px; height: 170px; image-rendering: pixelated; }
 .raid-tv.won { box-shadow: 0 0 0 4px #f8d048 inset; }
+
+/* 비공식 팬 게임 안내 (0032) */
+.fan-note.tv { position: fixed; left: 12px; bottom: 6px; right: 140px; margin: 0; font-size: 12px; color: rgba(255,255,255,.7); text-align: left; word-break: keep-all; }

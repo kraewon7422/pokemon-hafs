@@ -13,4 +13,6 @@ export const CONFIG = {
   SYNC_INTERVAL_MS: 60_000,
   BAG_POLL_MS: 3_000,
   ATLAS_COLS: 12,
+  // 팬 게임 안내 (로그인·설정·대형 화면·개인정보 처리방침에 늘 보임)
+  FAN_NOTICE: '비공식 팬 게임 · 무료 학교 축제용이에요. Nintendo · Game Freak · The Pokémon Company와 관련이 없고 승인·후원을 받지 않았어요. 포켓몬 이름·그림의 권리는 원저작권자에게 있어요.',
 };

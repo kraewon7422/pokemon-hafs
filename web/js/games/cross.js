@@ -1,7 +1,7 @@
-// 몬스터 등굣길: 내 몬스터가 한 칸씩 뛰어 학교 가는 길을 끝없이 올라간다. 길은 4가지 테마가 차례로 바뀌며 돈다:
+// 포켓몬 등굣길: 내 포켓몬이 한 칸씩 뛰어 학교 가는 길을 끝없이 올라간다. 길은 4가지 테마가 차례로 바뀌며 돈다:
 //   학교(잔디·찻길·개울·기찻길) → 바닷가(모래·보트 물길·서핑보드/거북 등껍질·해변 열차) → 화산(현무암·광차 길·용암 강·광산 열차)
 //   → 우주(달 표면·UFO 길·소행성 뗏목·유성 줄기) → 다시 학교 (한 바퀴 돌 때마다 더 빨라짐). 테마마다 약 70줄.
-// 화면은 천천히 위로 올라가고(갈수록 빨라짐) 내 몬스터가 아래 끝으로 밀려나면 '지각 괴물'이 올라와 잡아간다.
+// 화면은 천천히 위로 올라가고(갈수록 빨라짐) 내 포켓몬이 아래 끝으로 밀려나면 '지각 괴물'이 올라와 잡아간다.
 // 점수 = 가장 멀리 간 줄(칸) + 주운 상점(★). 서버 상한: 점수 ≤ 초×12+30 → 한 번 뛰기 0.09초(최대 초당 약 11줄),
 // 끝낼 때 min(점수, 초×11+20) 으로 한 번 더 묶음. 멈춤(mg-pause)·숨긴 탭 시간은 ms 에 안 들어감 (게임 틱마다 dt 를 더함).
 // 그림은 대부분 이 파일에서 도트로 그림. 바닷가 양동이·삽, 우주 소행성·불꽃 몇 개만 CC0 그림(web/img/games/cross/CREDITS.txt).
@@ -15,8 +15,8 @@ const ALL = (1 << COLS) - 1;
 const HOP = 0.09;              // 한 번 뛰기 (쉼 없음) → 최대 초당 약 11줄
 const QMAX = 2;                // 뛰는 중에 미리 받아 두는 입력 수
 const SUB = 1 / 120;           // 물리 잘게 쪼개기 (빠른 뛰기에서 차를 뚫고 지나가지 않게)
-const PLAYER_SY = GH - 80;     // 카메라가 맞추는 내 몬스터 화면 y (줄 가운데)
-const CATCH_Y = GH - 6;        // 내 몬스터 화면 y 가 이보다 아래면 지각 괴물에게 잡힘
+const PLAYER_SY = GH - 80;     // 카메라가 맞추는 내 포켓몬 화면 y (줄 가운데)
+const CATCH_Y = GH - 6;        // 내 포켓몬 화면 y 가 이보다 아래면 지각 괴물에게 잡힘
 const WARN_Y = Math.round(GH * 0.8); // 화면 아래 20% → 경고
 const SWIPE = 18;              // 손가락이 이만큼(CSS px) 움직이면 바로 그 방향으로 뜀
 const THEME_LEN = 70;          // 테마 하나의 줄 수
@@ -1044,7 +1044,7 @@ function handArt() {
   return b;
 }
 
-// 내 몬스터 줄이기 — 몸 크기에 따라 2:1 / 3:1 / 4:1 (한 칸 16 도트에 맞게). 블록마다 가장 많은 색, 테두리·눈 같은 어두운 점은 남김
+// 내 포켓몬 줄이기 — 몸 크기에 따라 2:1 / 3:1 / 4:1 (한 칸 16 도트에 맞게). 블록마다 가장 많은 색, 테두리·눈 같은 어두운 점은 남김
 function shrinkMon(img, frame) {
   const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64; const x = cv.getContext('2d');
   x.drawImage(img, (frame % 12) * 64, Math.floor(frame / 12) * 64, 64, 64, 0, 0, 64, 64);
@@ -1083,7 +1083,7 @@ function shrinkMon(img, frame) {
 // ═══════════════════════════ 게임 ═══════════════════════════
 export default {
   id: 'cross',
-  title: '몬스터 등굣길',
+  title: '포켓몬 등굣길',
   start(stage, api) {
     let dead = false, game = null, paused = false, endTimer = 0, ended = false;
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
@@ -1165,7 +1165,9 @@ export default {
     window.addEventListener('keydown', onKey);
 
     const fontsReady = (document.fonts?.load ? Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}) : Promise.resolve());
-    Promise.all([loadPhaser(), fontsReady, atlasURL()]).then(([Phaser, , ATLAS_URL]) => {
+    const pDex = Math.max(1, Number(api.partner?.()) || 1);
+    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex])]).then(([Phaser, , SHEET]) => {
+      const ATLAS_URL = SHEET.url;
       if (dead) return;
       wrap.textContent = '';
       game = new Phaser.Game({
@@ -1240,10 +1242,10 @@ export default {
         return [need(`${L.type === 'bridge' ? 'bd' : 'wt'}${th}_${top}${bot}`), true];
       };
 
-      // 내 몬스터
+      // 내 포켓몬
       const dex = Math.max(1, Number(api.partner?.()) || 1);
       let meG = null;
-      try { meG = shrinkMon(sc.textures.get('mons').getSourceImage(), dex - 1); } catch { /* 아래 대체 그림 */ }
+      try { meG = shrinkMon(sc.textures.get('mons').getSourceImage(), SHEET.frame(dex)); } catch { /* 아래 대체 그림 */ }
       if (!meG) { meG = new G(12, 13); meG.ell(6, 7, 5, 5, '#c47de9'); meG.outline(C.ink); }
       addSheet(sc, 'me', [meG]);
       // 맞는 범위: 몸통 폭(키의 1/4 이상 칠해진 세로줄 수)의 약 70% → 반폭 hw
@@ -1271,7 +1273,7 @@ export default {
       const iStar = sc.add.image(0, 2, need('star'), 0).setOrigin(0).setScrollFactor(0).setDepth(1e6 + 1);
       const tStars = TXT(0, 0, '0', 12, true, '#fff4a8');
       const tTheme = TXT(GW - 4, 0, '학교', 12, false, '#d8f0e0').setOrigin(1, 0);
-      const tTitle1 = TXT(GW / 2, 18, '몬스터').setOrigin(0.5, 0).setScale(2).setColor('#fff4a8');
+      const tTitle1 = TXT(GW / 2, 18, '포켓몬').setOrigin(0.5, 0).setScale(2).setColor('#fff4a8');
       const tTitle2 = TXT(GW / 2, 46, '등굣길').setOrigin(0.5, 0).setScale(2).setColor('#fff4a8');
       const tSub = TXT(GW / 2, 80, '종 치기 전에 학교로!', 12, false, '#d8f0e0').setOrigin(0.5, 0);
       const help = ['탭 = 앞으로 한 칸', '밀기 = 좌·우·뒤로', '멈추면 지각 괴물이!', '★ 상점도 모아요']
@@ -1500,7 +1502,7 @@ export default {
         }
         // 건널목 종소리
         if (ding && mode !== 'over') { bellTick -= dt; if (bellTick <= 0) { bellTick = 0.3; api.sfx.evoTick?.(); } } else if (danger <= 0) bellTick = 0;
-        // 내 몬스터
+        // 내 포켓몬
         const h = P.hop, arc = h ? Math.round(Math.sin(Math.PI * Math.min(1, h.t)) * 4) : 0;
         if (h && !h.drawn) { h.drawn = true; if (dev && P.inAt && P.lat.length < 50) { P.lat.push(Math.round(performance.now() - P.inAt)); P.inAt = 0; } }
         const bx = P.bump > 0 ? Math.round(Math.sin((P.bump / 0.12) * Math.PI) * 2) : 0;

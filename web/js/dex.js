@@ -4,7 +4,7 @@ import { kv } from './db.js';
 import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, bag, dexNo, dexOf, dexStats, evolvable, isMythic, isSecret, isWithdrawn, lineOf, maxStage, owned, rules, speciesOf, vibrate } from './state.js';
+import { S, bag, dexNo, dexOf, dexStats, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, owned, rules, speciesOf, vibrate } from './state.js';
 import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
 
 // ───────────────────────── 지도 ─────────────────────────
@@ -74,33 +74,47 @@ export const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour
 
 // ───────────────────────── 도감 (+ 진화) ─────────────────────────
 
+// 도감 범위: 전체 / 학교 (선생님 포켓몬 · 특별 전설) / 야생 / 잡은 포켓몬
+const SCOPES = [['all', '전체'], ['school', '학교'], ['wild', '야생'], ['mine', '잡은 포켓몬']];
+export const TYPES = ['노말', '불꽃', '물', '풀', '전기', '얼음', '격투', '독', '땅', '비행', '에스퍼', '벌레', '바위', '고스트', '드래곤', '악', '강철', '페어리'];
+
 export function viewDex() {
-  const { lines, species } = S.catalog;
-  const subjects = [...new Set(lines.filter((l) => !l.secret).map((l) => l.subject))];
+  const { species } = S.catalog;
   const reached = (sp) => (owned(sp.line_id)?.stage || 0) >= sp.stage;
-  const { found, total } = dexStats();
-  const list = species.filter((sp) => (S.dexFilter === 'all' || lineOf(sp.line_id)?.subject === S.dexFilter)
-    && (!isSecret(sp.line_id) || S.dexFilter === 'all') && (!isMythic(sp.line_id) || owned(sp.line_id)));   // 환상 = 잡기 전엔 도감에 없음
+  const D = dexStats();
+  const scope = S.dexScope || 'all';
+  const tf = TYPES.includes(S.dexFilter) ? S.dexFilter : 'all';
+  const list = species.filter((sp) => (!isSecret(sp.line_id) || (scope === 'all' && tf === 'all') || owned(sp.line_id))
+    && (!isMythic(sp.line_id) || owned(sp.line_id))                                   // 환상 = 잡기 전엔 도감에 없음
+    && (scope === 'all' || (scope === 'school' ? !isWild(sp.line_id) : scope === 'wild' ? isWild(sp.line_id) : reached(sp)))
+    && (tf === 'all' || typesOf(sp).includes(tf)));
   const p = S.snap.profile;
+  const evoReady = S.snap.collection.filter((c) => canLevelEvolve(c)).length;
   return [
     h('div.box.dex-head',
-      h('div.banner', h('b', '몬스터 도감'), h('span', `발견 ${found} / ${total}`)),
-      h('div.bar', h('i', { style: { width: `${(found / total) * 100}%` } })),
-      h('div.banner', { style: { fontSize: '13px' } }, h('span', h('i.ticket-icon'), ` 진화권 × ${p.evo_tickets}`),
-        h('span', evolvable().length ? '몬스터를 누르면 진화시킬 수 있어요' : ''))),
-    h('div.filters', { role: 'toolbar', 'aria-label': '타입' },
-      ['all', ...subjects].map((s) => h('button.chip', {
-        'aria-pressed': String(S.dexFilter === s),
-        onclick: () => { S.dexFilter = s; renderTab(); },
-      }, s === 'all' ? '전체' : s))),
+      h('div.banner', h('b', '포켓몬 도감'), h('span', `학교 ${D.found} / ${D.total}`)),
+      h('div.bar', h('i', { style: { width: `${(D.found / Math.max(1, D.total)) * 100}%` } })),
+      h('div.banner', { style: { fontSize: '13px' } },
+        h('span', `전국 도감 ${D.allFound} / ${D.allTotal}`),
+        h('span', h('i.ticket-icon'), ` 진화의돌 × ${p.evo_tickets}`)),
+      evoReady ? h('small.evo-ready', pix('spark'), ` 진화할 수 있는 포켓몬이 ${evoReady}마리 있어요!`) : null),
+    h('div.filters', { role: 'toolbar', 'aria-label': '범위' },
+      SCOPES.map(([k, t]) => h('button.chip', { 'aria-pressed': String(scope === k), onclick: () => { S.dexScope = k; renderTab(); } }, t))),
+    h('div.filters.type-filters', { role: 'toolbar', 'aria-label': '타입' },
+      ['all', ...TYPES].map((t) => h(`button.chip${t === 'all' ? '' : '.t-' + t}`, {
+        'aria-pressed': String(tf === t),
+        onclick: () => { S.dexFilter = t; renderTab(); },
+      }, t === 'all' ? '모든 타입' : t))),
+    list.length ? null : h('p.muted', { style: { textAlign: 'center' } }, '여기에 맞는 포켓몬이 없어요.'),
     h('div.dex-grid', list.map((sp) => {
       if (isWithdrawn(sp.line_id)) return h('div.dex-cell.unknown.withdrawn', h('span.no', dexNo(sp)), spriteCanvas(sp.id, 72, 'silhouette'), h('span.nm', '비공개'));
       const ok = reached(sp);
       const c = owned(sp.line_id);
-      const canEvo = ok && c.stage === sp.stage && sp.stage < maxStage(sp.line_id) && p.evo_tickets > 0;
+      const canEvo = ok && c.stage === sp.stage && sp.stage < maxStage(sp.line_id) && (canLevelEvolve(c) || p.evo_tickets > 0);
       return h(`button.dex-cell${ok ? '.caught' : '.unknown'}`, {
         'aria-label': ok ? sp.name : '미발견',
-        onclick: () => (ok ? openDetail(sp) : toast(isSecret(sp.line_id) ? '지도에 없는 곳에 숨어 있다는 소문이… 학교를 구석구석 찾아보세요!' : '아직 발견하지 못했어요. 학교 곳곳을 찾아보세요!')),
+        onclick: () => (ok ? openDetail(sp) : toast(isSecret(sp.line_id) ? '지도에 없는 곳에 숨어 있다는 소문이… 학교를 구석구석 찾아보세요!'
+          : isWild(sp.line_id) ? '야생 포켓몬이에요. QR을 찍거나, 많이 걷거나, 알을 부화하면 만날 수 있어요!' : '아직 발견하지 못했어요. 학교 곳곳을 찾아보세요!')),
       },
       h('span.no', dexNo(sp)),
       spriteCanvas(sp.id, 72, ok ? 'normal' : 'silhouette'),
@@ -110,10 +124,36 @@ export function viewDex() {
   ];
 }
 
+// 진화 레벨: 다음 단계 포켓몬의 evo_lv (그 레벨이 되면 진화의돌 없이 100% 진화)
+export const evoLevel = (c) => speciesOf(dexOf(c.line_id, c.stage + 1))?.evo_lv || null;
+export const canLevelEvolve = (c) => !!c && c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id) && !!evoLevel(c) && (c.level || 0) >= evoLevel(c);
+
 export function evoChance(c) {
   const R = rules();
   if (c.evo_fails >= (R.evo_pity_max[c.stage] ?? 99)) return 1;
   return Math.min(1, (R.evo_prob[c.stage] ?? 0) + c.evo_fails * R.evo_pity_step);
+}
+
+const isLegendLine = (line) => lineOf(line)?.rarity === 'legendary';
+
+// 진화: 진화 레벨이 되면 진화의돌 없이 100%, 그 전에는 진화의돌로 (확률)
+function evoPanel(c, chance, p) {
+  const need = evoLevel(c);
+  const byLevel = canLevelEvolve(c);
+  const off = !S.online ? '진화는 인터넷이 필요해요' : !S.snap.festival_open ? '지금은 진화할 수 없어요' : null;
+  if (byLevel) {
+    return h('div.box.evo-panel',
+      h('div.banner', h('span', `Lv.${c.level}`), h('b.prob', pix('spark'), `Lv.${need} 진화 레벨 도달!`)),
+      h('button.btn.big.gold', { disabled: !!off, onclick: () => doEvolve(c) }, off || '진화시키기!'),
+      h('small', '진화 레벨이 되어서 진화의돌 없이 반드시 진화해요.'));
+  }
+  return h('div.box.evo-panel',
+    h('div.banner', h('span', need ? `Lv.${c.level || 1} → Lv.${need}에 진화` : `Lv.${c.level || 1}`),
+      h('span', h('i.ticket-icon'), ` 진화의돌 × ${p.evo_tickets}`)),
+    h('button.btn.big.gold', { disabled: !p.evo_tickets || !!off, onclick: () => doEvolve(c) },
+      off || (!p.evo_tickets ? '진화의돌이 없어요 (퀴즈·룰렛으로 받아요)' : `진화의돌로 진화 (성공 ${chance >= 1 ? '확정' : Math.round(chance * 100) + '%'})`)),
+    h('small', need ? `레벨을 올리면(배틀·잡기·이상한사탕) Lv.${need}에 진화의돌 없이 진화해요. 진화의돌은 실패해도 다음 확률이 올라가요.`
+      : '진화의돌은 실패해도 다음 확률이 올라가고, 몇 번 실패하면 반드시 성공해요.'));
 }
 
 export function openDetail(sp) {
@@ -136,32 +176,28 @@ export function openDetail(sp) {
   const chance = canEvolve ? evoChance(c) : 0;
   sheet([
     h('div.grab'),
-    h(`div.habitat.t-${line.subject}`, c ? monSprite(sp.id, 176, c) : spriteCanvas(sp.id, 176),
-      // 잡은 몬스터만: 가방(상태·레벨·기술)으로 바로 가기 — 가방의 '도감' 탭과 짝
+    h(`div.habitat.t-${typesOf(sp)[0]}`, c ? monSprite(sp.id, 176, c) : spriteCanvas(sp.id, 176),
+      // 잡은 포켓몬만: 가방(상태·레벨·기술)으로 바로 가기 — 가방의 '도감' 탭과 짝
       c && h('button.habitat-bag', { type: 'button', onclick: () => toBag(sp.line_id) }, h('span.hb-arrow', '◀'), pix('bag'), '가방')),
     h('div.box',
-      h('div.banner', h('b', `${dexNo(sp)} ${sp.name}`), h(`span.type.t-${line.subject}`, line.subject)),
+      h('div.banner', h('b', `${dexNo(sp)} ${sp.name}`), h('span.types', typeChips(sp))),
       h('div.kv',
         h('span', '분류'), h('span', sp.category),
         h('span', '키 / 몸무게'), h('span', `${sp.height} / ${sp.weight}`),
-        h('span', '정체'), h('span', line.teacher),
+        isWild(sp.line_id) ? h('span', '만나는 곳') : h('span', '정체'),
+        h('span', isWild(sp.line_id) ? '야생 (QR · 걷기 · 알 · 레이드)' : line.teacher),
         h('span', '잡은 횟수'), h('span', `${c?.catch_count || 0}번`))),
     h('div.box', flavor),
     stages.length > 1 && h('div.box', h('b', '진화'), h(`div.chain.n${stages.length}`, chain)),
-    canEvolve && h('div.box.evo-panel',
-      h('div.banner', h('span', h('i.ticket-icon'), ` 진화권 × ${p.evo_tickets}`),
-        h('b.prob', chance >= 1 ? [pix('spark'), '다음 진화 확정!'] : `성공 확률 ${Math.round(chance * 100)}%`)),
-      h('button.btn.big.gold', { disabled: !p.evo_tickets || !S.online || !S.snap.festival_open, onclick: () => doEvolve(c) },
-        !p.evo_tickets ? '진화권이 없어요 (퀴즈·룰렛으로 받아요)' : !S.online ? '진화는 인터넷이 필요해요' : '진화시키기!'),
-      h('small', '실패해도 다음 확률이 올라가고, 몇 번 실패하면 다음엔 반드시 성공해요.')),
-    top === 1 && h('div.box', '★ 전설의 몬스터는 진화하지 않아요.'),
+    canEvolve && evoPanel(c, chance, p),
+    top === 1 && h('div.box', isLegendLine(sp.line_id) ? '★ 전설의 포켓몬은 진화하지 않아요.' : '이 포켓몬은 진화하지 않아요.'),
     h('button.btn.primary', { onclick: () => { closeOverlay({ replacing: true }); openSummary(sp); } }, pix('book'), '능력치 · 기술 보기'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기'),
   ]);
   typeText(flavor, sp.flavor);
 }
 
-// 도감 → 가방의 그 몬스터 (가방 목록을 아직 안 받았으면 먼저 받음)
+// 도감 → 가방의 그 포켓몬 (가방 목록을 아직 안 받았으면 먼저 받음)
 async function toBag(line) {
   sfx.blip();
   try {
@@ -176,16 +212,25 @@ async function toBag(line) {
 export const STAT_KEYS = [['hp', 'HP'], ['atk', '공격'], ['def', '방어'], ['spa', '특수공격'], ['spd', '특수방어'], ['spe', '스피드']];
 export const CAT_LABEL = { physical: '물리', special: '특수', status: '변화' };
 export const KIND_LABEL = { attack: '공격', status: '상태', defense: '방어' };
-export const typeOf = (sp) => { const l = lineOf(sp.line_id); return l?.btype || (l?.subject === '비밀' ? '전설' : l?.subject); };
+// 타입: 포켓몬(단계)마다 실제 타입 1~2개. typeOf = '불꽃/비행' 문자열, typesOf = ['불꽃', '비행']
+export const typeOf = (sp) => sp?.btype || lineOf(sp?.line_id)?.btype || '노말';
+export const typesOf = (sp) => typeOf(sp).split('/');
+export const typeChips = (spOrType) => (typeof spOrType === 'string' ? spOrType.split('/') : typesOf(spOrType)).map((t) => h(`span.type.t-${t}`, t));
+// 공격 타입 a → 방어 타입 d ('A/B' 면 곱) 배수
+export const typeMult = (a, d) => {
+  const chart = S.catalog.typeChart || [];
+  return Math.max(...String(a).split('/').map((at) => String(d).split('/')
+    .reduce((m, dt) => m * Number(chart.find((c) => c.atk === at && c.def === dt)?.mult ?? 1), 1)));
+};
 // Lv.50 실제 능력치 (개체값 31, 노력치 0, 성격 보정 없음)
 export const lv50 = (key, base) => (key === 'hp' ? Math.floor((2 * base + 31) / 2) + 60 : Math.floor((2 * base + 31) / 2) + 5);
 export const movesOf = (sp) => (S.catalog.speciesMoves || []).filter((x) => x.species_id === sp.id).sort((a, b) => a.slot - b.slot)
   .map((x) => (S.catalog.moves || []).find((m) => m.id === x.move_id)).filter(Boolean);
 export function typeMatch(type) {
-  const chart = S.catalog.typeChart || [];
+  const mine = String(type).split('/');
   return {
-    strong: chart.filter((c) => c.atk === type && Number(c.mult) > 1).map((c) => c.def),
-    weak: chart.filter((c) => c.def === type && Number(c.mult) > 1).map((c) => c.atk),
+    strong: TYPES.filter((d) => mine.some((a) => typeMult(a, d) > 1)),          // 내 타입 기술이 효과가 굉장한 타입
+    weak: TYPES.filter((a) => typeMult(a, type) > 1),                          // 나에게 효과가 굉장한 공격 타입 (두 타입의 곱)
   };
 }
 export function statNote(sp) {
@@ -210,9 +255,9 @@ export function openSummary(sp, page = 0) {
   };
   const ov = sheet([
     h('div.summary',
-      h('div.sum-top', h('b', `${dexNo(sp)}`), h('span', sp.name), h(`span.type.t-${type}`, type), h('span.sum-lv', 'Lv.50')),
+      h('div.sum-top', h('b', `${dexNo(sp)}`), h('span', sp.name), h('span.types', typeChips(type)), h('span.sum-lv', 'Lv.50')),
       h('div.sum-main',
-        h(`div.sum-pic.t-bg-${type}`, spriteCanvas(sp.id, 112)),
+        h(`div.sum-pic.t-bg-${type.split('/')[0]}`, spriteCanvas(sp.id, 112)),
         h('div.sum-right', tabs, body)),
       h('div.sum-nav',
         h('button.btn.small', { type: 'button', onclick: () => show(page - 1), 'aria-label': '이전 페이지' }, '◀'),
@@ -231,9 +276,9 @@ export function sumInfo(sp, type) {
   return [
     h('dl.sum-kv',
       h('dt', '이름'), h('dd', sp.name),
-      h('dt', '타입'), h('dd', h(`span.type.t-${type}`, type)),
+      h('dt', '타입'), h('dd', typeChips(type)),
       h('dt', '분류'), h('dd', sp.category),
-      h('dt', '정체'), h('dd', line?.teacher || '?'),
+      h('dt', isWild(sp.line_id) ? '만나는 곳' : '정체'), h('dd', isWild(sp.line_id) ? '야생' : line?.teacher || '?'),
       h('dt', '성향'), h('dd', statNote(sp))),
     h('div.sum-match', h('small', '효과가 굉장한 상대'), h('div', ...chips(m.strong))),
     h('div.sum-match', h('small', '조심해야 할 상대'), h('div', ...chips(m.weak))),
@@ -295,6 +340,7 @@ export async function doEvolve(c) {
   S.snap.profile = { ...S.snap.profile, ...res.profile };
   const col = owned(c.line_id);
   Object.assign(col, { stage: res.stage, evo_fails: res.evo_fails });
+  if (res.by_level) toast('진화 레벨이 되어서 진화의돌을 쓰지 않았어요.', 2500);
   await kv.set('snap', S.snap);
   await evolutionScene(before, res.success ? res.species_id : before + 1, res.success, col);
   sync({ force: true });
@@ -329,7 +375,7 @@ export async function evolutionScene(fromDex, toDex, success, col) {
   }
   if (success) {
     sfx.evolve(); vibrate([60, 40, 120]);
-    await typeText(text, `축하합니다! ${josa(from.name, '은', '는')} ${to.name}(으)로 진화했다!`);
+    await typeText(text, `축하합니다! ${josa(from.name, '은', '는')} ${josa(to.name, '으로', '로')} 진화했다!`);
   } else {
     sfx.fail();
     const next = evoChance(col);

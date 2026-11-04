@@ -1,7 +1,7 @@
 // Big TV at the booth (1920x1080, fits one screen): live TOP 10, 기수 대항전, catch feed, notice,
 // and every active rotating legendary QR (token changes every 30 s, so photos go stale). Booth or admin login.
 import { CONFIG } from './config.js';
-import { sb, rpc, errorText } from './sb.js';
+import { sb, rpc, errorText, selectAll } from './sb.js';
 import { drawQR, placeUrl } from './qrfmt.js';
 import { spriteCanvas } from './sprites.js';
 import { h, $, josa, timeAgo } from './ui.js';
@@ -38,7 +38,7 @@ async function start() {
     const p = await rpc('ensure_profile');
     if (!['booth', 'admin'].includes(p.role)) return renderLogin('부스/운영자 계정이 필요해요.');
   } catch (e) { return renderLogin(errorText(e.message)); }
-  species = (await sb.from('species').select('id,name').order('id')).data || [];
+  species = (await selectAll('species', 'id,name', (q) => q.order('id'))).data || [];
   root.replaceChildren(h('div.screen',
     h('section', h('h2', `🏆 ${CONFIG.GAME_TITLE} TOP 10`), h('ol.top10#top')),
     h('section',
@@ -46,7 +46,8 @@ async function start() {
       h('div.raid-row-tv#raids'),
       h('div.legend-row#legend'),
       h('div', h('h2', '기수 대항전'), h('div.gens#gens')),
-      h('div.grow', h('h2', '방금 잡힌 몬스터'), h('div.feed#feed')))),
+      h('div.grow', h('h2', '방금 잡힌 포켓몬'), h('div.feed#feed')))),
+    h('p.fan-note.tv', CONFIG.FAN_NOTICE),
     h('button.btn.small.fs-btn', { onclick: () => document.documentElement.requestFullscreen?.() }, '전체 화면'));
   tick();
   setInterval(tick, 8000);
