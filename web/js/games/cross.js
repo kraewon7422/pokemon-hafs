@@ -6,6 +6,7 @@
 // 끝낼 때 min(점수, 초×11+20) 으로 한 번 더 묶음. 멈춤(mg-pause)·숨긴 탭 시간은 ms 에 안 들어감 (게임 틱마다 dt 를 더함).
 // 그림은 대부분 이 파일에서 도트로 그림. 바닷가 양동이·삽, 우주 소행성·불꽃 몇 개만 CC0 그림(web/img/games/cross/CREDITS.txt).
 import { loadPhaser } from './common.js';
+import { atlasURL } from '../sprites.js';
 
 const GW = 160, GH = 288;      // 논리 해상도 (정수 배로 키움)
 const T = 16;                  // 한 칸 = 16 도트
@@ -20,7 +21,6 @@ const WARN_Y = Math.round(GH * 0.8); // 화면 아래 20% → 경고
 const SWIPE = 18;              // 손가락이 이만큼(CSS px) 움직이면 바로 그 방향으로 뜀
 const THEME_LEN = 70;          // 테마 하나의 줄 수
 const TH_NAME = ['학교', '바닷가', '화산', '우주'];
-const ATLAS_URL = new URL('../../sprites/atlas.png', import.meta.url).href;
 const PROPS_URL = new URL('../../img/games/cross/cross-props.png', import.meta.url).href;
 // cross-props.png 안의 CC0 조각 (x, y, w, h) — .work/cross/build_props.py 가 만든 그대로
 const PROPS = { bucketR: [0, 0, 10, 17], bucketB: [11, 0, 10, 17], pileB: [22, 0, 18, 17], pileR: [41, 0, 18, 17], pebL: [60, 0, 12, 7], pebS: [73, 0, 7, 5], star1: [81, 0, 5, 5], star2: [87, 0, 5, 5], aster: [93, 0, 15, 13], rockS: [109, 0, 6, 6], rockT: [116, 0, 4, 5], spark: [121, 0, 7, 7], fire1: [129, 0, 15, 15], fire2: [145, 0, 13, 12], fire3: [159, 0, 11, 10] };
@@ -1165,7 +1165,7 @@ export default {
     window.addEventListener('keydown', onKey);
 
     const fontsReady = (document.fonts?.load ? Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}) : Promise.resolve());
-    Promise.all([loadPhaser(), fontsReady]).then(([Phaser]) => {
+    Promise.all([loadPhaser(), fontsReady, atlasURL()]).then(([Phaser, , ATLAS_URL]) => {
       if (dead) return;
       wrap.textContent = '';
       game = new Phaser.Game({

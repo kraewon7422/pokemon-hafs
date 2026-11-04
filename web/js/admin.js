@@ -6,7 +6,7 @@ import { sb, rpc, errorText } from './sb.js';
 import { h, $, toast, timeAgo } from './ui.js';
 import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
-import { spriteCanvas } from './sprites.js';
+import { spriteCanvas, previewCanvas, decodeSprite, fitCell, refreshSprites, spritesReady } from './sprites.js';
 
 const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '외국어', '정보', '한국사', '음악', '체육', '전설'];
 const RARITY = { common: '일반', rare: '희귀', legendary: '전설' };
@@ -14,10 +14,10 @@ const ROLE = { student: '학생', booth: '부스 스태프', admin: '운영자' 
 const TSTATUS = { pending: ['대기', 'warn'], redeemed: ['사용', 'ok'], expired: ['만료', 'off'], cancelled: ['취소', 'off'] };
 const SETTING_HELP = {
   festival_open: '게임 동작 ON/OFF (비상 스위치)',
-  email_domains: '(0008부터 사용 안 함 — 모든 구글 계정 로그인 가능)',
+  email_domains: '학교 구글 계정의 도메인 (예: ["hafs.hs.kr"]). 로그인은 아무 구글 계정이나 되지만, 이 도메인 계정이면 메일 속 고유번호를 알아봐서 학생이 직접 비밀번호를 초기화할 수 있어요. 축제 뒤 개인정보 삭제 때도 써요',
   battle_daily_max: '배틀: 하루에 보상(진화권)을 받는 승리 수 (기본 3)', battle_turn_sec: '실시간 대전: 한 턴 제한 시간(초). 지나면 AI가 대신 골라요 (기본 30)',
   battle_invite_sec: '실시간 대전 신청: 이 시간(초) 안에 수락해야 시작 (기본 60)',
-  email_regex: '(0008부터 사용 안 함 — 학번은 첫 로그인 때 직접 입력)',
+  email_regex: '학교 구글 메일에서 고유번호를 찾는 규칙 (email_domains 와 함께 씀)',
   admin_emails: '운영자 이메일 목록 (그 구글 계정으로 첫 로그인할 때 운영자가 됨)',
   booth_emails: '부스 스태프 이메일 목록 (구글 계정)',
   stage_points: '단계별 점수 [0, 1단계, 2단계, 3단계]',
@@ -45,7 +45,6 @@ const SETTING_HELP = {
   roulette_every_min: '룰렛을 한 번 돌린 뒤 다음까지 기다리는 시간(분, 기본 5)',
   roulette_daily_max: '한 사람이 하루에 돌릴 수 있는 룰렛 횟수 (기본 12)',
   roulette_odds: '룰렛 칸 [진화권 수, 가중치] 목록. 기본 [[0,60],[1,30],[3,8],[5,2]] = 꽝60% 1장30% 3장8% 5장2%',
-  battle_stage_mult: '(사용 안 함) 예전 배틀용 단계별 능력치 배율',
   rotating_window_sec: '대형 화면 QR이 바뀌는 간격(초)',
   rotating_accept_sec: '대형 화면 QR을 찍은 뒤 인정되는 시간(초). 짧을수록 사진 공유가 어려워요',
   self_redeem: '셀프 지급 모드 ([축제 운영] 탭의 스위치)',
@@ -124,7 +123,7 @@ const S = {
   codes: null, codesSaved: true,   // last generated login codes (shown once, kept only in this tab)
 };
 
-// atlas capacity (how many dex numbers have a picture) — a new line needs tools/build_atlas.py
+// atlas capacity (how many dex numbers have a picture in atlas.png) — beyond it, a monster needs an uploaded picture (0031)
 const atlasCap = new Promise((resolve) => {
   const im = new Image();
   im.onload = () => resolve(Math.floor(im.naturalWidth / 64) * Math.floor(im.naturalHeight / 64));
@@ -216,8 +215,9 @@ function lineSelect(lines, selected = null) {
     ls.map((l) => h('option', { value: l.id, selected: l.id === selected },
       lineName(l.id) + (l.active ? '' : ' [비활성]') + (l.withdrawn ? ' [동의 철회]' : ''))))));
 }
+const hasPic = (dex) => dex <= ATLAS_CAP || !!S.spById.get(dex)?.sprite;
 function sprite(dex, size = 64) {
-  if (dex > ATLAS_CAP) return h('div.nopic', '그림 없음', h('br'), '(아틀라스 재생성 필요)');
+  if (!hasPic(dex)) return h('div.nopic', '그림 없음', h('br'), '(그림 올리기 필요)');
   return spriteCanvas(dex, size);
 }
 const field = (label, input, cls = '') => h('label.fld' + (cls ? '.' + cls : ''), h('span', label), input);
@@ -953,7 +953,7 @@ function savePng(q, sec, url) {
 // ───────────────────────── 4. 몬스터·퀴즈 ─────────────────────────
 
 async function tabMon() {
-  await Promise.all([loadCatalog(), atlasCap]);
+  await Promise.all([loadCatalog(), atlasCap, spritesReady, refreshSprites().catch(() => {})]);
   if (!S.selLine || !S.lineById.has(S.selLine)) S.selLine = S.lines[0]?.id ?? null;
   const listBox = h('div.box.stack');
   const editBox = h('div');
@@ -992,6 +992,115 @@ async function tabMon() {
   return h('div.cols.wide-right', listBox, editBox);
 }
 
+// ── 몬스터 그림 올리기 (0031): Storage 'sprites' + species.sprite. 올리면 모든 학생 앱에 바로 쓰임 ──
+const PIC_TYPES = { 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
+const PIC_MAX_BYTES = 1024 * 1024, PIC_MAX_SIDE = 256;
+const ready = (msg) => Object.assign(new Error(msg), { ready: true });
+
+function picTools(dex, redraw) {
+  const custom = S.spById.get(dex)?.sprite;
+  const up = h('button.btn.small.go', { type: 'button', onclick: () => uploadPic(dex, redraw).catch(fail) }, custom ? '그림 바꾸기' : '그림 올리기');
+  const back = custom ? h('button.btn.small', { type: 'button' }, dex <= ATLAS_CAP ? '원래 그림으로' : '그림 지우기') : null;
+  if (back) back.onclick = () => busy(back, () => resetPic(dex, redraw));
+  return h('div.pic-tools', custom ? chip('올린 그림', 'ok') : h('span.small-txt.muted', dex <= ATLAS_CAP ? '기본 그림' : '그림 없음'), up, back);
+}
+
+async function readPic(file) {
+  if (!file) return null;
+  if (file.size > PIC_MAX_BYTES) throw ready(`파일이 너무 커요 (${Math.round(file.size / 1024)}KB). 1MB 이하로 줄여 주세요.`);
+  const buf = await file.arrayBuffer();
+  const u8 = new Uint8Array(buf.slice(0, 12));
+  const type = u8[0] === 0x89 && u8[1] === 0x50 ? 'image/png' : u8[0] === 0x47 && u8[1] === 0x49 ? 'image/gif'
+    : u8[0] === 0x52 && u8[8] === 0x57 ? 'image/webp' : null;
+  if (!type) throw ready('PNG · GIF · WebP 그림만 올릴 수 있어요.');
+  let rec;
+  try { rec = await decodeSprite(buf); } catch (e) {
+    const why = { GIF_TOO_BIG: `GIF 가 너무 커요 (한 변 ${PIC_MAX_SIDE}픽셀까지).`, GIF_TOO_LONG: 'GIF 장면이 너무 많아요 (120장까지).' }[e.message];
+    throw ready(why || '그림을 읽지 못했어요. 다른 파일로 해 보세요.');
+  }
+  if (rec.w > PIC_MAX_SIDE || rec.h > PIC_MAX_SIDE) throw ready(`그림이 너무 커요 (${rec.w}×${rec.h}). 한 변 ${PIC_MAX_SIDE}픽셀 이하로 해 주세요. 도트 그림은 64×64~128×128이 알맞아요.`);
+  return { file, type, rec };
+}
+
+function picPreview(rec, dex) {
+  const cell = (label, el) => h('figure.pv', h('div.pv-pic', el), h('figcaption', label));
+  const mini = document.createElement('canvas');
+  mini.width = mini.height = 64; mini.className = 'sprite';
+  mini.getContext('2d').drawImage(fitCell(rec.frames[0], rec.w, rec.h), 0, 0);
+  mini.style.width = mini.style.height = '64px'; mini.style.imageRendering = 'pixelated';
+  return h('div.pv-grid',
+    cell('가방·목록', previewCanvas(rec, 40, 'normal', dex)),
+    cell('도감 칸', previewCanvas(rec, 72, 'normal', dex)),
+    cell('도감 자세히', previewCanvas(rec, 176, 'normal', dex)),
+    cell('못 잡음 (???)', previewCanvas(rec, 72, 'silhouette', dex)),
+    cell('반짝이', previewCanvas(rec, 72, 'shiny', dex)),
+    cell('미니게임 (첫 장면)', mini));
+}
+
+async function uploadPic(dex, redraw) {
+  const sp = S.spById.get(dex);
+  const input = h('input.inp', { type: 'file', accept: 'image/png,image/gif,image/webp' });
+  const info = h('p.small-txt.muted', '도트 그림 파일을 고르세요. 움직이는 GIF 도 돼요.');
+  const pv = h('div');
+  let picked = null;
+  input.onchange = async () => {
+    picked = null; pv.replaceChildren();
+    try {
+      picked = await readPic(input.files[0]);
+      if (!picked) return;
+      const r = picked.rec;
+      info.textContent = `${r.w}×${r.h}` + (r.frames.length > 1 ? ` · 움직이는 그림 ${r.frames.length}장 · 한 바퀴 ${(r.total / 1000).toFixed(1)}초` : ' · 멈춘 그림')
+        + ` · ${Math.max(1, Math.round(picked.file.size / 1024))}KB`;
+      info.className = 'small-txt';
+      pv.replaceChildren(picPreview(r, dex),
+        Math.max(r.w, r.h) > 160 ? h('p.notice', '그림이 커서 작은 칸에서는 줄어 보여요. 도트가 고르게 보이려면 64×64~128×128을 추천해요.') : '');
+    } catch (e) { info.textContent = msgOf(e); info.className = 'small-txt warn-txt'; }
+  };
+  const body = h('div.stack',
+    h('p', `${sp?.name || `#${dex}`}의 그림을 바꿔요. 올리면 학생 앱 · 부스 · 대형 화면 · 미니게임에 모두 쓰여요.`),
+    h('ul.small-txt.muted.tight',
+      h('li', 'PNG · WebP (멈춘 그림) 또는 GIF (움직이는 그림), 1MB · 한 변 256픽셀까지'),
+      h('li', '배경은 투명하게, 몬스터 발이 그림 아래쪽에 닿게 (원래 그림처럼 정사각형 + 둘레에 조금 여백)'),
+      h('li', '올린 뒤에도 "원래 그림으로" 단추로 언제든 되돌릴 수 있어요')),
+    field('그림 파일', input), info, pv);
+  const ok = await modal('몬스터 그림 올리기', body, [
+    { label: '취소', value: null },
+    {
+      label: '올리기', cls: 'go',
+      onClick: async () => {
+        if (!picked) { toast('먼저 그림 파일을 고르세요.'); return false; }
+        const path = `${dex}-${Date.now().toString(36)}.${PIC_TYPES[picked.type]}`;
+        const old = S.spById.get(dex)?.sprite;
+        const { error } = await sb.storage.from('sprites').upload(path, picked.file, { contentType: picked.type, cacheControl: '31536000', upsert: false });
+        if (error) throw ready(`그림을 올리지 못했어요 (${error.message})`);
+        try {
+          await tq(sb.from('species').update({ sprite: path }).eq('id', dex));
+        } catch (e) { await sb.storage.from('sprites').remove([path]); throw e; }
+        if (old) await sb.storage.from('sprites').remove([old]);   // 예전에 올린 파일 정리 (실패해도 괜찮음)
+        return true;
+      },
+    },
+  ]);
+  if (!ok) return;
+  await refreshSprites().catch(() => {});
+  toast('그림을 바꿨어요. 학생 앱은 다음에 열 때부터 새 그림이 보여요.', 5000);
+  await redraw();
+}
+
+async function resetPic(dex, redraw) {
+  const old = S.spById.get(dex)?.sprite;
+  if (!old) return;
+  const keep = dex <= ATLAS_CAP;
+  if (!await confirmBox(keep ? '원래 그림으로 되돌리기' : '그림 지우기',
+    [keep ? '올린 그림을 지우고 원래(기본) 그림으로 돌아가요.' : '올린 그림을 지워요. 이 몬스터는 기본 그림이 없어서 빈칸으로 보여요.'],
+    { ok: keep ? '되돌리기' : '지우기', danger: !keep })) return;
+  await tq(sb.from('species').update({ sprite: null }).eq('id', dex));
+  await sb.storage.from('sprites').remove([old]);
+  await refreshSprites().catch(() => {});
+  toast(keep ? '원래 그림으로 돌렸어요.' : '그림을 지웠어요.');
+  await redraw();
+}
+
 async function lineEditor(lineId, redraw) {
   const l = S.lineById.get(lineId);
   if (!l) return [h('div.box', h('p.muted', '계열을 고르세요.'))];
@@ -1013,7 +1122,7 @@ async function lineEditor(lineId, redraw) {
   const cards = sp.map((s) => h('div.sp-card',
     h('div.pic', sprite(s.id, 64)),
     h('b', `${s.stage}단계 · 앱 도감 No.${String(S.species.findIndex((x) => x.id === s.id) + 1).padStart(3, '0')}`),
-    h('span.small-txt', '그림 파일: ', h('code', `art/sprites/${lineId}-${s.stage}.png`)),
+    picTools(s.id, redraw),
     field('이름', s.name), field('분류', s.category), field('설명', s.flavor),
     h('div.row', field('키', s.height), field('몸무게', s.weight))));
   const grid = h('div.sp-grid');
@@ -1042,11 +1151,10 @@ async function lineEditor(lineId, redraw) {
     toast(`#${l.id} 저장했어요.`);
     await redraw();
   });
-  const lastDex = (l.id - 1) * 3 + maxStage(l);
-  const noPic = lastDex > ATLAS_CAP;
+  const noPic = sp.slice(0, maxStage(l)).some((s) => !hasPic(s.id));
   const editor = h('div.box.stack',
     h('h2', `#${l.id} 계열 편집`),
-    noPic ? h('p.notice', `이 계열(도감 ${(l.id - 1) * 3 + 1}~${lastDex}번)은 아직 그림이 없어요. 스프라이트를 넣고 tools/build_atlas.py로 아틀라스(web/sprites/atlas.png)를 다시 만들어야 해요.`) : null,
+    noPic ? h('p.notice', '그림이 없는 몬스터가 있어요. 아래 몬스터 카드의 "그림 올리기"로 넣어 주세요. (그 전까지 앱에서는 빈칸으로 보여요)') : null,
     h('datalist#subjects', SUBJECTS.map((s) => h('option', { value: s }))),
     h('div.fields', field('선생님 (잡은 뒤에만 보임)', teacher), field('과목 (타입)', subject), field('희귀도', rarity),
       field('진화 단계 수', stageSel), h('div.fld', h('span', '\u00a0'), act.el)),
@@ -1092,7 +1200,7 @@ async function addLine(redraw) {
     h('div.fields', field('선생님', teacher), field('과목 (타입)', subject), field('희귀도', rarity), field('진화 단계 수', stageSel)),
     h('p.small-txt.muted', '전설 몬스터는 보통 1단계(진화 없음)예요.'),
     nameBox,
-    h('p.notice', '그림은 따로 만들어야 해요: 64×64 스프라이트를 넣고 tools/build_atlas.py로 아틀라스를 다시 만드세요. 그 전까지는 "그림 없음"으로 보여요.'),
+    h('p.notice', '그림은 만든 뒤 몬스터 카드의 "그림 올리기"로 넣어요 (PNG·GIF·WebP). 그 전까지는 "그림 없음"으로 보여요.'),
     h('p.notice.red', '쌤 외모·사생활은 금지! 과목·학교 관련 내용만 쓰세요.'));
   const created = await modal('새 몬스터 계열', body, [
     { label: '취소', value: null },
@@ -1114,7 +1222,7 @@ async function addLine(redraw) {
     },
   ]);
   if (created) {
-    toast(`#${created} 계열을 만들었어요. 그림은 tools/build_atlas.py로 아틀라스를 다시 만들어야 보여요.`, 6000);
+    toast(`#${created} 계열을 만들었어요. 이제 몬스터 카드마다 "그림 올리기"로 그림을 넣어 주세요.`, 6000);
     S.selLine = created;
     await redraw();
   }
@@ -1323,7 +1431,7 @@ async function studentDetail(sid, reload) {
   const unlink = async () => {
     const ok = await confirmBox('기록까지 삭제', [
       h('p.warn-txt', `${sid} 계정을 지워요. 이 학번의 도감·티켓·진화권·점수가 모두 사라지고 되돌릴 수 없어요.`),
-      '폰을 잃어버린 경우에는 이걸 쓰지 말고 위의 [다른 로그인으로 옮기기]를 쓰세요.',
+      '폰을 잃어버린 경우에는 이걸 쓰지 말고, 새 폰에서 고유번호 + 비밀번호로 로그인하게 하세요.',
       '다른 사람이 이 학번을 잘못 가져갔을 때만 쓰세요. 삭제 후 진짜 학생이 다시 로그인하면 처음부터 시작해요.',
     ], { ok: '기록까지 삭제', danger: true, typeToConfirm: sid });
     if (ok) {
@@ -1372,8 +1480,8 @@ async function studentDetail(sid, reload) {
       await reload();
     });
   };
-  const relinkBox = h('div.box.stack',
-    h('h3', '다른 로그인으로 옮기기 (드문 경우)'),
+  const relinkBox = h('details.box.stack.rare',
+    h('summary', h('b', '다른 로그인으로 옮기기'), h('span.small-txt.muted', ' — 거의 쓸 일 없음 (예전 구글 로그인 기록을 옮길 때만)')),
     h('p.small-txt', '고유번호 계정은 폰을 잃어버리거나 바꿔도 ', h('b', '새 폰에서 고유번호 + 비밀번호로 로그인'), '하면 기록이 그대로예요. 비밀번호를 잊었으면 [비밀번호 요청·문의]에서 허용해 주세요. 이 기능은 기록이 다른 로그인(예전 구글 계정 등)에 있을 때만 써요.'),
     h('ol.small-txt.steps',
       h('li', '새 로그인 계정을 준비해요: ',
@@ -1417,7 +1525,7 @@ async function studentDetail(sid, reload) {
 
   const dangerBox = h('div.box.stack',
     h('h3', '기록까지 삭제'),
-    h('p.small-txt.muted', '다른 사람이 이 학번을 잘못 가져갔을 때만. 폰 분실은 위의 [다른 로그인으로 옮기기]를 쓰세요.'),
+    h('p.small-txt.muted', '다른 사람이 이 학번을 잘못 가져갔을 때만. 폰 분실은 새 폰에서 고유번호 + 비밀번호로 로그인하면 돼요.'),
     h('div.row', h('button.btn.small.danger', { onclick: unlink }, '계정 연결 해제 (기록까지 삭제)…')));
 
   const tBox = h('div.box',
@@ -1515,7 +1623,7 @@ async function studentDetail(sid, reload) {
       h('div.small-txt.muted', '빠르게 고르기:'), clChips)
       : h('small.muted', '비학생 계정은 반이 없어요.'));
 
-  return [info, relinkBox, grantBox, growBox, eggBox, tBox, cBox, eBox, dangerBox];
+  return [info, grantBox, growBox, eggBox, tBox, cBox, eBox, relinkBox, dangerBox];
 }
 
 const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자' };
@@ -1586,8 +1694,7 @@ function downloadCsv(filename, table) {
 
 function normCodeId(raw) {
   const v = String(raw || '').trim().toLowerCase();
-  if (/^[0-9]+$/.test(v)) return /^[0-9]{5,6}$/.test(v) ? v.padStart(6, '0') : null;   // all digits → must be a student id
-  return /^[a-z0-9]{2,12}$/.test(v) ? v : null;
+  return /^[0-9]{5,6}$/.test(v) ? v.padStart(6, '0') : null;   // 0031: 숫자 고유번호만 (서버도 글자 아이디는 건너뜀)
 }
 const isStudentCodeId = (id) => /^[0-9]{6}$/.test(id);
 const codeProfileId = (id) => (isStudentCodeId(id) ? id : 'g:' + id);
@@ -1998,19 +2105,7 @@ async function tabReq() {
 }
 
 // 레이드: 아무 몬스터로 레이드 열기 (TV = 현장 QR, 인쇄 = 고정 QR) + 진행 중인 레이드 (0013)
-function spriteImg(id, size = 56) {
-  const c = document.createElement('canvas');
-  const im = new Image();
-  im.onload = () => {
-    c.width = c.height = size;
-    const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-    g.drawImage(im, ((id - 1) % 12) * 64, Math.floor((id - 1) / 12) * 64, 64, 64, 0, 0, size, size);
-  };
-  im.src = 'sprites/atlas.png';
-  c.style.width = c.style.height = `${size}px`;
-  c.style.imageRendering = 'pixelated';
-  return c;
-}
+const spriteImg = (id, size = 56) => spriteCanvas(id, size);   // 올린 그림(0031)도 똑같이 보이게
 
 async function tabRaid() {
   if (!S.species?.length) await loadCatalog();
@@ -2117,7 +2212,7 @@ const DEFAULTS = {
   // 0003_review_fixes.sql
   rotating_accept_sec: 90, festival_close_at: null, min_client_version: 1,
   // 0005_festival_ops.sql
-  notice: null, prize_note: null, dup_bonus_every: 3, battle_stage_mult: [0, 1, 1.4, 1.9],
+  notice: null, prize_note: null, dup_bonus_every: 3,
   // 0007_roulette.sql
   roulette_enabled: true, roulette_every_min: 5, roulette_daily_max: 12, roulette_odds: [[0, 60], [1, 30], [3, 8], [5, 2]],
   // 0008_open_login.sql (code_signup_per_10min 60 → 0019_ops_polish.sql 에서 1000)
@@ -2288,7 +2383,7 @@ const KEY_HOME = {
 };
 for (const g of Object.values(GROUPS)) for (const f of g.fields) KEY_HOME[f.key] = KEY_HOME[f.key] || g.tab;
 // 더 이상 서버가 읽지 않는 설정 (지우지 않고 표시만)
-const UNUSED_KEYS = ['email_domains', 'email_regex', 'battle_stage_mult', 'rotating_accept_minutes'];
+const UNUSED_KEYS = ['battle_stage_mult', 'rotating_accept_minutes'];   // 0031 이 battle_stage_mult 를 지움 (예전 서버에만 남아 있을 수 있음)
 const KEY_TITLE = { notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 몬스터 수', minigame_off: '꺼 둔 미니게임' };
 const keyTitle = (key) => SPEC_BY_KEY[key]?.label || KEY_TITLE[key] || key;
 

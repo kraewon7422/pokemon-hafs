@@ -327,3 +327,16 @@ body.admin { word-break: keep-all; }
   .adv-tbl td.json-cell { width: 100%; min-width: 0; }
   .adv-tbl tr { padding: 10px 0; border-bottom: 1px solid var(--line); }
 }
+
+/* 몬스터 그림 올리기 (0031) */
+.pic-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.pv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 8px; }
+.pv { margin: 0; border: 1px solid var(--line); border-radius: 8px; background: #f3f6f2; padding: 6px; display: grid; gap: 4px; justify-items: center; min-width: 0; }
+.pv .pv-pic { min-height: 72px; display: flex; align-items: flex-end; justify-content: center; max-width: 100%; overflow: hidden; }
+.pv figcaption { font-size: 12px; color: #5a6270; text-align: center; word-break: keep-all; }
+.pv canvas { image-rendering: pixelated; max-width: 100%; height: auto !important; }
+ul.tight { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+/* 드문 기능은 접어 둠 (0031) */
+details.rare > summary { cursor: pointer; list-style-position: inside; }
+details.rare[open] > summary { margin-bottom: 8px; }

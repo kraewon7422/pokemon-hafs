@@ -261,14 +261,16 @@ r = await S[1].rpc('self_redeem');
 ok(r.data?.results?.length >= 1 && r.data.results.every(x => x.species_id || x.error), 'self-redeem works when the valve is open', r.data);
 await setS('self_redeem', false);
 
-console.log('\n[13] backup login codes (teacher / guest)');
+console.log('\n[13] backup login codes (numbers only since 0031) + guest id accounts');
 const codes = (await admin.rpc('admin_make_login_codes', { p_ids: ['T01', '22999'], p_names: ['테스트쌤', '코드학생'] })).data;
-ok(codes?.length === 2 && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(codes[0].code) && codes[1].id === '022999', 'codes generated', codes);
-const tTok = await (await fetch(`${URL_}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 't01@code.local', password: codes[0].code.replace('-', '') }) })).json();
-ok(!!tTok.access_token, 'teacher can sign in with the printed code');
-const tc = client(tTok.access_token);
-const tp = (await tc.rpc('ensure_profile')).data;
-ok(tp?.student_id === 'g:t01' && tp.gen === null && tp.role === 'student', 'guest profile created', tp);
+ok(codes?.length === 1 && /^[A-Z2-9]{4}-[A-Z2-9]{4}$/.test(codes[0].code) && codes[0].id === '022999', 'codes generated for the number only (letter id skipped)', codes);
+const cTok = await tokenReq('022999@code.local', codes[0].code.replace('-', ''));
+ok(!!cTok.access_token, 'student can sign in with the printed code');
+const GUEST = 'tg' + Math.random().toString(36).slice(2, 9);   // 선생님·손님 = 앱에서 만든 아이디 계정 (g:<아이디>)
+await anon.rpc('create_id_account', { p_id: GUEST, p_password: 'guest12' });
+const tc = client((await tokenReq(`${GUEST}@id.local`, 'guest12')).access_token);
+const tp = (await tc.rpc('register_profile', { p_kind: 'id', p_student_id: null, p_name: '테스트쌤' })).data;
+ok(tp?.student_id === `g:${GUEST}` && tp.gen === null && tp.role === 'student', 'guest profile created', tp);
 const ta = (await tc.rpc('accept_terms', { p_show: true })).data;
 ok(ta?.consented === true && ta.display === '테**쌤', 'consent + masked display name for guests', ta);
 
@@ -291,7 +293,7 @@ r = await S[0].rpc('get_ranking');
 ok(!r.data.top.some(t => t.display === '테**쌤'), 'teacher/guest code accounts are not ranked');
 const exp = (await admin.rpc('admin_export_ranking')).data;
 const ex1 = exp?.find(x => x.student_id === '022901');
-ok(ex1?.name === '김민준' && ex1.rank >= 1 && exp.some(x => x.student_id === 'g:t01' && x.rank === null), 'export has real names, guests unranked', ex1);
+ok(ex1?.name === '김민준' && ex1.rank >= 1 && exp.some(x => x.student_id === `g:${GUEST}` && x.rank === null), 'export has real names, guests unranked', ex1);
 ok((await S[0].rpc('admin_export_ranking')).error === 'NOT_ADMIN', 'students cannot export');
 await admin.rpc('admin_grant_monster', { p_student_id: '022903', p_line: 5, p_stage: 2 });
 st = (await S[2].rpc('sync')).data.state;
@@ -312,10 +314,11 @@ await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: J
 const dup = r.data?.results?.find(x => x.line_id === 7);
 st = (await S[2].rpc('sync')).data.state;
 ok(dup?.bonus_ticket === true && st.profile.evo_tickets === tBefore + 1, 'every 3rd duplicate gives +1 evolution ticket', dup);
-// relink 022999 (code account) data onto the t01 login is refused (t01 has its own data? no) → use a fresh code account
-const c2 = (await admin.rpc('admin_make_login_codes', { p_ids: ['RL1'], p_names: ['재연결'] })).data;
-const rl = await (await fetch(`${URL_}/auth/v1/token?grant_type=password`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify({ email: 'rl1@code.local', password: c2[0].code.replace('-', '') }) })).json();
-r = await admin.rpc('admin_relink', { p_student_id: '022903', p_email: 'rl1@code.local' });
+// relink onto a fresh login that has no game data yet (an id account without a profile)
+const RL = 'rl' + Math.random().toString(36).slice(2, 9);
+await anon.rpc('create_id_account', { p_id: RL, p_password: 'relink1' });
+const rl = await tokenReq(`${RL}@id.local`, 'relink1');
+r = await admin.rpc('admin_relink', { p_student_id: '022903', p_email: `${RL}@id.local` });
 ok(r.data?.ok === true, 'relink moved 022903 to another login', r);
 const moved = (await client(rl.access_token).rpc('sync')).data?.state;
 ok(moved?.profile?.student_id === '022903' && moved.collection.length > 0, 'new login sees the same game data', moved?.profile?.student_id);
@@ -1423,5 +1426,76 @@ console.log('\n[39] 잡기 도망 · 레이드 보스 잡기 · 반 이름 (0030
   await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid, `g:${nid}`], p_confirm: '삭제' });
 }
 
+console.log('\n[40] 몬스터 그림 올리기 · 도망 보상 회수 · 로그인 쪽지 숫자만 (0031)');
+{
+  const STORE = `${URL_}/storage/v1/object`;
+  // 1) 그림 목록: 로그인 전에도 읽힘
+  const ov0 = (await anon.rpc('sprite_overrides')).data;
+  ok(ov0 && typeof ov0 === 'object' && !Array.isArray(ov0), 'anon can read sprite_overrides (map)', ov0);
+  // 2) 올리기: 학생은 안 됨, 운영자는 됨
+  const png = Uint8Array.from(atob('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR4nGP8z8Dwn4GBgYGJgYGBAQAZBAH/xQ5dRwAAAABJRU5ErkJggg=='), (c) => c.charCodeAt(0));
+  const path = `1-t${Date.now().toString(36)}.png`;
+  const upStu = await fetch(`${STORE}/sprites/${path}`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${STOK}`, 'Content-Type': 'image/png' }, body: png });
+  ok(upStu.status >= 400, 'student cannot upload a sprite', upStu.status);
+  const upBad = await fetch(`${STORE}/sprites/1-tbad.txt`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${ADMIN_TOK}`, 'Content-Type': 'text/plain' }, body: 'hi' });
+  ok(upBad.status >= 400, 'bucket refuses non-image files', upBad.status);
+  const upAdm = await fetch(`${STORE}/sprites/${path}`, { method: 'POST', headers: { apikey: KEY, Authorization: `Bearer ${ADMIN_TOK}`, 'Content-Type': 'image/png', 'cache-control': 'max-age=31536000' }, body: png });
+  ok(upAdm.ok, 'admin uploads a sprite', upAdm.status);
+  const pub = await fetch(`${STORE}/public/sprites/${path}`);
+  ok(pub.ok && (await pub.arrayBuffer()).byteLength === png.length, 'anyone can download it from the public URL', pub.status);
+  // 3) species.sprite: 학생은 못 바꾸고, 형식이 틀리면 거절, 운영자가 정하면 목록에 나옴
+  const before = (await admin.select('species?select=sprite&id=eq.1')).data?.[0]?.sprite ?? null;
+  await S[0].patch('species?id=eq.1', { sprite: path });
+  ok(((await admin.select('species?select=sprite&id=eq.1')).data?.[0]?.sprite ?? null) === before, 'student cannot set species.sprite');
+  ok((await admin.patch('species?id=eq.1', { sprite: '../x.png' })) >= 400, 'bad sprite path refused by check');
+  ok((await admin.patch('species?id=eq.1', { sprite: path })) < 300, 'admin sets species.sprite');
+  ok((await anon.rpc('sprite_overrides')).data?.['1'] === path, 'sprite_overrides lists it', (await anon.rpc('sprite_overrides')).data);
+  await admin.patch('species?id=eq.1', { sprite: before });
+  const del = await fetch(`${STORE}/sprites`, { method: 'DELETE', headers: { apikey: KEY, Authorization: `Bearer ${ADMIN_TOK}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [path] }) });
+  ok(del.ok, 'admin deletes it again (cleanup)', del.status);
+
+  // 4) 로그인 쪽지: 숫자 고유번호만
+  const lc = (await admin.rpc('admin_make_login_codes', { p_ids: ['teacher1', 'ab'], p_names: ['선생님', '손님'] })).data;
+  ok(Array.isArray(lc) && lc.length === 0, 'admin_make_login_codes skips letter ids', lc);
+
+  // 5) 도망으로 도감이 50% 밑으로 → 안 쓴 도감 보상 티켓 회수
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'dx1234' })).error);
+  const D = client(await pwLogin(`${sid}@code.local`, 'dx1234'));
+  await D.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '도감보상' });
+  const st = async () => (await D.rpc('sync')).data.state;
+  const places = Object.keys(T).filter((k) => /^A\d+$/.test(k));
+  let got = null;
+  for (const q of places) {             // 부스에서 새 몬스터 하나 (아직 잡기 결과 안 보냄)
+    const n = nonce();
+    await D.rpc('sync', { p_scans: [{ n, q, t: T[q].token }] });
+    const res = (await booth.rpc('booth_redeem', { p_payload: sid })).data?.results?.find((x) => x.nonce === n);
+    if (res?.is_new) { got = { n, line: res.line_id }; break; }
+  }
+  ok(!!got, 'booth gave a new monster');
+  const lines = (await admin.select('lines?select=id,bonus,secret,withdrawn,active&order=id')).data
+    .filter((l) => !l.bonus && !l.secret && !l.withdrawn && l.active);
+  const spc = (await admin.select('species?select=id,line_id,stage')).data;
+  const elig = new Set(lines.map((l) => l.id));
+  const total = spc.filter((x) => elig.has(x.line_id)).length;   // 서버 _dex_rewards 와 같은 셈
+  let have = 1;                          // 부스에서 받은 새 몬스터 (1단계)
+  const duid = (await admin.select(`profiles?select=user_id&student_id=eq.${sid}`)).data?.[0]?.user_id;
+  const dex50 = async () => (await admin.select(`tickets?select=id&user_id=eq.${duid}&special=eq.dex50&status=eq.pending`)).data || [];   // 안 쓴 도감 보상 티켓
+  let crossed = false;
+  outer: for (const l of lines.filter((x) => x.id !== got?.line)) {   // 한 단계씩 = 도감 한 칸씩 → 50% 를 막 넘는 순간에 멈춤
+    const stages = spc.filter((x) => x.line_id === l.id).length;
+    for (let stg = 1; stg <= stages; stg++) {
+      await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: stg });
+      have++;
+      if (have * 2 >= total - 1 && (await dex50()).length) { crossed = true; break outer; }
+    }
+  }
+  ok(crossed, 'dex 50% reached → dex50 reward ticket pending');
+  const fr = (await D.rpc('catch_result', { p_nonce: got?.n, p_grade: 'none', p_fled: true })).data;
+  ok(fr?.fled && fr.removed, 'the new monster flees → removed', fr);
+  ok((await dex50()).length === 0, 'dex dropped below 50% → unused dex50 ticket taken back');
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+}
+
+await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
