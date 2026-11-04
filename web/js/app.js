@@ -9,7 +9,7 @@ import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio, isSfxOn, setSfxOn, isBgmOn, setBgmOn, bgmScene } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
-import { S, app, bag, collection, dexOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
+import { S, app, bag, boxFull, boxMax, collection, dexOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
 import { fmtTime, openDetail, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
@@ -395,6 +395,7 @@ export function viewHome() {
     installBanner(),
     !S.updateReady && Number(R.min_client_version) > CONFIG.VERSION && h('div.box.warn-box', '⬆ 새 버전이 있어요! 앱(브라우저 탭)을 완전히 닫았다가 다시 열어 주세요.'),
     R.notice && h('div.box.notice-box', pix('mega'), String(R.notice)),
+    boxFull() && h('div.box.warn-box', pix('bag'), `박스가 꽉 찼어요 (${mons().length}/${boxMax()}마리). 가방 → 포켓몬에서 놓아주면 새 포켓몬을 받을 수 있어요.`),
     R.festival_ended && h('div.box.ended-box',
       h('div.big', pix('spark', 'l'), '축제 끝! 수고했어요'),
       h('div', p.in_ranking === false ? '선생님·손님 계정은 랭킹에서 제외돼요.' : `최종 순위 ${p.rank ? '#' + p.rank : '-'} · 점수 ${p.score} · 도감 ${D.found}/${total}`),
@@ -662,23 +663,24 @@ export function startGoogleLink() {
 // 트레이너 카드에 띄울 포켓몬 고르기 (0024 set_partner — 서버에 저장되어 다른 폰에서도 같음)
 function pickPartner() {
   sfx.select();
-  const cur = partnerMon()?.line_id;
-  const choose = async (line) => {
+  const cur = S.snap.profile.partner;
+  const choose = async (id) => {
     try {
-      const prof = await rpc('set_partner', { p_line: line });
+      const prof = await rpc('set_partner', { p_mon: id });
       S.snap.profile = { ...S.snap.profile, ...prof };
       await kv.set('snap', S.snap);
       sfx.blip(); closeOverlay(); renderTab();
     } catch (e) { toast(errorText(e.message)); }
   };
-  const mons = [...collection()].sort((a, b) => b.stage - a.stage || a.line_id - b.line_id);
+  // 0036: 박스의 포켓몬 한 마리씩 (같은 종이 여러 마리면 레벨로 구별)
+  const list = [...mons()].sort((a, b) => b.stage - a.stage || a.line_id - b.line_id || b.level - a.level || a.id - b.id);
   sheet(h('div.stack',
     h('div.grab'),
     h('b', '트레이너 카드에 띄울 포켓몬'),
-    h('div.partner-grid', mons.map((c) => {
-      const sp = speciesOf(dexOf(c.line_id, c.stage));
-      return h(`button.partner-pick${c.line_id === cur ? '.on' : ''}`, { 'aria-pressed': String(c.line_id === cur), onclick: () => choose(c.line_id) },
-        spriteCanvas(sp.id, 56), h('small', sp.name));
+    h('div.partner-grid', list.map((c) => {
+      const sp = monSp(c);
+      return h(`button.partner-pick${c.id === cur ? '.on' : ''}`, { 'aria-pressed': String(c.id === cur), onclick: () => choose(c.id) },
+        monSprite(sp.id, 56, c), h('small', sp.name), h('small', `Lv.${c.level}`));
     })),
     h('button.btn', { onclick: () => choose(null) }, S.snap.profile.partner ? '자동으로 (가장 많이 진화한 포켓몬)' : '지금은 자동 — 위에서 골라 주세요')));
 }
@@ -1158,6 +1160,8 @@ export async function catchEncounter(enc) {
   if (!S.online) return say(`${josa(safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스', '을', '를')} 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
   const sp = speciesOf(enc.species_id);
   if (!sp) return;
+  // 0036: 박스가 꽉 차면 잡을 수 없음 (만남은 그대로 남음 → 놓아준 뒤 다시)
+  if (boxFull()) return say(`박스가 꽉 찼어요 (${boxMax()}마리). 가방 → 포켓몬에서 몇 마리를 놓아준 뒤에 잡아요.`, true);
   encBusy = true; celebrating = true;
   try {
     if (S.overlay) closeOverlay();
@@ -1183,7 +1187,7 @@ export async function catchEncounter(enc) {
         : await rpc('encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
     } catch (e) {
       if (e.offline) toast('결과를 보내지 못했어요. 인터넷이 연결되면 홈에서 다시 도전할 수 있어요.', { kind: 'error' });
-      else { toast(errorText(e.message)); (S.encDone ||= new Set()).add(enc.id); }
+      else { toast(errorText(e.message)); if (e.message !== 'BOX_FULL') (S.encDone ||= new Set()).add(enc.id); }
       return;
     }
     (S.encDone ||= new Set()).add(enc.id);

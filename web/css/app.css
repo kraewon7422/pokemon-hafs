@@ -961,3 +961,56 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .sf-pend { width: 100%; word-break: keep-all; }
 .sf-pend[hidden] { display: none; }
 @media (max-width: 340px) { .sf-pad { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); } .sf-info { padding: 8px; } }
+
+/* ───────── 0036 PC 박스 (3세대 에메랄드): ◀ BOX n ▶ + 풀숲 벽지 6 × 5 ───────── */
+.pc { display: grid; gap: 6px; min-width: 0; }
+.pc-head { display: grid; grid-template-columns: 44px minmax(0, 1fr) 44px; align-items: center; gap: 6px; }
+.pc-arrow { appearance: none; height: 44px; padding: 0; font: inherit; font-size: 18px; color: #fff; text-shadow: 1px 1px 0 #284020;
+  border: 3px solid #283820; border-radius: 8px; background: #58a040; box-shadow: 0 3px 0 #283820; cursor: pointer; }
+.pc-arrow:active { transform: translateY(2px); box-shadow: 0 1px 0 #283820; }
+.pc-name { display: grid; justify-items: center; min-width: 0; padding: 3px 6px; border: 3px solid #283820; border-radius: 8px;
+  background: linear-gradient(#e8f8c8, #b8e090); box-shadow: inset 0 0 0 2px #f8fff0; color: #203018; text-align: center; }
+.pc-name b { font-size: var(--fs-l); letter-spacing: 1px; white-space: nowrap; }
+.pc-name small { font-size: var(--fs-s); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.pc-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 2px; padding: 6px; border: 4px solid #305828; border-radius: 8px;
+  background-color: #70c058;
+  background-image:
+    linear-gradient(135deg, transparent 0 40%, #88d868 40% 46%, transparent 46% 54%, #88d868 54% 60%, transparent 60%),
+    linear-gradient(45deg, transparent 0 44%, #58a848 44% 50%, transparent 50%),
+    radial-gradient(circle, #98e078 0 2px, transparent 2.5px);
+  background-size: 24px 24px, 24px 24px, 12px 12px; background-position: 0 0, 12px 12px, 6px 6px; }
+.pc-slot { appearance: none; position: relative; display: grid; place-items: center; aspect-ratio: 1; min-width: 0; padding: 0; font: inherit;
+  border: 2px solid transparent; border-radius: 6px; background: rgba(255, 255, 255, .14); cursor: pointer; }
+.pc-slot.empty { background: rgba(32, 64, 24, .12); cursor: default; }
+.pc-slot:disabled { opacity: 1; }
+.pc-slot:not(.empty):hover, .pc-slot:focus-visible { border-color: #f8d048; background: rgba(255, 255, 255, .32); outline: none; }
+.pc-slot.moving { border-color: #f86840; background: rgba(248, 104, 64, .3); }
+.pc-slot canvas { max-width: 100%; height: auto !important; image-rendering: pixelated; }
+.pc-held { position: absolute; right: 1px; bottom: 1px; line-height: 0; }
+.pc-mark { position: absolute; left: 1px; top: 1px; padding: 0 2px; font-size: 10px; line-height: 14px; color: #fff; background: #2f6fb8; border-radius: 3px; white-space: nowrap; }
+.pc-moving { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border: 3px solid #f86840; border-radius: 8px;
+  background: #fff0e0; font-size: var(--fs-s); word-break: keep-all; }
+.pc-moving > span { min-width: 0; }
+.pc-moving .btn { flex: none; }
+.pc-foot { display: grid; gap: 2px; justify-items: center; text-align: center; font-size: var(--fs-s); word-break: keep-all; }
+/* 요약 아래 버튼: 카드 · 진화 · 옮기기 · 놓아주기 */
+.sum-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
+.sum-acts .btn { min-height: 44px; padding: 4px 6px; font-size: var(--fs-m); white-space: nowrap; }
+.sum-where { color: #586890; }
+.btn.danger { background: #f8d8d0; color: #a01818; border-color: #a01818; }
+.release-mon { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 3px solid #384050; border-radius: 8px; background: #fffdf4; }
+/* 도감 → 내 포켓몬 N마리 */
+.my-mons { display: grid; gap: 6px; }
+.my-mon-list { display: grid; gap: 4px; max-height: 240px; overflow-y: auto; }
+.my-mon { appearance: none; display: flex; align-items: center; gap: 8px; min-height: 48px; padding: 4px 8px; font: inherit; text-align: left;
+  border: 2px solid #384050; border-radius: 8px; background: #fffdf4; color: #182030; cursor: pointer; }
+.my-mon canvas { flex: none; image-rendering: pixelated; }
+.mm-txt { display: grid; min-width: 0; line-height: 1.3; }
+.mm-txt small { font-size: var(--fs-s); white-space: nowrap; }
+.mm-tags { margin-left: auto; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 3px; min-width: 0; }
+.mm-tag { padding: 0 4px; font-size: 11px; line-height: 16px; border-radius: 3px; background: #e0e4ec; color: #384050; white-space: nowrap; }
+.mm-tag.shiny { background: #f8e070; color: #604000; }
+.mm-tag.evo { background: #f86840; color: #fff; }
+.bt-opt .bt-lv { font-size: 11px; color: #586890; }
+.partner-pick small + small { font-size: 11px; color: #586890; }
+.sum-body { display: grid; gap: 6px; min-width: 0; }   /* 0036: 설명·제목이 한 줄에 붙지 않게 (320px) */

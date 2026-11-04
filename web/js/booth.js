@@ -23,7 +23,7 @@ const STATUS = {
   new: ['받을 수 있음', 'st-new'], pending: ['받을 수 있음', 'st-pending'], redeemed: ['이미 받음', 'st-done'],
   invalid_token: ['가짜·교체된 QR', 'st-bad'], nonce_conflict: ['다른 학생의 티켓', 'st-bad'], expired: ['만료됨', 'st-bad'],
   cancelled: ['취소됨', 'st-bad'], already_pending: ['같은 장소 중복', 'st-bad'], daily_cap: ['오늘 횟수 초과', 'st-bad'],
-  bag_full: ['티켓 주머니 초과', 'st-bad'], empty_pool: ['QR에 포켓몬 미설정(운영자 확인)', 'st-bad'], bad_format: ['형식 오류', 'st-bad'],
+  bag_full: ['티켓 주머니 초과', 'st-bad'], empty_pool: ['QR에 포켓몬 미설정(운영자 확인)', 'st-bad'], box_full: ['박스 꽉 참 (티켓은 그대로 — 학생이 놓아준 뒤 다시)', 'st-bad'], bad_format: ['형식 오류', 'st-bad'],
 };
 
 let pendingConfirm = null;   // the student card waiting for 확인 (Enter/Space also confirms → one-key booth)

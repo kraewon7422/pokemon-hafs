@@ -3,16 +3,16 @@ import { rpc, errorText } from './sb.js';
 import { spriteCanvas } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, pix } from './ui.js';
-import { S, collection, dexOf, isWithdrawn, owned, speciesOf, vibrate } from './state.js';
+import { S, dexOf, isWithdrawn, monById, mons, monSp, owned, speciesOf, vibrate } from './state.js';
 import { catchEncounter, closeOverlay, fmtWait, openScanner, overlay, renderTab, say, sync } from './app.js';
 import { lv50, typeOf, typeMult } from './dex.js';
 
 // ───────── 레이드: 큰 보스를 다 같이 탭해서 쓰러뜨리기 (0013) ─────────
 export const isRaidQr = (q) => /^R\d{1,5}$/.test(q);
 export const curSpecies = (line) => { const c = owned(line); return c ? speciesOf(dexOf(line, c.stage)) : null; };
-// 서버 _raid_per_tap 과 같은 식 (화면 안내용; 실제 데미지는 서버가 정함)
-export function estimatePerTap(line, bossId) {
-  const a = curSpecies(line); const b = speciesOf(bossId);
+// 서버 _raid_per_tap 과 같은 식 (화면 안내용; 실제 데미지는 서버가 정함). 0036: 박스의 포켓몬 번호
+export function estimatePerTap(mon, bossId) {
+  const a = monSp(monById(mon)); const b = speciesOf(bossId);
   if (!a || !b) return 3;
   const tp = (sp) => typeOf(sp);
   const m = typeMult(tp(a), tp(b));   // 서버 _bt_tm: 공격 쪽 타입 중 가장 센 것 × 방어 타입 두 개의 곱
@@ -20,8 +20,10 @@ export function estimatePerTap(line, bossId) {
   const atk = lv50('atk', phys ? a.atk : a.spa); const def = lv50('def', phys ? b.def : b.spd);
   return Math.max(1, Math.round((10 * atk / Math.max(def, 1)) * m));
 }
-export const bestLine = (bossId) => collection().filter((c) => !isWithdrawn(c.line_id))
-  .map((c) => [c.line_id, estimatePerTap(c.line_id, bossId)]).sort((x, y) => y[1] - x[1])[0]?.[0] ?? null;
+// 탭당 데미지가 가장 센 포켓몬 (같으면 레벨 높은 것 — 레이드가 끝나면 그 포켓몬 레벨이 오름)
+const raidOpts = (bossId) => mons().filter((c) => !isWithdrawn(c.line_id))
+  .map((c) => [c.id, estimatePerTap(c.id, bossId), c.level]).sort((x, y) => y[1] - x[1] || y[2] - x[2]);
+export const bestMon = (bossId) => raidOpts(bossId)[0]?.[0] ?? null;
 
 export async function loadMyRaids() {
   S.myRaidsAt = Date.now();
@@ -101,7 +103,7 @@ async function findEncounter(speciesId) {
 export async function joinRaid(q, t) {
   if (!S.online) return say('레이드는 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   try {
-    const r = await rpc('raid_join', { p_q: q, p_t: t, p_line: null }, { retries: 0 });
+    const r = await rpc('raid_join', { p_q: q, p_t: t, p_mon: null }, { retries: 0 });
     sfx.scan(); vibrate(80);
     openRaid(r);
   } catch (e) { sfx.error(); say(errorText(e.message), true); }
@@ -111,7 +113,7 @@ export async function joinRaid(q, t) {
 export async function joinOpenRaid(r) {
   if (!S.online) return say('레이드는 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   try {
-    const x = await rpc('raid_join_open', { p_raid: r.id, p_line: bestLine(r.species_id) }, { retries: 0 });
+    const x = await rpc('raid_join_open', { p_raid: r.id, p_mon: bestMon(r.species_id) }, { retries: 0 });
     sfx.scan(); vibrate(80);
     openRaid(x);
   } catch (e) { sfx.error(); say(errorText(e.message), true); loadMyRaids(); }
@@ -121,11 +123,11 @@ export function openRaid(r0) {
   if (S.overlay) closeOverlay({ replacing: true });
   unlockAudio();
   let r = r0;
-  let line = r.me?.line_id || bestLine(r.species_id);
+  let mon = monById(r.me?.mon_id)?.id || bestMon(r.species_id);
   let pending = 0;            // taps not sent yet (sent every 4 s)
   let busy = false; let over = false;
   const skew = new Date(r.server_time || Date.now()) - Date.now();
-  const per = () => (r.me?.line_id === line && r.me?.per_tap) || estimatePerTap(line, r.species_id);
+  const per = () => (r.me?.mon_id === mon && r.me?.per_tap) || estimatePerTap(mon, r.species_id);
   const boss = spriteCanvas(r.species_id, 192);
   const bossBtn = h('button.raid-boss', { 'aria-label': '보스 공격하기 (계속 탭)' }, boss);
   const fx = h('div.raid-fx', { 'aria-hidden': 'true' });
@@ -141,7 +143,7 @@ export function openRaid(r0) {
     hpFill.className = ratio < 0.2 ? 'red' : ratio < 0.5 ? 'yellow' : '';
     hpText.textContent = `HP ${hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`;
     info.replaceChildren(h('span', `참가 ${r.players}명`), h('span', `내 데미지 ${((r.me?.damage || 0) + pending * per()).toLocaleString()}`), h('span', `탭당 ${per()}`));
-    const sp = curSpecies(line);
+    const sp = monSp(monById(mon));
     pickBtn.replaceChildren(...(sp ? [spriteCanvas(sp.id, 28), ` ${sp.name} ▾`] : ['내 포켓몬 고르기 ▾']));
   };
   const tick = () => {
@@ -186,7 +188,7 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
     busy = true;
     const taps = pending;
     try {
-      r = await rpc(taps ? 'raid_attack' : 'raid_state', taps ? { p_raid: r.id, p_taps: taps, p_line: line } : { p_raid: r.id }, { retries: 0 });
+      r = await rpc(taps ? 'raid_attack' : 'raid_state', taps ? { p_raid: r.id, p_taps: taps, p_mon: mon } : { p_raid: r.id }, { retries: 0 });
       pending -= taps;
     } catch (e) { if (/RAID_/.test(e.message)) toast(errorText(e.message)); }
     busy = false;
@@ -210,12 +212,13 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
   pickBtn.onclick = () => {
     picker.hidden = !picker.hidden;
     if (picker.hidden) return;
-    const opts = collection().filter((c) => !isWithdrawn(c.line_id))
-      .map((c) => [c.line_id, estimatePerTap(c.line_id, r.species_id)]).sort((a, b) => b[1] - a[1]).slice(0, 12);
-    picker.replaceChildren(...(opts.length ? opts.map(([l, d]) => {
-      const sp = curSpecies(l);
-      return h(`button.raid-opt${l === line ? '.on' : ''}`, { onclick: () => { line = l; picker.hidden = true; draw(); sfx.select(); } },
-        spriteCanvas(sp.id, 40), h('small', sp.name), h('b', `탭당 ${d}`));
+    // 같은 종은 레벨 높은 한 마리만 (박스에 같은 포켓몬이 많아도 목록이 넘치지 않게)
+    const seen = new Set();
+    const opts = raidOpts(r.species_id).filter(([id]) => { const m = monById(id); const k = `${m.line_id}-${m.stage}`; if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, 12);
+    picker.replaceChildren(...(opts.length ? opts.map(([id, d]) => {
+      const m = monById(id); const sp = monSp(m);
+      return h(`button.raid-opt${id === mon ? '.on' : ''}`, { onclick: () => { mon = id; picker.hidden = true; draw(); sfx.select(); } },
+        spriteCanvas(sp.id, 40), h('small', `${sp.name} Lv.${m.level}`), h('b', `탭당 ${d}`));
     }) : [h('small', '아직 포켓몬이 없어요. 포켓몬이 없어도 탭당 3씩 공격할 수 있어요!')]));
   };
   const ov = overlay(h('div.raid-stage',
@@ -227,13 +230,13 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
     picker,
     text), 'full');
   ov.classList.add('raid-overlay');
-  ov.onclose = () => { over = true; clearInterval(S.raidTimer); clearInterval(S.raidFlush); if (pending) rpc('raid_attack', { p_raid: r.id, p_taps: pending, p_line: line }, { retries: 0 }).catch(() => {}); loadMyRaids(); };
+  ov.onclose = () => { over = true; clearInterval(S.raidTimer); clearInterval(S.raidFlush); if (pending) rpc('raid_attack', { p_raid: r.id, p_taps: pending, p_mon: mon }, { retries: 0 }).catch(() => {}); loadMyRaids(); };
   clearInterval(S.raidTimer); clearInterval(S.raidFlush);
   S.raidTimer = setInterval(tick, 1000);
   S.raidFlush = setInterval(flush, 4000);
   draw(); tick();
   const sp = speciesOf(r.species_id);
-  const mine = curSpecies(line);
+  const mine = monSp(monById(mon));
   const m = mine ? typeMult(typeOf(mine), typeOf(sp)) : 1;
   typeText(text, r.status !== 'active' ? '이미 끝난 레이드예요.'
     : `앗! 레이드 보스 ${josa(sp.name, '이', '가')} 나타났다!\n보스를 마구 탭해서 공격해!${m > 1 ? '\n(내 포켓몬은 이 보스에게 효과가 굉장해!)' : m < 1 ? '\n(내 포켓몬은 이 보스에게 효과가 별로야… 다른 포켓몬을 골라 봐)' : ''}`);

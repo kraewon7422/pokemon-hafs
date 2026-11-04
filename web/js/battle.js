@@ -4,7 +4,7 @@ import { drawQR } from './qrfmt.js';
 import { spriteCanvas } from './sprites.js';
 import { sfx, unlockAudio, bgmPush } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, collection, isWithdrawn, speciesOf, vibrate } from './state.js';
+import { S, isWithdrawn, monById, mons, monSp, speciesOf, vibrate } from './state.js';
 import { closeOverlay, eggTap, openScanner, overlay, renderTab, say, sheet, sync } from './app.js';
 import { typeChips, typeMult, TYPES } from './dex.js';
 import { curSpecies } from './raid.js';
@@ -52,12 +52,13 @@ export const BT_WHY = {
   luck: '이번엔 진화의돌이 없었어요. (이기면 가끔 받아요)',
 };
 
-// 내 배틀 팀 = 저장한 팀 (아직 가지고 있는 것만), 없으면 가장 높은 단계부터. n = 3 (1 대 1) / 4 (2 대 2)
+// 내 배틀 팀 = 저장한 팀 (아직 박스에 있는 것만), 없으면 가장 높은 단계·레벨부터. n = 3 (1 대 1) / 4 (2 대 2)
+// 0036: 팀 = 박스의 포켓몬 번호 (같은 종 두 마리도 됨)
 export function myTeam(n = 3) {
-  const mine = collection().filter((c) => !isWithdrawn(c.line_id));
-  const have = new Set(mine.map((c) => c.line_id));
-  const saved = (S.btTeam || []).filter((l) => have.has(l));
-  const rest = [...mine].sort((a, b) => b.stage - a.stage || b.catch_count - a.catch_count).map((c) => c.line_id).filter((l) => !saved.includes(l));
+  const mine = mons().filter((c) => !isWithdrawn(c.line_id));
+  const have = new Set(mine.map((c) => c.id));
+  const saved = (S.btTeam || []).filter((id) => have.has(id));
+  const rest = [...mine].sort((a, b) => b.stage - a.stage || b.level - a.level || a.id - b.id).map((c) => c.id).filter((id) => !saved.includes(id));
   return [...saved, ...rest].slice(0, n);
 }
 
@@ -94,11 +95,11 @@ export const livePvp = () => S.btInbox?.active?.mode === 'pvp' && S.btInbox.acti
 
 export function teamStrip(team, size = 56) {
   return team.length
-    ? h('div.bt-team', team.map((l) => {
-      const sp = curSpecies(l);
-      const lv = (S.bag?.box || []).find((x) => x.line === l)?.level;
-      return h('div', spriteCanvas(sp.id, size), h('small', sp.name, lv ? ` Lv.${lv}` : ''), h('span.types', typeChips(sp)));
-    }))
+    ? h('div.bt-team', team.map((id) => {
+      const m = monById(id); const sp = monSp(m);
+      if (!sp) return null;
+      return h('div', spriteCanvas(sp.id, size), h('small', sp.name, ` Lv.${m.level}`), h('span.types', typeChips(sp)));
+    }).filter(Boolean))
     : h('p', '아직 포켓몬이 없어요. QR을 찍어 포켓몬을 먼저 모아요!');
 }
 
@@ -142,7 +143,7 @@ export function viewBattle() {
         h('button.btn.small.primary', { onclick: () => acceptInvite(inv) }, '수락'),
         h('button.btn.small', { onclick: () => declineInvite(inv) }, '거절')))),
     h('div.box.stack',
-      h('div.banner', h('b', '내 배틀 팀'), h('button.btn.small', { onclick: teamPicker, disabled: !collection().length }, '팀 바꾸기')),
+      h('div.banner', h('b', '내 배틀 팀'), h('button.btn.small', { onclick: teamPicker, disabled: !mons().length }, '팀 바꾸기')),
       fmtSeg(S.btFmt, (k) => { S.btFmt = k; renderTab(); }),
       teamStrip(team),
       h('div.seg.bt-fmt.bt-fair', { role: 'group', 'aria-label': '연습 배틀 레벨' }, [[false, '내 레벨'], [true, '공정 모드']].map(([v, l]) =>
@@ -165,19 +166,19 @@ export function viewBattle() {
 
 export function teamPicker() {
   sfx.select();
-  let sel = myTeam(4).filter((l) => (S.btTeam || []).includes(l));
+  let sel = myTeam(4).filter((id) => (S.btTeam || []).includes(id));
   if (!sel.length) sel = myTeam(4);
   const grid = h('div.bt-pick');
-  const draw = () => grid.replaceChildren(...collection().filter((c) => !isWithdrawn(c.line_id))
-    .sort((a, b) => b.stage - a.stage || a.line_id - b.line_id).map((c) => {
-      const sp = curSpecies(c.line_id); const n = sel.indexOf(c.line_id);
+  const draw = () => grid.replaceChildren(...mons().filter((c) => !isWithdrawn(c.line_id))
+    .sort((a, b) => b.stage - a.stage || b.level - a.level || a.line_id - b.line_id || a.id - b.id).map((c) => {
+      const sp = monSp(c); const n = sel.indexOf(c.id);
       return h(`button.bt-opt${n >= 0 ? '.on' : ''}`, {
         onclick: () => {
           sfx.blip();
-          sel = n >= 0 ? sel.filter((x) => x !== c.line_id) : sel.length < 4 ? [...sel, c.line_id] : sel;
+          sel = n >= 0 ? sel.filter((x) => x !== c.id) : sel.length < 4 ? [...sel, c.id] : sel;
           draw();
         },
-      }, n >= 0 ? h('span.bt-num', String(n + 1)) : null, spriteCanvas(sp.id, 48), h('small', sp.name));
+      }, n >= 0 ? h('span.bt-num', String(n + 1)) : null, spriteCanvas(sp.id, 48), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
     }));
   draw();
   const err = h('div.err');
@@ -189,7 +190,7 @@ export function teamPicker() {
       onclick: async () => {
         if (!sel.length) { err.textContent = '1마리 이상 골라 주세요.'; return; }
         try {
-          await rpc('battle_set_team', { p_lines: sel }, { retries: 0 });
+          await rpc('battle_set_team', { p_mons: sel }, { retries: 0 });
           S.btTeam = sel; closeOverlay(); renderTab(); toast('배틀 팀을 저장했어요!');
         } catch (e) { err.textContent = errorText(e.message); }
       },
@@ -226,7 +227,7 @@ export async function showBattleQr() {
 }
 
 export async function friendBattleSheet(code) {
-  if (!collection().length) return say('배틀하려면 먼저 포켓몬을 모아요!', true);
+  if (!mons().length) return say('배틀하려면 먼저 포켓몬을 모아요!', true);
   if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   let pk;
   try { pk = await rpc('battle_peek', { p_code: code }, { retries: 0 }); } catch (e) { sfx.error(); return say(errorText(e.message), true); }
@@ -249,12 +250,12 @@ export function inviteSheet(inv) {
     h('b.bt-alert', pix('spark'), ' 배틀 신청!'),
     h('p', { style: { margin: 0 } }, `${josa(inv.from, '이', '가')} ${f.long} 실시간 배틀을 신청했어요. 1분 안에 수락해야 시작돼요.`),
     teamStrip(myTeam(f.n), 44),
-    h('button.btn.big.primary', { onclick: () => acceptInvite(inv), disabled: !collection().length }, '수락하고 배틀!'),
+    h('button.btn.big.primary', { onclick: () => acceptInvite(inv), disabled: !mons().length }, '수락하고 배틀!'),
     h('button.btn', { onclick: () => declineInvite(inv) }, '거절')));
 }
 
 export async function acceptInvite(inv) {
-  try { openBattle(await rpc('battle_accept', { p_id: inv.id, p_lines: myTeam((FMT[inv.format] || FMT.single).n) }, { retries: 0 })); }
+  try { openBattle(await rpc('battle_accept', { p_id: inv.id, p_mons: myTeam((FMT[inv.format] || FMT.single).n) }, { retries: 0 })); }
   catch (e) { sfx.error(); say(errorText(e.message), true); pollInbox(true); }
 }
 export async function declineInvite(inv) {
@@ -277,7 +278,7 @@ export async function startBattle(mode, code, fmt) {
   if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   starting = true;
   try {
-    const args = mode === 'cpu' ? { p_lines: team, p_format: fmt, p_fair: practiceFair() } : { p_code: code, p_lines: team };
+    const args = mode === 'cpu' ? { p_mons: team, p_format: fmt, p_fair: practiceFair() } : { p_code: code, p_mons: team };
     openBattle(await rpc({ cpu: 'battle_start_cpu', team: 'battle_start_team', pvp: 'battle_challenge' }[mode], args, { retries: 0 }));
   } catch (e) { sfx.error(); say(errorText(e.message), true); if (e.message === 'IN_PVP_BATTLE') pollInbox(true); }
   finally { starting = false; }
