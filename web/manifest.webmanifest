@@ -1,7 +1,7 @@
 {
   "name": "HAFS 몬스터",
   "short_name": "HAFS 몬스터",
-  "description": "학교 곳곳의 QR을 찾아 선생님 몬스터를 모으는 축제 게임",
+  "description": "학교 곳곳의 QR을 찾아 포켓몬을 모으는 축제 게임",
   "lang": "ko",
   "start_url": "./",
   "scope": "./",

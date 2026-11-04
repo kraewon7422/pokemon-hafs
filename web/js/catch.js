@@ -1,9 +1,9 @@
-// 잡기 화면: 부스에서 몬스터를 받기 직전, 공을 위로 휙 던져 잡는 짧은 장면 (Phaser 3, 270×480 세로 화면).
-// 몬스터는 이미 정해져 있다. 공을 다 써도 보통은 지쳐서 얌전해짐 (반드시 잡힘). 던지기 솜씨는 등급(약간의 EXP)만 정한다.
+// 잡기 화면: 부스에서 포켓몬을 받기 직전, 공을 위로 휙 던져 잡는 짧은 장면 (Phaser 3, 270×480 세로 화면).
+// 포켓몬은 이미 정해져 있다. 공을 다 써도 보통은 지쳐서 얌전해짐 (반드시 잡힘). 던지기 솜씨는 등급(약간의 EXP)만 정한다.
 //   catchScene({ dex, name, rarity, time, balls = 3, ball = 'red'|'hafs', fleeChance = 0, fleeAfterAll = false, remaining = 0 })
 //     → Promise<{ grade:'none'|'nice'|'great'|'excellent', curve, throws, skipped, skipAll, fled }>
 //   fleeAfterAll: 공을 다 쓰면 도망 (레이드 보스). 아니면 fleeChance 확률로 도망 (부스 5%), 아니면 지쳐서 잡힘.
-//   remaining > 0: '남은 몬스터 모두 바로 잡기 (N)' 버튼도 보임 → 누르면 이번 것도 바로 잡고 skipAll:true.
+//   remaining > 0: '남은 포켓몬 모두 바로 잡기 (N)' 버튼도 보임 → 누르면 이번 것도 바로 잡고 skipAll:true.
 //   레이드 (fleeAfterAll) 에서는 '바로 잡기' 버튼이 없음 (누르면 공 없이 잡히니까).
 // 배경: img/catch/{day,sunset,night}.png (CC0, tools/draw_catch_bg.py). 공·별·반짝이는 이 파일에서 도트로 그림.
 // 공은 3D 로 날아감: x 좌우 · y 높이 · z 깊이, 중력 + 약한 공기 저항 + 커브볼 회전(마그누스 힘), 원근으로 화면에 그림.
@@ -14,14 +14,14 @@ import { loadPhaser } from './games/common.js';
 import { atlasURL, monAnim } from './sprites.js';
 
 const W = 270, H = 480;                 // 논리 화면 (배경 그림과 같음)
-const SPOT_X = 135, FEET_Y = 356;       // 몬스터가 서는 밝은 자리 (가운데 y=352, 발은 살짝 아래)
+const SPOT_X = 135, FEET_Y = 356;       // 포켓몬이 서는 밝은 자리 (가운데 y=352, 발은 살짝 아래)
 const HOME = { x: 135, y: 436 };        // 손에 든 공 자리
-const MON_K = 2;                        // 몬스터 배율 (64×64 → 128, 모든 몬스터 같음)
+const MON_K = 2;                        // 포켓몬 배율 (64×64 → 128, 모든 포켓몬 같음)
 const CYCLE = 1.6;                      // 안쪽 고리가 줄어드는 한 바퀴 (초)
 const HIT_PAD = 8;                      // 고리 밖으로 공 반지름만큼은 봐 줌
 
 // ─────── 3D 세계 → 화면 (원근 카메라, 배경 그림에 맞춤) ───────
-// 세계 단위 ≈ 미터. x 오른쪽 · y 높이 (땅 0) · z 앞쪽 (던지는 곳 z=0 → 몬스터 z=ZM).
+// 세계 단위 ≈ 미터. x 오른쪽 · y 높이 (땅 0) · z 앞쪽 (던지는 곳 z=0 → 포켓몬 z=ZM).
 // 카메라: z=-ZC, 높이 CAM_H 에서 수평으로 봄 → 지평선 화면 y=HY.  땅의 z=0 → 화면 y=HOME.y, 땅의 z=ZM → 자리 가운데 y=352.
 const HY = 236, SPOT_Y = 352, ZC = 5;
 const ZM = ZC * ((HOME.y - HY) / (SPOT_Y - HY) - 1);      // ≈ 3.62
@@ -35,7 +35,7 @@ const CURVE_M = 0.75;                                     // 커브볼 옆 가�
 const STEP = 1 / 240;                                     // 물리 한 걸음 (초)
 const BOUNCE = 0.45, SKID = 0.78, ROLL = 4;             // 땅에 튈 때 위아래 반발 · 앞뒤 마찰 · 구르는 마찰 (m/s²)
 // 휙 속도 (CSS px/초) → 힘. S_MID 로 던지면 딱 고리 가운데. 500~2500 은 늘 맞음 (힘 0.945~1.10배),
-// 그 밖에서는 빨리 변해 약하면 앞에 떨어지고 (몬스터 크기에 따라 ≈310~470 아래) 아주 세면 넘어감 (≈2700~4200 위).
+// 그 밖에서는 빨리 변해 약하면 앞에 떨어지고 (포켓몬 크기에 따라 ≈310~470 아래) 아주 세면 넘어감 (≈2700~4200 위).
 const S_MID = 1118, S_SPAN = Math.sqrt(5);
 const PW_LO = -Math.log(0.945), PW_HI = Math.log(1.10);
 
@@ -64,7 +64,7 @@ function physStep(p, ax, h) {
   p.vz += (-DRAG * sp * p.vz) * h;
   p.x += p.vx * h; p.y += p.vy * h; p.z += p.vz * h;
 }
-// 땅을 무시하고 몬스터 면 (z=ZM) 을 지나는 점 (못 가면 null)
+// 땅을 무시하고 포켓몬 면 (z=ZM) 을 지나는 점 (못 가면 null)
 function simCross(p0, vx, vy, vz, ax) {
   const p = { x: p0.x, y: p0.y, z: p0.z, vx, vy, vz };
   for (let t = 0; t < 4; t += STEP) {
@@ -178,7 +178,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
   const left = Math.max(0, Math.round(Number(remaining) || 0));
   const canSkip = !fleeAfterAll;
   const rar = RING[rarity] ? rarity : 'common';
-  const nm = String(name || '몬스터');
+  const nm = String(name || '포켓몬');
   const rm = (() => { try { return reducedMotion(); } catch { return false; } })();
   let speed = 1;                        // 바로 잡기 = 두 배 빠르게
   const D = (ms) => Math.round(ms * (rm ? 0.5 : 1) * speed);
@@ -218,14 +218,14 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
     layer.style.background = `linear-gradient(${top} 0 50%, ${bot} 50% 100%)`;
     area = document.createElement('div'); area.className = 'cz-area';
     box = document.createElement('div'); box.className = 'cz-box';
-    // 오른쪽 위 버튼: 바로 잡기 (+ 남은 몬스터가 있으면 모두 바로 잡기). 레이드는 버튼 없음
+    // 오른쪽 위 버튼: 바로 잡기 (+ 남은 포켓몬이 있으면 모두 바로 잡기). 레이드는 버튼 없음
     const btns = document.createElement('div'); btns.className = 'cz-btns';
     skipBtn = document.createElement('button'); skipBtn.type = 'button'; skipBtn.className = 'cz-skip'; skipBtn.textContent = '바로 잡기';
     if (canSkip) btns.append(skipBtn);
     if (canSkip && left > 0) {
       allBtn = document.createElement('button'); allBtn.type = 'button'; allBtn.className = 'cz-skip cz-all';
-      allBtn.setAttribute('aria-label', `남은 몬스터 모두 바로 잡기 (${left}마리)`);
-      const l1 = document.createElement('span'); l1.textContent = '남은 몬스터 모두';
+      allBtn.setAttribute('aria-label', `남은 포켓몬 모두 바로 잡기 (${left}마리)`);
+      const l1 = document.createElement('span'); l1.textContent = '남은 포켓몬 모두';
       const l2 = document.createElement('span'); l2.textContent = `바로 잡기 (${left})`;
       allBtn.append(l1, l2); btns.append(allBtn);
     }
@@ -271,7 +271,8 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
     const fonts = document.fonts?.load
       ? Promise.race([Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}), new Promise((r) => setTimeout(r, 1500))])
       : Promise.resolve();
-    const [Phaser, ATLAS_URL] = await Promise.all([loadPhaser(), atlasURL(), fonts]);
+    const [Phaser, SHEET] = await Promise.all([loadPhaser(), atlasURL([dex]), fonts]);
+    const ATLAS_URL = SHEET.url;     // 이 포켓몬 한 칸짜리 그림판 (sprites.js)
     if (dead) return out;
 
     let tick = () => {};
@@ -308,9 +309,8 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       sheet(sc, 'anger', 7, 7, [ANGER]);
       sheet(sc, 'arrow', 7, 8, [ARROW]);
       const monTex = sc.textures.get('mons');
-      const nFrames = Math.max(1, monTex.frameTotal - 1);
-      const frame = clamp((Number(dex) || 1) - 1, 0, nFrames - 1);
-      // 몬스터 모양 (보이는 픽셀 테두리) + 흰 실루엣 (빛으로 변할 때)
+      const frame = SHEET.frame(dex);
+      // 포켓몬 모양 (보이는 픽셀 테두리) + 흰 실루엣 (빛으로 변할 때)
       let bb = { x0: 12, y0: 8, x1: 52, y1: 63 };
       {
         const im = monTex.getSourceImage(); const cols = Math.max(1, Math.floor(im.width / 64));
@@ -331,10 +331,10 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       const footY = FEET_Y - (64 - bb.y1) * MON_K;              // 그림 아래 빈칸이 있어도 발이 자리에 닿게
       const R = Math.round(clamp(Math.max(bw, bh) / 2 * 0.72 + 4, 28, 48));   // 바깥 고리 반지름 = 맞는 범위
 
-      // 배경 · 그림자 · 몬스터
+      // 배경 · 그림자 · 포켓몬
       if (sc.textures.exists('bg')) sc.add.image(0, 0, 'bg').setOrigin(0).setDepth(0);
       const shadow = sc.add.graphics().setDepth(1);
-      const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (몬스터 뒤로 가면 1.5)
+      const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (포켓몬 뒤로 가면 1.5)
       const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
       const monW = sc.add.image(SPOT_X, footY, 'monW').setOrigin(0.5, 1).setScale(0).setDepth(4).setAlpha(0);
       // 운영자가 올린 움직이는 그림(GIF, 0031)이면 프레임을 돌려 가며 보여 줌
@@ -349,7 +349,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         } });
       }
       const rings = sc.add.graphics().setDepth(5);
-      const ball = sc.add.image(HOME.x, H + 30, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setScale(2).setDepth(6);   // 몬스터 뒤로 가면 2
+      const ball = sc.add.image(HOME.x, H + 30, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setScale(2).setDepth(6);   // 포켓몬 뒤로 가면 2
       const fx = sc.add.graphics().setDepth(7);   // 할퀴기 등 잠깐 그리는 것
       // 남은 공: 5개까지는 하나씩, 그보다 많으면 공 하나 + ×숫자 (10개도 좁은 화면에서 넘치지 않게)
       const hud = []; const hudMany = BALLS > 5;
@@ -398,7 +398,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         hud.forEach((h, i) => h.setVisible(v).setAlpha(i < ballsLeft ? 1 : 0.28));
       };
 
-      // 몬스터 움직임 (조준하는 동안, 미리 웅크려서 알려 줌)
+      // 포켓몬 움직임 (조준하는 동안, 미리 웅크려서 알려 줌)
       const nextIdle = () => (rar === 'common' ? 2.2 + Math.random() * 1.4 : rar === 'rare' ? 1.0 + Math.random() * 0.8 : 1.2 + Math.random() * 0.8);
       const startMove = () => {
         B.from = B.ox; B.el = 0;
@@ -423,7 +423,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       const resetMon = () => { B.ox = 0; B.hop = 0; B.ph = 'idle'; B.tm = nextIdle(); B.sx = MON_K; B.sy = MON_K; };
 
       const draw = () => {
-        // 그림자 (몬스터 발밑, 뛰면 작아짐)
+        // 그림자 (포켓몬 발밑, 뛰면 작아짐)
         shadow.clear();
         if (mon.visible && mon.scaleX > 0.2) {
           const k = clamp(1 - B.hop / 40, 0.5, 1) * (mon.scaleX / MON_K);
@@ -473,7 +473,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
           const { x: px, y: py, z: pz } = p; const pvy = p.vy;
           physStep(p, f.onGround ? 0 : f.ax, STEP);
           f.angle += f.spin * STEP;
-          if ((pz < ZM) !== (p.z < ZM)) {                  // 몬스터 면을 지남 (앞→뒤 또는 뒤→앞)
+          if ((pz < ZM) !== (p.z < ZM)) {                  // 포켓몬 면을 지남 (앞→뒤 또는 뒤→앞)
             const k = (ZM - pz) / (p.z - pz || 1);
             const w = { x: px + (p.x - px) * k, y: py + (p.y - py) * k, z: ZM };
             f.ev('cross', { w, q: proj(w.x, w.y, w.z) });
@@ -560,7 +560,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       // ─────── 잡는 연출 (공 안으로 빨려 들어감 → 흔들림) ───────
       // bx,by: 공이 열리는 자리, k0: 그때 공 크기, gy: 공이 떨어질 땅 (화면 y)
       const suckIn = async (c, bx, by, k0 = 1.4, gy = FEET_Y - 4) => {
-        // 공이 몬스터 위에서 열림 → 몬스터가 빛이 되어 빨려 들어감
+        // 공이 포켓몬 위에서 열림 → 포켓몬이 빛이 되어 빨려 들어감
         B.free = false; ringOn = false;
         await c.tw({ targets: ball, x: bx, y: by, scale: k0, angle: 0, duration: 200, ease: 'Quad.easeOut' });
         ball.setFrame(1); play('ballPop'); vibrate(25);
@@ -686,7 +686,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         play('ballThrow'); vibrate(10);
         const cc = center();
         const p0 = releaseAt(rel.x, rel.y);
-        // 손가락이 가리킨 곳: 휙 선이 고리 가운데 높이에 닿는 화면 x → 몬스터 깊이의 세계 x
+        // 손가락이 가리킨 곳: 휙 선이 고리 가운데 높이에 닿는 화면 x → 포켓몬 깊이의 세계 x
         const up = Math.max(1e-3, -dy);
         const sxT = clamp(rel.x + (dx / up) * (rel.y - cc.y), SPOT_X - 700, SPOT_X + 700);
         const xT = (sxT - SPOT_X) * (ZM + ZC) / FOC;
@@ -752,7 +752,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       const swat = async (c, f, q) => {
         phase = 'seq'; frozen = null; ringOn = false;
         const bx = q.x, by = q.y; const dir = bx < mon.x ? -1 : 1;
-        // 몬스터가 번쩍 + 앞발 할퀴기
+        // 포켓몬이 번쩍 + 앞발 할퀴기
         monW.setAlpha(0.85);
         sc.tweens.add({ targets: monW, alpha: 0, duration: D(260) });
         mon.setScale(MON_K * 1.12, MON_K * 0.95);
@@ -799,7 +799,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         // 아깝게 놓칠수록 많이 흔들림
         const close = ok ? 1 : (u - pc) / (1 - pc);
         const n = ok ? 3 : close < 0.34 ? 3 : close < 0.67 ? 2 : 1;
-        // 맞은 자리에서 몬스터 몸에 맞고 위로 톡 튀어 오름 (머리 위쯤까지, 최대 60 도트) → 꼭대기에서 열림
+        // 맞은 자리에서 포켓몬 몸에 맞고 위로 톡 튀어 오름 (머리 위쯤까지, 최대 60 도트) → 꼭대기에서 열림
         const p = f.p; p.z = Math.min(p.z, ZM - 0.03);
         const rise = clamp(q.y - (cc.y - bh / 2 - 10), 14, 60);
         p.vy = Math.sqrt(2 * GRAV * rise * q.d / FOC) * 1.03;
@@ -853,7 +853,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         }
         if (grab.samples.length > 40) grab.samples.splice(0, grab.samples.length - 40);
         const q = grab.samples[grab.samples.length - 1];
-        const bx = clamp(q.x, 14, W - 14), by = clamp(q.y, 372, H - 12);   // 공은 아래쪽에서만 따라옴 (몬스터 앞까지 들고 가지 못함)
+        const bx = clamp(q.x, 14, W - 14), by = clamp(q.y, 372, H - 12);   // 공은 아래쪽에서만 따라옴 (포켓몬 앞까지 들고 가지 못함)
         ball.setPosition(bx, by).setScale(heldScale(bx, by));
         if (curveArmed) ball.setAngle(ball.angle + (curveArmed === 'cw' ? 24 : -24));   // 커브볼 준비: 돌린 방향으로 빙글
       });
@@ -936,7 +936,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       layer.__cz = {
         phase: () => phase, ring: () => ({ ...center(), R, ratio: ratio() }), ball: () => ({ x: ball.x, y: ball.y, visible: ball.visible, scale: ball.scaleX, depth: ball.depth }),
         ballsLeft: () => ballsLeft, balls: BALLS, style, fled: () => result.fled, log: evlog, home: HOME, curve: () => curveArmed, world: { W, H }, traj: () => traj,
-        freeze: (v) => { B.free = !v; if (v) { resetMon(); mon.setPosition(SPOT_X, footY).setScale(MON_K); } },   // 시험용: 몬스터를 가운데에 세워 둠 (궤적 비교용)
+        freeze: (v) => { B.free = !v; if (v) { resetMon(); mon.setPosition(SPOT_X, footY).setScale(MON_K); } },   // 시험용: 포켓몬을 가운데에 세워 둠 (궤적 비교용)
       };
     }
   } catch (e) {

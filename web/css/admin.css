@@ -180,7 +180,7 @@ select.inp optgroup { font-weight: 700; color: var(--sub); }
 .sp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 700px) { .sp-grid { grid-template-columns: minmax(0, 1fr); } }
 .sp-card { border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: #fff; display: grid; gap: 8px; }
-.sp-card .pic { display: flex; justify-content: center; min-height: 64px; align-items: center; background: #f3f6f2; border-radius: 6px; padding: 6px; }
+.sp-card .pic { display: flex; justify-content: center; height: 104px; align-items: flex-end; background: #f3f6f2; border-radius: 6px; padding: 6px; overflow: hidden; box-sizing: border-box; }
 .nopic { font-size: 12px; color: var(--red-dark); padding: 20px 4px; text-align: center; }
 .notice { background: #fffaeb; border: 1px solid #f5d77a; border-radius: 8px; padding: 10px 12px; font-size: 14px; }
 .notice.red { background: #fff1f1; border-color: #f3c2c2; }
@@ -340,3 +340,7 @@ ul.tight { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
 /* 드문 기능은 접어 둠 (0031) */
 details.rare > summary { cursor: pointer; list-style-position: inside; }
 details.rare[open] > summary { margin-bottom: 8px; }
+
+/* 포켓몬 계열 범위 칩 (0032) */
+button.chip.btnchip { cursor: pointer; min-height: 30px; }
+button.chip.btnchip[aria-pressed="true"] { background: var(--brand-dark); border-color: var(--brand-dark); color: #fff; }

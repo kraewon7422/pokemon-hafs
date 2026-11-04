@@ -1,20 +1,19 @@
-// 가방 (0020): 몬스터 박스 · 도구 · 회복약 · 기술머신 · 티켓. 3·4세대 가방처럼 주머니 탭 → 목록 → 아래 설명·버튼.
-// 몬스터를 누르면 상태(레벨·경험치·지닌 물건) / 능력치 / 기술(잊고 배우기) / 도감.
-import { sb, rpc, errorText } from './sb.js';
+// 가방 (0020): 포켓몬 박스 · 도구 · 회복약 · 기술머신 · 티켓. 3·4세대 가방처럼 주머니 탭 → 목록 → 아래 설명·버튼.
+// 포켓몬을 누르면 상태(레벨·경험치·지닌 물건) / 능력치 / 기술(잊고 배우기) / 도감.
+import { sb, rpc, errorText, selectAll } from './sb.js';
 import { spriteCanvas, monSprite } from './sprites.js';
 import { sfx } from './sfx.js';
 import { h, josa, toast, pix } from './ui.js';
 import { S, collection, speciesOf, dexOf, owned } from './state.js';
 import { overlay, sheet, closeOverlay, openBag } from './app.js';
-import { openDetail, typeOf, STAT_KEYS, CAT_LABEL, KIND_LABEL } from './dex.js';
+import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES } from './dex.js';
 import { moveOf } from './battle.js';
 import { eggPocket, loadEggs, TIER } from './eggs.js';
 
-// 아이콘 순서 = tools/draw_fx.py ITEM_ICONS (web/img/items.png, 16px 칸)
-const TM_TYPES = ['국어', '수학', '영어', '물리', '화학', '생명', '지구', '지리', '정치경제', '윤리', '역사', '외국어', '정보', '체육', '음악', '보통', '전설'];
-const ICONS = [...Array.from({ length: 15 }, (_, i) => `boost${String(i + 1).padStart(2, '0')}`),
-  'glasses', 'lucky', 'choco', 'cushion', 'clock', 'mask', 'hotpack', 'bandage', 'ointment', 'iv', 'mint', 'energy', 'firstaid', 'candy',
-  ...TM_TYPES.map((t) => `tm:${t}`)];
+// 아이콘 순서 = tools/build_item_icons.py ORDER (web/img/items.png, 32px 칸, 실제 포켓몬 물건 그림)
+const ICONS = [...Array.from({ length: 18 }, (_, i) => `boost${String(i + 1).padStart(2, '0')}`),
+  'glasses', 'lucky', 'choco', 'cushion', 'clock', 'mask', 'hotpack', 'bandage', 'ointment', 'iv', 'mint', 'energy', 'firstaid', 'candy', 'evo',
+  ...TYPES.map((t) => `tm:${t}`)];
 export const itemOf = (key) => (S.catalog.items || []).find((x) => x.key === key);
 const qty = (key) => (S.bag?.items || []).find((x) => x.key === key)?.qty || 0;
 const boxOf = (line) => (S.bag?.box || []).find((x) => x.line === line);
@@ -22,17 +21,20 @@ export const statl = (b, hp, lv) => Math.floor(((2 * (b || 50) + 31) * lv) / 100
 
 export function itemIcon(key, size = 32) {
   const it = itemOf(key);
-  const k = it?.pocket === 'tm' ? (key.startsWith('sp') ? 'tm:전설' : `tm:${moveOf(it.move_id)?.type || '보통'}`) : key;
+  const k = it?.pocket === 'tm' ? `tm:${moveOf(it.move_id)?.type || '노말'}` : key;
   const i = Math.max(0, ICONS.indexOf(k));
   return h('i.item-ico', { 'aria-hidden': 'true', style: { width: `${size}px`, height: `${size}px`, backgroundSize: `${ICONS.length * size}px ${size}px`, backgroundPosition: `-${i * size}px 0` } });
 }
 
-let learnRows = null;
+// 기술 배우기 표: 내 포켓몬 계열 것만 (전체는 1만 줄이 넘음). 새 계열을 잡으면 다시 받음
+let learnRows = null; let learnKey = '';
 async function learnset() {
-  if (!learnRows) {
-    const r = await sb.from('learnset').select('line_id,move_id,lv,how');
+  const lines = [...new Set(collection().map((c) => c.line_id))].sort((a, b) => a - b);
+  const key = lines.join(',');
+  if (!learnRows || learnKey !== key) {
+    const r = await selectAll('learnset', 'line_id,move_id,lv,how', (q) => q.in('line_id', lines.length ? lines : [0]).order('line_id').order('move_id'));
     if (r.error) throw new Error('OFFLINE');
-    learnRows = r.data || [];
+    learnRows = r.data || []; learnKey = key;
   }
   return learnRows;
 }
@@ -48,7 +50,7 @@ export async function loadBag({ notify = true } = {}) {
     S.bag = r;
     if (notify && seen > 0) {
       for (const e of r.log || []) {
-        if (e.item === '_team_level') toast(`장소 ${e.qty}곳 방문! 배틀 팀 몬스터의 레벨이 올랐다!`, 4000);
+        if (e.item === '_team_level') toast(`장소 ${e.qty}곳 방문! 배틀 팀 포켓몬의 레벨이 올랐다!`, 4000);
         else if (e.item === '_egg_steps') toast(`새 장소 방문! 부화기 알이 ${e.qty}걸음 자랐다!`, 4000);
         else if (e.item?.startsWith('_egg_')) toast(`${josa(TIER[e.item.slice(5)] || '알', '을', '를')} 받았다! (${WHY[e.why] || (e.why === 'achievement' ? '도전과제' : '')}) 가방 → 알`, 4500);
         else if (itemOf(e.item)) toast(`${josa(itemOf(e.item).name, '을', '를')} 주웠다! (${WHY[e.why] || ''})`, 4000);
@@ -60,7 +62,7 @@ export async function loadBag({ notify = true } = {}) {
   return loading;
 }
 
-const POCKETS = [['box', '몬스터'], ['egg', '알'], ['tool', '도구'], ['med', '회복약'], ['tm', '기술머신'], ['key', '티켓']];
+const POCKETS = [['box', '포켓몬'], ['egg', '알'], ['tool', '도구'], ['med', '회복약'], ['tm', '기술머신'], ['key', '티켓']];
 
 let last = { pocket: 'box', sel: null };
 const backToBag = () => openBagScreen(last.pocket, last.sel);
@@ -92,18 +94,18 @@ function pocketList(cur, sel, pick, redraw) {
   if (cur === 'egg') return eggPocket(redraw);
   if (cur === 'box') {
     const box = [...(S.bag?.box || [])].sort((a, b) => b.level - a.level || a.line - b.line);
-    if (!box.length) return [h('p.muted', '아직 몬스터가 없어요. QR을 찍어 모아요!')];
+    if (!box.length) return [h('p.muted', '아직 포켓몬이 없어요. QR을 찍어 모아요!')];
     return [h('div.box-grid', box.map((m) => {
       const sp = speciesOf(dexOf(m.line, m.stage));
       return h('button.box-cell', { onclick: () => openMon(m.line) },
         monSprite(sp.id, 48, owned(m.line)), h('small', `Lv.${m.level}`), m.held ? h('span.box-held', itemIcon(m.held, 16)) : null);
-    })), h('small.muted', '몬스터를 누르면 상태 · 능력치 · 기술 · 도감을 볼 수 있어요.')];
+    })), h('small.muted', '포켓몬을 누르면 상태 · 능력치 · 기술 · 도감을 볼 수 있어요.')];
   }
   if (cur === 'key') {
     const p = S.snap?.profile || {};
     return [h('div.stack',
-      h('div.bag-item', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '진화권'), h('br'), h('small', '도감에서 진화에 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
-      h('div.bag-item', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '부스 티켓'), h('br'), h('small', '부스에서 몬스터로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
+      h('div.bag-item', h('span.key-ico', itemIcon('evo', 32)), h('span', h('b', '진화의돌'), h('br'), h('small', '진화 레벨 전에 진화시킬 때 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
+      h('div.bag-item', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '부스 티켓'), h('br'), h('small', '부스에서 포켓몬으로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
       h('button.btn.big.primary', { onclick: () => { closeOverlay(); openBag(); } }, '티켓 QR 보여주기 (부스용)'))];
   }
   const want = cur === 'tool' ? ['hold', 'tool'] : [cur];
@@ -138,7 +140,7 @@ function pocketPanel(cur, sel, redraw) {
         try { await rpc('bag_set_held', { p_line: line, p_item: it.key }, { retries: 0 }); sfx.select(); toast(`${josa(it.name, '을', '를')} 지니게 했다!`); }
         catch (e) { toast(errorText(e.message)); }
         backToBag();
-      }) }, '몬스터에게 지니게 하기')];
+      }) }, '포켓몬에게 지니게 하기')];
   }
   if (it.pocket === 'tool') {
     return [h('div.bag-pi', itemIcon(it.key, 48), desc),
@@ -150,7 +152,7 @@ function pocketPanel(cur, sel, redraw) {
         backToBag();
       }) }, '사용')];
   }
-  // 기술머신: 몬스터마다 가능 / 불가 / 배움
+  // 기술머신: 포켓몬마다 가능 / 불가 / 배움
   const mv = moveOf(it.move_id) || {};
   const strip = h('div.box-grid.small');
   learnset().then((L) => {
@@ -163,8 +165,8 @@ function pocketPanel(cur, sel, redraw) {
         disabled: tag !== '가능',
         onclick: () => sheet(h('div.stack',
           h('b', `${josa(sp.name, '에게', '에게')} ${josa(mv.name, '을', '를')} 가르칠까?`),
-          h('small', it.effect?.permanent ? '영구 기술머신은 써도 없어지지 않아요. 다른 몬스터에게도 또 가르칠 수 있어요.'
-            : '기술머신은 한 번 쓰면 없어져요. 배운 기술은 몬스터의 기술 목록에 계속 남아서 언제든 바꿔 쓸 수 있어요.'),
+          h('small', it.effect?.permanent ? '영구 기술머신은 써도 없어지지 않아요. 다른 포켓몬에게도 또 가르칠 수 있어요.'
+            : '기술머신은 한 번 쓰면 없어져요. 배운 기술은 포켓몬의 기술 목록에 계속 남아서 언제든 바꿔 쓸 수 있어요.'),
           h('button.btn.big.primary', { onclick: async () => {
             try {
               await rpc('bag_use', { p_item: it.key, p_line: m.line }, { retries: 0 });
@@ -179,10 +181,10 @@ function pocketPanel(cur, sel, redraw) {
   return [h('div.bag-pi', itemIcon(it.key, 48), h('div.tm-line',
     h('b', mv.name, ' ', h(`span.type.t-${mv.type}`, mv.type)),
     h('small', `${CAT_LABEL[mv.category]} · 위력 ${mv.power || '—'} · 명중 ${mv.accuracy ?? '반드시'} · PP ${mv.pp}`), desc)),
-  h('small.muted', '가능한 몬스터를 눌러 가르쳐요.'), strip];
+  h('small.muted', '가능한 포켓몬을 눌러 가르쳐요.'), strip];
 }
 
-// 몬스터 고르기 시트. tag(m) 이 글자를 돌려주면 그 몬스터는 못 고름
+// 포켓몬 고르기 시트. tag(m) 이 글자를 돌려주면 그 포켓몬은 못 고름
 function pickMon(title, tag, done) {
   sfx.blip();
   sheet(h('div.stack', h('b', title),
@@ -193,7 +195,7 @@ function pickMon(title, tag, done) {
     h('button.btn', { onclick: backToBag }, '취소')));
 }
 
-// ── 몬스터 보기: 상태 / 능력치 / 기술 / 도감 ──
+// ── 포켓몬 보기: 상태 / 능력치 / 기술 / 도감 ──
 export async function openMon(line, page = 0) {
   const m = boxOf(line);
   if (!m) return;
@@ -211,8 +213,8 @@ export async function openMon(line, page = 0) {
   };
   const ov = sheet([
     h('div.summary',
-      h('div.sum-top', h('span', sp.name), h(`span.type.t-${type}`, type), h('span.sum-lv', `Lv.${m.level}`)),
-      h('div.sum-main', h(`div.sum-pic.t-bg-${type}`, monSprite(sp.id, 112, owned(line)),
+      h('div.sum-top', h('span', sp.name), h('span.types', typeChips(type)), h('span.sum-lv', `Lv.${m.level}`)),
+      h('div.sum-main', h(`div.sum-pic.t-bg-${type.split('/')[0]}`, monSprite(sp.id, 112, owned(line)),
         owned(line)?.from_egg && h('span.egg-born', { title: '알에서 태어남' }, '알에서 태어남')), h('div.sum-right', tabs, body))),
     h('button.btn', { onclick: backToBag }, '가방으로'),
   ]);
@@ -236,14 +238,14 @@ function monState(m, sp, reopen) {
     h('b', '레벨 올리는 법'),
     h('ul.lv-src',
       src.battle !== false && h('li', '배틀 (이기면 더 많이, 실시간 배틀은 1.5배)'),
-      src.raid !== false && h('li', '레이드에 참가해서 이 몬스터로 탭하기'),
+      src.raid !== false && h('li', '레이드에 참가해서 이 포켓몬으로 탭하기'),
       src.places !== false && h('li', `오늘 다른 장소 QR ${src.places_n || 3}곳마다 → 배틀 팀 모두 +1`),
-      src.catch !== false && h('li', '같은 선생님 몬스터를 또 잡기 +1'),
+      src.catch !== false && h('li', '같은 선생님 포켓몬을 또 잡기 +1'),
       h('li', '이상한사탕 +1 (가방 → 도구)')),
   ];
 }
 
-// 반짝 색 (알에서 반짝으로 태어난 몬스터만): 켜고 끄기
+// 반짝 색 (알에서 반짝으로 태어난 포켓몬만): 켜고 끄기
 function shinyRow(line, reopen) {
   const c = owned(line);
   if (!c?.shiny) return null;

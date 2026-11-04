@@ -19,7 +19,7 @@ export function renderConsent() {
     h('div.box', { style: { maxWidth: '420px' } },
       h('b', '시작하기 전에 확인해 주세요'),
       h('ul', { style: { paddingLeft: '18px', margin: '8px 0', fontSize: '14px' } },
-        h('li', '저장하는 정보: 고유번호(또는 아이디), 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요.'),
+        h('li', '저장하는 정보: 고유번호(또는 아이디), 이름, 게임 기록(찍은 QR·포켓몬·퀴즈). 위치(GPS)는 저장하지 않아요.'),
         h('li', '목적: 축제 게임 운영과 랭킹·상품 지급.'),
         h('li', '축제가 끝나고 2주 뒤 모두 삭제해요.')),
       h('label', { for: 'show', style: { display: 'flex', gap: '10px', alignItems: 'flex-start', cursor: 'pointer' } }, show,
@@ -55,10 +55,11 @@ export function showOnboarding(again = false) {
   const steps = [
     ['camera', 'QR 찾기', '학교 곳곳에 붙은 QR을 아래 가운데 볼 버튼으로 찍어요. 폰 기본 카메라 말고 꼭 앱 버튼으로!'],
     ['ticket', '티켓 주머니에 티켓', '찍으면 티켓이 티켓 주머니에 들어가요 (최대 5장). 인터넷이 없어도 저장돼요.'],
-    ['school', '메인 부스로!', '부스에서 "티켓 QR"을 보여주면 선생님 몬스터를 받아요. 그 장소는 다시 찍을 수 있어요.'],
-    ['spark', '퀴즈 → 진화', '몬스터를 받으면 쌤 퀴즈! 맞히면 진화권. 도감에서 몬스터를 눌러 진화시켜요.'],
-    ['bolt', '레이드', '대형 화면에 보스가 나타나면 레이드 QR을 찍고 다 같이 마구 탭! 시간 안에 쓰러뜨리면 그 보스 몬스터 티켓을 받아요.'],
-    ['tab:battle', '배틀', '배틀 탭에서 내 팀으로 겨뤄요. 친구 배틀 QR을 찍어 실시간 대결! 친구를 이기면 진화권 1장 (하루 3번).'],
+    ['school', '메인 부스로!', '부스에서 "티켓 QR"을 보여주면 포켓몬을 받아요 (선생님 포켓몬 또는 야생 포켓몬). 그 장소는 다시 찍을 수 있어요.'],
+    ['spark', '레벨 → 진화', '배틀·잡기로 레벨을 올리면 진짜 포켓몬처럼 진화 레벨에 진화해요! 쌤 퀴즈를 맞히면 진화의돌 (더 일찍 진화).'],
+    ['gift', '걸으면 야생 포켓몬', '걸음 세기를 켜고 걸으면 알이 자라고, 가끔 야생 포켓몬이 나타나요. 홈에서 몬스터볼로 잡아요!'],
+    ['bolt', '레이드', '대형 화면에 보스가 나타나면 레이드 QR을 찍고 다 같이 마구 탭! 시간 안에 쓰러뜨리면 그 보스 포켓몬 티켓을 받아요.'],
+    ['tab:battle', '배틀', '배틀 탭에서 내 팀으로 겨뤄요. 친구 배틀 QR을 찍어 실시간 대결! 친구를 이기면 진화의돌 1개 (하루 3번).'],
   ];
   let i = 0;
   const icon = h('div', { style: { fontSize: '56px', textAlign: 'center' } });
@@ -113,16 +114,17 @@ export function renderLogin(error = '') {
   closeOverlay();
   const err = h('div.err', { role: 'alert' }, error);
   const gbox = h('div.gbox');
-  const mons = h('div.mons.hop', [1, 13, 25, 37, 49].map((d, i) => h('span', { style: { animationDelay: `${i * 0.18}s` } }, spriteCanvas(d, 52))));
+  // 잔디 위 = 이상해씨 · 파이리 · 피카츄 · 꼬부기 · 이브이 (species.id = (계열-1)*3+단계, tools/gen_pokemon.py)
+  const mons = h('div.mons.hop', [58, 61, 35, 64, 349].map((d, i) => h('span', { style: { animationDelay: `${i * 0.18}s` } }, spriteCanvas(d, 52))));
   const pending = sessionStorage.getItem('pendingScan');
   const link = linkIntent();
   const recover = sessionStorage.getItem('recover') === '1';
   const googleFirst = !!(link || recover);
-  // 3세대 타이틀 화면 느낌: 하늘·구름·나무·잔디 = 배경 그림 (web/img/title, CC0) + 해(소디포) + 잔디 위 몬스터들
+  // 3세대 타이틀 화면 느낌: 하늘·구름·나무·잔디 = 배경 그림 (web/img/title, CC0) + 하늘을 나는 파이어 (아침 전설) + 잔디 위 포켓몬들
   const sky = h('div.title-sky', { 'aria-hidden': 'true' }, h('span.sun', spriteCanvas(112, 64)));
   const content = [
     sky,
-    h('div.title-plate', h('div.logo', CONFIG.GAME_TITLE), h('div.logo-sub', '학교 곳곳의 QR을 찾아 선생님 몬스터를 모아라!')),
+    h('div.title-plate', h('div.logo', CONFIG.GAME_TITLE), h('div.logo-sub', '학교 곳곳의 QR을 찾아 포켓몬을 모아라!')),
     mons,
     pending && h('div.box.login-note',
       h('b', pix('camera'), 'QR을 찍었는데 이 브라우저는 로그인이 안 돼 있어요'), h('br'),
@@ -143,6 +145,7 @@ export function renderLogin(error = '') {
     installButton('.small'),
     h('p.foot-note', '처음이면 그 자리에서 계정이 만들어져요. 학생은 고유번호 하나 = 계정 하나예요. ',
       h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침')),
+    h('p.fan-note', CONFIG.FAN_NOTICE),
     // 늘 맨 아래에: 만든 동아리 (Watson & Decfi) · 문의하기 · 비밀번호를 잊었어요
     h('nav.login-help', { 'aria-label': '도움' },
       h('div.clubs', { 'aria-label': '만든 동아리: Watson & Decfi' },
@@ -405,7 +408,7 @@ export function renderRegister(info) {
       googleNote),
     h('div.box.stack.small-print',
       h('b', '저장하는 정보'),
-      h('span', '고유번호(또는 아이디), 이름, 게임 기록(찍은 QR·몬스터·퀴즈). 위치(GPS)는 저장하지 않아요. 축제가 끝나고 2주 안에 모두 삭제해요. '),
+      h('span', '고유번호(또는 아이디), 이름, 게임 기록(찍은 QR·포켓몬·퀴즈). 위치(GPS)는 저장하지 않아요. 축제가 끝나고 2주 안에 모두 삭제해요. '),
       h('a', { href: 'privacy.html', target: '_blank', rel: 'noopener' }, '개인정보 처리방침'),
       h('span', '비학생은 랭킹(상품)에서 빠지고, 나머지는 똑같이 즐길 수 있어요.')),
     err,

@@ -1,7 +1,7 @@
 // Student app. State = last server snapshot (IndexedDB) + local outbox of scans not yet acknowledged.
 // See docs/DESIGN.md §3 (offline rules) and §5 (server rules).
 import { CONFIG } from './config.js';
-import { sb, rpc, errorText, reportError } from './sb.js';
+import { sb, rpc, errorText, reportError, selectAll } from './sb.js';
 import { kv, persist } from './db.js';
 import { parsePlace, isBag, makeNonce, bagPayload, drawQR } from './qrfmt.js';
 import { Scanner } from './scanner.js';
@@ -84,6 +84,7 @@ export async function boot() {
   }
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
+  if (S.catalog && !S.catalog.species?.some((x) => x.dex)) S.catalog = null;   // 0032 전 (몬스터) 목록은 버리고 새로 받음
   if (S.catalog?.lines) sortDex(S.catalog);
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
@@ -164,11 +165,11 @@ export function renderRetry(msg) {
 
 export async function loadCatalog() {
   const [lines, species, qrs, moves, speciesMoves, typeChart, items] = await Promise.all([
-    sb.from('lines').select('id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic').order('id'),
-    sb.from('species').select('id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe').order('id'),
+    selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic', (q) => q.order('id')),
+    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv', (q) => q.order('id')),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
-    sb.from('species_moves').select('species_id,slot,move_id'),
+    selectAll('species_moves', 'species_id,slot,move_id', (q) => q.order('species_id').order('slot')),
     sb.from('type_chart').select('atk,def,mult'),
     sb.from('items').select('key,name,pocket,description,effect,move_id,sort').order('sort'),
   ]);
@@ -290,7 +291,7 @@ export function renderShell() {
   if (S.online && !S.ach) loadAchievements().then(() => { if (S.tab === 'home') renderTab(); }).catch(() => {});
 }
 
-// 이스터에그 1: 제목을 빠르게 7번 누르면 몬스터가 화면을 가로질러 달려간다
+// 이스터에그 1: 제목을 빠르게 7번 누르면 포켓몬이 화면을 가로질러 달려간다
 export let logoTaps = [];
 export function logoTap() {
   const now = Date.now();
@@ -303,7 +304,7 @@ export function logoTap() {
   const runner = h('div.parade', { 'aria-hidden': 'true' }, spriteCanvas(dex, 96, pick ? 'normal' : 'silhouette'));
   document.body.append(runner);
   sfx.catch(); vibrate([30, 40, 30, 40, 30]);
-  toast(pick ? `${speciesOf(dex)?.name || '몬스터'}이(가) 신나서 달려간다!` : '정체를 알 수 없는 그림자가 지나갔다…!');
+  toast(pick ? `${speciesOf(dex)?.name || '포켓몬'}이(가) 신나서 달려간다!` : '정체를 알 수 없는 그림자가 지나갔다…!');
   setTimeout(() => runner.remove(), 3200);
 }
 
@@ -354,11 +355,11 @@ export function nextAction() {
   const quizzes = S.snap.quizzes || [];
   const items = bag();
   const p = S.snap.profile;
-  if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 진화권 100%`, 'gold', () => openQuiz()];
+  if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 진화의돌 100%`, 'gold', () => openQuiz()];
   if (items.length) return [pix('ticket', 'l'), `티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
   const ev = evolvable();
   if (p.evo_tickets > 0 && ev.length) {
-    return [pix('spark', 'l'), `진화권 ${p.evo_tickets}장 - 몬스터를 진화시켜요`, 'gold',
+    return [pix('spark', 'l'), `진화의돌 ${p.evo_tickets}개 - 포켓몬을 진화시켜요`, 'gold',
       () => openDetail(speciesOf(dexOf(ev[0].line_id, ev[0].stage)))];
   }
   return [pix('camera', 'l'), 'QR을 찾아서 찍어 보세요', 'go', openScanner];
@@ -376,8 +377,8 @@ export function viewHome() {
   const visited = new Set((S.snap.tickets || []).map((t) => t.qr_id));
   const hints = S.catalog.qrs.filter((q) => q.hint && !visited.has(q.id));
   // 아주 가끔 (약 13분에 한 번, QR 힌트를 다 찾았으면 더 자주) 이스터에그 수수께끼. 이미 찾은 알은 안 나옴
-  const EGG_RIDDLES = [[80, '트레이너 카드의 내 친구 몬스터를 톡톡톡… 일곱 번 두드리면 무슨 일이 생길까?'],
-    [81, '배틀 탭 타입 상성표의 한가운데, 지리와 지리가 만나는 칸을 여러 번 눌러 보면…?'],
+  const EGG_RIDDLES = [[80, '트레이너 카드의 내 친구 포켓몬을 톡톡톡… 일곱 번 두드리면 무슨 일이 생길까?'],
+    [81, '배틀 탭 타입 상성표에서 에스퍼와 에스퍼가 만나는 칸을 여러 번 눌러 보면…?'],
     [82, '지도 오른쪽 위 숲 모서리를 가만히 여러 번 두드려 보면…?']];
   const eggFound = (l) => !!owned(l) || (S.snap.tickets || []).some((t) => t.special?.special === 'egg' && speciesOf(t.special.species_id)?.line_id === l);
   const riddles = EGG_RIDDLES.filter(([l]) => !eggFound(l)).map(([, t]) => ({ hint: t, egg: true }));
@@ -399,7 +400,7 @@ export function viewHome() {
       R.prize_note && h('div', String(R.prize_note))),
     !S.snap.festival_open && !R.festival_ended && h('div.box', pix('pause'), '지금은 게임 운영 시간이 아니에요. 찍은 QR은 저장해 두었다가 다시 열리면 보내요.'),
     (R.legend_schedule || []).length > 0 && !R.festival_ended && h('div.box.legend-box', pix('bolt', 'l'),
-      h('div', h('b', '전설의 몬스터 출현'), h('br'),
+      h('div', h('b', '전설의 포켓몬 출현'), h('br'),
         [...new Set(R.legend_schedule.map((l) => (l.from ? `${fmtTime(l.from)}${l.until ? '~' + fmtTime(l.until) : ''}` : '지금')))].join(' · '),
         ' · 메인 부스 대형 화면')),
     (S.snap.raids_live || []).length > 0 && !R.festival_ended && h('button.box.raid-banner', { onclick: () => go('raid') },
@@ -407,7 +408,12 @@ export function viewHome() {
       h('div', h('b', '레이드 보스 출현!'), h('br'), h('small', `${S.snap.raids_live.map((x) => x.title).join(' · ')} — 대형 화면의 QR을 찍어 참가해요`))),
     encounters().length > 0 && h('button.box.raid-banner.enc-banner', { onclick: () => { sfx.select(); catchEncounter(encounters()[0]); } },
       spriteCanvas(encounters()[0].species_id, 48),
-      h('div', h('b', '레이드 보스를 잡을 수 있어요!'), h('br'),
+      encounters()[0].kind === 'wild'
+        ? h('div', h('b', '야생 포켓몬이 나타났다!'), h('br'),
+          h('small', `${speciesOf(encounters()[0].species_id)?.name || '야생 포켓몬'} · 몬스터볼 ${encounters()[0].balls || 5}개`,
+            encounters().length > 1 ? ` (+${encounters().length - 1})` : ''),
+          h('span.chip.enc-go', '잡으러 가기 ▶'))
+        : h('div', h('b', '레이드 보스를 잡을 수 있어요!'), h('br'),
         h('small', `${encounters()[0].raid_title || speciesOf(encounters()[0].species_id)?.name || '레이드 보스'} · HAFS 볼 ${encounters()[0].balls || 10}개`,
           encounters().length > 1 ? ` (+${encounters().length - 1})` : ''),
         h('span.chip.enc-go', '잡으러 가기 ▶'))),
@@ -423,18 +429,18 @@ export function viewHome() {
         titles.length ? h('div.titles', titles.map((t) => h('span.title-chip', t))) : null,
         S.ach?.some((a) => a.claimed) && h('div.titles', h('span.title-chip.ach-chip', { onclick: (e) => { e.stopPropagation(); openAchievements(); } }, pix('gold'), ` 도전과제 ${S.ach.filter((a) => a.claimed).length}/${S.ach.length}`))),
       h('div.partner', { onclick: () => eggTap('card') }, partner ? monSprite(dexOf(partner.line_id, partner.stage), 88, partner) : spriteCanvas(1, 88, 'silhouette'),
-        partner && h('button.partner-edit', { 'aria-label': '카드 몬스터 바꾸기', onclick: (e) => { e.stopPropagation(); pickPartner(); } }, pix('pencil'))),
+        partner && h('button.partner-edit', { 'aria-label': '카드 포켓몬 바꾸기', onclick: (e) => { e.stopPropagation(); pickPartner(); } }, pix('pencil'))),
       h('div.stats',
         h('span', '도감', h('b', `${D.found}/${total}`)), h('span', '점수', h('b', p.score)),
-        h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화권', h('b', p.evo_tickets))),
-      h('div.badges', { title: '최종 진화시킨 쌤' }, S.catalog.lines.filter((l) => !l.secret && !l.bonus).map((l) => {
+        h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화의돌', h('b', p.evo_tickets))),
+      h('div.badges', { title: '최종 진화시킨 쌤 포켓몬' }, S.catalog.lines.filter((l) => !l.secret && !l.bonus && l.subject !== '야생').map((l) => {
         const done = (owned(l.id)?.stage || 0) >= (l.max_stage ?? 3);
         return h(`i${done ? '.on.t-' + l.subject : ''}`, { title: done ? `${l.subject} 완성` : '?' });
       }))),
 
     h('section.box', { 'aria-label': '티켓 주머니' },
       h('div.banner', h('b', `티켓 주머니 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
-        h('span', { style: { fontSize: '13px' } }, items.length ? '부스에서 몬스터로 바꿔요' : 'QR을 찍으면 들어와요')),
+        h('span', { style: { fontSize: '13px' } }, items.length ? '부스에서 포켓몬으로 바꿔요' : 'QR을 찍으면 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => (t.special
         ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성', egg: '숨은 선물' }[t.special.special] || ''}`))
         : h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name)))) : null,
@@ -465,7 +471,7 @@ export function installBanner() {
   return box;
 }
 
-// ───────── 진화권 룰렛: every N minutes, the server picks 0/1/3/5 tickets ─────────
+// ───────── 진화의돌 룰렛: every N minutes, the server picks 0/1/3/5 tickets ─────────
 export const rouletteWait = (r) => Math.max(0, (r.next_at ? new Date(r.next_at) - Date.now() : 0));
 export const fmtWait = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
@@ -484,8 +490,8 @@ export function rouletteBox() {
   tick();
   clearInterval(S.rouletteTimer);
   S.rouletteTimer = setInterval(() => (btn.isConnected ? tick() : clearInterval(S.rouletteTimer)), 1000);
-  return h('section.box.roulette', { 'aria-label': '진화권 룰렛' },
-    h('div.banner', h('b', '진화권 룰렛'), h('span', { style: { fontSize: '13px' } }, `오늘 ${Math.max(0, left)}/${r.daily_max}번 남음`)),
+  return h('section.box.roulette', { 'aria-label': '진화의돌 룰렛' },
+    h('div.banner', h('b', '진화의돌 룰렛'), h('span', { style: { fontSize: '13px' } }, `오늘 ${Math.max(0, left)}/${r.daily_max}번 남음`)),
     h('div.reel-row', (r.odds || []).map(([n]) => h('span.reel-cell', n ? `${n}장` : '꽝'))),
     btn,
     h('small', `${r.every_min}분마다 한 번! 꽝이 나와도 다음 기회가 있어요.`));
@@ -530,7 +536,7 @@ export async function spinRoulette() {
     await typeText(text, '7 7 7 !!! 럭키 세븐!\n아주 드문 행운이에요. 칭호 「럭키 세븐」을 얻었다!');
   } else {
     if (res.prize > 0) { sfx.correct(); vibrate([40, 30, 80]); } else sfx.fail();
-    await typeText(text, res.prize > 0 ? `진화권 ${res.prize}장을 받았다! (지금 ${res.evo_tickets}장)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
+    await typeText(text, res.prize > 0 ? `진화의돌 ${res.prize}개를 받았다! (지금 ${res.evo_tickets}개)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
   }
   S.overlay.dataset.locked = '0';
   text.append(h('button.btn.big.primary', { style: { marginTop: '10px' }, onclick: () => closeOverlay() }, '확인'));
@@ -575,6 +581,7 @@ export function openSettings() {
     // 운영진: 운영자 페이지 (운영진 아이디 또는 등록된 구글로 로그인)
     h('a.btn.small.ghost', { href: 'admin.html', target: '_blank', rel: 'noopener' }, pix('school'), '운영진 전용: 운영자 페이지 로그인'),
     h('small', { style: { textAlign: 'center' } }, `${p.student_id.replace(/^g:/, '')} · 버전 ${CONFIG.VERSION}`),
+    h('small.fan-note', CONFIG.FAN_NOTICE),
   ]);
 }
 
@@ -642,7 +649,7 @@ export function startGoogleLink() {
       }, '계속'))));
 }
 
-// 트레이너 카드에 띄울 몬스터 고르기 (0024 set_partner — 서버에 저장되어 다른 폰에서도 같음)
+// 트레이너 카드에 띄울 포켓몬 고르기 (0024 set_partner — 서버에 저장되어 다른 폰에서도 같음)
 function pickPartner() {
   sfx.select();
   const cur = partnerMon()?.line_id;
@@ -657,13 +664,13 @@ function pickPartner() {
   const mons = [...collection()].sort((a, b) => b.stage - a.stage || a.line_id - b.line_id);
   sheet(h('div.stack',
     h('div.grab'),
-    h('b', '트레이너 카드에 띄울 몬스터'),
+    h('b', '트레이너 카드에 띄울 포켓몬'),
     h('div.partner-grid', mons.map((c) => {
       const sp = speciesOf(dexOf(c.line_id, c.stage));
       return h(`button.partner-pick${c.line_id === cur ? '.on' : ''}`, { 'aria-pressed': String(c.line_id === cur), onclick: () => choose(c.line_id) },
         spriteCanvas(sp.id, 56), h('small', sp.name));
     })),
-    h('button.btn', { onclick: () => choose(null) }, S.snap.profile.partner ? '자동으로 (가장 많이 진화한 몬스터)' : '지금은 자동 — 위에서 골라 주세요')));
+    h('button.btn', { onclick: () => choose(null) }, S.snap.profile.partner ? '자동으로 (가장 많이 진화한 포켓몬)' : '지금은 자동 — 위에서 골라 주세요')));
 }
 
 export async function setPublic(show) {
@@ -761,9 +768,9 @@ export function viewRank() {
       h(`span.rank-no.r${t.rank}`, t.rank <= 3 ? pix(['gold', 'silver', 'bronze'][t.rank - 1], 'l') : `#${t.rank}`),
       h('span', h('div', t.display, t.me ? ' (나)' : ''), h('div.rank-sub', sub(t))),
       h('b', unit(t))))),
-    r && !r.top.length && h('div.box', S.rankKind === 'battle' ? '아직 배틀에서 이긴 사람이 없어요. 배틀이 열리면 첫 승리를 노려 보세요!' : '아직 아무도 몬스터를 잡지 않았어요. 첫 번째가 되어 보세요!'),
+    r && !r.top.length && h('div.box', S.rankKind === 'battle' ? '아직 배틀에서 이긴 사람이 없어요. 배틀이 열리면 첫 승리를 노려 보세요!' : '아직 아무도 포켓몬을 잡지 않았어요. 첫 번째가 되어 보세요!'),
     h('p', { style: { fontSize: '13px', margin: 0 } }, {
-      dex: '도감: 모은 몬스터 수 (진화한 단계까지 모두 셈). 동점이면 먼저 도달한 사람이 위.',
+      dex: '도감: 모은 포켓몬 수 (진화한 단계까지 모두 셈). 동점이면 먼저 도달한 사람이 위.',
       score: '점수: 1단계 1점 · 2단계 3점 · 3단계 6점 (+희귀·전설 보너스). 동점이면 먼저 도달한 사람이 위. 상품은 점수 순위 기준.',
       battle: '배틀 승리: 다른 트레이너·선생님과의 배틀에서 이긴 횟수. 동점이면 먼저 이긴 사람이 위.' }[S.rankKind]),
   ];
@@ -921,7 +928,7 @@ export async function handleScan({ q, t }) {
   renderTab();
   const offlineNote = S.online ? '' : (known ? '\n(오프라인이라 나중에 자동으로 보내요)'
     : '\n※ 숨은·전설 장소는 바로 인터넷에 연결해야 인정돼요!');
-  say(`${name}에서 티켓을 얻었다!\n티켓 주머니 ${items.length + 1}/${R.bag_max} - 메인 부스에서 몬스터로 바꿔요.${offlineNote}`);
+  say(`${name}에서 티켓을 얻었다!\n티켓 주머니 ${items.length + 1}/${R.bag_max} - 메인 부스에서 포켓몬으로 바꿔요.${offlineNote}`);
   sync();
 }
 
@@ -933,8 +940,8 @@ export function handlePendingScan() {
   if (place) handleScan(place);
 }
 
-// 이스터에그 (0024): 숨은 곳을 7번 연달아 누르면 환상 몬스터 특별 티켓 (계정당 한 번씩, 서버 claim_egg 가 판정)
-//   card = 트레이너 카드 몬스터 사진 / chart = 타입 상성표 지리×지리 칸 / map = 학교 지도 오른쪽 위 숲 모서리
+// 이스터에그 (0024): 숨은 곳을 7번 연달아 누르면 환상 포켓몬 특별 티켓 (계정당 한 번씩, 서버 claim_egg 가 판정)
+//   card = 트레이너 카드 포켓몬 사진 / chart = 타입 상성표 지리×지리 칸 / map = 학교 지도 오른쪽 위 숲 모서리
 const eggTaps = {};
 export async function eggTap(key) {
   const now = Date.now();
@@ -946,7 +953,7 @@ export async function eggTap(key) {
     const r = await rpc('claim_egg', { p_key: key }, { retries: 0 });
     if (!r?.granted) { sfx.blip(); return; }
     sfx.catch(); vibrate([60, 40, 120]);
-    say('……어디선가 신비한 기운이 느껴진다!\n티켓 주머니에 ★특별 티켓이 들어왔어요.\n부스에서 몬스터로 바꿔 보세요.');
+    say('……어디선가 신비한 기운이 느껴진다!\n티켓 주머니에 ★특별 티켓이 들어왔어요.\n부스에서 포켓몬으로 바꿔 보세요.');
     sync();
   } catch { /* 조용히 무시 — 이스터에그는 티 나지 않게 */ }
 }
@@ -990,7 +997,7 @@ export async function openBag() {
 
 export let celebrating = false;
 
-// 이스터에그 4: 정각(00분)이나 축제 마감 1분 전에 몬스터를 받으면 황금빛 연출
+// 이스터에그 4: 정각(00분)이나 축제 마감 1분 전에 포켓몬을 받으면 황금빛 연출
 export function luckyMoment(now = new Date()) {
   const close = rules().festival_close_at ? new Date(rules().festival_close_at) : null;
   if (close && close - now > 0 && close - now <= 60_000) return '마지막 1분의 기적';
@@ -1008,7 +1015,7 @@ export async function maybeDexComplete() {
   const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
   const ov = overlay(h('div.stage', h('div.scene.golden', h('div.rays'), h('span.spr', spriteCanvas(dexOf(35, 1), 200))), text), 'full');
   sfx.catch(); vibrate([80, 60, 80, 60, 200]);
-  await typeText(text, `도감 완성!!\n${S.snap.profile.name || '트레이너'}, 학교의 모든 몬스터를 만났어요.\n칭호 「도감 마스터」를 얻었다! 트레이너 카드가 금빛으로 바뀌었어요.`);
+  await typeText(text, `도감 완성!!\n${S.snap.profile.name || '트레이너'}, 학교의 모든 포켓몬을 만났어요.\n칭호 「도감 마스터」를 얻었다! 트레이너 카드가 금빛으로 바뀌었어요.`);
   text.append(h('span.more', '▼'));
   await tapToContinue(ov);
   closeOverlay();
@@ -1034,8 +1041,8 @@ async function reportCatch(t, c, fled) {
   }
 }
 const rarityFor = (sp) => (isSecret(sp.line_id) ? 'legendary' : lineOf(sp.line_id)?.mythic ? 'mythic' : lineOf(sp.line_id)?.rarity || 'common');
-const tagFor = (sp) => (isSecret(sp.line_id) ? '★비밀 몬스터 발견★' : lineOf(sp.line_id)?.mythic ? '★환상의 몬스터★'
-  : lineOf(sp.line_id)?.rarity === 'legendary' ? '★전설의 몬스터★' : lineOf(sp.line_id)?.rarity !== 'common' ? '★희귀 몬스터★' : '');
+const tagFor = (sp) => (isSecret(sp.line_id) ? '★비밀 포켓몬 발견★' : lineOf(sp.line_id)?.mythic ? '★환상의 포켓몬★'
+  : lineOf(sp.line_id)?.rarity === 'legendary' ? '★전설의 포켓몬★' : lineOf(sp.line_id)?.rarity !== 'common' ? '★희귀 포켓몬★' : '');
 const throwText = (b) => (b?.exp > 0 ? `\n${{ nice: '나이스', great: '그레이트', excellent: '엑설런트' }[b.grade] || ''} 던지기! 경험치 +${b.exp}${b.levels ? ` (Lv.${b.level})` : ''}` : '');
 
 // 한 마리 획득 축하 화면 (탭하면 닫힘)
@@ -1066,7 +1073,7 @@ async function showFled(sp, sub = '', next = '다른 QR을 찾아 다시 만나 
   text.append(h('span.more', '▼'));
   return ov;
 }
-// 남은 몬스터 모두 바로 잡기 → 한 화면에 모아서 축하
+// 남은 포켓몬 모두 바로 잡기 → 한 화면에 모아서 축하
 async function showGroup(items) {
   const grid = h('div.catch-grid', items.map(({ sp, isNew }) => h('div.catch-cell',
     h('span.spr', spriteCanvas(sp.id, 96), isNew && h('span.new-badge.small', 'NEW')), h('small', sp.name))));
@@ -1074,7 +1081,7 @@ async function showGroup(items) {
   const ov = overlay(h('div.stage.group', h('div.scene.group-scene', h('div.rays'), grid), text), 'full');
   sfx.catch(); vibrate([80, 60, 160]);
   const nNew = items.filter((x) => x.isNew).length;
-  await typeText(text, `축하합니다! 몬스터 ${items.length}마리를 한 번에 획득했습니다!${nNew ? `\n새로 만난 몬스터 ${nNew}마리 ★` : ''}`);
+  await typeText(text, `축하합니다! 포켓몬 ${items.length}마리를 한 번에 획득했습니다!${nNew ? `\n새로 만난 포켓몬 ${nNew}마리 ★` : ''}`);
   text.append(h('span.more', '▼'));
   return ov;
 }
@@ -1124,18 +1131,19 @@ export async function celebrate(tickets, prevLines) {
     closeOverlay();
   }
   celebrating = false;
-  if (changed) await sync({ force: true });   // 도망친 몬스터는 서버가 가져감 → 도감·점수 새로
+  if (changed) await sync({ force: true });   // 도망친 포켓몬은 서버가 가져감 → 도감·점수 새로
   renderTab();
   if (await maybeDexComplete()) return;
   if (S.snap.quizzes?.length) openQuiz();
 }
 
-// ───────── 레이드 보스 잡기 (0030 raid_mode 'catch'): HAFS 볼 N개, 다 빗나가면 도망 ─────────
+// ───────── 레이드 보스 잡기 (0030 raid_mode 'catch'): HAFS 볼 N개, 다 빗나가면 도망 · 걸어서 만난 야생 포켓몬 (0032): 몬스터볼 N개 ─────────
 export const encounters = () => (S.snap?.encounters || []).filter((e) => !S.encDone?.has(e.id));
 let encBusy = false;
 export async function catchEncounter(enc) {
   if (!enc || encBusy || celebrating) return;
-  if (!S.online) return say('레이드 보스를 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  const wild = enc.kind === 'wild';
+  if (!S.online) return say(`${wild ? '야생 포켓몬' : '레이드 보스'}를 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
   const sp = speciesOf(enc.species_id);
   if (!sp) return;
   encBusy = true; celebrating = true;
@@ -1146,8 +1154,10 @@ export async function catchEncounter(enc) {
     let c = null;
     try {
       const { catchScene } = await import('./catch.js');
-      c = await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
-        balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false });
+      c = wild
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true })
+        : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
+          balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false });
     } catch { /* */ }
     // 장면을 못 띄웠으면 (레이드엔 바로 잡기 버튼이 없으니 skipped = 실패) 결과를 보내지 않음 → 기회는 그대로 남음
     if (!c || c.skipped) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
@@ -1164,8 +1174,9 @@ export async function catchEncounter(enc) {
     if (r?.nonce) { S.celebrated.add(r.nonce); await kv.set('celebrated', [...S.celebrated]); }
     const sp2 = speciesOf(r?.species_id) || sp;
     const fled = r ? !!r.fled || r.caught === false : !!c.fled;
-    const ov = fled ? await showFled(sp2, enc.raid_title || '레이드 보스', '다음 레이드에서 다시 도전해 봐요!')
-      : await showCatch(sp2, { isNew: r?.new ?? !prev.has(sp2.line_id), sub: enc.raid_title || '레이드 보스', bonus: r?.exp > 0 ? { ...r, grade: c.grade } : null });
+    const sub = wild ? '야생 포켓몬' : enc.raid_title || '레이드 보스';
+    const ov = fled ? await showFled(sp2, sub, wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
+      : await showCatch(sp2, { isNew: r?.new ?? !prev.has(sp2.line_id), sub, bonus: r?.exp > 0 ? { ...r, grade: c.grade } : null });
     await tapToContinue(ov); closeOverlay();
   } finally {
     encBusy = false; celebrating = false;
@@ -1210,8 +1221,8 @@ export function openQuiz() {
     await kv.set('snap', S.snap);
     if (r.correct) { sfx.correct(); vibrate(60); } else sfx.wrong();
     result.replaceChildren(h('div.box', r.correct
-      ? (r.granted ? '정답! 진화권을 1장 얻었다! (도감에서 몬스터를 눌러 진화시켜요)' : '정답! (오늘 받을 수 있는 진화권을 다 받았어요)')
-      : `아쉬워요! ${josa(sp?.name || '몬스터', '이', '가')} 고개를 젓는다…`));
+      ? (r.granted ? '정답! 진화의돌을 1개 얻었다! (도감에서 포켓몬을 눌러 진화시켜요)' : '정답! (오늘 받을 수 있는 진화의돌을 다 받았어요)')
+      : `아쉬워요! ${josa(sp?.name || '포켓몬', '이', '가')} 고개를 젓는다…`));
     decide.textContent = S.snap.quizzes.length ? '다음 퀴즈' : '닫기';
     decide.disabled = false;
     decide.onclick = () => { closeOverlay(); renderTab(); if (S.snap.quizzes.length) openQuiz(); };

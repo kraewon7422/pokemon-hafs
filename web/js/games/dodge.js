@@ -1,14 +1,14 @@
-// 폭탄 피하기: 하늘에서 떨어지는 폭탄 몬스터를 좌우로 피한다. 한 번 맞으면 끝.
+// 폭탄 피하기: 하늘에서 떨어지는 폭탄 포켓몬을 좌우로 피한다. 한 번 맞으면 끝.
 // 점수 = 버틴 초 × 10 + 땅에 떨어진 폭탄 × 5 (분열 폭탄의 작은 폭탄도 하나에 +5)
 // 서버 상한: 초×30+50 → 끝낼 때 초×25+40 으로 한 번 더 묶어서 보냄 (.work/sim_dodge3.mjs 로 확인)
 // 배경 그림: web/img/games/dodge/dodge-bg.png (CC0, 출처는 같은 폴더 CREDITS.txt)
-// 판은 192×288 도트. 내 몬스터는 어떤 몬스터든 64×64 칸 전체를 정확히 1/2(32×32)로 줄여 같은 비율로 그림.
+// 판은 192×288 도트. 내 포켓몬은 어떤 포켓몬이든 64×64 칸 전체를 정확히 1/2(32×32)로 줄여 같은 비율로 그림.
 import { pixelCanvas, loop, text } from './common.js';
-import { atlasImage, atlasOk, cellOf } from '../sprites.js';
+import { monCell } from '../sprites.js';
 
 const W = 192, H = 288;
 const GR_Y = H - 64;         // 풀·흙길·덤불 띠 윗줄 (띠 높이 64)
-const GROUND = GR_Y + 35;    // 몬스터 발 / 폭탄이 떨어지는 줄 (흙길 가운데)
+const GROUND = GR_Y + 35;    // 포켓몬 발 / 폭탄이 떨어지는 줄 (흙길 가운데)
 const FO_Y = GR_Y + 18 - 92; // 숲 그림 윗줄 (숲 아래쪽이 풀 뒤로 숨게)
 const MT_Y = FO_Y - 56;      // 먼 산 그림 윗줄
 const MIN_GAP = 0.42;        // 폭탄 사이 최소 간격(초) — 점수 상한 지키는 핵심
@@ -22,7 +22,7 @@ const ART = new Image();
 ART.src = new URL('../../img/games/dodge/dodge-bg.png', import.meta.url).href;
 const artReady = () => ART.complete && ART.naturalWidth > 0;
 
-// 폭탄 몬스터 도트 (14×13). k 테두리, r 윗색, h 반짝, d 윗색 그늘, e 눈동자, w 흰 배, g 배 그늘
+// 폭탄 포켓몬 도트 (14×13). k 테두리, r 윗색, h 반짝, d 윗색 그늘, e 눈동자, w 흰 배, g 배 그늘
 const BOMB = [
   '....kkkkkk....',
   '..kkrhrrrrkk..',
@@ -87,17 +87,17 @@ function skyCanvas() {
   return cv;
 }
 
-// 내 몬스터 도트 (한 번만 만들어 둠):
+// 내 포켓몬 도트 (한 번만 만들어 둠):
 //  full = 64×64 칸 그대로 (시작 화면)
-//  play = 64×64 칸 전체를 2×2 칸마다 대표색 하나로 정확히 반(32×32)으로 줄인 것 — 모든 몬스터 같은 비율.
+//  play = 64×64 칸 전체를 2×2 칸마다 대표색 하나로 정확히 반(32×32)으로 줄인 것 — 모든 포켓몬 같은 비율.
 //         2×2 안에 어두운 점(테두리·눈)이 있으면 그 색, 아니면 가장 많은 색, 가장자리 한 점은 버림.
 //  body = 3칸 이상(키의 1/4) 칠해진 세로줄 수 = 실제 몸통 폭, bh = 그림 키, cx = 몸통 가운데 (맞는 범위 계산용)
 const lum = (d, i) => 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
 function monSprites(dex) {
-  if (!atlasOk()) return null;
-  const [sx, sy] = cellOf(dex);
+  const src64 = monCell(dex);           // 64×64 칸 (아직 받는 중이면 null → 나중에 다시)
+  if (!src64) return null;
   const cell = document.createElement('canvas'); cell.width = cell.height = 64;
-  const cg = cell.getContext('2d'); cg.drawImage(atlasImage, sx, sy, 64, 64, 0, 0, 64, 64);
+  const cg = cell.getContext('2d', { willReadFrequently: true }); cg.drawImage(src64, 0, 0);
   const src = cg.getImageData(0, 0, 64, 64).data;
   const half = document.createElement('canvas'); half.width = half.height = 32;
   const hg = half.getContext('2d'); const img = hg.createImageData(32, 32); const o = img.data;
@@ -198,7 +198,7 @@ export default {
       // 난이도 (.work/sim_dodge3.mjs H안 = B안보다 버티는 시간 약 10% 짧게): 처음엔 천천히, 오래 버틸수록 계속 빨라짐
       const base = Math.min(245, 70 + t * 2.5);
       const vy = base * (kind === 'fast' ? 1.5 : kind === 'zig' ? 0.85 : 1) * (0.9 + Math.random() * 0.2);
-      // 8초부터 가끔 내 몬스터 쪽을 노림 (가만히 있으면 맞도록)
+      // 8초부터 가끔 내 포켓몬 쪽을 노림 (가만히 있으면 맞도록)
       const x = Math.random() < (t < 8 ? 0 : Math.min(0.32, (t - 8) * 0.007)) ? Math.max(8, Math.min(W - 8, px + (Math.random() - 0.5) * 20)) : 8 + Math.random() * (W - 16);
       bombs.push(mk(kind, x, -14, vy));
     };
@@ -274,7 +274,7 @@ export default {
       if (!reduce) drift += dt;
       if (mode === 'play') {
         t += dt;
-        // 몬스터 이동 (몸통이 화면 밖으로 안 나가게)
+        // 포켓몬 이동 (몸통이 화면 밖으로 안 나가게)
         const sp = 160, p = P(), off = (p.cx - 16) * (face ? -1 : 1);
         let vx = 0;
         if (keyDir) vx = keyDir * sp;
@@ -322,7 +322,7 @@ export default {
         g.fillStyle = '#48a048'; g.fillRect(0, GROUND, W, H - GROUND);
         return;
       }
-      const par = mode === 'ready' ? 0 : px - W / 2;   // 내 몬스터 위치 따라 살짝 밀리는 시차
+      const par = mode === 'ready' ? 0 : px - W / 2;   // 내 포켓몬 위치 따라 살짝 밀리는 시차
       // 높은 하늘 구름 (느리게)
       drifting('h0', 20, -18, 2.2);
       drifting('h1', 220, 26, 1.4);
@@ -363,7 +363,7 @@ export default {
       g.fillStyle = 'rgba(24,32,48,0.28)'; g.fillRect(Math.round(b.x - w / 2), GROUND - 1, w, 2);
     };
 
-    // 몬스터 한 마리: 칸(정사각) 아래쪽이 footY, 칸 가운데가 cx
+    // 포켓몬 한 마리: 칸(정사각) 아래쪽이 footY, 칸 가운데가 cx
     const drawSprite = (s, cx, footY, flip) => {
       const x = Math.round(cx - s.w / 2), y = Math.round(footY - s.h);
       if (flip) { g.save(); g.translate(x + s.w, y); g.scale(-1, 1); g.drawImage(s.cv, 0, 0); g.restore(); }
@@ -406,7 +406,7 @@ export default {
       if (mode === 'ready') {
         const bob = reduce ? 0 : Math.round(Math.sin(anim * 3) * 2);
         if (MS) {
-          // 시작 화면은 모든 몬스터 1배 (64×64 칸 그대로, 칸 아래가 땅)
+          // 시작 화면은 모든 포켓몬 1배 (64×64 칸 그대로, 칸 아래가 땅)
           g.fillStyle = 'rgba(24,32,48,0.3)'; g.fillRect(W / 2 - 12, GROUND, 24, 2);
           drawSprite(MS.full, W / 2, GROUND + 2 - Math.max(0, bob), false);
         }

@@ -111,7 +111,7 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .dex-head { display: grid; gap: 6px; }
 .filters { display: flex; flex-wrap: wrap; gap: 4px; padding-bottom: 2px; }
 .filters .chip { cursor: pointer; padding: 2px 9px; min-height: 34px; font-size: var(--fs-s); border-width: 2px; }
-.filters .chip[aria-pressed='true'] { background: var(--ink); color: #fff; }
+.filters .chip[aria-pressed='true']:not([class*='t-']) { background: var(--ink); color: #fff; }
 .dex-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
 .dex-cell { appearance: none; border: 3px solid #384868; border-radius: 10px; background: var(--paper); padding: 6px 4px 8px; display: grid; justify-items: center; gap: 2px; cursor: pointer; text-shadow: 1px 1px 0 var(--ink-shadow); }
 .dex-cell .no { font-size: var(--fs-s); color: #4a5268; justify-self: start; padding-left: 4px; }
@@ -262,7 +262,7 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .map-scroll.zoomed { max-height: 64dvh; overflow: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; overscroll-behavior: contain; touch-action: pan-x pan-y; }
 .map-scroll.zoomed .map-wrap { margin: 0; }
 
-/* 진화권 룰렛 */
+/* 진화의돌 룰렛 */
 .roulette { display: grid; gap: 8px; }
 .reel-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; }
 .reel-cell { text-align: center; padding: 6px 0; border: 3px solid var(--ink); border-radius: 6px; background: #fff; font-size: var(--fs-m); }
@@ -874,3 +874,23 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .enc-banner .enc-go { display: table; margin-top: 6px; background: #ffd23f; color: #3a2400; border-color: #9a6a10; text-shadow: none; font-weight: bold; }
 .raid-enc-btns { display: grid; gap: 8px; margin-top: 10px; }
 @media (prefers-reduced-motion: reduce) { .stage .scene.fled .spr canvas { animation: none; } .enc-banner { animation: none; } }
+
+/* 포켓몬 도감 (0032): 타입 칩은 타입 색, 고른 칩은 진한 테두리 */
+.type-filters .chip[class*='t-'] { border-color: rgba(30, 36, 51, .35); }
+.type-filters .chip[class*='t-'][aria-pressed='true'] { outline: 3px solid var(--ink); outline-offset: 1px; }
+.dex-head .evo-ready { color: #1f6a35; font-weight: 700; display: block; margin-top: 4px; word-break: keep-all; }
+
+/* 비공식 팬 게임 안내 (0032) */
+.fan-note { font-size: 11px; line-height: 1.5; color: #4a5268; text-align: center; margin: 4px 8px; word-break: keep-all; overflow-wrap: break-word; }
+
+/* 18타입 상성표 (0032): 좁은 폰에서도 옆으로 밀지 않고 한눈에 */
+@media (max-width: 440px) {
+  .type-table { font-size: 10px; }
+  .type-table th, .type-table td { min-width: 14px; padding: 1px 0; }
+  .type-table tbody th { padding: 1px 1px; letter-spacing: -0.5px; }
+}
+@media (max-width: 360px) {
+  .type-table { font-size: 9px; }
+  .type-table th, .type-table td { min-width: 12px; }
+  .type-table-wrap { margin: 0 -10px; }
+}

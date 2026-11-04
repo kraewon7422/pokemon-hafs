@@ -6,13 +6,13 @@ import { rpc, errorText } from './sb.js';
 import { spriteCanvas } from './sprites.js';
 import { sfx } from './sfx.js';
 import { h, josa, toast, pix, sleep, reducedMotion } from './ui.js';
-import { S, speciesOf } from './state.js';
+import { S, speciesOf, vibrate } from './state.js';
 import { overlay, sheet, closeOverlay, sync, renderTab } from './app.js';
 import { moveOf } from './battle.js';
 
 export const TIER = { green: '초록 점박이 알', yellow: '노랑 점박이 알', purple: '보라 점박이 알' };
 const TIER_I = { green: 0, yellow: 1, purple: 2 };
-const TIER_NOTE = { green: '흔한 몬스터 · 레벨 +3 · 반짝 10%', yellow: '희귀 몬스터 · 알 기술 · 반짝 25%', purple: '가끔 전설! · 알 기술 + 지닌 물건 · 반짝 50%' };
+const TIER_NOTE = { green: '흔한 포켓몬 · 레벨 +3 · 반짝 10%', yellow: '희귀 포켓몬 · 알 기술 · 반짝 25%', purple: '가끔 전설! · 알 기술 + 지닌 물건 · 반짝 50%' };
 
 // web/img/eggs.png 칸 (32×40): 알 3 · 금 간 알 3 · 부화기 속 알 3 · 빈 부화기 (tools/draw_fx.py EGG_CELLS 와 같은 순서)
 export function eggImg(kind, tier, k = 2) {
@@ -58,6 +58,11 @@ async function flushSteps() {
     S.eggs = await rpc('egg_add_steps', { p_steps: n }, { retries: 0 });
     const fresh = (S.eggs.ready || []).filter((id) => !before.has(id));
     if (fresh.length) { sfx.correct(); toast('알이 꿈틀꿈틀! 가방 → 알에서 부화시켜 줘요.', 4500); }
+    // 걸음마다 야생 포켓몬 (0032): 서버가 만든 만남을 바로 홈에 보여 줌
+    if (Array.isArray(S.eggs.encounters) && S.snap) {
+      S.snap.encounters = S.eggs.encounters;
+      if (S.eggs.wild_new > 0) { sfx.catch(); vibrate([40, 30, 80]); toast('앗! 야생 포켓몬이 나타났다! 홈에서 잡아 보세요.', 5000); if (S.tab === 'home' && !S.overlay) renderTab(); }
+    }
     document.querySelector('.overlay')?.redraw?.();
   } catch (e) { if (e.offline || e.message === 'OFFLINE') ST.pending += n; }
   finally { ST.sending = false; }
@@ -102,7 +107,8 @@ export function eggPocket(redraw) {
   const live = stepsLive();
   const stepRow = h('div.egg-steps',
     h('span', h('b', live ? '걸음 세는 중' : ST.on && !needsAsk() ? '걸음 세기 켜짐' : '걸음 세기 꺼짐'), h('br'),
-      h('small', `오늘 ${Number(E.steps_today || 0).toLocaleString()}걸음 · 모두 ${Number(E.steps_total || 0).toLocaleString()}걸음`)),
+      h('small', `오늘 ${Number(E.steps_today || 0).toLocaleString()}걸음 · 모두 ${Number(E.steps_total || 0).toLocaleString()}걸음`), h('br'),
+      h('small.muted', '걸으면 알이 자라고, 가끔 야생 포켓몬도 나타나요!')),
     ST.on && (live || !needsAsk())
       ? h('button.btn.small', { onclick: () => { disableSteps(); redraw(); } }, '끄기')
       : h('button.btn.small.primary', { onclick: async () => { if (await enableSteps()) { toast('걸음을 세기 시작해요. 앱을 켜 둔 채로 걸어요!'); setTimeout(redraw, 1500); } } }, '켜기'));
@@ -152,18 +158,18 @@ async function hatch(x, redraw) {
   stageEl.replaceChildren(h(`span.hatch-mon${res.shiny ? '.shiny' : ''}`, spriteCanvas(res.species_id, 160, res.shiny ? 'shiny' : 'normal'),
     res.shiny && [1, 2, 3].map((i) => h(`i.hatch-spark.s${i}`, pix('spark', 'l')))));
   stageEl.classList.remove('flash');
-  const lines = [`알에서 ${josa(sp?.name || '몬스터', '이', '가')} 태어났다!`];
-  lines.push(res.new ? '새 몬스터! 도감에 올랐다.' : `이미 있던 몬스터라 레벨이 올랐다! (Lv.${res.level})`);
+  const lines = [`알에서 ${josa(sp?.name || '포켓몬', '이', '가')} 태어났다!`];
+  lines.push(res.new ? '새 포켓몬! 도감에 올랐다.' : `이미 있던 포켓몬라 레벨이 올랐다! (Lv.${res.level})`);
   if (res.shiny) lines.push(res.shiny_new ? '반짝이는 색이다! (가방에서 색을 바꿀 수 있어요)' : '반짝이는 색이다!');
   if (res.egg_move) lines.push(`알 기술 ${josa(moveOf(res.egg_move)?.name || '기술', '을', '를')} 알고 있다!`);
   if (res.held) {
     const { itemOf } = await import('./bag.js');
     lines.push(`${josa(itemOf(res.held)?.name || '물건', '을', '를')} ${res.held_to === 'held' ? '지니고' : '가방에 넣어 두고'} 있었다!`);
   }
-  if (res.bonus_ticket) lines.push('진화권도 1장 받았다!');
+  if (res.bonus_ticket) lines.push('진화의돌도 1개 받았다!');
   text.textContent = lines.join('\n');
   btns.replaceChildren(
-    h('button.btn.primary', { onclick: async () => { closeOverlay(); const { openMon, loadBag } = await import('./bag.js'); await loadBag({ notify: false }).catch(() => {}); openMon(res.line); } }, '몬스터 보기'),
+    h('button.btn.primary', { onclick: async () => { closeOverlay(); const { openMon, loadBag } = await import('./bag.js'); await loadBag({ notify: false }).catch(() => {}); openMon(res.line); } }, '포켓몬 보기'),
     h('button.btn', { onclick: () => { closeOverlay(); redraw?.(); } }, '닫기'));
   sync().catch(() => {});
   import('./bag.js').then(({ loadBag }) => loadBag({ notify: false })).catch(() => {});
@@ -171,11 +177,12 @@ async function hatch(x, redraw) {
 
 // ───────────── 도전과제 ─────────────
 // 95개 → 묶음(종류) 제목 + 걸러 보기 (받기 / 진행 중 / 완료 / 전체) + 모두 받기
-const ITEM_NAME = { candy: '이상한사탕', energy: '에너지 드링크', bandage: '반창고', mint: '박하사탕', firstaid: '구급상자', lucky: '행운 부적', glasses: '집중 안경', choco: '초코우유', clock: '알람시계' };
-const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item ? `${ITEM_NAME[r.item] || '물건'} ×${r.n || 1}` : r?.evo ? `진화권 ×${r.evo}` : '');
+// 물건 이름은 서버 목록(items, 0032 = 실제 포켓몬 물건)에서
+const itemName = (k) => (S.catalog?.items || []).find((x) => x.key === k)?.name || '물건';
+const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item ? `${itemName(r.item)} ×${r.n || 1}` : r?.evo ? `진화의돌 ×${r.evo}` : '');
 const rewardIcon = (r) => (r?.egg ? eggImg('egg', r.egg, 0.8) : r?.evo ? pix('ticket', 'l') : pix('gift', 'l'));
 const GROUPS = [['도감', ['dex']], ['장소 · QR', ['places', 'scans', 'days']], ['배틀', ['wins']], ['레이드', ['raids']],
-  ['알 · 걸음', ['eggsgot', 'hatch', 'purplehatch', 'steps']], ['몬스터 키우기', ['shiny', 'evolves', 'stage3', 'rare', 'legend', 'maxlv', 'types', 'learned', 'held']],
+  ['알 · 걸음', ['eggsgot', 'hatch', 'purplehatch', 'steps']], ['포켓몬 키우기', ['shiny', 'evolves', 'stage3', 'rare', 'legend', 'maxlv', 'types', 'learned', 'held']],
   ['퀴즈 · 룰렛', ['quiz', 'spins']], ['미니게임', ['games', 'mgplays', 'surf', 'dodge', 'land', 'cross']], ['비밀', ['secrets']]];
 const groupOf = (kind) => GROUPS.find(([, ks]) => ks.includes(kind))?.[0] || '기타';
 const ready = (a) => a.done && !a.claimed;

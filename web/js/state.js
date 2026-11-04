@@ -25,16 +25,15 @@ export const maxStage = (line) => lineOf(line)?.max_stage ?? 3;
 export const speciesOf = (id) => S.catalog?.species.find((s) => s.id === id);
 export const qrName = (id) => S.catalog?.qrs.find((q) => q.id === id)?.name;
 export const dexOf = (line, stage) => (line - 1) * 3 + stage;
-// shown dex number = position in the list (No.001…No.104, no gaps) — species.id keeps (line-1)*3+stage for the atlas
-export const dexNo = (sp) => `No.${String(S.catalog.species.findIndex((x) => x.id === sp.id) + 1).padStart(3, '0')}`;
-// 도감 순서: 선생님 몬스터 먼저 (계열 번호 순), 전설(교장·교감)·비밀·탐구 전설은 맨 뒤. 도감 번호(No.)도 이 순서
+// 도감 번호 = 실제 전국도감 번호 (No.001 이상해씨 … No.809 멜메탈). species.id 는 (계열-1)*3+단계 그대로 (서버가 씀)
+export const dexNo = (sp) => `No.${String(sp?.dex || 0).padStart(3, '0')}`;
+// 도감 순서 = 전국도감 번호 순
 export function sortDex(cat) {
-  const lineRank = new Map(cat.lines.map((l) => [l.id, l.mythic ? 2 : l.rarity === 'legendary' || l.secret || l.bonus ? 1 : 0]));   // 환상은 맨 끝 (번호가 다른 몬스터를 안 밀어냄)
-  cat.species.sort((a, b) => (lineRank.get(a.line_id) || 0) - (lineRank.get(b.line_id) || 0) || a.id - b.id);
+  cat.species.sort((a, b) => (a.dex || 9999) - (b.dex || 9999) || a.id - b.id);
   return cat;
 }
 export const collection = () => S.snap?.collection || [];
-// 트레이너 카드 몬스터: 고른 몬스터 (0024 set_partner), 없으면 가장 많이 진화한 몬스터
+// 트레이너 카드 포켓몬: 고른 포켓몬 (0024 set_partner), 없으면 가장 많이 진화한 포켓몬
 export const partnerMon = () => collection().find((c) => c.line_id === S.snap?.profile?.partner)
   || [...collection()].sort((a, b) => b.stage - a.stage || new Date(b.first_caught_at) - new Date(a.first_caught_at))[0];
 export const owned = (line) => collection().find((c) => c.line_id === line);
@@ -53,12 +52,17 @@ export const isWithdrawn = (line) => (S.snap?.rules?.withdrawn || []).includes(l
 export const isSecret = (line) => !!lineOf(line)?.secret;
 export const isMythic = (line) => !!lineOf(line)?.mythic;
 export const isBonus = (line) => !!lineOf(line)?.bonus || isSecret(line) || isMythic(line);
-// 도감 완성 = 비밀 몬스터를 뺀 모든 몬스터 (비공개 계열 제외)
+// 야생 포켓몬 = 선생님이 없는 계열 (QR 의 야생 · 걸음 · 알 · 레이드로 만남)
+export const isWild = (line) => lineOf(line)?.subject === '야생';
+// 학교 도감 = 선생님 포켓몬 + 특별 전설 (야생·비밀·환상·비공개 제외) → 도감 50%·100% 보상과 '도감 완성' 은 이것 기준
+// 전국 도감 = 야생까지 모든 포켓몬 (비밀·환상·비공개 제외)
 export function dexStats() {
   const reached = (sp) => (owned(sp.line_id)?.stage || 0) >= sp.stage;
-  const main = S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id));
-  const found = main.filter(reached).length;
-  return { found, total: main.length, complete: main.length > 0 && found === main.length,
+  const all = S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id));
+  const school = all.filter((sp) => !isWild(sp.line_id));
+  const found = school.filter(reached).length;
+  return { found, total: school.length, complete: school.length > 0 && found === school.length,
+           allFound: all.filter(reached).length, allTotal: all.length,
            secret: collection().some((c) => isSecret(c.line_id)) };
 }
 export const titlesOf = (p, d = dexStats()) => [...(p.titles || []), d.complete && '도감 마스터', d.secret && '비밀 탐험가'].filter(Boolean);

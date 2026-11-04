@@ -1,6 +1,6 @@
-// 미니게임 공용 도구: 도트 캔버스(정수 배율), 몬스터 그리기, 게임 루프, 내 몬스터 목록.
+// 미니게임 공용 도구: 도트 캔버스(정수 배율), 포켓몬 그리기, 게임 루프, 내 포켓몬 목록.
 // 게임 파일(yacht.js · dodge.js · maze.js)은 이것만 가져다 쓰고, 점수·랭킹·화면 틀은 hub.js 가 맡는다.
-import { atlasImage, atlasOk, cellOf, spritesReady } from '../sprites.js';
+import { monCell, spritesReady } from '../sprites.js';
 
 // 게임 판 크기 (도트). 화면 폭에 맞춰 정수 배로 키운다 → 픽셀이 뭉개지지 않음
 export function pixelCanvas(stage, w, h) {
@@ -20,13 +20,13 @@ export function pixelCanvas(stage, w, h) {
   return { c, g, w, h, stop: () => ro.disconnect() };
 }
 
-// 몬스터 그리기 (64×64 아틀라스 → size 도트). flip = 좌우 반전
+// 포켓몬 그리기 (64×64 아틀라스 → size 도트). flip = 좌우 반전
 export function drawMon(g, dex, x, y, size = 32, flip = false) {
-  if (!atlasOk()) return;
-  const [sx, sy] = cellOf(dex);
+  const cell = monCell(dex);           // 64×64 칸 (아직 받는 중이면 null → 다음 프레임에 다시)
+  if (!cell) return;
   g.save();
-  if (flip) { g.translate(x + size, y); g.scale(-1, 1); g.drawImage(atlasImage, sx, sy, 64, 64, 0, 0, size, size); }
-  else g.drawImage(atlasImage, sx, sy, 64, 64, x, y, size, size);
+  if (flip) { g.translate(x + size, y); g.scale(-1, 1); g.drawImage(cell, 0, 0, 64, 64, 0, 0, size, size); }
+  else g.drawImage(cell, 0, 0, 64, 64, x, y, size, size);
   g.restore();
 }
 export const spritesLoaded = spritesReady;

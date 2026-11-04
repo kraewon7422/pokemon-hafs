@@ -6,7 +6,7 @@ import { sfx, unlockAudio, startBgm, stopBgm } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
 import { S, collection, isWithdrawn, vibrate } from './state.js';
 import { closeOverlay, eggTap, openScanner, overlay, renderTab, say, sheet, sync } from './app.js';
-import { typeOf } from './dex.js';
+import { typeChips, typeMult, TYPES } from './dex.js';
 import { curSpecies } from './raid.js';
 import { itemIcon, itemOf, loadBag } from './bag.js';
 
@@ -15,12 +15,8 @@ import { itemIcon, itemOf, loadBag } from './bag.js';
 export const isBattleQr = (q) => q === 'BTL';
 export const ST_LABEL = { par: '마비', brn: '화상', psn: '독', slp: '잠듦', frz: '얼음' };
 const stText = (m) => [m?.st ? ST_LABEL[m.st] : '', m?.cnf > 0 ? '혼란' : ''].filter(Boolean).join(' ');
-// 상성 (서버 _bt_tm 과 같음): 전설은 모두 ×1, 전설끼리 ×2
-export function effOf(atk, def) {
-  if (atk === '전설' || def === '전설') return atk === def ? 2 : 1;
-  const c = (S.catalog.typeChart || []).find((x) => x.atk === atk && x.def === def);
-  return c ? Number(c.mult) : 1;
-}
+// 상성 (서버 _bt_tm 과 같음): 방어 타입이 두 개면 곱 (×4 · ×¼ 도 있음)
+export const effOf = (atk, def) => typeMult(atk, def);
 export const effTag = (mult) => (mult > 1 ? h('span.eff.up', '효과가 굉장하다!') : mult === 0 ? h('span.eff.zero', '효과가 없다') : mult < 1 ? h('span.eff.down', '효과가 별로인 듯하다') : null);
 const FX_ROW = { par: 0, brn: 1, psn: 2, frz: 3, heal: 4, slp: 5, cnf: 6, flinch: 7 };   // web/img/fx/status.png 줄 순서 (tools/draw_fx.py)
 
@@ -79,9 +75,9 @@ export function teamStrip(team, size = 56) {
     ? h('div.bt-team', team.map((l) => {
       const sp = curSpecies(l);
       const lv = (S.bag?.box || []).find((x) => x.line === l)?.level;
-      return h('div', spriteCanvas(sp.id, size), h('small', sp.name, lv ? ` Lv.${lv}` : ''), h(`span.type.t-${typeOf(sp)}`, typeOf(sp)));
+      return h('div', spriteCanvas(sp.id, size), h('small', sp.name, lv ? ` Lv.${lv}` : ''), h('span.types', typeChips(sp)));
     }))
-    : h('p', '아직 몬스터가 없어요. QR을 찍어 몬스터를 먼저 모아요!');
+    : h('p', '아직 포켓몬이 없어요. QR을 찍어 포켓몬을 먼저 모아요!');
 }
 
 export function fmtSeg(cur, onpick) {
@@ -90,21 +86,19 @@ export function fmtSeg(cur, onpick) {
 }
 
 export function typeTable() {
-  const T = ['국어', '수학', '영어', '물리', '화학', '생명', '지구', '지리', '정치경제', '윤리', '역사', '외국어', '정보', '체육', '음악'];
-  const chart = S.catalog.typeChart || [];
-  const m = (a, d) => Number(chart.find((c) => c.atk === a && c.def === d)?.mult ?? 1);
+  const T = TYPES;
   const cell = (v) => (v === 2 ? h('td.x2', '2') : v === 0.5 ? h('td.xh', '½') : v === 0 ? h('td.x0', '0') : h('td', ''));
-  const short = (t) => ({ 정치경제: '정경' }[t] || t);
+  const short = (t) => ({ 에스퍼: '에스', 고스트: '고스', 드래곤: '드래', 페어리: '페어' }[t] || t);
   return [
-    h('small', '왼쪽 = 공격하는 기술의 타입, 위 = 맞는 몬스터의 타입. 2 = 효과가 굉장했다 · ½ = 별로인 듯하다 · 0 = 효과가 없다'),
+    h('small', '왼쪽 = 공격하는 기술의 타입, 위 = 맞는 포켓몬의 타입. 2 = 효과가 굉장했다 · ½ = 별로인 듯하다 · 0 = 효과가 없다. 타입이 두 개인 포켓몬은 두 칸을 곱해요 (×4 · ×¼).'),
     h('div.type-table-wrap', h('table.type-table',
-      h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, short(d))))),
-      h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, short(a)), T.map((d) => {
-        const td = cell(m(a, d));
-        if (a === '지리' && d === '지리') td.onclick = () => eggTap('chart');   // 정중앙 칸 (이스터에그)
+      h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, { title: d }, short(d))))),
+      h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, { title: a }, short(a)), T.map((d) => {
+        const td = cell(typeMult(a, d));
+        if (a === '에스퍼' && d === '에스퍼') td.onclick = () => eggTap('chart');   // 에스퍼 × 에스퍼 칸 (이스터에그)
         return td;
       })))))),
-    h('small.muted', '전설은 모두에게 보통이고, 전설끼리만 효과가 굉장해요. 효과 없음: 정치경제→음악, 역사→정보, 체육→수학.'),
+    h('small.muted', '효과 없음: 노말·격투→고스트, 고스트→노말, 전기→땅, 땅→비행, 독→강철, 에스퍼→악, 드래곤→페어리.'),
   ];
 }
 
@@ -119,7 +113,7 @@ export function viewBattle() {
   return [
     h('div.box.stack',
       h('div.banner', h('b', pix('spark'), ' 배틀'), today ? h('span.chip', `오늘 보상 ${today.wins}/${today.max}`) : null),
-      h('p', { style: { margin: 0 } }, '내 몬스터로 겨뤄요. 친구를 이기면 진화권 1장! (하루 3번 · 같은 친구는 하루 1번)'),
+      h('p', { style: { margin: 0 } }, '내 포켓몬으로 겨뤄요. 친구를 이기면 진화의돌 1개! (하루 3번 · 같은 친구는 하루 1번)'),
       act && h('button.btn.big.gold', { onclick: () => resumeBattle(act.id) }, pix('spark'),
         act.status === 'invite' ? '보낸 배틀 신청 보기' : pvp ? '하던 실시간 배틀 이어 하기' : '하던 배틀 이어 하기'),
       pvp && h('small.warn-txt', '실시간 배틀이 끝나기 전에는 다른 배틀을 시작할 수 없어요. (그만두려면 배틀 화면에서 기권)'),
@@ -132,7 +126,7 @@ export function viewBattle() {
       teamStrip(team),
       h('div.seg.bt-fmt.bt-fair', { role: 'group', 'aria-label': '연습 배틀 레벨' }, [[false, '내 레벨'], [true, '공정 모드']].map(([v, l]) =>
         h('button', { 'aria-pressed': String(practiceFair() === v), onclick: () => { sfx.blip(); setPracticeFair(v); renderTab(); } }, l))),
-      h('small.muted', practiceFair() ? '공정 모드: 양쪽 모두 Lv.50, 회복약을 쓸 수 없어요.' : '연습 배틀은 내 몬스터 레벨 그대로 싸워요.'),
+      h('small.muted', practiceFair() ? '공정 모드: 양쪽 모두 Lv.50, 회복약을 쓸 수 없어요.' : '연습 배틀은 내 포켓몬 레벨 그대로 싸워요.'),
       h('button.btn.big.primary', { disabled: !team.length || !!pvp, onclick: () => startBattle('cpu', null, S.btFmt) }, pix('spark'), h('span.btn-label', `연습 배틀 · ${FMT[S.btFmt].label}`), h('small.btn-sub', '보상 없음')),
       h('button.btn.big', { disabled: !team.length || !!pvp, onclick: openScanner }, pix('camera'), '친구 배틀 QR 찍기'),
       h('button.btn.big', { onclick: showBattleQr }, '내 배틀 QR 보여주기'),
@@ -211,7 +205,7 @@ export async function showBattleQr() {
 }
 
 export async function friendBattleSheet(code) {
-  if (!collection().length) return say('배틀하려면 먼저 몬스터를 모아요!', true);
+  if (!collection().length) return say('배틀하려면 먼저 포켓몬을 모아요!', true);
   if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   let pk;
   try { pk = await rpc('battle_peek', { p_code: code }, { retries: 0 }); } catch (e) { sfx.error(); return say(errorText(e.message), true); }
@@ -223,7 +217,7 @@ export async function friendBattleSheet(code) {
     teamStrip(myTeam(f.n), 44),
     h('button.btn.big.primary', { onclick: () => startBattle('pvp', code) }, '실시간 배틀 신청 (친구가 수락하면 시작)'),
     h('button.btn.big', { onclick: () => startBattle('team', code) }, '친구 팀과 AI 배틀 (바로 시작)'),
-    h('small.muted', '이기면 진화권 1장 (하루 3번 · 같은 친구는 하루 1번)'),
+    h('small.muted', '이기면 진화의돌 1개 (하루 3번 · 같은 친구는 하루 1번)'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
   S.btPeekFmt = pk.format;
 }
@@ -258,7 +252,7 @@ export async function startBattle(mode, code, fmt) {
   if (starting) return;   // 두 번 눌러서 배틀이 두 개 만들어지지 않게
   const n = FMT[mode === 'cpu' ? fmt : S.btPeekFmt || 'single']?.n || 3;
   const team = myTeam(n);
-  if (!team.length) return say('배틀하려면 먼저 몬스터를 모아요!', true);
+  if (!team.length) return say('배틀하려면 먼저 포켓몬을 모아요!', true);
   if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   starting = true;
   try {
@@ -355,7 +349,7 @@ export function openBattle(b0) {
     }
   };
 
-  // 몬스터볼을 던져서 자리 u 에 몬스터가 나온다
+  // 몬스터볼을 던져서 자리 u 에 포켓몬이 나온다
   const throwBall = async (u) => {
     const x = SL[u]; const mine = (u >> 1) === me();
     const f = el.field.getBoundingClientRect(); const t = x.spr.getBoundingClientRect();
@@ -387,7 +381,7 @@ export function openBattle(b0) {
     (dir > 0 ? sfx.statUp : sfx.statDown)();
   };
 
-  // 상태 효과 그림: 몬스터 위에 1초쯤 (마비 번개 · 화상 불꽃 · 독 거품 · 얼음 · 회복 · 잠듦 Zzz · 혼란 별 · 풀죽음 땀)
+  // 상태 효과 그림: 포켓몬 위에 1초쯤 (마비 번개 · 화상 불꽃 · 독 거품 · 얼음 · 회복 · 잠듦 Zzz · 혼란 별 · 풀죽음 땀)
   const statusFx = (u, kind) => {
     const r = FX_ROW[kind];
     if (r == null) return;
@@ -443,17 +437,17 @@ export function openBattle(b0) {
     if (b.winner == null) await say2('무승부!');
     else if (won) {
       await say2(`${josa(foeName(), '과', '와')}의 승부에서 이겼다!`);
-      if (rw.ticket) await say2(`★ 진화권 1장을 받았다! (오늘 ${rw.today}/${S.btToday?.max || 3})`);
+      if (rw.ticket) await say2(`★ 진화의돌 1개를 받았다! (오늘 ${rw.today}/${S.btToday?.max || 3})`);
       else if (BT_WHY[rw.why]) await say2(BT_WHY[rw.why]);
     } else if ((side(me())?.mons || []).some((m) => m.hp > 0)) {
       await say2(b.mode === 'pvp' ? '기권했다… (진 것으로 판정)' : '무사히 도망쳤다! (진 것으로 판정)');
     } else {
-      await say2('나에게는 싸울 수 있는 몬스터가 없다!');
+      await say2('나에게는 싸울 수 있는 포켓몬이 없다!');
       await say2('눈앞이 캄캄해졌다!');
     }
     if (rw.exp_why === 'practice_max') await say2(`오늘 연습 배틀 경험치는 다 받았다! (하루 ${rw.practice_max}판) 친구 배틀은 계속 경험치를 받을 수 있다.`);
     else if (rw.practice_counted && rw.practice_left <= 3) await say2(`오늘 경험치를 받을 수 있는 연습 배틀이 ${rw.practice_left}판 남았다.`, 300);
-    // 경험치 (나온 몬스터마다) · 레벨 업 · 주운 물건 (0020)
+    // 경험치 (나온 포켓몬마다) · 레벨 업 · 주운 물건 (0020)
     for (const x of rw.exp?.[me()] || []) {
       if (closed) return;
       await say2(`${josa(x.name, '은', '는')} ${x.exp} 경험치를 얻었다!`, 300);
@@ -521,17 +515,17 @@ export function openBattle(b0) {
     }
     if (b.status !== 'active' || !side(me())) return;
     if (b.chosen) { el.text.textContent = '상대가 고르기를 기다리는 중…'; el.menu.replaceChildren(); return; }
-    if (b.phase === 'replace' && !b.need) { el.text.textContent = '상대가 다음 몬스터를 고르는 중…'; el.menu.replaceChildren(); return; }
+    if (b.phase === 'replace' && !b.need) { el.text.textContent = '상대가 다음 포켓몬을 고르는 중…'; el.menu.replaceChildren(); return; }
     const mine = side(me());
     const slots = mySlots();
 
-    // 쓰러진 자리에 내보낼 몬스터 고르기 (2 대 2 는 자리마다)
+    // 쓰러진 자리에 내보낼 포켓몬 고르기 (2 대 2 는 자리마다)
     if (b.need) {
       const needK = b.need_slots || [0];
       const k = needK.find((x) => !menu.picks[x]);
       if (k == null) return;
       const used = Object.values(menu.picks).filter(Boolean).map((p) => p.switch);
-      el.text.textContent = needK.length > 1 ? `${k === 0 ? '왼쪽' : '오른쪽'} 자리에 누구를 내보낼까?` : '다음 몬스터를 골라 주세요!';
+      el.text.textContent = needK.length > 1 ? `${k === 0 ? '왼쪽' : '오른쪽'} 자리에 누구를 내보낼까?` : '다음 포켓몬을 골라 주세요!';
       el.menu.replaceChildren(partyList(mine, (i) => !mine.act.includes(i) && !used.includes(i), (i) => {
         menu.picks[k] = { switch: i };
         const rest = needK.filter((x) => !menu.picks[x]);
@@ -548,7 +542,7 @@ export function openBattle(b0) {
       // PP 가 모두 0 이면 기술 대신 "발버둥" 버튼 하나 (눌러야 씀)
       if (cur.moves.every((x) => x.pp <= 0)) {
         el.menu.replaceChildren(h('div.bt-moves', h('button.bt-move.struggle', { onclick: () => choose({ move: 1, target: liveFoes()[0] ?? 0 }) },
-          h('span.bt-mv-top', h('b', '발버둥'), h('small.bt-pow', '위력 50')), h('span.bt-mv-info', h('span.type.t-보통', '보통'), h('small', '자신도 다친다')))), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
+          h('span.bt-mv-top', h('b', '발버둥'), h('small.bt-pow', '위력 50')), h('span.bt-mv-info', h('span.type.t-???', '???'), h('small', '자신도 다친다')))), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
         el.text.textContent = 'PP가 다 떨어졌다! 발버둥을 쓸 수밖에 없다.';
         return;
       }
@@ -612,7 +606,7 @@ export function openBattle(b0) {
     el.menu.replaceChildren(h('div.bt-main',
       h('button.bt-cmd.fight', { onclick: () => { sfx.blip(); menu.mode = 'fight'; renderMenu(); } }, '싸운다'),
       h('button.bt-cmd', { disabled: !!b.fair, onclick: () => { sfx.blip(); menu.mode = 'bag'; renderMenu(); } }, '가방'),
-      h('button.bt-cmd', { onclick: () => { sfx.blip(); menu.mode = 'switch'; renderMenu(); } }, '몬스터'),
+      h('button.bt-cmd', { onclick: () => { sfx.blip(); menu.mode = 'switch'; renderMenu(); } }, '포켓몬'),
       menu.k > 0 && slots.slice(0, menu.k).some((s) => s.m?.hp > 0)
         ? h('button.bt-cmd', { onclick: back }, '◀ 앞 자리')
         : h('button.bt-cmd', { onclick: giveUp }, b.mode === 'pvp' ? '기권' : '도망')),
@@ -693,7 +687,7 @@ export function openBattle(b0) {
       for (const x of foeSlots) await throwBall(x.u);
       await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
       for (const x of mySlotsEl) await throwBall(x.u);
-      // 같은 과 시너지 (0020): 나온 몬스터의 능력 +1
+      // 같은 과 시너지 (0020): 나온 포켓몬의 능력 +1
       const SYN = { atk: '공격이', def: '방어가', spa: '특수공격이', spd: '특수방어가', spe: '스피드가' };
       for (const x of [...foeSlots, ...mySlotsEl]) {
         const m = monAt(x.u >> 1, side(x.u >> 1).act[x.u & 1]);

@@ -1,4 +1,4 @@
-// 미니게임 모음 (0023): 홈 → 미니게임. 몬스터 10마리부터 열림. 게임마다 따로 랭킹 (전체 랭킹과 별개).
+// 미니게임 모음 (0023): 홈 → 미니게임. 포켓몬 10마리부터 열림. 게임마다 따로 랭킹 (전체 랭킹과 별개).
 // 게임 파일 약속: export default { id, title, start(stage, api) } — start 는 stage(div) 안에 게임을 그리고 끝낼 함수를 돌려줌.
 //   api.end(score, ms) → 한 판 끝 (hub 가 서버에 보내고 결과·랭킹을 보여줌), api.sfx, api.mons(), api.partner(), api.mode ('rank' | 'free')
 //   랭킹 창이 게임 위에 열리면 stage 에 'mg-pause' / 닫히면 'mg-resume' 이벤트 → 게임은 멈춤 (멈춘 시간은 기록에 안 들어감)
@@ -10,21 +10,21 @@ import { S, collection, dexOf, partnerMon } from '../state.js';
 import { overlay, closeOverlay, renderTab } from '../app.js';
 import { kv } from '../db.js';
 
-// 내 몬스터 (지금 단계 도감 번호) — 게임 속 캐릭터로 씀. 없으면 기본 몬스터
+// 내 포켓몬 (지금 단계 도감 번호) — 게임 속 캐릭터로 씀. 없으면 기본 포켓몬
 const myMons = () => { const xs = collection().map((c) => dexOf(c.line_id, c.stage)); return xs.length ? xs : [1, 4, 7]; };
 const partnerDex = () => { const p = partnerMon(); return p ? dexOf(p.line_id, p.stage) : 1; };
 
 // fmt = 랭킹에 보이는 기록 모양, lower = 작을수록 좋음 (서버 _mg_lower 와 같게)
 export const GAMES = [
-  { id: 'surf', short: '서핑', title: '몬스터 서핑', dex: 53, desc: '파도를 타고 바위·섬을 피해 멀리멀리! 뒤쫓아 오는 문어 몬스터를 조심해요.',
+  { id: 'surf', short: '서핑', title: '포켓몬 서핑', dex: 53, desc: '파도를 타고 바위·섬을 피해 멀리멀리! 뒤쫓아 오는 문어 포켓몬을 조심해요.',
     fmt: (v) => `${v.toLocaleString()}m`, load: () => import('./surf.js') },
-  { id: 'dodge', short: '폭탄', title: '폭탄 피하기', dex: 100, desc: '하늘에서 떨어지는 폭탄 몬스터를 좌우로 피해요. 오래 버틸수록 점수가 올라가요.',
+  { id: 'dodge', short: '폭탄', title: '폭탄 피하기', dex: 100, desc: '하늘에서 떨어지는 폭탄 포켓몬을 좌우로 피해요. 오래 버틸수록 점수가 올라가요.',
     fmt: (v) => `${v.toLocaleString()}점`, load: () => import('./dodge.js') },
   { id: 'maze', short: '미로', title: '자이로 미로', dex: 175, desc: '폰을 기울여 몬스터볼을 미로 밖으로! 랭킹 모드 = 5단계 시간 재기, 자유 모드 = 끝없이 (미로 10가지).',
     fmt: (v) => `${(v / 1000).toFixed(2)}초`, lower: true, free: true, load: () => import('./maze.js') },
   { id: 'land', short: '땅따먹기', title: '땅따먹기', dex: 76, desc: '내 땅 밖으로 선을 그리고 돌아오면 그 안이 내 땅! 꼬리를 밟히면 목숨 하나 (3개). AI 3명과 90초 대결.',
     fmt: (v) => `${(v / 10).toFixed(1)}%`, load: () => import('./land.js') },
-  { id: 'cross', short: '등굣길', title: '몬스터 등굣길', dex: 4, desc: '내 몬스터와 학교 가는 길! 학교 → 바닷가 → 화산 → 우주를 한 칸씩 건너요. 멈춰 있으면 지각 괴물이 잡아가요.',
+  { id: 'cross', short: '등굣길', title: '포켓몬 등굣길', dex: 4, desc: '내 포켓몬과 학교 가는 길! 학교 → 바닷가 → 화산 → 우주를 한 칸씩 건너요. 멈춰 있으면 지각 괴물이 잡아가요.',
     fmt: (v) => `${v.toLocaleString()}칸`, load: () => import('./cross.js') },
 ];
 // 오프라인 기록: 인터넷이 없을 때 끝난 판은 폰에 (게임마다 가장 좋은 것 하나만) 두었다가 연결되면 보냄
@@ -51,7 +51,7 @@ export async function flushMinigameScores() {
 }
 window.addEventListener('online', () => setTimeout(flushMinigameScores, 1500));
 
-// 운영자 설정 (0025 minigame_config): 열리는 몬스터 수 · 쉬는 게임. 폰에 저장해 두고 5분마다 새로 받음
+// 운영자 설정 (0025 minigame_config): 열리는 포켓몬 수 · 쉬는 게임. 폰에 저장해 두고 5분마다 새로 받음
 let cfg = null; let cfgAt = 0;
 kv.get('mgConfig').then((c) => { if (c && !cfg) cfg = c; });
 export async function refreshMgConfig(force = false) {
@@ -75,8 +75,8 @@ export function minigameButton() {
   const n = collection().length; const need = unlockAt();
   const locked = n < need;
   return h(`button.btn.big.mg-btn${locked ? '.locked' : ''}`, {
-    onclick: () => (locked ? (sfx.error(), toast(`몬스터를 ${need}마리 모으면 열려요! (지금 ${n}마리)`, 3000)) : openMinigames()),
-    'aria-label': locked ? `미니게임 (잠김 — 몬스터 ${need}마리부터)` : '미니게임',
+    onclick: () => (locked ? (sfx.error(), toast(`포켓몬을 ${need}마리 모으면 열려요! (지금 ${n}마리)`, 3000)) : openMinigames()),
+    'aria-label': locked ? `미니게임 (잠김 — 포켓몬 ${need}마리부터)` : '미니게임',
   },
   pix('spark', 'l'), h('span.btn-label', '미니게임'),
   locked ? h('span.mg-lock', { 'aria-hidden': 'true' }, h('i.mg-lock-ico'), h('small', `${n}/${need}`)) : null);

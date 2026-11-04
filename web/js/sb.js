@@ -26,11 +26,13 @@ const MESSAGES = {
   NOT_GOOGLE: '구글 로그인에서만 쓸 수 있어요.',
   OLD_NUMBER_ACCOUNT: '이 번호는 예전 방식으로 가입돼서 비밀번호가 없어요. 비밀번호 초기화를 요청하거나 메인 부스에 문의하세요.',
   NOT_FOUND: '이미 처리됐거나 없는 항목이에요. 새로 고침해 주세요.',
+  NOT_TEACHER_LINE: '선생님 포켓몬 계열이 아니에요 (야생·특별 전설은 옮길 수 없어요).',
+  NOT_WILD_LINE: '이미 다른 선생님이나 특별 전설이 쓰는 계열이에요. 야생 포켓몬 계열을 골라 주세요.',
   RAID_NOT_FOUND: '레이드를 찾을 수 없어요. QR을 다시 찍어 주세요.',
-  BAD_TEAM: '배틀 팀은 내 몬스터 1~3마리로, 겹치지 않게 골라 주세요.',
+  BAD_TEAM: '배틀 팀은 내 포켓몬 1~3마리로, 겹치지 않게 골라 주세요.',
   BATTLE_CODE_NOT_FOUND: '배틀 QR을 찾을 수 없어요. 친구의 "내 배틀 QR"을 다시 찍어 주세요.',
   BATTLE_SELF: '내 배틀 QR이에요! 친구의 QR을 찍어 주세요.',
-  FRIEND_NO_MONSTERS: '친구가 아직 몬스터가 없어요.',
+  FRIEND_NO_MONSTERS: '친구가 아직 포켓몬이 없어요.',
   FRIEND_BUSY: '친구가 지금 다른 배틀 중이에요. 잠시 뒤에 다시 신청해 주세요.',
   BATTLE_NOT_FOUND: '배틀을 찾을 수 없어요.',
   BATTLE_INVITE_GONE: '배틀 신청이 이미 끝났어요. (시간이 지났거나 취소됨)',
@@ -45,32 +47,32 @@ const MESSAGES = {
   NO_ITEM: '가방에 그 물건이 없어요.',
   ITEM_LIMIT: '이번 배틀에서는 회복약을 더 쓸 수 없어요. (한 배틀에 2개까지)',
   NO_ITEMS_FAIR: '공정 모드 배틀에서는 회복약을 쓸 수 없어요.',
-  BAD_TARGET: '그 몬스터에게는 쓸 수 없어요.',
+  BAD_TARGET: '그 포켓몬에게는 쓸 수 없어요.',
   BATTLE_ONLY: '회복약은 배틀 중에 "가방"을 눌러서 써요.',
-  HOLD_ITEM: '지니게 하는 물건이에요. "몬스터에게 지니게 하기"를 눌러요.',
-  TM_NOT_COMPATIBLE: '이 몬스터는 그 기술을 배울 수 없어요.',
+  HOLD_ITEM: '지니게 하는 물건이에요. "포켓몬에게 지니게 하기"를 눌러요.',
+  TM_NOT_COMPATIBLE: '이 포켓몬은 그 기술을 배울 수 없어요.',
   ALREADY_KNOWN: '이미 알고 있는 기술이에요.',
   MAX_LEVEL: '이미 Lv.100이에요!',
   MOVE_NOT_KNOWN: '아직 배우지 않은 기술이에요.',
   BAD_MOVES: '기술은 1~4개, 서로 다르게 골라 주세요.',
-  NO_MONSTER: '그 몬스터를 가지고 있지 않아요.',
+  NO_MONSTER: '그 포켓몬을 가지고 있지 않아요.',
   IN_PVP_BATTLE: '실시간 배틀이 아직 진행 중이에요. 배틀 탭의 "하던 실시간 배틀 이어 하기"로 끝내거나 기권한 뒤에 시작해 주세요.',
   BAD_FORMAT: '1 대 1 또는 2 대 2 중에서 골라 주세요.',
   RAID_BAD_TOKEN: '레이드 QR이 바뀌었어요. 대형 화면의 지금 QR을 다시 찍어 주세요.',
   RAID_OVER: '이미 끝난 레이드예요.',
   RAID_NOT_JOINED: '먼저 레이드 QR을 찍어 참가해 주세요.',
-  BAD_SPECIES: '그런 몬스터가 없어요.',
+  BAD_SPECIES: '그런 포켓몬이 없어요.',
   BAD_RAID: '체력은 10 이상, 시간은 1~600분으로 정해 주세요.',
   BAD_INQUIRY: '문의 내용을 2~1000자로 적어 주세요.',
   CODE_SIGNUP_OFF: '지금은 새 계정을 만들 수 없어요. 메인 부스에 문의해 주세요.',
   TRY_LATER: '잠깐 너무 많이 시도했어요. 몇 분 뒤에 다시 해 주세요.',
-  MINIGAME_LOCKED: '몬스터를 더 모으면 미니게임이 열려요.',
+  MINIGAME_LOCKED: '포켓몬을 더 모으면 미니게임이 열려요.',
   GAME_OFF: '지금은 쉬고 있는 미니게임이에요. 기록은 저장되지 않았어요.',
   NO_SLOT: '부화기가 꽉 찼어요. 먼저 부화시켜요!',
   NOT_READY: '아직 걸음이 모자라요. 조금 더 걸어 봐요!',
   EGG_FULL: '알 주머니가 꽉 찼어요 (9개). 알을 부화시킨 뒤 다시 받아요.',
-  EMPTY_POOL: '지금은 알에서 나올 몬스터가 없어요. 운영진에게 알려 주세요.',
-  SHINY_LOCKED: '알에서 반짝이로 태어난 몬스터만 색을 바꿀 수 있어요.',
+  EMPTY_POOL: '지금은 알에서 나올 포켓몬이 없어요. 운영진에게 알려 주세요.',
+  SHINY_LOCKED: '알에서 반짝이로 태어난 포켓몬만 색을 바꿀 수 있어요.',
   NOT_STUDENT: '반은 학생 계정(고유번호)만 정할 수 있어요.',
   BAD_CLASS: '학년(1~3)을 고르고, 반 이름은 1~4글자 (숫자·영어 대문자·한글)로 적어 주세요. 예: 1A, 3, 10B',
   BAD_GRADE: '학년은 1·2·3학년 중에서 골라 주세요.',
@@ -87,9 +89,9 @@ const MESSAGES = {
   BAD_EMAIL: '이메일 형식이 이상해요. (예: test1 또는 test1@test.local)',
   FESTIVAL_CLOSED: '지금은 게임 운영 시간이 아니에요.',
   NO_QUIZ: '이미 푼 퀴즈예요.',
-  NOT_OWNED: '아직 가지고 있지 않은 몬스터예요.',
+  NOT_OWNED: '아직 가지고 있지 않은 포켓몬이에요.',
   MAX_STAGE: '이미 최종 진화했어요!',
-  NO_TICKET: '진화권이 없어요. 퀴즈를 맞히거나 홈의 룰렛을 돌려 보세요.',
+  NO_TICKET: '진화의돌이 없어요. 퀴즈를 맞히거나 홈의 룰렛을 돌려 보세요.',
   NOT_STAFF: '부스 스태프 계정이 아니에요.',
   NOT_ADMIN: '운영자 계정이 아니에요.',
   NO_STUDENT: '등록되지 않은 고유번호예요.',
@@ -104,6 +106,17 @@ const MESSAGES = {
   CANNOT_CHANGE_SELF: '내 계정의 역할은 여기서 바꿀 수 없어요. 다른 운영자에게 부탁하세요.',
 };
 // 오류 글은 토스트에서 적어도 3초 보이게 표시해 둠 (ui.js markError)
+// 표 전체 읽기: Supabase API 는 한 번에 1000줄까지라서 1000줄씩 나눠 받음 (기술 배우기·기술 목록이 수천 줄)
+export async function selectAll(table, cols, filter = (q) => q) {
+  const out = [];
+  for (let from = 0; ; from += 1000) {
+    const r = await filter(sb.from(table).select(cols)).range(from, from + 999);
+    if (r.error) return { data: null, error: r.error };
+    out.push(...(r.data || []));
+    if (!r.data || r.data.length < 1000) return { data: out, error: null };
+  }
+}
+
 export const errorText = (code) => markError(MESSAGES[code] || `오류가 났어요 (${code})`);
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
