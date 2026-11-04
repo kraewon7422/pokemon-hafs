@@ -1,9 +1,10 @@
 // 잡기 화면: 부스에서 포켓몬을 받기 직전, 공을 위로 휙 던져 잡는 짧은 장면 (Phaser 3, 270×480 세로 화면).
 // 포켓몬은 이미 정해져 있다. 공을 다 써도 보통은 지쳐서 얌전해짐 (반드시 잡힘). 던지기 솜씨는 등급(약간의 EXP)만 정한다.
 //   catchScene({ dex, name, rarity, time, balls = 3, ball = 'red'|'hafs'|'safari', fleeChance = 0, fleeAfterAll = false, remaining = 0,
-//                fleeMiss = 0, canRun = false })
+//                fleeMiss = 0, canRun = false, onMiss = null })
 //     → Promise<{ grade:'none'|'nice'|'great'|'excellent', curve, throws, skipped, skipAll, fled, ran }>
-//   fleeMiss: 공이 빗나갈(튕겨 나올) 때마다 이 확률로 도망 (사파리존). canRun: '도망가기' 버튼 (사파리존, 바로 잡기 대신) → fled·ran.
+//   onMiss: async () => true(도망)/false — 공이 빗나갈 때마다 서버에 물어봄 (0037 사파리존: 도망은 서버가 정함). 있으면 fleeMiss 대신.
+//   fleeMiss: 공이 빗나갈(튕겨 나올) 때마다 이 확률로 도망 (예전 서버의 사파리존). canRun: '도망가기' 버튼 (사파리존, 바로 잡기 대신) → fled·ran.
 //   fleeAfterAll: 공을 다 쓰면 도망 (레이드 보스). 아니면 fleeChance 확률로 도망 (부스 5%), 아니면 지쳐서 잡힘.
 //   remaining > 0: '남은 포켓몬 모두 바로 잡기 (N)' 버튼도 보임 → 누르면 이번 것도 바로 잡고 skipAll:true.
 //   레이드 (fleeAfterAll) 에서는 '바로 잡기' 버튼이 없음 (누르면 공 없이 잡히니까).
@@ -186,7 +187,7 @@ const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..
 
 // ═════════════════════════════ 장면 ═════════════════════════════
 // onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
-export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null } = {}) {
+export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null } = {}) {
   const tod = EDGE[time] ? time : defaultTime();
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
@@ -684,7 +685,11 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       // 다음 공 또는 지쳐서 얌전해짐
       const nextOrTired = async (c) => {
         if (ballOk()) {
-          if (missP > 0 && rand() < missP) { await flee(c); return; }   // 사파리존: 놓칠 때마다 도망칠 수 있음
+          if (onMiss) {                                                   // 사파리존 (0037): 서버가 도망을 정함 (못 물어보면 결과 때 서버가 굴림)
+            let fled = false;
+            try { fled = !!(await onMiss()); } catch { fled = false; }
+            if (fled) { await flee(c); return; }
+          } else if (missP > 0 && rand() < missP) { await flee(c); return; }   // 예전 서버: 놓칠 때마다 도망칠 수 있음
           await newBall(c);
           ringT = 0; frozen = null; ringOn = true; B.free = true; phase = 'aim'; idleT = 0;
           return;

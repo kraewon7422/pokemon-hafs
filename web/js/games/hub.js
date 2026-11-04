@@ -6,13 +6,13 @@ import { rpc, errorText } from '../sb.js';
 import { spriteCanvas } from '../sprites.js';
 import { sfx, unlockAudio } from '../sfx.js';
 import { h, toast, pix } from '../ui.js';
-import { S, collection, dexOf, partnerMon } from '../state.js';
+import { S, collection, dexOf, partnerMon, spIdOf, mons } from '../state.js';
 import { overlay, closeOverlay, renderTab } from '../app.js';
 import { kv } from '../db.js';
 
 // 내 포켓몬 (지금 단계 도감 번호) — 게임 속 캐릭터로 씀. 없으면 기본 포켓몬
-const myMons = () => { const xs = collection().map((c) => dexOf(c.line_id, c.stage)); return xs.length ? xs : [58, 61, 64]; };   // 없으면 이상해씨 · 파이리 · 꼬부기 (species id)
-const partnerDex = () => { const p = partnerMon(); return p ? dexOf(p.line_id, p.stage) : 35; };   // 없으면 피카츄
+const myMons = () => { const xs = mons().length ? [...new Set(mons().map(spIdOf))] : collection().map((c) => dexOf(c.line_id, c.stage)); return xs.length ? xs : [58, 61, 64]; };   // 없으면 이상해씨 · 파이리 · 꼬부기 (species id)
+const partnerDex = () => { const p = partnerMon(); return p ? spIdOf(p) : 35; };   // 없으면 피카츄
 
 // dex = 목록 그림 (species id — 전국도감 번호 아님): 라프라스 · 찌리리공 · 꼬마돌 · 디그다 · 파이리
 // fmt = 랭킹에 보이는 기록 모양, lower = 작을수록 좋음 (서버 _mg_lower 와 같게)

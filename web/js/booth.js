@@ -171,7 +171,7 @@ async function redeem(text, look) {
     h('div.cards',
       got.map((r, i) => h(`div.mcard${r.is_new ? '.new' : ''}`, { style: { animationDelay: `${i * 0.35}s` } },
         spriteCanvas(r.species_id, 128), h('b', name(r.species_id)),
-        h('small', r.qr_name || ''), r.special && h('span.chip.special', '★ 특별 티켓'), r.is_new && h('span.chip', 'NEW!'), r.bonus_ticket && h('span.chip', '중복 보너스: 진화의돌 +1'), r.replay && h('span.chip', '이미 받은 결과'))),
+        h('small', r.qr_name || ''), r.special && h('span.chip.special', '★ 특별 티켓'), r.is_new && h('span.chip', 'NEW!'), r.bonus_ticket && h('span.chip', '중복 보너스: 진화의 돌 +1'), r.replay && h('span.chip', '이미 받은 결과'))),
       bad.map((r) => h('div.mcard.err', h('b', '✕'), h('small', (STATUS[r.error] || [r.error])[0])))),
     h('button.btn.big.gold', { style: { maxWidth: '320px' }, onclick: () => { anim.remove(); reset(); } }, '다음 학생 (자동 6초)')));
   setTimeout(() => { if (anim.isConnected) { anim.remove(); reset(); } }, 6_000);

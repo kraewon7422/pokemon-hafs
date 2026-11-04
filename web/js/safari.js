@@ -326,14 +326,20 @@ function build() {
   const closed = () => !st ? null : st.pending ? null : st.balls_left <= 0 ? 'balls' : st.encounters_today >= st.max_encounters ? 'max' : null;
   function paintInfo() {
     ballsEl.textContent = st ? `${st.balls_left}/${st.balls_daily}` : '-';
+    ballsEl.nextElementSibling?.remove(); if (st?.next_reset_at) ballsEl.after(h('small.sf-reset', `다음 충전 ${new Date(st.next_reset_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' })}`));   // 0037 (branch-evo): 사파리볼 충전 시각
     encEl.textContent = !S.online ? '인터넷이 연결되면 포켓몬이 나와요' : st ? `오늘 만난 포켓몬 ${st.encounters_today}/${st.max_encounters}` : '불러오는 중…';
     encEl.title = '키 큰 풀숲과 동굴 바닥을 걸으면 야생 포켓몬이 나와요';
     pendBtn.hidden = !st?.pending;
     pendBtn.textContent = queued && queued.p_id === st?.pending?.id ? '잡기 결과 보내기' : '기다리는 포켓몬 잡기';
     const why = closed();
     cover.hidden = !why || seq;          // 볼을 다 쓴 장면 (seq) 중에는 글 상자가 보이게 가리지 않음
-    if (why) cover.replaceChildren(h('b', why === 'balls' ? '오늘 사파리볼을 다 썼어요' : '오늘은 포켓몬이 모두 숨었어요'),
-      h('span', '내일 다시 와 주세요!'));
+    if (why) {   // 0037: 충전 주기(1~24시간)마다 다시 채워짐 → 다음 충전 시각을 알려 줌
+      const at = st?.next_reset_at ? new Date(st.next_reset_at) : null;
+      const hm = at ? at.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+      const sameDay = at && at.toDateString() === new Date().toDateString();
+      cover.replaceChildren(h('b', why === 'balls' ? '사파리볼을 다 썼어요' : '포켓몬이 모두 숨었어요'),
+        h('span', !at ? '조금 뒤에 다시 와 주세요!' : sameDay ? `${hm}에 다시 채워져요!` : `내일 ${hm}에 다시 채워져요!`));
+    }
   }
 
   // ── 글 상자 (3세대처럼 한 글자씩 · ▼ 이면 A / 화면 눌러 다음) ──

@@ -80,6 +80,7 @@
 | FESTIVAL_CLOSED / SELF_REDEEM_OFF | 운영 시간 아님 / 셀프 지급 꺼짐 |
 | NO_TICKET / MAX_STAGE / NOT_OWNED | 진화권 없음 / 최종 진화 / 미보유 |
 | BOX_FULL / LAST_MON / MON_PARTNER / MON_IN_TEAM / MON_BUSY / BAD_POS | (0036) 박스 꽉 참 / 마지막 한 마리 / 카드 포켓몬 / 저장한 배틀 팀 / 배틀·레이드 중 / 없는 칸 |
+| PICK_BRANCH / BAD_BRANCH / NO_BALLS | (0037) 갈래가 여럿이라 고르지 않음 / 그 종으로는 진화 못 함 / 사파리: 빌린 볼보다 많이 놓침 |
 | NOT_STAFF / NOT_ADMIN / NO_STUDENT / BAD_PAYLOAD | 부스·운영자 권한 / 학번 없음 / 가방 QR 아님 |
 | 스캔 ack: invalid_token, already_pending, daily_cap, bag_full, locked, closed, bad_format | 앱이 토스트로 안내 |
 
@@ -162,8 +163,8 @@
 - 폭탄 피하기: 192×288 도트, 난이도는 모의 실험으로 맞춤 (`.work/sim_dodge2.mjs` B안: 중간값 약 20~30초).
 - 자이로 미로: 랭킹 모드 = 같은 미로 5판 시간, 자유 모드 = 끝없이 (기록 안 보냄). 미로 10종 (구불구불·갈래·방과 복도·소용돌이·순환로·칸막이·바람·거울·지그재그·십자 광장), 테마 4종. 기울기 = 중력 벡터 + 평균 보정 + 자동 재보정 + 절대 방향 센서 대체 (공이 안 굴러가던 원인 4가지 고침).
 - 땅따먹기: 30×30 실시간, 내 땅 밖에 꼬리 → 돌아오면 둘러싼 칸이 내 땅, 꼬리 밟히면 목숨 하나 (3개), AI 3명 (조심이·욕심이·사냥꾼, 처음 10초는 공격 안 함). 점수 = 내 땅 ‰.
-- 진화의돌 (0034): 실제 게임처럼 레벨 진화 279 · 돌 진화 46 · 교환 22 · 친밀도 15 · 시간 등 18. 이 게임엔 교환·친밀도·시간이 없으므로 그 55마리는 레벨 (2단계 25 · 3단계 40 근처). 돌 진화는 레벨로 안 되고 진화의돌 1개로 100% → 진화의돌에 쓸모가 생기므로 나눠 주는 양은 줄임 (퀴즈 35% · 배틀 50% · 룰렛).
-- 진짜 포켓몬 (0032): 자료는 tools/gen_pokemon.py 가 PokeAPI CSV 에서 만든 supabase/seed_pokemon.sql (다시 만들어도 똑같은 파일). 진화 계열 = 한 줄 (갈래 진화는 첫 갈래만 잇고 나머지는 1단계 계열), species.id = (계열-1)*3+단계 는 그대로, 보이는 번호는 species.dex (전국도감). 타입은 단계마다 species.btype ('불꽃/비행'), 상성 _bt_tm = 공격 타입 × 방어 타입 두 개의 곱. 그림 = Storage 'sprites' 의 <id>-p.gif|png (+ -ps 색이 다른 그림), 앱은 보이는 칸만 받고 (IntersectionObserver, 6개씩) 최근 96개만 풀어 둠. 미니게임·잡기 장면은 필요한 포켓몬만 담은 작은 그림판 (809칸짜리는 폰 GPU 한계를 넘음). 64칸으로 줄일 때는 '많은 색 + 어두운 테두리 남기기' 로 도트가 뭉개지지 않게. 진화 = species.evo_lv (실제 레벨 진화면 그 레벨, 돌·교환·친밀도면 2단계 25 · 3단계 40 근처) 에 닿으면 무료 100%, 그 전엔 진화의돌 확률 진화. 야생 포켓몬 = 선생님이 없는 계열 (subject '야생'): QR 확률 · 걸음 · 알 · 레이드. 도감 50%·100% = 학교 도감 기준 (809마리 기준이면 축제에서 못 닿음).
+- 진화의 돌 (0034): 실제 게임처럼 레벨 진화 279 · 돌 진화 46 · 교환 22 · 친밀도 15 · 시간 등 18. 이 게임엔 교환·친밀도·시간이 없으므로 그 55마리는 레벨 (2단계 25 · 3단계 40 근처). 돌 진화는 레벨로 안 되고 진화의 돌 1개로 100% → 진화의 돌에 쓸모가 생기므로 나눠 주는 양은 줄임 (퀴즈 35% · 배틀 50% · 룰렛).
+- 진짜 포켓몬 (0032): 자료는 tools/gen_pokemon.py 가 PokeAPI CSV 에서 만든 supabase/seed_pokemon.sql (다시 만들어도 똑같은 파일). 진화 계열 = 한 줄 (갈래 진화는 첫 갈래만 잇고 나머지는 1단계 계열), species.id = (계열-1)*3+단계 는 그대로, 보이는 번호는 species.dex (전국도감). 타입은 단계마다 species.btype ('불꽃/비행'), 상성 _bt_tm = 공격 타입 × 방어 타입 두 개의 곱. 그림 = Storage 'sprites' 의 <id>-p.gif|png (+ -ps 색이 다른 그림), 앱은 보이는 칸만 받고 (IntersectionObserver, 6개씩) 최근 96개만 풀어 둠. 미니게임·잡기 장면은 필요한 포켓몬만 담은 작은 그림판 (809칸짜리는 폰 GPU 한계를 넘음). 64칸으로 줄일 때는 '많은 색 + 어두운 테두리 남기기' 로 도트가 뭉개지지 않게. 진화 = species.evo_lv (실제 레벨 진화면 그 레벨, 돌·교환·친밀도면 2단계 25 · 3단계 40 근처) 에 닿으면 무료 100%, 그 전엔 진화의 돌 확률 진화. 야생 포켓몬 = 선생님이 없는 계열 (subject '야생'): QR 확률 · 걸음 · 알 · 레이드. 도감 50%·100% = 학교 도감 기준 (809마리 기준이면 축제에서 못 닿음).
 - 몬스터 그림 올리기 (0031): 기본 그림은 아틀라스(64×64 칸) 그대로, 운영자가 올린 그림이 있으면 그 칸 대신 씀. 그림 파일은 Supabase Storage 공개 버킷 `sprites` (올리기·지우기는 운영자만, PNG·WebP·GIF 1MB), 파일 이름 = `<도감번호>-<시각>.<확장자>` 이라 바꿀 때마다 새 주소 → 폰은 한 번 받으면 오래 보관 (서비스 워커 'hafsmon-sprites'). 앱은 `sprite_overrides()` (로그인 전에도 부름) 로 목록을 받아 이 폰에 저장해 두고, GIF 는 직접 풀어서(web/js/gif.js, 라이브러리 없음) 화면에 보이는 그림만 프레임을 바꿈 → 실루엣 · 흰색(진화) · 반짝이도 프레임마다 정확. 크기는 기기 픽셀 정수 배 (도트가 고르게), 발은 아래 맞춤. Phaser 를 쓰는 잡기 장면·미니게임은 아틀라스에 올린 그림의 첫 장면을 64칸에 맞춰 넣은 '합친 아틀라스' 를 쓰고, 잡기 장면만 GIF 프레임을 돌림. 동의 철회한 계열의 그림은 목록에서 빠짐.
 - 도망 · 레이드 잡기 (0030): 부스 몬스터는 이미 받은 것이라 도망은 아주 드물게 (볼 3개 다 실패 + 5%) — 도망치면 서버가 그 티켓으로 준 것을 되돌림 (티켓마다 `catch_undo` 에 새 줄인지 · 보너스 진화권 · 오른 레벨을 기억). 도망 여부는 폰이 알려 주지만 학생에게 손해라 조작할 이유가 없음. 레이드 보스는 catch 모드에서 HAFS 볼 10개, 다 실패하면 도망 (설정으로 끌 수 있음). 잡으면 레이드 특별 티켓을 부스에서 바꾼 것과 똑같이 처리.
 - 반 이름 (0030): 학교 반이 1A·1B·2…9·10A·10B 라서 숫자 대신 학생이 직접 입력 (1~4글자, 영문 대문자·숫자·한글), 빠른 선택 칩 제공. 반별 랭킹은 (학년, 반 이름) 으로 묶음.
@@ -183,9 +184,25 @@
 - 박스 = `pos` 0~899 → BOX `pos/30+1` (1~30), 칸 `pos%30` (6열 × 5줄). 새 포켓몬은 빈 칸 중 맨 앞. `box_move(p_mon, p_pos)` 로 옮김 (차 있으면 서로 바꿈).
 - 최대 `box_max` 마리 (설정, 기본·최대 900). 꽉 차면 부스는 그 티켓을 쓰지 않고 `box_full` (티켓 그대로) · 야생/사파리/레이드 잡기 · 알 부화 · 운영자 지급은 `BOX_FULL` (만남·알도 그대로) → 놓아준 뒤 다시.
 - 놓아주기 `mon_release(p_mon)`: 줄은 지우지 않고 `released_at` 만 적음 (박스·배틀·레이드에서는 안 보임). **도감 '잡은 적 있음' · 점수 · 도감 50/100% 보상 · 도전과제는 그대로** (점수 = 계열마다 가장 높은 단계 하나 — 같은 종을 많이 잡아도, 놓아줘도 같음). 지닌 물건은 가방으로. 마지막 1마리 · 카드 포켓몬 (`partner_mon`) · 저장한 배틀 팀 (`team_mons`) · 진행 중인 배틀(신청 포함)/레이드의 포켓몬은 안 됨.
-- 중복 잡기: 그 계열을 잡은 횟수 (`catch_count` 합, 놓아준 것 포함) 가 `dup_bonus_every` 의 배수가 되면 진화의돌 (예전과 같음). '또 잡으면 그 포켓몬 레벨 +1' 은 없어짐 (새 한 마리가 생기므로).
+- 중복 잡기: 그 계열을 잡은 횟수 (`catch_count` 합, 놓아준 것 포함) 가 `dup_bonus_every` 의 배수가 되면 진화의 돌 (예전과 같음). '또 잡으면 그 포켓몬 레벨 +1' 은 없어짐 (새 한 마리가 생기므로).
 - sync: `collection` = 도감 (계열마다 한 줄: 가장 높은 단계 · 잡은 횟수 합 · 지금 가진 수 `count`), `mons` = 박스의 포켓몬 (`id, line_id, stage, level, pos, held, shiny, shiny_on, from_egg, evo_fails, caught_at`). `rules.box_max`.
-- 함수 인자 = 포켓몬 번호: `evolve(p_mon)`, `bag_set_held(p_mon, p_item)`, `bag_set_moves(p_mon, p_moves)`, `bag_use(p_item, p_mon)`, `set_partner(p_mon)`, `set_shiny(p_mon, p_on)`, `battle_set_team / battle_start_cpu / battle_start_team / battle_challenge / battle_accept (p_mons bigint[])` (같은 종 두 마리도 한 팀, 같은 한 마리 두 번은 안 됨), `raid_join / raid_join_open / raid_attack (p_mon)`. 운영자 `admin_grant_monster` = 새 한 마리, `admin_set_level` = 그 계열 모두. 배틀 상태의 포켓몬에 `mon`, 레이드 참가자 `mon_id`.
+- 함수 인자 = 포켓몬 번호: `evolve(p_mon)` (0037: `evolve(p_mon, p_to)`), `bag_set_held(p_mon, p_item)`, `bag_set_moves(p_mon, p_moves)`, `bag_use(p_item, p_mon)`, `set_partner(p_mon)`, `set_shiny(p_mon, p_on)`, `battle_set_team / battle_start_cpu / battle_start_team / battle_challenge / battle_accept (p_mons bigint[])` (같은 종 두 마리도 한 팀, 같은 한 마리 두 번은 안 됨), `raid_join / raid_join_open / raid_attack (p_mon)`. 운영자 `admin_grant_monster` = 새 한 마리, `admin_set_level` = 그 계열 모두. 배틀 상태의 포켓몬에 `mon`, 레이드 참가자 `mon_id`.
+
+## 6-8. 갈래 진화 · 사파리 도망 · 도감 쪽 (0037)
+- 진화 길 = `evolutions` (from_species → to_species, how `level` | `item`, lv). 곧은 진화도 갈래도 모두 이 표 (seed_pokemon.sql 이 만듦). `evolve(p_mon, p_to)`:
+  갈래가 둘 이상이면 `p_to` 필수 (`PICK_BRANCH`), 그 종의 갈래가 아니면 `BAD_BRANCH`. 규칙은 0034 그대로 — level: `lv` 이상이면 진화의 돌 없이 100%, 전에는 진화의 돌 + 확률 / item: 진화의 돌 1개로 100%.
+- 갈래 종 = `species` 줄 하나 더 (id = 10000 + 전국도감 번호, 원래 계열 · 다음 단계). 따로 1단계 계열로 있던 같은 포켓몬 (야생 쥬피썬더, 전설 계열 425 루나아라 …) 은 그대로 → 야생에서 바로 만날 수도 있음.
+  그림은 같은 번호의 종 그림 (`sprites.js aliasSprites`). 갈래 종의 레벨 기술은 계열의 배우는 기술에 합침 + 그 종의 고른 기술 4개.
+- `collection.species_id` = 그 포켓몬의 지금 종. 트리거 (`_col_species`) 가 (계열, 단계) 와 맞지 않으면 그 단계의 첫 종으로 맞춤 → 진화만 갈래 종을 적음.
+- **도감 = 전국도감 번호마다 한 칸.** 본 적 있는 종 = 가진 (놓아준 것 포함) 포켓몬의 지금 종 + 앞 단계들 (`_sp_path`, sync 의 `seen`). 같은 번호면 어느 길로 만나도 발견.
+  `dex_count` = 발견한 번호 수. 학교 도감 (50/100% 보상) = 선생님 · 특별 계열 종의 번호 213칸 (갈래 7: 엘레이드 · 왕구리 · 홍수몬 · 카포에라 · 야도킹 · 눈여아 · 아르코 포함) → 100% 는 갈래까지 모두 진화시켜야 함.
+  점수는 예전처럼 계열마다 가장 높은 단계 하나.
+- 사파리존 도망 = **서버가 정함** (3세대처럼): 공을 놓칠 때마다 앱이 `safari_turn(p_id)` → 도망칠 확률 = `safari_flee` (25%) + 놓친 차례마다 `safari_flee_step` (+5%) + 전설 `safari_flee_legend` (+15%), 최대 `safari_flee_max` (90%).
+  도망치면 그 만남은 끝 (던진 볼 = 놓친 수). 앱이 `safari_turn` 을 건너뛰고 '잡았다' 고 보내도 `safari_result` 가 아직 안 굴린 놓친 공의 도망을 굴림 (`server_fled`). 잡힐지는 예전처럼 앱이 정함 (볼 수는 서버가 셈).
+- 사파리볼 충전: `safari_balls_daily` (기본 20개, 운영자 화면 − 숫자 +) 와 만남 수 `safari_daily_max_encounters` 는 **충전 주기마다** 다시 참.
+  주기 `safari_reset_hours` (1~24, 기본 24, 운영자 화면 1/3/6/12/24시간 단추) = 서울 00:00 부터 그 시간마다 (6 → 00·06·12·18시, 24의 약수가 아니면 자정에서 끊음).
+  `safari_days` 는 충전 구간 시작 (`period_start`) 마다 한 줄 — 볼은 만난 때의 구간에서 뺌. `safari_state` = `balls` · `max_balls` · `reset_hours` · `period_start` · `next_reset_at` (앱: '다음 충전 15:00').
+- 도감 화면: 전국도감 번호 순 60칸씩 쪽 (◀ 1/14 ▶ + 번호 범위, 위·아래), 지방 바로 가기 (관동 1 · 성도 152 · 호연 252 · 신오 387 · 하나 494 · 칼로스 650 · 알로라 722). 범위 · 타입을 바꾸면 첫 쪽.
 
 ## 7. 운영 체크리스트 (요약)
 - 학교 전산 담당: 교육용 구글 Workspace에서 이 앱(OAuth 클라이언트) 허용 받기 — **가장 먼저**.
