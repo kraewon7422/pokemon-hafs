@@ -2286,6 +2286,8 @@ const DEFAULTS = {
   stage_points: [0, 1, 3, 6], rarity_bonus: { common: 0, rare: 2, legendary: 10 },
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
+  // 0033 사파리존
+  safari_balls_daily: 10, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_daily_max_encounters: 15, safari_flee: 0.1, safari_steps_per_sec: 6,
   evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2],
   qr_daily_cap: 3, bag_max: 5, ticket_ttl_hours: 10, token_grace_minutes: 30, rotating_window_sec: 30,
   quiz_ticket_daily_cap: 30,                 // 0001 은 20 → 0005_festival_ops.sql 에서 30 으로
@@ -2375,6 +2377,12 @@ const GROUPS = {
       P('wild_steps', '걸음마다 야생 포켓몬 1마리', 'int', { unit: '걸음', min: 0, max: 100000, help: '0 = 걸어서 만나기 끔. 앱 홈에 "야생 포켓몬이 나타났다!" 가 뜨고 잡기 장면에서 잡아요.' }),
       P('wild_daily', '걸어서 만나는 야생 포켓몬 (하루 최대)', 'int', { unit: '마리', min: 0, max: 100 }),
       P('wild_balls', '걸어서 만난 야생 포켓몬: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요.' }),
+      P('safari_balls_daily', '사파리존: 하루 사파리볼', 'int', { unit: '개', min: 0, max: 100, help: '앱 지도 탭 → 사파리존. 다 쓰면 그날은 끝 (서버가 셈). 0 = 사파리존 끔.' }),
+      P('safari_min_steps', '사파리존: 풀숲 몇 걸음부터 만날 수 있나', 'int', { unit: '걸음', min: 0, max: 200 }),
+      P('safari_encounter_rate', '사파리존: 그다음 풀숲 한 걸음마다 만날 확률', 'pct', { max: 100, help: '기본 12%. 확률은 서버가 굴려요.' }),
+      P('safari_daily_max_encounters', '사파리존: 하루 최대 만남', 'int', { unit: '마리', min: 0, max: 100 }),
+      P('safari_flee', '사파리존: 공이 빗나갈 때마다 도망칠 확률', 'pct', { max: 100 }),
+      P('safari_steps_per_sec', '사파리존: 1초에 셀 수 있는 걸음 (속임 막기)', 'int', { unit: '걸음', min: 1, max: 20, help: '앱은 1초에 5걸음 걸어요. 너무 낮추면 걸어도 만나지 못해요.' }),
     ],
   },
   // 레이드

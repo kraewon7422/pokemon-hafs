@@ -194,5 +194,6 @@ grant execute on function
   public.admin_give_egg(text, text, int), public.admin_set_class(text, int, text), public.admin_assign_teacher(int, int),
   public.catch_bonus(text, text, boolean),
   public.catch_config(), public.catch_result(text, text, boolean, boolean), public.my_encounters(),
-  public.encounter_result(bigint, boolean, text, boolean)
+  public.encounter_result(bigint, boolean, text, boolean),
+  public.safari_state(), public.safari_encounter(int), public.safari_result(bigint, int, boolean, text, boolean)
 to authenticated;

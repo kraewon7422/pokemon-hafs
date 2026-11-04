@@ -1,7 +1,9 @@
 // 잡기 화면: 부스에서 포켓몬을 받기 직전, 공을 위로 휙 던져 잡는 짧은 장면 (Phaser 3, 270×480 세로 화면).
 // 포켓몬은 이미 정해져 있다. 공을 다 써도 보통은 지쳐서 얌전해짐 (반드시 잡힘). 던지기 솜씨는 등급(약간의 EXP)만 정한다.
-//   catchScene({ dex, name, rarity, time, balls = 3, ball = 'red'|'hafs', fleeChance = 0, fleeAfterAll = false, remaining = 0 })
-//     → Promise<{ grade:'none'|'nice'|'great'|'excellent', curve, throws, skipped, skipAll, fled }>
+//   catchScene({ dex, name, rarity, time, balls = 3, ball = 'red'|'hafs'|'safari', fleeChance = 0, fleeAfterAll = false, remaining = 0,
+//                fleeMiss = 0, canRun = false })
+//     → Promise<{ grade:'none'|'nice'|'great'|'excellent', curve, throws, skipped, skipAll, fled, ran }>
+//   fleeMiss: 공이 빗나갈(튕겨 나올) 때마다 이 확률로 도망 (사파리존). canRun: '도망가기' 버튼 (사파리존, 바로 잡기 대신) → fled·ran.
 //   fleeAfterAll: 공을 다 쓰면 도망 (레이드 보스). 아니면 fleeChance 확률로 도망 (부스 5%), 아니면 지쳐서 잡힘.
 //   remaining > 0: '남은 포켓몬 모두 바로 잡기 (N)' 버튼도 보임 → 누르면 이번 것도 바로 잡고 skipAll:true.
 //   레이드 (fleeAfterAll) 에서는 '바로 잡기' 버튼이 없음 (누르면 공 없이 잡히니까).
@@ -137,13 +139,17 @@ const rowsPx = (rows, pal) => (px) => rows.forEach((r, y) => [...r].forEach((ch,
 
 // 공 15×15 (가운데 7,7). 띠는 가운데 줄, 단추는 가운데 점 → 정확히 가운데. 프레임 15×19: 0 닫힘, 1 열림(뚜껑 4칸 위)
 //   red  = 빨강·하양 (부스)   hafs = HAFS 볼: 파랑 위 · 금색 띠 (가운데 3줄) · 하양 아래 (레이드)
+//   safari = 사파리볼: 카키 위에 초록 얼룩 무늬 · 아래는 밝은 모래색 (사파리존)
 const BALL_OY = 4, BALL_ORIGIN_Y = (BALL_OY + 7.5) / 19;
 const BALL_COL = {
   red: { hi: '#ff8a78', dark: '#b02030', top: '#e83838' },
   hafs: { hi: '#8cb4ff', dark: '#1c3c98', top: '#3064d0' },
+  safari: { hi: '#e8e0a0', dark: '#6a6a28', top: '#a8a050', spot: '#4e7a2c', low: '#efe4bc', lowD: '#c8b888' },
 };
+// 사파리볼 얼룩 (위 반쪽, 공 안의 좌표) — 손으로 찍은 무늬
+const CAMO = new Set(['5,1', '6,1', '9,1', '3,3', '4,3', '4,2', '8,2', '9,2', '10,2', '10,3', '11,3', '11,4', '6,4', '7,4', '7,3', '7,5', '8,5', '2,5', '3,5', '12,5', '12,4', '9,5', '5,5']);
 function ballFrame(open, style = 'red') {
-  const P = BALL_COL[style] || BALL_COL.red; const hafs = style === 'hafs';
+  const P = BALL_COL[style] || BALL_COL.red; const hafs = style === 'hafs'; const saf = style === 'safari';
   const inside = (x, y) => x >= 0 && y >= 0 && x < 15 && y < 15 && (x - 7) ** 2 + (y - 7) ** 2 <= 51;
   return (px) => {
     if (open) for (let y = 1; y <= 3; y++) for (let x = 3; x <= 11; x++) px(x, BALL_OY + 7 - y, y === 3 && (x < 5 || x > 9) ? null : '#fff4a8');
@@ -156,11 +162,20 @@ function ballFrame(open, style = 'red') {
       else if (d2 <= 10) c = d2 <= 1 ? '#ffffff' : d2 <= 4 ? '#e4e8f0' : '#182030';   // 단추
       else if (hafs && Math.abs(dy) <= 1) c = dy === 0 ? '#ffd23f' : '#c89018';           // HAFS 금색 띠 (가운데 위아래 대칭)
       else if (dy === 0) c = '#182030';                                                 // 띠
-      else if (dy < 0) c = dx >= -4 && dx <= -2 && dy >= -5 && dy <= -3 ? P.hi : dy === -1 || (hafs && dy === -2) ? P.dark : P.top;
+      else if (dy < 0) c = dx >= -4 && dx <= -2 && dy >= -5 && dy <= -3 ? P.hi : dy === -1 || (hafs && dy === -2) ? P.dark : saf && CAMO.has(`${x},${y}`) ? P.spot : P.top;
+      else if (saf) c = dy >= 4 || dx >= 5 ? P.lowD : P.low;
       else c = dy >= 4 || dx >= 5 ? '#c4ccd8' : '#ffffff';
       px(x, y + BALL_OY - (open && dy < 0 ? 4 : 0), c);
     }
   };
+}
+// 공 그림 하나 (닫힘) → 작은 캔버스 (앱 화면의 아이콘용, 예: 사파리존 남은 볼). k = CSS 배율
+export function ballCanvas(style = 'red', k = 2) {
+  const c = document.createElement('canvas'); c.width = 15; c.height = 15; c.className = 'ball-ico';
+  const g = c.getContext('2d');
+  ballFrame(false, style)((x, y, col) => { if (col) { g.fillStyle = col; g.fillRect(x, y - BALL_OY, 1, 1); } });
+  c.style.width = c.style.height = `${15 * k}px`; c.style.imageRendering = 'pixelated';
+  return c;
 }
 const STAR = rowsPx(['....k....', '...kyk...', '...kyk...', 'kkkywykkk', 'kyywwwyyk', '.kkywykk.', '..kyyyk..', '.kyk.kyk.', '.kk...kk.'], { k: '#5a3a10', y: '#ffd23f', w: '#fff8d0' });
 const SPARK = rowsPx(['..w..', '..y..', 'wyWyw', '..y..', '..w..'], { w: '#fff4a8', y: '#ffd23f', W: '#ffffff' });
@@ -170,13 +185,14 @@ const SMOKE = rowsPx(['..sss..', '.swwws.', 'swwwwws', 'swwwwss', 'swwwss.', '.s
 const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..kwk..', '..kwk..', '..kkk..'], { k: '#182030', w: '#ffffff' });
 
 // ═════════════════════════════ 장면 ═════════════════════════════
-export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0 } = {}) {
+export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false } = {}) {
   const tod = EDGE[time] ? time : defaultTime();
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
   const fleeP = clamp(Number(fleeChance) || 0, 0, 1);
+  const missP = clamp(Number(fleeMiss) || 0, 0, 1);
   const left = Math.max(0, Math.round(Number(remaining) || 0));
-  const canSkip = !fleeAfterAll;
+  const canSkip = !fleeAfterAll && !canRun;
   const rar = RING[rarity] ? rarity : 'common';
   const nm = String(name || '포켓몬');
   const rm = (() => { try { return reducedMotion(); } catch { return false; } })();
@@ -184,7 +200,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
   const D = (ms) => Math.round(ms * (rm ? 0.5 : 1) * speed);
 
   let done = false, dead = false, game = null, ro = null, bootTimer = 0, resolveP;
-  const result = { grade: 'none', curve: false, throws: 0, skipped: false, skipAll: false, fled: false };
+  const result = { grade: 'none', curve: false, throws: 0, skipped: false, skipAll: false, fled: false, ran: false };
   const out = new Promise((r) => { resolveP = r; });
   const listeners = [];
   const on = (el, ev, fn, opt) => { el.addEventListener(ev, fn, opt); listeners.push([el, ev, fn, opt]); };
@@ -202,7 +218,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
   // 정확히 한 번만 끝냄
   const finish = (fade = true) => {
     if (done) return; done = true;
-    const r = { grade: result.grade, curve: result.curve, throws: result.throws, skipped: result.skipped, skipAll: result.skipAll, fled: result.fled };
+    const r = { grade: result.grade, curve: result.curve, throws: result.throws, skipped: result.skipped, skipAll: result.skipAll, fled: result.fled, ran: result.ran };
     const end = () => { cleanup(); resolveP(r); };
     if (fade && layer && !rm) { layer.classList.remove('cz-on'); setTimeout(end, 280); } else end();
   };
@@ -222,6 +238,8 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
     const btns = document.createElement('div'); btns.className = 'cz-btns';
     skipBtn = document.createElement('button'); skipBtn.type = 'button'; skipBtn.className = 'cz-skip'; skipBtn.textContent = '바로 잡기';
     if (canSkip) btns.append(skipBtn);
+    let runBtn = null;
+    if (canRun) { runBtn = document.createElement('button'); runBtn.type = 'button'; runBtn.className = 'cz-skip'; runBtn.textContent = '도망가기'; btns.append(runBtn); }
     if (canSkip && left > 0) {
       allBtn = document.createElement('button'); allBtn.type = 'button'; allBtn.className = 'cz-skip cz-all';
       allBtn.setAttribute('aria-label', `남은 포켓몬 모두 바로 잡기 (${left}마리)`);
@@ -264,6 +282,10 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
     on(skipBtn, 'pointerdown', doSkip);
     on(skipBtn, 'click', doSkip);
     if (allBtn) { on(allBtn, 'pointerdown', doAll); on(allBtn, 'click', doAll); }
+    // 도망가기 (사파리존): 공을 겨눌 때만
+    let runFn = null;
+    const doRun = (e) => { e?.preventDefault?.(); if (done || result.skipped || result.fled || !runFn) return; runFn(); };
+    if (runBtn) { on(runBtn, 'pointerdown', doRun); on(runBtn, 'click', doRun); }
 
     // Phaser 가 8초 안에 안 뜨면 그냥 넘어감
     let sceneReady = false;
@@ -655,6 +677,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       // 다음 공 또는 지쳐서 얌전해짐
       const nextOrTired = async (c) => {
         if (ballOk()) {
+          if (missP > 0 && rand() < missP) { await flee(c); return; }   // 사파리존: 놓칠 때마다 도망칠 수 있음
           await newBall(c);
           ringT = 0; frozen = null; ringOn = true; B.free = true; phase = 'aim'; idleT = 0;
           return;
@@ -892,6 +915,17 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       });
 
       // ─────── 바로 잡기 ───────
+      runFn = () => {
+        if (phase !== 'aim' && phase !== 'intro') return;
+        const c = ctl();
+        sc.tweens.killAll();
+        grab = null; curveArmed = false; ringOn = false; frozen = null; B.free = false; phase = 'seq';
+        result.fled = true; result.ran = true; btns.hidden = true;
+        showHud(false); hint.setVisible(false); hintArrow.setVisible(false); ball.setVisible(false);
+        play('select');
+        say('무사히 도망쳤다!');
+        (async () => { await c.wait(900); phase = 'end'; finish(true); })().catch((e) => { if (e !== CANCEL) finish(true); });
+      };
       skipFn = () => {
         const c = ctl();                 // 지금 하던 연출은 모두 끊김
         speed = 0.5;
@@ -914,7 +948,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
 
       // ─────── 시작: 나타났다! ───────
       run(async (c) => {
-        say(fleeAfterAll ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
+        say(fleeAfterAll && !canRun ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
         monW.setAlpha(1);
         play('scan');
         await c.tw({ targets: [mon, monW], scaleX: MON_K, scaleY: MON_K, duration: 320, ease: 'Back.easeOut' });
