@@ -2,6 +2,9 @@
 
 자료: PokeAPI CSV (https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv) 를 .work/pokeapi/ 에 받아 둔 것.
   - 1~7세대 (도감 1~809) 전부. 진화 계열 = 한 줄(1~3단계). 갈래 진화는 첫 갈래가 계열을 잇고, 나머지는 따로 1단계 계열.
+  - 갈래 진화 (0037): 첫 갈래가 아닌 진화 (이브이 → 쥬피썬더 …)도 원래 계열 안에 '갈래 종'으로 한 번 더 넣음
+    (species.id = 10000 + 전국도감 번호, 같은 계열 · 다음 단계). 진화 길은 public.evolutions (from → to, level | item).
+    따로 1단계 계열로 있던 것 (야생 쥬피썬더 등)은 그대로 둠 → 도감은 전국도감 번호마다 한 칸.
   - 선생님 계열 68개(1~34, 43~76)는 과목에 어울리는 포켓몬 (퀴즈는 그대로), 특별 계열(35~42, 77~82)은 정해진 전설·환상,
     나머지는 83번부터 '야생' 계열.
   - 이름·분류·키·몸무게·도감 설명 = 공식 한국어 (PokeAPI). 종족값 = 실제 값. 타입 = 실제 타입 ('불꽃/비행' 처럼 / 로 이음).
@@ -20,6 +23,22 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, 'tools'))
 import gen_battle_data as GB  # noqa: E402  (기술 목록 M · 효과 · 고정 번호 MOVE_ID · SIGNATURE)
 from roster import BTYPE  # noqa: E402
+
+# ── 0039: 날씨 기술 · 변신 (gen_battle_data 의 247개 뒤에 덧붙임 → 번호 248~ 는 바뀌지 않음) ──
+for _m in GB.M:
+    if _m['name'] == '비바라기':        # 예전: 특수공격·스피드↑ → 실제 효과 (5턴 비)
+        _m['effect'] = {'weather': 'rain'}
+        _m['desc'] = '5턴 동안 비를 내리게 한다. 물 타입 기술이 강해지고 불꽃 타입 기술이 약해진다.'
+NEW_MOVES = ['쾌청', '모래바람', '싸라기눈', '변신']
+GB.mv('쾌청', '불꽃', 'status', 'status', 0, None, 5, 0, {'weather': 'sun'}, '5턴 동안 햇살을 강하게 한다. 불꽃 타입 기술이 강해지고 물 타입 기술이 약해진다.')
+GB.mv('모래바람', '바위', 'status', 'status', 0, None, 10, 0, {'weather': 'sand'},
+      '5턴 동안 모래바람을 일으킨다. 바위·땅·강철 타입이 아니면 매 턴 데미지를 입는다. 바위 타입의 특수방어가 오른다.')
+GB.mv('싸라기눈', '얼음', 'status', 'status', 0, None, 10, 0, {'weather': 'hail'}, '5턴 동안 싸라기눈을 내리게 한다. 얼음 타입이 아니면 매 턴 데미지를 입는다.')
+GB.mv('변신', '노말', 'status', 'status', 0, None, 10, 0, {'transform': True},
+      '상대 포켓몬으로 변신한다. 모습·타입·능력치(HP 빼고)·능력 변화·특성·기술(PP 5)이 똑같아진다. 배틀이 끝나면 돌아온다.')
+for _m in GB.M:
+    GB.MOVE_ID.setdefault(_m['name'], max(GB.MOVE_ID.values()) + 1)
+DITTO = 132
 
 D = os.path.join(ROOT, '.work', 'pokeapi')
 KO = '3'
@@ -56,6 +75,58 @@ for r in rd('pokemon_stats'):
 CHART = {(TYPE_KO[int(r['damage_type_id'])], TYPE_KO[int(r['target_type_id'])]): int(r['damage_factor']) / 100
          for r in rd('type_efficacy') if int(r['damage_type_id']) <= 18 and int(r['target_type_id']) <= 18}
 
+# ── 특성 (0039): 7세대 기준 (pokemon_abilities 는 최신 세대 → pokemon_abilities_past 로 7세대 때 특성으로 되돌림) ──
+AB_ID = {r['id']: r for r in rd('abilities')}
+AB_BY = {r['identifier']: i for i, r in AB_ID.items()}
+AB_KO = {r['ability_id']: ' '.join(r['name'].split()) for r in rd('ability_names') if r['local_language_id'] == KO}
+_abf = defaultdict(dict)
+for r in rd('ability_flavor_text'):
+    if r['language_id'] == KO:
+        _abf[r['ability_id']][int(r['version_group_id'])] = ' '.join(r['flavor_text'].split())
+
+
+def ab_desc(aid):
+    f = _abf[aid]
+    for v in (18, 17, 16, 15):
+        if v in f:
+            return f[v]
+    return f[max(f)] if f else ''
+
+
+_pab = {}
+for r in rd('pokemon_abilities'):
+    _pab[(int(r['pokemon_id']), int(r['slot']))] = r['ability_id']
+_past = defaultdict(list)
+for r in rd('pokemon_abilities_past'):
+    if int(r['generation_id']) >= 7:        # 'generation' = 그 특성이었던 마지막 세대 → 7 이상 중 가장 이른 것 = 7세대 때 특성
+        _past[(int(r['pokemon_id']), int(r['slot']))].append((int(r['generation_id']), r['ability_id']))
+for _k, _v in _past.items():
+    _aid = min(_v)[1]
+    if _aid:
+        _pab[_k] = _aid
+    else:
+        _pab.pop(_k, None)
+
+
+def abilities_of(sid):
+    """([보통 특성 key 1~2개], 숨겨진 특성 key 또는 None)"""
+    pid = PID[sid]
+
+    def key(slot):
+        return AB_ID[_pab[(pid, slot)]]['identifier'] if (pid, slot) in _pab else None
+    normal = list(dict.fromkeys(x for x in (key(1), key(2)) if x))
+    hid = key(3)
+    assert normal, sid
+    for x in normal + [hid]:
+        if x:
+            assert int(AB_ID[AB_BY[x]]['generation_id']) <= 7, (sid, x)
+    return normal, (hid if hid not in normal else None)
+
+
+def ability_rows(dexes):
+    used = sorted({x for d in dexes for x in abilities_of(d)[0] + [abilities_of(d)[1]] if x})
+    return [(k, AB_KO[AB_BY[k]], ab_desc(AB_BY[k])) for k in used]
+
 
 def flavor(sid):
     f = FLAV[sid]
@@ -86,21 +157,25 @@ for r in rd('pokemon_evolution'):
     e = int(r['evolved_species_id'])
     if e <= MAXDEX and r['evolution_trigger_id'] == '1' and r['minimum_level']:
         EVO_MIN[e] = min(EVO_MIN.get(e, 999), int(r['minimum_level']))
-# 진화의돌(아이템)로 진화하는 포켓몬 (예: 라이츄 · 픽시 · 샤미드): 레벨로는 진화하지 않고 진화의돌 1개로 100% 진화 (0034)
+# 진화의 돌(아이템)로 진화하는 포켓몬 (예: 라이츄 · 픽시 · 샤미드): 레벨로는 진화하지 않고 진화의 돌 1개로 100% 진화 (0034)
 EVO_ITEM = {int(r['evolved_species_id']) for r in rd('pokemon_evolution')
             if r['evolution_trigger_id'] == '3' and int(r['evolved_species_id']) <= MAXDEX} - set(EVO_MIN)
 
 
 def evo_levels(path):
-    """[None, 2단계 진화 레벨, 3단계 진화 레벨] — 진화의돌로 진화하는 단계는 None (레벨로 진화 안 함).
+    """[None, 2단계 진화 레벨, 3단계 진화 레벨] — 진화의 돌로 진화하는 단계는 None (레벨로 진화 안 함).
     교환 · 친밀도 · 시간 진화는 이 게임에 없으므로 단계에 맞춘 레벨 (2단계 25 · 3단계 40 근처)로 바꿈."""
     out, prev = [None], 5
     for st, sid in enumerate(path[1:], start=2):
-        lv = EVO_MIN.get(sid) or max(prev + 10, {2: 25, 3: 40}[st])
-        lv = max(lv, prev + 1)
+        lv = evo_lv_raw(sid, st, prev)
         out.append(None if sid in EVO_ITEM else lv)
         prev = lv
     return out
+
+
+def evo_lv_raw(sid, st, prev):
+    """단계 st 의 sid 가 되는 레벨 (prev = 앞 단계가 된 레벨, 1단계면 5). 돌 진화도 다음 단계 계산용으로 레벨을 돌려줌."""
+    return max(EVO_MIN.get(sid) or max(prev + 10, {2: 25, 3: 40}[st]), prev + 1)
 
 
 # ── 진화 계열 → 한 줄씩 ──
@@ -135,8 +210,8 @@ assert sum(len(p) for p in ALL_PATHS) == len(SPEC) == MAXDEX
 
 # ── 특별 계열 (전설·환상): 원래 몬스터의 성격에 맞춤 ──
 SPECIAL = {
-    35: 493,   # 교감 선생님 → 아르세우스
-    36: 487,   # 교장 선생님 → 기라티나
+    35: 487,   # 교감 선생님 → 기라티나
+    36: 493,   # 교장 선생님 → 아르세우스
     37: 151,   # 비밀 (지도에 없는 곳에 숨음) → 뮤
     38: 146,   # 아침 전설 → 파이어
     39: 145,   # 한낮 전설 → 썬더
@@ -196,6 +271,44 @@ for l, p in LINE_PATH.items():
 
 def sp_id(line, stage):
     return (line - 1) * 3 + stage
+
+
+# ── 갈래 진화 (0037): 계열 안의 '다른 갈래' 종 → id 10000 + 전국도감 번호 ──
+BRANCH_BASE = 10000
+BRANCHES = []          # (id, line, stage, 도감 번호, 부모 species.id, 진화 레벨 또는 None, 돌 진화?)
+
+
+def _branch_walk(line, parent_id, parent_sid, stage, prev_lv, skip):
+    for k, c in enumerate(CHILD.get(parent_sid, [])):
+        if c == skip or stage > 3:
+            continue
+        lv = evo_lv_raw(c, stage, prev_lv)
+        bid = BRANCH_BASE + c
+        BRANCHES.append((bid, line, stage, c, parent_id, None if c in EVO_ITEM else lv, c in EVO_ITEM, k))
+        _branch_walk(line, bid, c, stage + 1, lv, None)
+
+
+for _l in sorted(LINE_PATH):
+    _p = LINE_PATH[_l]
+    _prev = 5
+    for _i, _sid in enumerate(_p):
+        _nxt = _p[_i + 1] if _i + 1 < len(_p) else None
+        _branch_walk(_l, sp_id(_l, _i + 1), _sid, _i + 2, _prev, _nxt)
+        if _nxt:
+            _prev = evo_lv_raw(_nxt, _i + 2, _prev)
+assert len({b[0] for b in BRANCHES}) == len(BRANCHES), '갈래 종 번호가 겹침'
+
+
+def evolutions_rows():
+    """(from, to, how, lv, sort): 계열의 곧은 진화 + 갈래 진화"""
+    out = []
+    for l, p in LINE_PATH.items():
+        evl = evo_levels(p)
+        for st in range(2, len(p) + 1):
+            out.append((sp_id(l, st - 1), sp_id(l, st), 'item' if p[st - 1] in EVO_ITEM else 'level', evl[st - 1], 0))
+    for bid, l, st, dex, par, lv, item, k in BRANCHES:
+        out.append((par, bid, 'item' if item else 'level', lv, k))
+    return sorted(out)
 
 
 def rarity_of(line, path):
@@ -302,7 +415,9 @@ def pick4(sid, stage, n_stages):
     st = stats_of(sid)
     phys = st[1] >= st[3]
     ts = types_of(sid)
-    can = [MV[n] for n in sorted(learnable(sid)) if n in MV and n not in GB.SIGNATURE]
+    if sid == DITTO:          # 메타몽: 실제처럼 변신 하나뿐 (0039)
+        return ['변신']
+    can = [MV[n] for n in sorted(learnable(sid)) if n in MV and n not in GB.SIGNATURE and n not in NEW_MOVES]
     cap = 999 if stage == n_stages else (70 if stage == 1 and n_stages >= 2 else 95)
     atk = [m for m in can if m['kind'] == 'attack' and (m['power'] or 0) <= cap and (m['acc'] or 100) >= 70]
     stab = sorted((m for m in atk if m['type'] in ts), key=lambda m: (-score(m, phys), m['name']))
@@ -392,14 +507,15 @@ def item_rows():
 
 TYPE_EN = {r['identifier']: TYPE_KO[int(r['id'])] for r in rd('types') if int(r['id']) <= 18}
 
-# 시간표 칸 (배틀 필드): 그 시간에 힘이 세지는 타입
+# 시간표 칸 (배틀 필드, 0039): 그 시간에 시작한 배틀의 날씨 · 필드 (실제 포켓몬 효과, 배틀 내내 바탕)
+#   sun 쾌청 · rain 비 · sand 모래바람 · hail 싸라기눈 · electric 일렉트릭필드 · grassy 그래스필드 · misty 미스트필드 · psychic 사이코필드
 FIELDS = [
-    {'from': '08:00', 'to': '10:00', 'name': '아침 조회', 'types': ['노말', '비행', '풀']},
-    {'from': '10:00', 'to': '12:00', 'name': '오전 수업', 'types': ['에스퍼', '강철', '전기']},
-    {'from': '12:00', 'to': '13:30', 'name': '점심시간', 'types': ['불꽃', '격투', '페어리']},
-    {'from': '13:30', 'to': '16:00', 'name': '오후 수업', 'types': ['물', '얼음', '벌레']},
-    {'from': '16:00', 'to': '18:30', 'name': '방과후', 'types': ['땅', '바위', '독']},
-    {'from': '18:30', 'to': '23:00', 'name': '야간 자율학습', 'types': ['고스트', '악', '드래곤']},
+    {'from': '08:00', 'to': '10:00', 'name': '아침 조회', 'env': 'sun'},          # 아침 햇살
+    {'from': '10:00', 'to': '12:00', 'name': '오전 수업', 'env': 'psychic'},      # 머리 쓰는 시간
+    {'from': '12:00', 'to': '13:30', 'name': '점심시간', 'env': 'grassy'},        # 잔디밭에서 쉬기
+    {'from': '13:30', 'to': '16:00', 'name': '오후 수업', 'env': 'electric'},     # 졸면 안 됨 (잠듦 방지)
+    {'from': '16:00', 'to': '18:30', 'name': '방과후', 'env': 'sand'},            # 운동장 흙먼지
+    {'from': '18:30', 'to': '23:00', 'name': '야간 자율학습', 'env': 'misty'},     # 밤안개
 ]
 
 
@@ -420,9 +536,10 @@ def main():
         evl = evo_levels(p)
         for st, sid in enumerate(p, start=1):
             h, w = hw(sid)
-            species_rows.append((sp_id(l, st), l, st, NAME[sid], GENUS[sid], flavor(sid), h, w, '/'.join(types_of(sid)), stats_of(sid), sid, evl[st - 1], sid in EVO_ITEM))
+            species_rows.append((sp_id(l, st), l, st, NAME[sid], GENUS[sid], flavor(sid), h, w, '/'.join(types_of(sid)), stats_of(sid), sid, evl[st - 1], sid in EVO_ITEM,
+                                 abilities_of(sid)))
             mv4 = pick4(sid, st, n)
-            assert len(set(mv4)) == 4, (sid, mv4)
+            assert len(set(mv4)) == (1 if sid == DITTO else 4), (sid, mv4)
             for k, x in enumerate(mv4):
                 sm_rows.append((sp_id(l, st), k + 1, MID(x)))
             for x, lv in LEVEL[PID[sid]].items():
@@ -432,9 +549,25 @@ def main():
             for x in mv4:                   # 고른 기술은 꼭 배울 수 있게
                 lv_line.setdefault(x, 1 if st == 1 else 5 + 15 * (st - 1))
             sprites[sp_id(l, st)] = sid
+        for bid, bl, st, sid, par, ev, item, k in BRANCHES:      # 갈래 종 (0037): 같은 계열 안에
+            if bl != l:
+                continue
+            h, w = hw(sid)
+            species_rows.append((bid, l, st, NAME[sid], GENUS[sid], flavor(sid), h, w, '/'.join(types_of(sid)), stats_of(sid), sid, ev, item, abilities_of(sid)))
+            mv4 = pick4(sid, st, st if not CHILD.get(sid) else 3)
+            assert len(set(mv4)) == 4, (sid, mv4)
+            for kk, x in enumerate(mv4):
+                sm_rows.append((bid, kk + 1, MID(x)))
+            for x, lv in LEVEL[PID[sid]].items():
+                if x in GB.SIGNATURE:
+                    continue
+                lv_line[x] = min(lv_line.get(x, 999), lv)
+            for x in mv4:
+                lv_line.setdefault(x, 5 + 15 * (st - 1))
+            sprites[bid] = sid
         for x, lv in sorted(lv_line.items()):
             learn_rows.append((l, MID(x), lv, 'level'))
-        can = set().union(*(learnable(s) for s in p))
+        can = set().union(*(learnable(s) for s in p + [b[3] for b in BRANCHES if b[1] == l]))
         for x in TMS:
             if x in can or MV[x]['type'] == '노말' and x in ('방어', '스피드스타', '그림자분신', '잠자기'):
                 learn_rows.append((l, MID(x), 0, 'tm'))
@@ -460,22 +593,33 @@ def main():
     S.append("-- 예전 데이터의 '비밀 몬스터' (계열 37 = 뮤) → 포켓몬 이름으로 (도감 상세 '정체' 칸에 보임)")
     S.append("update public.lines set teacher = '비밀 포켓몬' where id = 37 and teacher = '비밀 몬스터';")
     S.append(f'delete from public.lines where id > {max(line_ids)};')
-    S.append('insert into public.species (id, line_id, stage, name, category, flavor, height, weight, btype, hp, atk, def, spa, spd, spe, dex, evo_lv, evo_item) values')
-    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {dex}, {ev if ev else 'null'}, {'true' if it else 'false'})"
-                        for i, l, st, nm, cat, fl, h, w, bt, v, dex, ev, it in species_rows))
+    abr = ability_rows([r[10] for r in species_rows])
+    S.append('-- 특성 (0039): 7세대 기준 한국어 이름 · 설명 (PokeAPI)')
+    S.append('insert into public.abilities (key, name, description) values ' + ',\n'.join(f'({q(k)}, {q(n)}, {q(d)})' for k, n, d in abr)
+             + ' on conflict (key) do update set name = excluded.name, description = excluded.description;')
+    S.append('insert into public.species (id, line_id, stage, name, category, flavor, height, weight, btype, hp, atk, def, spa, spd, spe, dex, evo_lv, evo_item, '
+             'abilities, hidden_ability) values')
+    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {dex}, {ev if ev else 'null'}, "
+                        f"{'true' if it else 'false'}, array[{', '.join(q(x) for x in ab[0])}]::text[], {q(ab[1])})"
+                        for i, l, st, nm, cat, fl, h, w, bt, v, dex, ev, it, ab in species_rows))
     S.append('on conflict (id) do update set line_id = excluded.line_id, stage = excluded.stage, name = excluded.name, category = excluded.category, '
              'flavor = excluded.flavor, height = excluded.height, weight = excluded.weight, btype = excluded.btype, hp = excluded.hp, atk = excluded.atk, '
-             'def = excluded.def, spa = excluded.spa, spd = excluded.spd, spe = excluded.spe, dex = excluded.dex, evo_lv = excluded.evo_lv, evo_item = excluded.evo_item;')
+             'def = excluded.def, spa = excluded.spa, spd = excluded.spd, spe = excluded.spe, dex = excluded.dex, evo_lv = excluded.evo_lv, evo_item = excluded.evo_item, '
+             'abilities = excluded.abilities, hidden_ability = excluded.hidden_ability;')
     S.append('-- 단계가 줄어든 계열: 남는 단계 줄은 (기록이 가리키지 않으면) 지우고, 가리키면 마지막 단계와 똑같이')
     S.append('delete from public.species s using public.lines l where l.id = s.line_id and s.stage > l.max_stage'
              ' and not exists (select 1 from public.tickets t where t.result_species = s.id or t.fixed_species = s.id)'
              ' and not exists (select 1 from public.raids r where r.species_id = s.id)'
              ' and not exists (select 1 from public.raid_encounters e where e.species_id = s.id);')
     S.append('update public.species s set name = x.name, category = x.category, flavor = x.flavor, height = x.height, weight = x.weight, '
-             'btype = x.btype, hp = x.hp, atk = x.atk, def = x.def, spa = x.spa, spd = x.spd, spe = x.spe, dex = x.dex, evo_lv = x.evo_lv, evo_item = x.evo_item, sprite = x.sprite, sprite_shiny = x.sprite_shiny '
+             'btype = x.btype, hp = x.hp, atk = x.atk, def = x.def, spa = x.spa, spd = x.spd, spe = x.spe, dex = x.dex, evo_lv = x.evo_lv, evo_item = x.evo_item, sprite = x.sprite, sprite_shiny = x.sprite_shiny, abilities = x.abilities, hidden_ability = x.hidden_ability '
              'from public.lines l, public.species x where l.id = s.line_id and s.stage > l.max_stage and x.line_id = s.line_id and x.stage = l.max_stage;')
     S.append('-- 단계가 줄어든 계열: 이미 잡은 것은 마지막 단계로')
     S.append('update public.collection c set stage = l.max_stage from public.lines l where l.id = c.line_id and c.stage > l.max_stage;')
+    S.append('-- 갈래 진화 (0037): 진화 길 전부 (곧은 진화 + 갈래). 진화할 때 서버가 이것만 봄')
+    S.append('delete from public.evolutions where true;')
+    S.append('insert into public.evolutions (from_species, to_species, how, lv, sort) values ' + ',\n'.join(
+        f"({a}, {b}, {q(hw_)}, {lv if lv else 'null'}, {k})" for a, b, hw_, lv, k in evolutions_rows()) + ';')
     S.append('insert into public.species_moves (species_id, slot, move_id) values ' + ',\n'.join(f'({a}, {b}, {c})' for a, b, c in sm_rows) + ';')
     S.append('insert into public.learnset (line_id, move_id, lv, how) values ' + ',\n'.join(f"({a}, {b}, {c}, {q(d)})" for a, b, c, d in learn_rows)
              + ' on conflict do nothing;')
@@ -493,6 +637,8 @@ def main():
     S.append('delete from public.types where name not in (' + ', '.join(q(t) for t in REAL_TYPES) + ');')
     S.append('insert into public.type_chart (atk, def, mult) values ' + ', '.join(
         f'({q(a)}, {q(d)}, {m:g})' for (a, d), m in sorted(CHART.items()) if m != 1) + ';')
+    S.append('-- 특성 (0039): 종의 특성 목록이 바뀌었을 수 있음 → 포켓몬마다 다시 맞춤 (트리거 _col_ability, 자리 ability_slot 은 그대로)')
+    S.append('update public.collection set ability = null where true;')
     S.append('commit;')
     out = os.path.join(ROOT, 'supabase', 'seed_pokemon.sql')
     open(out, 'w', encoding='utf-8', newline='\n').write('\n'.join(S) + '\n')
@@ -500,6 +646,7 @@ def main():
     ident = {int(r['id']): r['identifier'] for r in rd('pokemon_species') if int(r['id']) <= MAXDEX}
     json.dump({'species': {str(k): v for k, v in sorted(sprites.items())}, 'ident': {str(k): v for k, v in sorted(ident.items())}, 'items': ITEM_ICON},
               open(os.path.join(ROOT, 'tools', 'pokemon_sprites.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+    print(f'갈래 종 {len(BRANCHES)}: ' + ', '.join(f"{NAME[b[3]]}({b[0]}, 계열 {b[1]} {b[2]}단계, {'돌' if b[6] else 'Lv.' + str(b[5])})" for b in BRANCHES))
     print(f'{out}: lines {len(lines_sql)} (wild {sum(1 for x in lines_sql if x[4])}), species {len(species_rows)}, '
           f'moves {len(MOVES)}, learn {len(learn_rows)}, items {len(items)} (TM {len(TMS)})')
     for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, max(line_ids)]:

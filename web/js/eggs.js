@@ -159,17 +159,17 @@ async function hatch(x, redraw) {
     res.shiny && [1, 2, 3].map((i) => h(`i.hatch-spark.s${i}`, pix('spark', 'l')))));
   stageEl.classList.remove('flash');
   const lines = [`알에서 ${josa(sp?.name || '포켓몬', '이', '가')} 태어났다!`];
-  lines.push(res.new ? '새 포켓몬! 도감에 올랐다.' : `이미 있던 포켓몬이라 레벨이 올랐다! (Lv.${res.level})`);
+  lines.push(res.new ? '새 포켓몬! 도감에 올랐다.' : `같은 포켓몬이 한 마리 더! (Lv.${res.level}${res.box ? ` · BOX ${res.box}` : ''})`);
   if (res.shiny) lines.push(res.shiny_new ? '반짝이는 색이다! (가방에서 색을 바꿀 수 있어요)' : '반짝이는 색이다!');
   if (res.egg_move) lines.push(`알 기술 ${josa(moveOf(res.egg_move)?.name || '기술', '을', '를')} 알고 있다!`);
   if (res.held) {
     const { itemOf } = await import('./bag.js');
     lines.push(`${josa(itemOf(res.held)?.name || '물건', '을', '를')} ${res.held_to === 'held' ? '지니고' : '가방에 넣어 두고'} 있었다!`);
   }
-  if (res.bonus_ticket) lines.push('진화의돌도 1개 받았다!');
+  if (res.bonus_ticket) lines.push('진화의 돌도 1개 받았다!');
   text.textContent = lines.join('\n');
   btns.replaceChildren(
-    h('button.btn.primary', { onclick: async () => { closeOverlay(); const { openMon, loadBag } = await import('./bag.js'); await loadBag({ notify: false }).catch(() => {}); openMon(res.line); } }, '포켓몬 보기'),
+    h('button.btn.primary', { onclick: async () => { closeOverlay(); const { openMon, loadBag } = await import('./bag.js'); await loadBag({ notify: false }).catch(() => {}); openMon(res.mon); } }, '포켓몬 보기'),
     h('button.btn', { onclick: () => { closeOverlay(); redraw?.(); } }, '닫기'));
   sync().catch(() => {});
   import('./bag.js').then(({ loadBag }) => loadBag({ notify: false })).catch(() => {});
@@ -179,7 +179,7 @@ async function hatch(x, redraw) {
 // 95개 → 묶음(종류) 제목 + 걸러 보기 (받기 / 진행 중 / 완료 / 전체) + 모두 받기
 // 물건 이름은 서버 목록(items, 0032 = 실제 포켓몬 물건)에서
 const itemName = (k) => (S.catalog?.items || []).find((x) => x.key === k)?.name || '물건';
-const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item ? `${itemName(r.item)} ×${r.n || 1}` : r?.evo ? `진화의돌 ×${r.evo}` : '');
+const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item ? `${itemName(r.item)} ×${r.n || 1}` : r?.evo ? `진화의 돌 ×${r.evo}` : '');
 const rewardIcon = (r) => (r?.egg ? eggImg('egg', r.egg, 0.8) : r?.evo ? pix('ticket', 'l') : pix('gift', 'l'));
 const GROUPS = [['도감', ['dex']], ['장소 · QR', ['places', 'scans', 'days']], ['배틀', ['wins']], ['레이드', ['raids']],
   ['알 · 걸음', ['eggsgot', 'hatch', 'purplehatch', 'steps']], ['포켓몬 키우기', ['shiny', 'evolves', 'stage3', 'rare', 'legend', 'maxlv', 'types', 'learned', 'held']],

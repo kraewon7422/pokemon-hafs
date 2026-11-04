@@ -1,210 +1,279 @@
-// 사파리존: 지도 탭의 작은 도트 맵. 키 큰 풀숲을 걸으면 야생 포켓몬이 나오고 사파리볼(하루 N개)로 잡는다.
-// 걸음 판정·볼 개수는 서버 (0033 safari_encounter · safari_result) — 앱은 풀숲 걸음 수만 보냄.
-// 그림은 모두 이 파일에서 도트로 그림 (원래 게임의 지도·타일을 베끼지 않은 새 그림). 타일 16×16, 화면은 기기 픽셀 정수 배.
+// 사파리존: 지도 탭의 큰 도트 맵 (3세대 사파리존처럼 가운데 + 북서·북동·남서·남동 구역, 모래길로 이어짐).
+// v2 (2026-11-05): 동굴 미로 셋 (여울의 동굴 · 미혹의 동굴 · 깊은 동굴) → 깊은 바깥 구역 (깊은 연못 · 하늘 언덕),
+//   화면이 어두워지며 지도 이동, 입구 옆 사육사 (전설 힌트 글 상자), 전설 포켓몬 자리 (조건이 되면 '!' → 잡기 훅),
+//   사파리볼을 다 쓰면 3세대처럼 "눈이 캄캄해졌다…" → 입구로 돌아감. 예전 판: .work/old/safari_v1.js
+//   깊은 동굴의 울트라 워프홀 → 울트라 스페이스 (울트라비스트 전용 구역). 만남 걸음은 구역 (zoneAt) 별로 reportSteps 한 곳에서 보냄.
+// 키 큰 풀숲 (동굴은 바닥) 을 걸으면 야생 포켓몬이 나오고 사파리볼(하루 N개)로 잡는다.
+// 걸음 판정·볼 개수는 서버 (0033 safari_encounter(p_steps) · safari_result) — 앱은 만남 칸 걸음 수만 보냄.
+// 지도 글자·이동·전설 자리 = safari-maps.js. 그림: safari-tiles.png (16px 타일, 위치표 safari-tiles.js) ·
+//   safari-hero.png (교복 주인공 16×24) · safari-keeper.png (사육사) — tools/build_safari_tiles.py 가 그림.
+// 지도는 그림이 오면 처음 들어갈 때 한 번 큰 캔버스 2장(물·꽃 움직임)에 미리 그려 두고, 매 프레임 카메라 부분만 옮겨 그림. 화면은 기기 픽셀 정수 배.
 // 화면은 한 번 만들고 계속 씀 (sync 가 지도 탭을 다시 그려도 걷던 자리·애니메이션이 이어지게).
 import { rpc, errorText } from './sb.js';
-import { sfx } from './sfx.js';
-import { h } from './ui.js';
+import { sfx, bgmPush, bgmReady, bgmBeat, bgmPreload } from './sfx.js';
+import { h, josa } from './ui.js';
 import { S } from './state.js';
 import { catchEncounter } from './app.js';
+import { monCell, spriteCanvas } from './sprites.js';
+import TI from '../img/safari-tiles.js';
+import { MAPS, SOLID, ENC, LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS } from './safari-maps.js';
+import { flushResult, queuedResult, savePos, loadPos } from './safari-sync.js';
+
+export { LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS };
 
 const TS = 16;
-// T 나무 · . 풀밭 · , 키 큰 풀숲 · # 길 · ~ 물 · b 다리 · F 울타리 · f 꽃 · R 바위 · S 표지판 · G 문기둥
-const MAP = [
-  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-  'TT,,,,,,,,,..TTTTT..,,,,,,,,TT',
-  'TT,,,,,,,,,,..TTT..,,,,,,,,,TT',
-  'TT,,,R,,,,,,,.......,,,,R,,,TT',
-  'TT,,,,,,,,,,,..#....,,,,,,,,TT',
-  'TT..,,,,,,,f...#...,,,,,,,..TT',
-  'TT.....,,,..f..#.....,,,....TT',
-  'TT...S.........#.........f..TT',
-  'TTFFFFFFF......#..~~~~~~~...TT',
-  'TT,,,,,,F......#.~~~~~~~~~..TT',
-  'TT,,,,,,F..R...#.~~~~~~~~~~.TT',
-  'TT,,,,,,.......#bbbbbbbbbbb.TT',
-  'TT,,,,,,F...f..#.~~~~~~~~~,,TT',
-  'TT,,R,,,F......#..~~~~~~~,,,TT',
-  'TTFFFFFFF......#.......,,,,,TT',
-  'TT.....f.......#......,,,R,,TT',
-  'TT..,,,,....####......,,,,,,TT',
-  'TT.,,,,,,...#..f.....,,,,,,.TT',
-  'TT.,,,,,,,..#.......,,,,,,..TT',
-  'TT..,,,R,,..#..........ff...TT',
-  'TT...,,,,...#.....R.........TT',
-  'TT..........#..S............TT',
-  'TTTTTTTTTTTG#GTTTTTTTTTTTTTTTT',
-  'TTTTTTTTTTT.#.TTTTTTTTTTTTTTTT',
-  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-];
-const MW = MAP[0].length, MH = MAP.length;
-const START = { x: 12, y: 22, dir: 'up' };
-const SOLID = new Set(['T', '~', 'F', 'R', 'S', 'G']);
-const SIGNS = {
-  '5,8': '← 울타리 안 풀숲은 아주 넓어요. 포켓몬이 많이 숨어 있대요!',
-  '15,22': '사파리존에 어서 와요! 키 큰 풀숲을 걸으면 야생 포켓몬이 나와요.',
-};
-const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH ? 'T' : MAP[y][x]);
-const STEP_MS = 200;               // 한 칸 걷는 시간 (서버 걸음 속도 제한 6걸음/초 안쪽)
-const SEND_EVERY = 3;              // 풀숲 걸음을 몇 걸음마다 서버로 보낼지
+const START = { map: 'safari', x: MAPS.safari.start[0], y: MAPS.safari.start[1], dir: MAPS.safari.start[2] };
+const STEP_MS = 267;               // 한 칸 걷는 시간 = 3세대처럼 16프레임 (60fps) ≈ 267ms (서버 걸음 속도 제한 6걸음/초 안쪽)
+const TURN_MS = 120;               // 새 방향을 짧게 누르면 제자리에서 돌기만 · 이보다 오래 누르면 걷기 시작
+const SEND_EVERY = 3;              // 만남 칸 걸음을 몇 걸음마다 서버로 보낼지
 
-// ─────────────────────── 도트 그림 ───────────────────────
-const hash = (x, y) => { let n = x * 374761393 + y * 668265263; n = (n ^ (n >>> 13)) * 1274126177; return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
-const C = {
-  grass: '#8fd06c', grassD: '#72b856', grassL: '#b4e48a',
-  tall: '#3e9a3c', tallD: '#26702a', tallL: '#74c65a', tallK: '#1c5420',
-  path: '#e4cc94', pathD: '#c8a86c', pathL: '#f4e2b4',
-  water: '#4a8ed8', waterD: '#2e6cb8', waterL: '#a0d0f4',
-  leaf: '#2f7d3a', leafD: '#1d5428', leafL: '#56a24a', trunk: '#7a4a28', trunkD: '#4e2e18',
-  wood: '#c08040', woodD: '#7a4a20', woodL: '#e0a868',
-  rock: '#9ca2ac', rockD: '#646a76', rockL: '#d0d4da',
-  stone: '#b8b0a0', stoneD: '#7a7266',
-};
-function makeTiles() {
-  const cv = document.createElement('canvas'); cv.width = TS * 16; cv.height = TS * 2;
-  const g = cv.getContext('2d');
-  const at = {}; let n = 0;
-  const tile = (key, frames, draw) => {
-    at[key] = [];
-    for (let f = 0; f < frames; f++) {
-      const ox = n * TS, oy = f * TS;
-      const px = (x, y, c, w = 1, hh = 1) => { g.fillStyle = c; g.fillRect(ox + x, oy + y, w, hh); };
-      draw(px, f);
-      at[key].push([ox, oy]);
+// ─────────────────────── 전설 포켓몬 (서버와 이을 곳) ───────────────────────
+// ?legend=1 = 시험용: 조건을 모두 채운 것처럼
+const DEV_LEGEND = (() => { try { return new URLSearchParams(location.search).get('legend') === '1'; } catch { return false; } })();
+const hintOf = (dex) => LEGEND_HINTS.find((l) => l.dex === Number(dex));
+// 전국도감 번호 → 앱 species.id (그림판 칸 번호는 species.id). 도감 목록 (S.catalog) 이 있으면 그것,
+// 없으면 (불러오기 전·미리보기) 아래 표 — tools/pokemon_sprites.json 에서 잰 값
+const SPECIES_FALLBACK = { 377: 667, 378: 670, 379: 673, 486: 826, 249: 493, 382: 682, 383: 685, 250: 496, 384: 688 };
+// 전설 포켓몬 지도 그림: 도감 그림 (64칸) 을 지도 도트 크기 (32px, 큰 전설 48px) 로 줄이고 1px 진한 테두리.
+// 줄일 때는 칸마다 가장 많은 색 (번지지 않게), 칸의 반 이상이 비면 투명. 한 번 만들면 다시 씀.
+const LEG_SIZE = { 249: 48, 382: 48, 383: 48, 384: 48, 486: 40, 250: 40 };
+const LEG_ART = new Map();
+function legendArt(dex) {
+  if (LEG_ART.has(dex)) return LEG_ART.get(dex);
+  const cell = monCell(speciesIdOf(dex)); if (!cell) return null;          // 그림판을 받는 중 → 다음 프레임에
+  const d = cell.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cell.width, cell.height).data, CW = cell.width;
+  let x0 = CW, y0 = CW, x1 = -1, y1 = -1;
+  for (let y = 0; y < cell.height; y++) for (let x = 0; x < CW; x++) if (d[(y * CW + x) * 4 + 3] > 64) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const T = LEG_SIZE[dex] || 32;
+  const out = document.createElement('canvas'); out.width = out.height = T;
+  if (x1 < 0) { LEG_ART.set(dex, out); return out; }
+  const w = x1 - x0 + 1, hh = y1 - y0 + 1, k = Math.min(1, (T - 2) / Math.max(w, hh));
+  const tw = Math.max(1, Math.round(w * k)), th = Math.max(1, Math.round(hh * k));
+  const og = out.getContext('2d'); const img = og.createImageData(T, T); const o = img.data;
+  const ox = Math.floor((T - tw) / 2), oy = T - 1 - th;
+  for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
+    const bx0 = x0 + Math.floor((tx * w) / tw), bx1 = Math.max(bx0 + 1, x0 + Math.floor(((tx + 1) * w) / tw));
+    const by0 = y0 + Math.floor((ty * hh) / th), by1 = Math.max(by0 + 1, y0 + Math.floor(((ty + 1) * hh) / th));
+    const cnt = new Map(); let n = 0, best = -1, bc = 0;
+    for (let y = by0; y < by1; y++) for (let x = bx0; x < bx1; x++) {
+      const i = (y * CW + x) * 4; if (d[i + 3] <= 64) continue; n++;
+      const key = ((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3);
+      const c = (cnt.get(key) || 0) + 1; cnt.set(key, c); if (c > best) { best = c; bc = i; }
     }
-    if (frames === 1) at[key].push(at[key][0]);
-    n++;
-  };
-  const grass = (px) => {
-    px(0, 0, C.grass, 16, 16);
-    for (const [x, y] of [[2, 3], [10, 2], [6, 9], [13, 11], [3, 13]]) { px(x, y, C.grassD); px(x + 1, y - 1, C.grassD); px(x + 2, y, C.grassD); }
-    px(8, 5, C.grassL); px(12, 7, C.grassL); px(4, 7, C.grassL);
-  };
-  tile('.', 1, grass);
-  // 키 큰 풀숲: 뾰족한 잎 두 줄, 바람에 살짝 흔들림 (2장)
-  tile(',', 2, (px, f) => {
-    px(0, 0, C.tall, 16, 16);
-    for (const [bx, by] of [[0, 1], [8, 1], [4, 9], [12, 9]]) {
-      const s = f ? 1 : 0;
-      px(bx + 1, by + 6, C.tallD, 6, 1);
-      px(bx + 1 + s, by + 1, C.tallK); px(bx + 1 + s, by + 2, C.tallL); px(bx + 1, by + 3, C.tallL, 1, 3);
-      px(bx + 3, by, C.tallK); px(bx + 3, by + 1, C.tallL); px(bx + 3, by + 2, C.tallL, 1, 4);
-      px(bx + 5 - s, by + 1, C.tallK); px(bx + 5 - s, by + 2, C.tallL); px(bx + 5, by + 3, C.tallL, 1, 3);
-      px(bx + 2, by + 4, C.tallD, 1, 2); px(bx + 4, by + 4, C.tallD, 1, 2); px(bx + 6, by + 4, C.tallD, 1, 2);
-    }
-  });
-  tile('#', 1, (px) => {
-    px(0, 0, C.path, 16, 16);
-    for (const [x, y] of [[3, 4], [11, 2], [7, 10], [13, 13], [2, 12]]) { px(x, y, C.pathD, 2, 1); px(x, y - 1, C.pathL, 1, 1); }
-  });
-  tile('~', 2, (px, f) => {
-    px(0, 0, C.water, 16, 16);
-    const o = f ? 3 : 0;
-    for (const [x, y] of [[1, 3], [9, 6], [4, 11], [11, 13]]) { px((x + o) % 13, y, C.waterL, 3, 1); px((x + o) % 13 + 1, y + 1, C.waterD, 3, 1); }
-  });
-  tile('b', 1, (px) => {
-    px(0, 0, C.water, 16, 16);
-    px(0, 1, C.woodD, 16, 1); px(0, 14, C.woodD, 16, 1);
-    px(0, 2, C.wood, 16, 12);
-    for (let x = 0; x < 16; x += 4) { px(x, 2, C.woodD, 1, 12); px(x + 1, 2, C.woodL, 1, 12); }
-  });
-  tile('F', 1, (px) => {
-    grass(px);
-    px(0, 5, C.woodD, 16, 1); px(0, 6, C.wood, 16, 2); px(0, 8, C.woodD, 16, 1);
-    px(0, 10, C.woodD, 16, 1); px(0, 11, C.wood, 16, 1); px(0, 12, C.woodD, 16, 1);
-    for (const x of [2, 10]) { px(x, 2, C.woodD, 4, 12); px(x + 1, 3, C.woodL, 2, 10); px(x + 1, 2, C.wood, 2, 1); }
-  });
-  tile('f', 2, (px, f) => {
-    grass(px);
-    for (const [x, y, c] of [[3, 3, '#f06878'], [10, 5, '#ffd84a'], [5, 11, '#ffd84a'], [12, 12, '#f06878']]) {
-      const yy = y + (f && (x + y) % 2 ? 1 : 0);
-      px(x, yy - 1, c); px(x - 1, yy, c); px(x + 1, yy, c); px(x, yy + 1, c); px(x, yy, '#fff4c8'); px(x, yy + 2, C.grassD, 1, 2);
-    }
-  });
-  tile('R', 1, (px) => {
-    grass(px);
-    px(3, 13, C.grassD, 11, 1);
-    px(4, 4, C.rockD, 8, 1); px(3, 5, C.rockD, 10, 1); px(2, 6, C.rockD, 12, 7); px(3, 13, C.rockD, 10, 1);
-    px(4, 5, C.rock, 8, 1); px(3, 6, C.rock, 10, 6); px(4, 12, C.rock, 8, 1);
-    px(4, 6, C.rockL, 3, 2); px(5, 8, C.rockL, 1, 1); px(9, 10, C.rockD, 3, 1);
-  });
-  tile('S', 1, (px) => {
-    grass(px);
-    px(7, 9, C.trunkD, 2, 6);
-    px(2, 2, C.woodD, 12, 8); px(3, 3, C.wood, 10, 6); px(3, 3, C.woodL, 10, 1);
-    px(5, 5, C.woodD, 6, 1); px(5, 7, C.woodD, 4, 1);
-  });
-  tile('G', 1, (px) => {
-    px(0, 0, C.path, 16, 16);
-    px(2, 0, C.stoneD, 12, 16); px(3, 1, C.stone, 10, 14); px(3, 1, '#d8d0c0', 10, 2);
-    px(2, 0, '#c84838', 12, 3); px(3, 0, '#e86a50', 10, 1);
-  });
-  tile('T', 1, () => { /* 나무는 아래 drawTree */ });
-  return { cv, at };
+    if (n * 2 < (bx1 - bx0) * (by1 - by0)) continue;
+    const j = ((oy + ty) * T + ox + tx) * 4; o[j] = d[bc]; o[j + 1] = d[bc + 1]; o[j + 2] = d[bc + 2]; o[j + 3] = 255;
+  }
+  const solid = (x, y) => x >= 0 && y >= 0 && x < T && y < T && o[(y * T + x) * 4 + 3] === 255;
+  const edge = [];
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (!solid(x, y) && (solid(x + 1, y) || solid(x - 1, y) || solid(x, y + 1) || solid(x, y - 1))) edge.push((y * T + x) * 4);
+  for (const j of edge) { o[j] = 0x18; o[j + 1] = 0x18; o[j + 2] = 0x20; o[j + 3] = 255; }
+  og.putImageData(img, 0, 0);
+  LEG_ART.set(dex, out);
+  return out;
 }
-// 나무: 둥근 잎 덩어리 (칸마다 무늬가 조금 다름)
-function drawTree(g, x, y, v) {
-  g.fillStyle = C.grassD; g.fillRect(x, y, TS, TS);
-  g.fillStyle = C.trunkD; g.fillRect(x + 6, y + 11, 4, 5);
-  g.fillStyle = C.trunk; g.fillRect(x + 7, y + 11, 2, 4);
-  g.fillStyle = C.leafD; g.fillRect(x + 2, y + 1, 12, 11); g.fillRect(x + 1, y + 3, 14, 7); g.fillRect(x + 4, y, 8, 13);
-  g.fillStyle = C.leaf; g.fillRect(x + 3, y + 1, 10, 9); g.fillRect(x + 2, y + 3, 12, 6); g.fillRect(x + 5, y + 1, 6, 11);
-  g.fillStyle = C.leafL; g.fillRect(x + 4, y + 2 + (v > 0.5 ? 1 : 0), 4, 2); g.fillRect(x + 3, y + 4, 2, 2); g.fillRect(x + 9 + (v > 0.7 ? 1 : 0), y + 4, 2, 1);
-  g.fillStyle = C.leafD; g.fillRect(x + 6, y + 7, 1, 1); g.fillRect(x + 10, y + 8, 1, 1);
+const speciesIdOf = (dex) => S.catalog?.species?.find((sp) => sp.dex === dex)?.id || SPECIES_FALLBACK[dex];
+// 서버 (0038 safari_state · sync 의 legends) 가 알려 준 전설 조건: setLegendHints([{ dex, ok, cond?, where?, caught?, seen? }])
+export function setLegendHints(list) {
+  for (const x of list || []) {
+    const t = hintOf(x.dex); if (!t) continue;
+    if (x.ok != null) t.ok = !!x.ok;
+    if (x.caught != null) t.caught = !!x.caught;
+    if (x.seen != null) t.seen = !!x.seen;
+    if (x.cond) t.cond = x.cond;
+    if (x.where) t.where = x.where;
+  }
+}
+// 서버의 퀘스트 줄 (0038 _quest_rows) → 사육사 힌트 (조건 글 + 진행 "물 타입 4/20")
+export function hintsFromServer(rows) {
+  setLegendHints((rows || []).filter((x) => x.reward === 'map').map((x) => ({
+    dex: x.dex, ok: x.ok, caught: x.caught, seen: x.seen || x.caught,
+    cond: x.ok || !x.prog ? x.cond : `${x.cond} (지금 ${x.prog})`,
+  })));
+}
+// 조건을 채웠는지 (서버가 채운 ok. ?legend=1 = 시험용으로 모두 채운 것처럼 — 서버가 다시 확인하므로 실제로는 NOT_READY)
+export function legendReady(dex) { return DEV_LEGEND || !!hintOf(dex)?.ok; }
+// 전설 포켓몬과 만남 → 잡기 (0038): 서버 legend_encounter (조건 · 오늘 도전 횟수 확인) → GO 방식 잡기 (HAFS 볼 N개) → legend_result
+//   dex = 전국도감 번호 · ctx = { talk(lines) → Promise, map: 지금 지도 id, name } · 돌려줌 { caught: bool }
+//   caught 가 아니면 (도망·놓침) 지도에 그대로 남아 다시 도전할 수 있음.
+const LEGEND_ERR = {
+  NOT_READY: (n) => [`${n}…?`, '아직 무언가 부족한 것 같다…'],
+  NO_TRIES: (n) => [`${josa(n, '은', '는')} 오늘은 더 이상 모습을 보이지 않을 것 같다…`, '내일 다시 와 보자!'],
+  ALREADY_CAUGHT: (n) => [`${josa(n, '은', '는')} 이미 내 박스에 있다!`],
+  BOX_FULL: () => ['박스가 꽉 찼다! 가방 → 포켓몬에서 몇 마리를 놓아준 뒤에 다시 오자.'],
+};
+export async function startLegendEncounter(dex, ctx) {
+  if (!S.online) { await ctx.talk(['인터넷이 연결되어야 전설의 포켓몬과 만날 수 있어요.']); return { caught: false }; }
+  let r;
+  try { r = await rpc('legend_encounter', { p_dex: Number(dex) }, { retries: 1 }); } catch (e) {
+    const f = LEGEND_ERR[e.message];
+    await ctx.talk(f ? f(ctx.name) : [errorText(e.message)]);
+    if (e.message === 'ALREADY_CAUGHT') { const t = hintOf(dex); if (t) t.caught = true; return { caught: true }; }
+    return { caught: false };
+  }
+  const res = await catchEncounter({ ...r.encounter, kind: 'legend' });
+  return { caught: !!res?.caught };
 }
 
-// 주인공 (새 그림): 카키 사파리 모자 · 파란 옷. 12×16, 방향마다 [서기, 걷기]. 위·아래는 반쪽 + 거울
-const PAL = { k: '#283040', h: '#d8c070', H: '#9a8440', s: '#f8c8a0', S: '#d89870', r: '#6a4028', c: '#3a8ad0', C: '#28609a', w: '#f8f8f8', p: '#4a4a5a', b: '#7a4a24' };
-const mirror = (rows) => rows.map((r) => r + [...r].reverse().join(''));
-const flipRows = (rows) => rows.map((r) => [...r].reverse().join(''));
-const DOWN = mirror(['....kk', '..kkhh', '.khhhh', '.khhhh', 'kHHHHH', '.kssss', '.ksskS', '.kssss', '..kkss', '.kccww', 'kscccc', 'kscccc', '.kpppp', '.kpppk', '.kbbbk', '..kkk.']);
-const UP = mirror(['....kk', '..kkhh', '.khhhh', '.khhhh', 'kHHHHH', '.krrrr', '.krrrr', '.krrrr', '..kkrr', '.kcccc', 'kscccc', 'kscccc', '.kpppp', '.kpppk', '.kbbbk', '..kkk.']);
-const stepDown = (rows) => [...rows.slice(0, 13), '.kpppkkbbbk.', '.kbbbk.kkk..', '..kkk.......'];
-const LEFT = ['.....kkkk...', '...kkhhhhk..', '..khhhhhhhk.', '..khhhhhhhk.', 'kHHHHHHHHk..', '.kssssrrrk..', '.ksksssrrk..', '.kssssssrk..', '..kkssskk...', '..kccccck...', '..kcsccck...', '..kcsccck...', '..kpppppk...', '..kppkppk...', '..kbbkbbk...', '..kkk.kkk...'];
-const LEFT_STEP = [...LEFT.slice(0, 12), '..kpppppk...', '.kppk.kppk..', '.kbbk..kbbk.', '..kk....kk..'];
-const HERO = {
-  down: [DOWN, stepDown(DOWN), flipRows(stepDown(DOWN))],
-  up: [UP, stepDown(UP), flipRows(stepDown(UP))],
-  left: [LEFT, LEFT_STEP, LEFT_STEP],
-  right: [flipRows(LEFT), flipRows(LEFT_STEP), flipRows(LEFT_STEP)],
-};
-function makeHero() {
-  const cv = document.createElement('canvas'); cv.width = 12 * 3; cv.height = 16 * 4;
-  const g = cv.getContext('2d');
-  ['down', 'up', 'left', 'right'].forEach((d, j) => HERO[d].forEach((rows, i) => rows.forEach((r, y) => [...r].forEach((ch, x) => {
-    if (PAL[ch]) { g.fillStyle = PAL[ch]; g.fillRect(i * 12 + x, j * 16 + y, 1, 1); }
-  }))));
+// ─────────────────────── 도트 그림 (그림판 → 미리 그린 맵) ───────────────────────
+const loadImg = (name) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = new URL(`../img/${name}`, import.meta.url).href; });
+const isSand = (c) => c === '#';
+const isWater = (c) => c === '~' || c === 'b';
+const isFence = (c) => c === 'F';
+const isRock = (c) => c === 'M' || c === 'C';
+const isCWall = (c) => c === 'W' || c === 'B';
+const isPWall = (c) => c === 'P' || c === 'B';
+const isStair = (c) => c === '=' || c === 'E';
+function prerender(sheet, f, m) {
+  const R = m.rows, W = R[0].length, H = R.length, cave = m.kind === 'cave';
+  // 이웃 비트 N1 E2 S4 W8 (이웃도 같은 땅이면 1). 맵 밖 = out
+  const same = (x, y, test, out) => (x < 0 || y < 0 || x >= W || y >= H ? out : test(R[y][x]));
+  const maskOf = (x, y, test, out = false) => (same(x, y - 1, test, out) ? 1 : 0) | (same(x + 1, y, test, out) ? 2 : 0) | (same(x, y + 1, test, out) ? 4 : 0) | (same(x - 1, y, test, out) ? 8 : 0);
+  // 안쪽 모서리: 두 옆은 같은 땅인데 대각선만 다른 땅
+  const corners = (x, y, mk, test, out = false) => {
+    const r = [];
+    if ((mk & 9) === 9 && !same(x - 1, y - 1, test, out)) r.push('nw');
+    if ((mk & 3) === 3 && !same(x + 1, y - 1, test, out)) r.push('ne');
+    if ((mk & 12) === 12 && !same(x - 1, y + 1, test, out)) r.push('sw');
+    if ((mk & 6) === 6 && !same(x + 1, y + 1, test, out)) r.push('se');
+    return r;
+  };
+  const cv = document.createElement('canvas'); cv.width = W * TS; cv.height = H * TS;
+  const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+  const put = (name, x, y) => { const t = TI[name]; if (t) g.drawImage(sheet, t[0], t[1], t[2], t[3], x, y + TS - t[3], t[2], t[3]); };
+  const water = (x, y, X, Y) => {
+    const mk = maskOf(x, y, isWater); put(`water${f}`, X, Y); put(`shore${mk}`, X, Y);
+    for (const k of corners(x, y, mk, isWater)) put(`shorec${k}`, X, Y);
+  };
+  for (let y = 0; y < H; y++) {
+    for (let x = 0; x < W; x++) {
+      const c = R[y][x], X = x * TS, Y = y * TS;
+      if (m.kind === 'ultra') {
+        if (c === 'X') { put(`uvoid${(f + x + y) & 1}`, X, Y); continue; }
+        put(`uplat${maskOf(x, y, (k) => k !== 'X')}`, X, Y);
+        if (c === '=') put('upath', X, Y);
+        else if (c === 'K') put(`ucrystal${(x + y) & 1 ? 'B' : 'A'}`, X, Y);
+        continue;
+      }
+      if (m.kind === 'shrine') {     // 전설의 제단: 돌바닥 · 절벽 · 돌계단 · 대리석 제단 (돌기둥은 아래에서 따로)
+        const v = (x * 7 + y * 13) % 3;
+        if (c === 'P' || c === 'B') {
+          const mk = maskOf(x, y, isPWall, true);
+          put('sfloor0', X, Y); put(`pwall${mk}_${v}`, X, Y);
+          if (mk & 4) for (const k of corners(x, y, mk, isPWall, true)) put(`pwallc${k}`, X, Y);
+          if (c === 'B') put('cbraille', X, Y);
+          continue;
+        }
+        if (c === '=' || c === 'E') { const l = same(x - 1, y, isStair, false), r = same(x + 1, y, isStair, false); put(`sstairs${l && r ? 'C' : r ? 'L' : l ? 'R' : 'C'}`, X, Y); continue; }
+        if (c === 'A' || c === 'L') { put('saltar', X, Y); continue; }
+        if (c === 'U') { put('cladderU', X, Y); continue; }
+        put(`sfloor${(x * 5 + y * 3) % 7 === 0 ? 1 : 0}`, X, Y);
+        if (c === 'r') put('crock', X, Y);
+        continue;
+      }
+      if (cave) {
+        if (isCWall(c)) {          // 벽 밑에 바닥을 먼저 (울퉁불퉁한 위 턱 사이로 보임) · 무늬 변형 3가지를 섞어 줄무늬처럼 안 보이게
+          const mk = maskOf(x, y, isCWall, true);
+          put('cfloor0', X, Y); put(`cwall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
+          if (mk & 4) for (const k of corners(x, y, mk, isCWall, true)) put(`cwallc${k}`, X, Y);   // 윗면 안쪽 모서리
+          if (c === 'B') put('cbraille', X, Y);
+          continue;
+        }
+        if (c === '~') { water(x, y, X, Y); continue; }
+        put(`cfloor${(x * 7 + y * 3) % 3 === 0 ? 1 : 0}`, X, Y);
+        const o = { r: 'crock', O: 'cboulder', o: 'chole', U: 'cladderU', V: 'cladderD', E: 'cexit', S: 'sign' }[c];
+        if (o) put(o, X, Y);
+        continue;
+      }
+      if (c === '#') {
+        const mk = maskOf(x, y, isSand, true); put(`sand${mk}`, X, Y);
+        for (const k of corners(x, y, mk, isSand, true)) put(`sandc${k}`, X, Y);
+        continue;
+      }
+      if (isWater(c)) { water(x, y, X, Y); if (c === 'b') put('bridge', X, Y); continue; }
+      if (isRock(c)) {
+        const mk = maskOf(x, y, isRock);
+        put('ground', X, Y); put(`mwall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
+        if (mk & 4) for (const k of corners(x, y, mk, isRock)) put(`mwallc${k}`, X, Y);
+        if (c === 'C') put('mouth', X, Y);
+        continue;
+      }
+      put('ground', X, Y);
+      if (c === ',') put('tall', X, Y);
+      else if (c === 'f') put(`flower${(x + y) & 1 ? 'B' : 'A'}${(f + x) & 1}`, X, Y);
+      else if (c === 'F') put(`fence${maskOf(x, y, isFence)}`, X, Y);
+      else if (c === 'R') put('rock', X, Y);
+      else if (c === 'S') put('sign', X, Y);
+      else if (c === 'G') put('post', X, Y);
+    }
+  }
+  // 나무는 위 줄부터: 뾰족한 머리가 윗칸으로 8px 솟아 윗나무 밑동을 덮음 (숲이 빽빽해 보임)
+  if (m.kind === 'out') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('tree', x * TS, y * TS);
+  if (m.kind === 'shrine') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'I') put('spillar', x * TS, y * TS);   // 16×32, 윗칸으로 솟음
   return cv;
 }
+const HW = 16, HH = 24;              // 사람 한 칸 (발 = 칸 아래쪽, 머리는 윗칸으로 8px)
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const DIR_ROW = { down: 0, up: 1, left: 2, right: 3 };
+const BACK = { up: 'down', down: 'up', left: 'right', right: 'left' };
 
 // ─────────────────────── 화면 (한 번만 만듦) ───────────────────────
 let V = null;            // 화면 · 상태
 const P = { x: START.x, y: START.y, dir: START.dir, fx: START.x, fy: START.y, moving: false, t0: 0, from: null, stepN: 0 };
+let mapId = START.map, M = MAPS[mapId];
+const MW = () => M.rows[0].length, MH = () => M.rows.length;
+const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW() || y >= MH() ? ({ cave: 'W', ultra: 'X', shrine: 'P' }[M.kind] || 'T') : M.rows[y][x]);
+// 이 칸의 만남 구역: 'grass' | 'cave' | 'deep' | 'ultra' (만남 칸이 아니면 null)
+export function zoneAt(x, y) { return ENC[M.kind].has(tileAt(x, y)) ? M.zone : null; }
+export const currentZone = () => M.zone;
+// 만남 칸 걸음 보내기 — 걸음은 모두 여기 한 곳으로 (구역이 바뀌면 그 전에 따로 보냄)
+export async function reportSteps(n, zone) {
+  // 0038: 서버가 구역별 포켓몬을 고름 (ultra = 울트라비스트만 · cave/deep = 바위·땅·고스트·악·강철·물 타입이 더 자주)
+  return rpc('safari_encounter', { p_steps: n, p_zone: zone || currentZone() || 'grass' });
+}
+// 사람·전설 포켓몬 (지도마다): { type: 'npc' | 'legend', o }
+function objAt(x, y) {
+  for (const n of M.npcs || []) if (n.x === x && n.y === y) return { type: 'npc', o: n };
+  for (const l of M.legends || []) if (l.x === x && l.y === y && !hintOf(l.dex)?.caught) return { type: 'legend', o: l };
+  return null;
+}
+// 지도의 울트라 워프홀 칸 (Q) — 한 번만 찾아 둠
+const wormsOf = (m) => (m._worms ||= m.rows.flatMap((r, y) => [...r].map((c, x) => (c === 'Q' ? [x, y] : null)).filter(Boolean)));
+const solidAt = (x, y) => SOLID[M.kind].has(tileAt(x, y)) || !!objAt(x, y);
 
 export function viewSafari() {
+  hintsFromServer(S.snap?.legends);     // 0038: sync 로 받은 전설 조건 (사파리존 상태를 받으면 다시)
   if (!V) V = build();
   V.start();
   V.refresh();
+  bgmPreload('wild');   // 풀숲 만남 때 바로 나오게 야생 곡을 미리 풀어 둠
   return V.root;
 }
 
 function build() {
-  const tiles = makeTiles(); const hero = makeHero();
-  const cv = h('canvas.sf-canvas', { 'aria-label': '사파리존 지도. 아래 방향 버튼이나 키보드 화살표로 걸어요.' });
+  let sheet = null, hero = null, keeper = null;   // 그림이 오기 전엔 빈 배경
+  const cache = {};                                // 지도 id → [미리 그린 맵 2장]
+  const mapsOf = (id) => (sheet ? (cache[id] ||= [prerender(sheet, 0, MAPS[id]), prerender(sheet, 1, MAPS[id])]) : null);
+  Promise.all([loadImg('safari-tiles.png'), loadImg('safari-hero.png'), loadImg('safari-keeper.png')]).then(([sh, hr, kp]) => {
+    sheet = sh; hero = hr; keeper = kp; mapsOf(mapId);
+  }).catch(() => {});
+  const cv = h('canvas.sf-canvas', { 'aria-label': '사파리존 지도. 아래 방향 버튼이나 키보드 화살표로 걷고, A 버튼으로 말을 걸어요.' });
   const g = cv.getContext('2d');
   const cover = h('div.sf-cover', { hidden: true });
-  const msg = h('p.sf-msg', { 'aria-live': 'polite' });          // 맵 아래쪽 글 상자 (표지판·안내, 몇 초 뒤 사라짐)
-  const stage = h('div.sf-stage', cv, msg, cover);
+  const msg = h('p.sf-msg', { 'aria-live': 'polite' });          // 맵 아래쪽 짧은 안내 (몇 초 뒤 사라짐)
+  const place = h('p.sf-place', { 'aria-live': 'polite' });       // 지도에 들어설 때 왼쪽 위 이름표
+  const talkTx = h('span.sf-tt');
+  const talkMore = h('span.sf-more', '▼');
+  const talkEl = h('div.box.sf-talk', { hidden: true, 'aria-live': 'polite' }, talkTx, talkMore);   // 3세대 글 상자
+  const menuEl = h('div.box.sf-menu', { hidden: true });           // 사육사 고르기 메뉴
+  const stage = h('div.sf-stage', cv, place, msg, talkEl, menuEl, cover);
   const ballsEl = h('b.sf-num', '-');
   const encEl = h('span.sf-sub', '');
-  const pendBtn = h('button.btn.small.primary.sf-pend', { hidden: true, onclick: () => { sfx.select(); const e = st?.pending; if (e) startCatch(e); } }, '기다리는 포켓몬 잡기');
+  const pendBtn = h('button.btn.small.primary.sf-pend', { hidden: true, onclick: () => { if (busy) return; sfx.select(); const e = st?.pending; if (e) startCatch(e); } }, '기다리는 포켓몬 잡기');   // 만남 연출 중에 눌러도 두 번 열리지 않게
   let ballIco = h('span.sf-ball');
   import('./catch.js').then((m) => { const c = m.ballCanvas('safari', 2); ballIco.replaceWith(c); ballIco = c; }).catch(() => {});
   const held = new Map();       // pointerId → 방향 (손가락 여러 개)
   const keys = [];              // 누르고 있는 키 방향 (마지막 것 우선)
+  const clearPad = () => { held.clear(); keys.length = 0; pad.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); };
   const pad = h('div.sf-pad', { role: 'group', 'aria-label': '방향 버튼' }, ['up', 'left', 'right', 'down'].map((d) => {
     const b = h(`button.sf-dir.sf-${d}`, { type: 'button', 'aria-label': { up: '위로', down: '아래로', left: '왼쪽으로', right: '오른쪽으로' }[d] }, h('i'));
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); held.set(e.pointerId, d); b.classList.add('on'); try { b.releasePointerCapture?.(e.pointerId); } catch { /* */ } kick(d); });
@@ -213,115 +282,381 @@ function build() {
     b.addEventListener('contextmenu', (e) => e.preventDefault());
     return b;
   }));
+  const faceBtn = (cls, label, aria, fn) => {
+    const b = h(`button.${cls}`, { type: 'button', 'aria-label': aria }, label);
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    return b;
+  };
+  const aBtn = faceBtn('sf-a', 'A', 'A 버튼: 말 걸기 · 고르기 · 글 넘기기', () => pressA());
+  const bBtn = faceBtn('sf-b', 'B', 'B 버튼: 그만두기 · 글 넘기기', () => pressB());
+  const abWrap = h('div.sf-ab', { role: 'group', 'aria-label': 'A B 버튼' }, bBtn, aBtn);
   const up = (e) => { if (held.delete(e.pointerId)) pad.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); };
   window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
   const info = h('div.sf-info', h('div.sf-balls', ballIco, h('span.sf-bl', h('small', '사파리볼'), ballsEl)), encEl, pendBtn);
-  const ctl = h('div.sf-ctl', pad, info);
+  const ctl = h('div.sf-ctl', info, h('div.sf-btns', pad, abWrap));
   const root = h('div.sf', stage, ctl);
 
   const KEY = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
+  const A_KEYS = new Set(['Enter', ' ', 'z', 'Z']);
+  const B_KEYS = new Set(['x', 'X', 'Escape', 'Backspace']);
   const active = () => root.isConnected && S.tab === 'map' && !S.overlay && !document.querySelector('.cz-layer');
   window.addEventListener('keydown', (e) => {
-    const d = KEY[e.key]; if (!d || !active() || e.target?.closest?.('input,textarea,select')) return;
-    e.preventDefault(); if (!keys.includes(d)) keys.push(d); kick(d);
+    if (!active() || e.target?.closest?.('input,textarea,select')) return;
+    if (A_KEYS.has(e.key)) { e.preventDefault(); if (!e.repeat) pressA(); return; }
+    if (B_KEYS.has(e.key)) { e.preventDefault(); if (!e.repeat) pressB(); return; }
+    const d = KEY[e.key]; if (!d) return;
+    e.preventDefault();
+    if (menuQ) { menuMove(d); return; }
+    if (talkQ) return;
+    if (!keys.includes(d)) keys.push(d); kick(d);
   });
   window.addEventListener('keyup', (e) => { const d = KEY[e.key]; if (d) { const i = keys.indexOf(d); if (i >= 0) keys.splice(i, 1); } });
   window.addEventListener('blur', () => { keys.length = 0; held.clear(); });
   const wantDir = () => keys[keys.length - 1] || [...held.values()].pop() || null;
 
   // ── 서버 상태 ──
-  let st = null, loading = false, inflight = false, grassPend = 0, busy = false, flashT = -1, bubbleT = -1, lastSign = '';
+  let st = null, loading = false, inflight = false, pend = { n: 0, zone: null }, busy = false, seq = false, flashT = -1, bubbleT = -1, lastSign = '';
+  let bang = null;              // 전설 포켓몬 머리 위 '!' { x, y }
+  let rustle = null;            // 흔들리는 풀숲 { x, y, t0 } (2장 · 0.27초)
   let sayTimer = 0;
   const say = (t, ms = 4500) => {
     msg.textContent = t || ''; msg.classList.toggle('on', !!t);
     clearTimeout(sayTimer); if (t) sayTimer = setTimeout(() => { msg.classList.remove('on'); lastSign = ''; }, ms);
   };
-  setTimeout(() => { if (!closed()) say('키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!'); }, 900);
+  let placeTimer = 0;
+  const showPlace = (name) => { place.textContent = name; place.classList.add('on'); clearTimeout(placeTimer); placeTimer = setTimeout(() => place.classList.remove('on'), 1800); };
+  const HINT = { out: '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!', cave: '동굴 바닥을 걸으면 야생 포켓몬이 나와요!', ultra: '울트라 스페이스를 걸으면 울트라비스트가 나와요!', shrine: '전설의 포켓몬이 잠든 제단이다…' };
+  let hintKind = '';
+  const sayHint = () => { if (!closed() && !talkQ && hintKind !== M.kind) { hintKind = M.kind; say(HINT[M.kind]); } };
+  setTimeout(sayHint, 900);
+  let queued = null;            // 보내지 못한 잡기 결과 (safari-sync) — 있으면 '결과 보내기'
   const refresh = async () => {
-    if (loading || !S.online) { paintInfo(); return; }
+    if (loading || !S.online) { queued = await queuedResult(); paintInfo(); return; }
     loading = true;
-    try { st = await rpc('safari_state', {}); } catch (e) { if (!e.offline) say(errorText(e.message)); }
+    try {
+      if (await queuedResult()) {           // 인터넷이 끊겨 남겨 둔 결과부터 보냄 (만남 id 로 한 번만)
+        const f = await flushResult();
+        if (f?.ok) say(f.r?.caught ? '남겨 둔 잡기 결과를 보냈어요!' : '남겨 둔 결과를 보냈어요.', 3000);
+      }
+      queued = await queuedResult();
+      st = await rpc('safari_state', {});
+      hintsFromServer(st?.legends);          // 0038: 사육사 · 전설 자리 = 서버의 진짜 조건
+    } catch (e) { if (!e.offline) say(errorText(e.message)); }
     loading = false; paintInfo();
   };
+  window.addEventListener('online', () => { if (root.isConnected) refresh(); });
   const closed = () => !st ? null : st.pending ? null : st.balls_left <= 0 ? 'balls' : st.encounters_today >= st.max_encounters ? 'max' : null;
   function paintInfo() {
     ballsEl.textContent = st ? `${st.balls_left}/${st.balls_daily}` : '-';
+    ballsEl.nextElementSibling?.remove(); if (st?.next_reset_at) ballsEl.after(h('small.sf-reset', `다음 충전 ${new Date(st.next_reset_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' })}`));   // 0037 (branch-evo): 사파리볼 충전 시각
     encEl.textContent = !S.online ? '인터넷이 연결되면 포켓몬이 나와요' : st ? `오늘 만난 포켓몬 ${st.encounters_today}/${st.max_encounters}` : '불러오는 중…';
-    encEl.title = '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요';
+    encEl.title = '키 큰 풀숲과 동굴 바닥을 걸으면 야생 포켓몬이 나와요';
     pendBtn.hidden = !st?.pending;
+    pendBtn.textContent = queued && queued.p_id === st?.pending?.id ? '잡기 결과 보내기' : '기다리는 포켓몬 잡기';
     const why = closed();
-    cover.hidden = !why;
-    if (why) cover.replaceChildren(h('b', why === 'balls' ? '오늘 사파리볼을 다 썼어요' : '오늘은 포켓몬이 모두 숨었어요'),
-      h('span', '내일 다시 와 주세요!'));
+    cover.hidden = !why || seq;          // 볼을 다 쓴 장면 (seq) 중에는 글 상자가 보이게 가리지 않음
+    if (why) {   // 0037: 충전 주기(1~24시간)마다 다시 채워짐 → 다음 충전 시각을 알려 줌
+      const at = st?.next_reset_at ? new Date(st.next_reset_at) : null;
+      const hm = at ? at.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
+      const sameDay = at && at.toDateString() === new Date().toDateString();
+      cover.replaceChildren(h('b', why === 'balls' ? '사파리볼을 다 썼어요' : '포켓몬이 모두 숨었어요'),
+        h('span', !at ? '조금 뒤에 다시 와 주세요!' : sameDay ? `${hm}에 다시 채워져요!` : `내일 ${hm}에 다시 채워져요!`));
+    }
   }
 
-  // 풀숲 걸음 보내기 → 만남이면 잡기
+  // ── 글 상자 (3세대처럼 한 글자씩 · ▼ 이면 A / 화면 눌러 다음) ──
+  let talkQ = null;             // { lines, i, typing, timer, res }
+  function talk(lines) {
+    return new Promise((res) => {
+      clearPad(); say('');
+      if (talkQ) { clearInterval(talkQ.timer); talkQ.res(); }
+      talkQ = { lines: lines.filter(Boolean), i: -1, typing: false, timer: 0, res };
+      talkEl.hidden = false;
+      nextLine();
+    });
+  }
+  function nextLine() {
+    const q = talkQ; q.i++;
+    if (q.i >= q.lines.length) { talkEl.hidden = true; talkQ = null; clearPad(); q.res(); return; }
+    const text = q.lines[q.i];
+    talkMore.style.visibility = 'hidden';
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) { talkTx.textContent = text; talkMore.style.visibility = ''; return; }
+    let n = 0; q.typing = true; talkTx.textContent = '';
+    q.timer = setInterval(() => {
+      n = Math.min(text.length, n + 1); talkTx.textContent = text.slice(0, n);
+      if (n >= text.length) { clearInterval(q.timer); q.typing = false; talkMore.style.visibility = ''; }
+    }, 1000 / 45);
+  }
+  function advance() {
+    const q = talkQ; if (!q) return false;
+    if (q.typing) { clearInterval(q.timer); q.typing = false; talkTx.textContent = q.lines[q.i]; talkMore.style.visibility = ''; return true; }
+    sfx.blip(); nextLine(); return true;
+  }
+
+  // 풀숲 · 동굴 바닥 걸음 보내기 → 만남이면 잡기
   async function send() {
-    if (inflight || grassPend <= 0 || !S.online || !st || closed() || busy) return;
-    const n = Math.min(grassPend, 1000); grassPend -= n; inflight = true;
+    if (inflight || pend.n <= 0 || !S.online || !st || closed() || busy) return;
+    const n = Math.min(pend.n, 1000), zone = pend.zone; pend.n -= n; inflight = true;
     let r = null;
-    try { r = await rpc('safari_encounter', { p_steps: n }); } catch (e) { if (!e.offline) say(errorText(e.message)); }
+    try { r = await reportSteps(n, zone); } catch (e) { if (!e.offline) say(errorText(e.message)); }
     inflight = false;
     if (!r) return;
     st = { ...st, ...r };
     paintInfo();
-    if (r.encounter) encounter(r.encounter);
-
+    if (r.encounter && !busy && !talkQ) encounter(r.encounter);   // 글 상자 중이면 '기다리는 포켓몬 잡기' 버튼으로
   }
+  // 만남: 야생 곡을 먼저 틀고, 곡의 첫 타격에 '!' · 2박 뒤 화면 번쩍 (음악이 꺼져 있으면 예전처럼 효과음 + 정해진 시간)
   async function encounter(e) {
-    busy = true; held.clear(); keys.length = 0;
-    pad.querySelectorAll('.on').forEach((x) => x.classList.remove('on'));
-    sfx.scan();
-    bubbleT = performance.now(); flashT = bubbleT + 450;
-    await new Promise((res) => setTimeout(res, 1300));
+    busy = true; clearPad();
+    const music = bgmPush('wild');
+    const on = await bgmReady('wild', 1200);
+    const hit = on ? bgmBeat('wild') : null;
+    const now = performance.now();
+    if (hit == null) { sfx.scan(); bubbleT = now; flashT = now + 450; }
+    else { bubbleT = now + hit; flashT = now + (bgmBeat('wild', hit + 1) ?? hit + 325) + 325; }   // 타격 다음 박 + 1박 = 2박 뒤
+    await new Promise((res) => setTimeout(res, flashT - now + 850));
     flashT = -1; bubbleT = -1;
-    await startCatch(e);
+    await startCatch(e, music);
   }
-  async function startCatch(e) {
+  async function startCatch(e, music = null) {
     busy = true;
+    const had = Number(st?.balls_left) || 0;
     try {
       const r = await catchEncounter({ ...e, kind: 'safari', flee: st?.settings?.flee });
       if (r?.safari) st = r.safari;
     } finally {
-      busy = false;
+      music?.pop();
+      seq = true;                         // 새로 받은 상태로 덮개가 먼저 뜨지 않게
       await refresh();
-      if (!closed()) say('풀숲을 더 걸어 볼까요?', 2500);
+      if (had > 0 && st && st.balls_left <= 0 && !st.pending) await ballsOut();
+      seq = false; busy = false; paintInfo();
+      if (!closed()) say({ cave: '동굴 안을 더 걸어 볼까요?', ultra: '빛나는 발판을 더 걸어 볼까요?' }[M.kind] || '풀숲을 더 걸어 볼까요?', 2500);
     }
   }
+  // 사파리볼을 다 씀 → 3세대처럼 두 줄 → 화면이 까매지고 사파리존 입구로
+  async function ballsOut() {
+    busy = true; seq = true; paintInfo();
+    const name = String(S.snap?.profile?.name || '').trim() || '트레이너';
+    await talk([`${josa(name, '은', '는')} 사용할 수 있는 볼이 더 이상 없다!`, `${name}의 눈이 캄캄해졌다...`]);
+    await fadeTo(1, 700);
+    enterMap(START.map, START.x, START.y, START.dir, false);
+    await new Promise((r) => setTimeout(r, 450));
+    await fadeTo(0, 600);
+    seq = false; busy = false; paintInfo();
+  }
+
+  // ── 지도 이동 (화면이 어두워졌다 밝아짐) ──
+  let fade = { a: 0, from: 0, to: 0, t0: 0, ms: 0, res: null, col: '0,0,0' }, spinT = -1;
+  const fadeTo = (to, ms) => new Promise((res) => {
+    fade.res?.();
+    fade = { a: fade.a, from: fade.a, to, t0: performance.now(), ms, res, col: fade.col };
+    if (!raf) { fade.a = to; fade.res = null; res(); }          // 화면이 안 그려지는 중이면 바로
+  });
+  function enterMap(id, x, y, dir, banner = true) {
+    mapId = id; M = MAPS[id];
+    P.x = P.fx = x; P.y = P.fy = y; P.dir = dir; P.moving = false; P.from = null;
+    mapsOf(id);
+    savePos({ map: id, x, y, dir });
+    if (banner) { showPlace(M.name); setTimeout(sayHint, 700); }   // 바깥 → 동굴 → 울트라 스페이스처럼 땅이 바뀌면 그 땅의 안내
+  }
+  async function go([id, x, y, dir, fx]) {
+    busy = true; clearPad();
+    if (fx === 'warp') {          // 워프홀: 주인공이 빙글빙글 돌며 보랏빛 빛 속으로
+      sfx.scan(); spinT = performance.now(); fade.col = '232,216,255';
+      await fadeTo(1, 900);
+      enterMap(id, x, y, dir); spinT = -1;
+      await new Promise((r) => setTimeout(r, 250));
+      await fadeTo(0, 700);
+      fade.col = '0,0,0'; busy = false; return;
+    }
+    sfx.blip();
+    await fadeTo(1, 220);
+    enterMap(id, x, y, dir);
+    await fadeTo(0, 260);
+    busy = false;
+  }
+
+  // ── 말 걸기 · 조사하기 ──
+  // 사육사: "어떤 포켓몬에 대한 이야기를 듣고 싶니?" → 고르기 메뉴 (LEGEND_HINTS + ZONE_HINTS + 그만두기) → 설명 → 다시 메뉴
+  async function talkKeeper(n) {
+    n.dir = BACK[P.dir];
+    busy = true;
+    try {
+      await talk(['나는 사파리존 사육사란다. 이 사파리존 깊은 곳에는 전설의 포켓몬이 산다는 이야기가 있지.']);
+      let first = true;
+      for (;;) {
+        const items = [
+          ...LEGEND_HINTS.map((l) => {
+            const seen = seenLegend(l);
+            return { kind: 'legend', l, seen, name: seen ? l.name : '???', sub: seen ? '' : l.teaser, mark: l.caught ? '✔' : legendReady(l.dex) ? '!' : '',
+              icon: () => spriteCanvas(speciesIdOf(l.dex), 32, seen ? 'normal' : 'silhouette') };
+          }),
+          ...ZONE_HINTS.map((z) => ({ kind: 'zone', z, name: z.name, sub: '', mark: '', icon: wormIcon })),
+          { kind: 'quit', name: '그만두기', sub: '', mark: '' },
+        ];
+        const i = await choose(first ? '어떤 포켓몬에 대한 이야기를 듣고 싶니?' : '또 궁금한 게 있니?', items);
+        first = false;
+        const it = items[i];
+        if (!it || it.kind === 'quit') { await talk(['조심해서 다녀오렴! 동굴 바닥에서도 야생 포켓몬이 나온단다.']); break; }
+        if (it.kind === 'zone') { await talk([`${josa(it.z.name, "은", "는")} ${it.z.where}에 있다는구나.`, `${it.z.cond}.`, it.z.more]); continue; }
+        const l = it.l, nm = it.seen ? l.name : '그 포켓몬';
+        await talk([
+          it.seen ? `${l.name}…` : `${l.teaser}… 아직 아무도 제대로 본 적이 없다는 포켓몬이란다.`,
+          `${josa(nm, '은', '는')} ${l.where}에 있다는구나.`,
+          l.caught ? '✔ 이미 잡았구나! 정말 대단해.' : legendReady(l.dex) ? '✔ 조건을 모두 채웠어! 지금이라면 만날 수 있을 거야.' : `필요한 것: ${l.cond}`,
+        ]);
+      }
+    } finally { busy = false; }
+  }
+  // 도감에서 본 적이 있는지: 서버가 setLegendHints({ seen }) 로 알려 주면 그것, 아니면 내 도감 (S.snap.collection) 에 그 계열이 그 단계까지 있는지
+  function seenLegend(l) {
+    if (l.seen != null) return !!l.seen;
+    if (l.caught) return true;
+    const sp = S.catalog?.species?.find((x) => x.dex === l.dex);
+    return !!(sp && (S.snap?.collection || []).some((c) => c.line_id === sp.line_id && c.stage >= sp.stage));
+  }
+  function wormIcon() {
+    const c = document.createElement('canvas'); c.width = c.height = 32; c.className = 'sf-wi';
+    const t = TI.worm0; if (sheet && t) { const gg = c.getContext('2d'); gg.imageSmoothingEnabled = false; gg.drawImage(sheet, t[0], t[1], 32, 32, 0, 0, 32, 32); }
+    return c;
+  }
+  // ── 고르기 메뉴 (3세대 오른쪽 위 상자 · ▶ 커서 · 위아래 + A, 눌러서 고르기, B = 그만두기) ──
+  let menuQ = null;           // { items, i, res, rows }
+  function choose(prompt, items) {
+    return new Promise((res) => {
+      clearPad(); say('');
+      talkEl.hidden = false; talkTx.textContent = prompt; talkMore.style.visibility = 'hidden';
+      const rows = items.map((it, i) => {
+        const r = h('li.sf-mi', { role: 'option', onpointerdown: (e) => { e.preventDefault(); e.stopPropagation(); if (menuQ) { menuQ.i = i; paintMenu(); pickMenu(); } } },
+          h('span.sf-cur', '▶'), it.icon ? h('span.sf-ic', it.icon()) : h('span.sf-ic'),
+          h('span.sf-mt', h('b', it.name), it.sub ? h('small', it.sub) : null), it.mark ? h('span.sf-mk', it.mark) : null);
+        return r;
+      });
+      menuEl.replaceChildren(h('ul', { role: 'listbox', 'aria-label': prompt }, rows));
+      menuEl.hidden = false;
+      menuQ = { items, i: 0, res, rows };
+      paintMenu();
+    });
+  }
+  function paintMenu() {
+    const q = menuQ; if (!q) return;
+    q.rows.forEach((r, i) => { r.classList.toggle('on', i === q.i); r.setAttribute('aria-selected', String(i === q.i)); });
+    q.rows[q.i]?.scrollIntoView?.({ block: 'nearest' });
+  }
+  function menuMove(d) {
+    const q = menuQ; if (!q || (d !== 'up' && d !== 'down')) return;
+    q.i = (q.i + (d === 'down' ? 1 : -1) + q.items.length) % q.items.length; sfx.blip(); paintMenu();
+  }
+  function closeMenu(i) {
+    const q = menuQ; if (!q) return;
+    menuQ = null; menuEl.hidden = true; talkEl.hidden = true; q.res(i);
+  }
+  function pickMenu() { sfx.select(); closeMenu(menuQ.i); }
+  function pressB() {
+    if (menuQ) { sfx.blip(); closeMenu(-1); return; }
+    advance();
+  }
+  async function meetLegend(l) {
+    const t = hintOf(l.dex); if (!t) return;
+    busy = true;
+    try {
+      if (legendReady(l.dex)) {
+        sfx.scan(); bang = { x: l.x, y: l.y };
+        await new Promise((r) => setTimeout(r, 900));
+        bang = null;
+        await talk([`${josa(t.name, '이', '가')} 이쪽을 바라보고 있다!`]);
+        const r = await startLegendEncounter(l.dex, { talk, map: mapId, name: t.name });
+        if (r?.caught) t.caught = true;           // 잡으면 자리에서 사라짐. 놓치거나 도망치면 그대로 남음
+      } else {
+        await talk([`${t.name}…?`, '아직 무언가 부족한 것 같다…', `사육사의 힌트: ${t.cond}`]);
+      }
+    } finally { bang = null; busy = false; }
+  }
+  function interactAt(x, y) {
+    const o = objAt(x, y);
+    if (o?.type === 'npc') { talkKeeper(o.o); return true; }
+    if (o?.type === 'legend') { meetLegend(o.o); return true; }
+    const sg = M.signs?.[`${x},${y}`];
+    if (!sg) return false;
+    if (tileAt(x, y) === 'B') { busy = true; talk([sg]).then(() => { busy = false; }); return true; }
+    if (lastSign !== sg) { say(sg); lastSign = sg; sfx.blip(); }
+    return true;
+  }
+  function pressA() {
+    if (menuQ) { pickMenu(); return; }
+    if (advance()) return;
+    if (busy || P.moving || !active()) return;
+    const [dx, dy] = DIRS[P.dir];
+    lastSign = '';
+    interactAt(P.x + dx, P.y + dy);
+  }
+  // 지도에서 사람·전설 포켓몬을 누름 → 그쪽을 보고 말 걸기 (가까이 있을 때만)
+  stage.addEventListener('pointerdown', (e) => {
+    if (menuQ) return;                        // 메뉴는 줄을 눌러 고름 (그 밖을 눌러도 아무 일 없음)
+    if (talkQ) { e.preventDefault(); advance(); return; }
+    if (busy || P.moving || !active() || e.target !== cv) return;
+    const r = cv.getBoundingClientRect(); if (!r.width) return;
+    const tx = Math.floor(((e.clientX - r.left) * VW / r.width + camX) / TS), ty = Math.floor(((e.clientY - r.top) * VH / r.height + camY) / TS);
+    let o = null;     // 사람은 머리가 윗칸, 전설 포켓몬은 큰 그림이 위로 3칸까지 → 그 위쪽을 눌러도 됨
+    for (let k = 0; k <= 3 && !o; k++) { const c = objAt(tx, ty + k); if (c && (k <= 1 || c.type === 'legend')) o = c; }
+    if (!o) return;
+    const ox = o.o.x - P.x, oy = o.o.y - P.y;
+    if (Math.abs(ox) + Math.abs(oy) > 3) { say('조금 더 가까이 가서 말을 걸어 보세요.', 1800); return; }
+    P.dir = Math.abs(ox) > Math.abs(oy) ? (ox > 0 ? 'right' : 'left') : (oy > 0 ? 'down' : 'up');
+    interactAt(o.o.x, o.o.y);
+  });
 
   // ── 걷기 ──
-  function kick(d) { if (!P.moving && !busy) tryMove(d, performance.now()); }
+  // 새로 누름: 메뉴면 커서 · 다른 방향이면 제자리에서 돌기만 (3세대처럼) · 같은 방향이면 걷기
+  function kick(d) {
+    if (menuQ) { menuMove(d); return; }
+    if (P.moving || busy || talkQ) return;
+    if (P.dir !== d && !closed()) { P.dir = d; P.turnT = performance.now(); return; }
+    tryMove(d, performance.now());
+  }
   function tryMove(d, now) {
-    if (busy) return;
+    if (busy || talkQ) return;
     if (closed()) { P.dir = d; return; }
     P.dir = d;
-    const [dx, dy] = DIRS[d]; const nx = P.x + dx, ny = P.y + dy; const t = tileAt(nx, ny);
-    if (SOLID.has(t)) {
-      const sg = t === 'S' ? SIGNS[`${nx},${ny}`] : null;
-      if (sg && lastSign !== sg) { say(sg); lastSign = sg; sfx.blip(); }
+    const [dx, dy] = DIRS[d]; const nx = P.x + dx, ny = P.y + dy;
+    if (solidAt(nx, ny)) {
+      const t = tileAt(nx, ny);
+      if (t === 'S' || t === 'B' || objAt(nx, ny)) interactAt(nx, ny);    // 표지판 · 점자 · 사람 · 전설 = 부딪치면 조사
       return;
     }
     lastSign = '';
     P.from = { x: P.x, y: P.y }; P.x = nx; P.y = ny; P.moving = true; P.t0 = now; P.stepN++;
+    if (M.kind === 'out' && tileAt(nx, ny) === ',') rustle = { x: nx, y: ny, t0: now };   // 풀숲에 들어서면 잎이 흔들림
   }
   function arrive() {
     P.moving = false; P.fx = P.x; P.fy = P.y;
-    if (tileAt(P.x, P.y) === ',' && st && !closed()) { grassPend++; if (grassPend >= SEND_EVERY) send(); }
+    savePos({ map: mapId, x: P.x, y: P.y, dir: P.dir });
+    const w = M.warps[`${P.x},${P.y}`];
+    if (w) { go(w); return; }
+    const z = zoneAt(P.x, P.y);
+    if (z && st && !closed()) {
+      if (pend.zone !== z && pend.n > 0) send();          // 다른 구역 걸음은 섞지 않고 먼저 보냄
+      if (!inflight || pend.n === 0) pend.zone = z;
+      pend.n++; if (pend.n >= SEND_EVERY) send();
+    }
   }
 
   // ── 그리기 ──
-  let VW = 160, VH = 128, raf = 0;
+  let VW = 160, VH = 128, raf = 0, camX = 0, camY = 0, fitW = 0, fitDpr = 0;
   const fit = () => {
     if (!root.isConnected) return;
-    const w = Math.min(560, stage.clientWidth || root.clientWidth || 320);
+    let w = Math.min(560, stage.clientWidth || root.clientWidth || 320);
+    // 세로 스크롤바가 생겼다 없어졌다 하며 폭이 몇 px 씩 오가면 (PC 작은 창) 캔버스가 계속 다시 만들어져 깜빡임 → 20px 안쪽 변화는 무시
+    if (fitW && Math.abs(w - fitW) <= 20 && fitDpr === (window.devicePixelRatio || 1)) w = fitW; else { fitW = w; fitDpr = window.devicePixelRatio || 1; }
     const dpr = window.devicePixelRatio || 1; const dev = Math.floor(w * dpr);
     const kd = Math.max(1, Math.round(dev / 176));       // 화면에 나무 11칸쯤
-    VW = Math.min(MW * TS, Math.floor(dev / kd));
+    VW = Math.floor(dev / kd);
     // 높이: 방향 버튼·아래 메뉴까지 한 화면에 들어가게 (너무 작으면 7칸, 많아야 폭의 0.85)
     const nav = document.querySelector('nav.tabs')?.offsetHeight || 0;
     const top = stage.getBoundingClientRect().top + window.scrollY;
     const avail = window.innerHeight - top - (ctl.offsetHeight || 160) - nav - 24;
-    VH = Math.max(7 * TS, Math.min(Math.round(VW * 0.85), MH * TS, Math.floor((avail * dpr) / kd)));
+    VH = Math.max(7 * TS, Math.min(Math.round(VW * 0.85), Math.floor((avail * dpr) / kd)));
     if (cv.width !== VW || cv.height !== VH) { cv.width = VW; cv.height = VH; }
     cv.style.width = `${(VW * kd) / dpr}px`; cv.style.height = `${(VH * kd) / dpr}px`;
     g.imageSmoothingEnabled = false;
@@ -331,61 +666,121 @@ function build() {
   function frame(now) {
     if (!root.isConnected) { raf = 0; return; }
     raf = requestAnimationFrame(frame);
+    if (fade.res) {
+      const k = fade.ms ? Math.min(1, Math.max(0, (now - fade.t0) / fade.ms)) : 1;
+      fade.a = fade.from + (fade.to - fade.from) * k;
+      if (k >= 1) { fade.a = fade.to; const r = fade.res; fade.res = null; r(); }
+    }
     if (document.hidden) return;
     // 움직임
     if (P.moving) {
       const k = Math.min(1, (now - P.t0) / STEP_MS);
       P.fx = P.from.x + (P.x - P.from.x) * k; P.fy = P.from.y + (P.y - P.from.y) * k;
       if (k >= 1) { arrive(); const d = active() && wantDir(); if (d) tryMove(d, now); }
-    } else if (!busy && active()) { const d = wantDir(); if (d) tryMove(d, now); }
+    } else if (!busy && !talkQ && !menuQ && active()) {
+      const d = wantDir();
+      if (d && d !== P.dir && !closed()) { P.dir = d; P.turnT = now; }            // 누르고 있는 방향으로 돌고
+      else if (d && now - (P.turnT || 0) >= TURN_MS) tryMove(d, now);             // 잠깐 뒤 걷기 시작
+    }
     draw(now);
   }
+  const shadow = (cx, by, w) => { g.fillStyle = { cave: 'rgba(30,16,8,.3)', ultra: 'rgba(8,0,24,.4)', shrine: 'rgba(90,70,30,.3)' }[M.kind] || 'rgba(20,60,40,.25)'; g.fillRect(cx - w / 2, by - 2, w, 2); g.fillRect(cx - w / 2 + 1, by - 1, w - 2, 1); };
+  const drawBang = (bx, by) => {
+    g.fillStyle = '#283040'; g.fillRect(bx - 1, by - 1, 8, 11);
+    g.fillStyle = '#ffffff'; g.fillRect(bx, by, 6, 9);
+    g.fillStyle = '#e83838'; g.fillRect(bx + 2, by + 1, 2, 5); g.fillRect(bx + 2, by + 7, 2, 1);
+  };
   function draw(now) {
     const af = Math.floor(now / 520) % 2;
+    const mw = MW() * TS, mh = MH() * TS;
     const px = Math.round(P.fx * TS + TS / 2), py = Math.round(P.fy * TS + TS / 2);
-    const camX = Math.max(0, Math.min(MW * TS - VW, px - Math.floor(VW / 2)));
-    const camY = Math.max(0, Math.min(MH * TS - VH, py - Math.floor(VH / 2)));
-    const x0 = Math.floor(camX / TS), y0 = Math.floor(camY / TS);
-    for (let ty = y0; ty <= y0 + Math.ceil(VH / TS) + 1; ty++) {
-      for (let tx = x0; tx <= x0 + Math.ceil(VW / TS) + 1; tx++) {
-        if (tx >= MW || ty >= MH) continue;
-        const c = MAP[ty][tx]; const sx = tx * TS - camX, sy = ty * TS - camY;
-        if (c === 'T') { drawTree(g, sx, sy, hash(tx, ty)); continue; }
-        const fr = tiles.at[c] || tiles.at['.'];
-        const [ox, oy] = fr[(af + ((tx + ty) & 1)) % 2];
-        g.drawImage(tiles.cv, ox, oy, TS, TS, sx, sy, TS, TS);
-      }
+    camX = mw <= VW ? -Math.floor((VW - mw) / 2) : Math.max(0, Math.min(mw - VW, px - Math.floor(VW / 2)));
+    camY = mh <= VH ? -Math.floor((VH - mh) / 2) : Math.max(0, Math.min(mh - VH, py - Math.floor(VH / 2)));
+    const maps = mapsOf(mapId);
+    if (!maps || !hero) { g.fillStyle = { cave: '#2c2018', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
+    const map = maps[af];
+    if (mw < VW || mh < VH) { g.fillStyle = { cave: '#140c08', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#1c5420'; g.fillRect(0, 0, VW, VH); }
+    const sx = Math.max(0, camX), sy = Math.max(0, camY);
+    const cw = Math.min(mw - sx, VW - (sx - camX)), ch = Math.min(mh - sy, VH - (sy - camY));
+    g.drawImage(map, sx, sy, cw, ch, sx - camX, sy - camY, cw, ch);
+    // 풀숲 칸 그리기 (흔들리는 중이면 흔들린 잎, 아니면 미리 그린 맵) — sy0 줄부터 아래만
+    const RUSTLE_MS = 270;
+    const grass = (gx, gy, sy0) => {
+      const X = gx * TS - camX, Y = gy * TS - camY;
+      if (rustle && rustle.x === gx && rustle.y === gy && now - rustle.t0 < RUSTLE_MS) {
+        const t = TI[`tallR${Math.floor((now - rustle.t0) / (RUSTLE_MS / 2)) % 2}`], gr = TI.ground;
+        g.drawImage(sheet, gr[0], gr[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
+        g.drawImage(sheet, t[0], t[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
+      } else g.drawImage(map, gx * TS, gy * TS + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
+    };
+    if (rustle && now - rustle.t0 < RUSTLE_MS) grass(rustle.x, rustle.y, 0);
+    // 그릴 것 (아래쪽에 있는 것이 앞): 주인공 · 사람 · 전설 포켓몬
+    const list = [];
+    list.push([P.fy, () => {
+      const hx = Math.round(P.fx * TS) - camX, hy = Math.round(P.fy * TS) - camY + TS - HH;
+      const k = P.moving ? (now - P.t0) / STEP_MS : 0;
+      const fi = P.moving && k > 0.15 && k < 0.85 ? (P.stepN % 2 ? 1 : 2) : 0;
+      shadow(hx + 8, hy + HH, 10);
+      const dir = spinT > 0 ? ['down', 'left', 'up', 'right'][Math.floor((now - spinT) / 90) % 4] : P.dir;
+      g.drawImage(hero, fi * HW, DIR_ROW[dir] * HH, HW, HH, hx, hy, HW, HH);
+      // 풀숲 안이면 다리를 풀잎이 가림 (미리 그린 맵의 그 칸 아랫부분을 다시 덮음)
+      const gx = Math.round(P.fx), gy = Math.round(P.fy);
+      if (M.kind === 'out' && tileAt(gx, gy) === ',') grass(gx, gy, 9);      // 3세대처럼 허리 아래 (다리 · 재킷 아랫단 7px) 를 앞쪽 풀잎이 가림
+      if (bubbleT > 0 && now >= bubbleT) drawBang(hx + 5, hy - 8);
+    }]);
+    const wt = Math.floor(now / 110) % 4;      // 울트라 워프홀: 32×32 소용돌이 4장
+    for (const [qx, qy] of wormsOf(M)) {
+      const t = TI[`worm${wt}`]; if (!t) break;
+      list.push([qy - 0.5, () => g.drawImage(sheet, t[0], t[1], 32, 32, qx * TS + 8 - 16 - camX, qy * TS + 8 - 16 - camY, 32, 32)]);
     }
-    // 주인공 (그림자 + 걷기 그림)
-    const hx = Math.round(P.fx * TS) - camX + 2, hy = Math.round(P.fy * TS) - camY - 3;
-    const k = P.moving ? (now - P.t0) / STEP_MS : 0;
-    const fi = P.moving && k > 0.2 && k < 0.8 ? (P.stepN % 2 ? 1 : 2) : 0;
-    g.fillStyle = 'rgba(20,40,20,.28)'; g.fillRect(hx + 2, hy + 16, 8, 2);
-    g.drawImage(hero, fi * 12, DIR_ROW[P.dir] * 16, 12, 16, hx, hy, 12, 16);
-    // 풀숲 안이면 다리를 풀잎이 가림
-    const under = tileAt(Math.round(P.fx), Math.round(P.fy));
-    if (under === ',') {
-      const [ox, oy] = tiles.at[','][af];
-      const gx = Math.round(P.fx) * TS - camX, gy = Math.round(P.fy) * TS - camY;
-      g.drawImage(tiles.cv, ox, oy + 9, TS, 7, gx, gy + 9, TS, 7);
+    for (const n of M.npcs || []) {
+      if (!keeper) continue;
+      list.push([n.y, () => {
+        const nx = n.x * TS - camX, ny = n.y * TS - camY + TS - HH;
+        shadow(nx + 8, ny + HH, 10);
+        g.drawImage(keeper, 0, DIR_ROW[n.dir] * HH, HW, HH, nx, ny, HW, HH);
+      }]);
     }
-    // 만남: 머리 위 '!' → 화면 번쩍
-    if (bubbleT > 0) {
-      const bx = hx + 3, by = hy - 11;
-      g.fillStyle = '#283040'; g.fillRect(bx - 1, by - 1, 8, 11);
-      g.fillStyle = '#ffffff'; g.fillRect(bx, by, 6, 9);
-      g.fillStyle = '#e83838'; g.fillRect(bx + 2, by + 1, 2, 5); g.fillRect(bx + 2, by + 7, 2, 1);
+    for (const l of M.legends || []) {
+      if (hintOf(l.dex)?.caught) continue;
+      const art = legendArt(l.dex);       // 지도 도트 크기 그림 (32 · 40 · 48px). 그림판을 받는 중이면 null → 다음 프레임에
+      if (!art) continue;
+      const T = art.width;
+      list.push([l.y, () => {
+        const bob = Math.round(Math.sin(now / 420 + l.x) * 1.4);       // 위아래로 둥실 (정수 px)
+        const lx = l.x * TS + TS / 2 - T / 2 - camX, ly = (l.y + 1) * TS - T - camY - 2 + bob;
+        shadow(l.x * TS + 8 - camX, (l.y + 1) * TS - camY - 1, Math.round(T * 0.5));
+        g.drawImage(art, lx, ly);
+        if (bang && bang.x === l.x && bang.y === l.y) drawBang(l.x * TS + 5 - camX, ly - 10);
+      }]);
     }
+    list.sort((a, b) => a[0] - b[0]).forEach((e) => e[1]());
+    // 만남: 화면 번쩍
     if (flashT > 0 && now > flashT) {
       const ph = Math.floor((now - flashT) / 110);
       if (ph < 6 && ph % 2 === 0) { g.fillStyle = 'rgba(255,255,255,.85)'; g.fillRect(0, 0, VW, VH); }
       else if (ph >= 6) { g.fillStyle = '#182030'; g.fillRect(0, 0, VW, VH); }
     }
+    if (fade.a > 0) { g.fillStyle = `rgba(${fade.col},${fade.a.toFixed(3)})`; g.fillRect(0, 0, VW, VH); }
   }
+  // 새로 고침 · 앱을 다시 열면 걷던 지도 · 자리에서 이어서 (그 칸을 걸을 수 있을 때만)
+  loadPos().then((pp) => {
+    const m = pp && MAPS[pp.map];
+    if (!m || P.moving || busy || P.stepN || mapId !== START.map || P.x !== START.x || P.y !== START.y) return;   // 이미 다른 곳으로 옮겼으면 그대로
+    const c = m.rows[pp.y]?.[pp.x];
+    if (c == null || SOLID[m.kind].has(c) || m.warps[`${pp.x},${pp.y}`]) return;
+    enterMap(pp.map, pp.x, pp.y, DIRS[pp.dir] ? pp.dir : 'down', pp.map !== START.map);
+  }).catch(() => {});
   const start = () => { requestAnimationFrame(() => { fit(); if (!raf && root.isConnected) raf = requestAnimationFrame(frame); }); };
   // 시험용
-  window.__safari = { P, state: () => st, tile: tileAt, map: MAP, move: (d) => kick(d), busy: () => busy, view: () => ({ VW, VH }) };
+  window.__safari = {
+    P, maps: () => mapsOf(mapId), state: () => st, tile: tileAt, map: () => M.rows, busy: () => busy, view: () => ({ VW, VH }),
+    move: (d) => { if (!P.moving && !busy && !talkQ && !menuQ) { P.dir = d; tryMove(d, performance.now()); } },   // 시험: 돌면서 바로 걷기
+    tap: (d) => kick(d), b: () => pressB(), menu: () => (menuQ ? { i: menuQ.i, n: menuQ.items.length } : null),
+    mapId: () => mapId, goto: (id, x, y, dir = 'down') => enterMap(id, x, y, dir), a: () => pressA(), talking: () => !!talkQ,
+    zone: () => zoneAt(P.x, P.y), pend: () => ({ ...pend }), ballsOut: () => ballsOut(), setState: (s) => { st = { ...st, ...s }; paintInfo(); }, fade: () => fade.a,
+  };
   return { root, start, refresh };
 }
 
-export const safariMapForTest = { MAP, MW, MH, SOLID };
+export const safariMapForTest = { MAPS, SOLID, ENC };

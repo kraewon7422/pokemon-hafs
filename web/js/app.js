@@ -5,16 +5,17 @@ import { sb, rpc, errorText, reportError, selectAll } from './sb.js';
 import { kv, persist } from './db.js';
 import { parsePlace, isBag, makeNonce, bagPayload, drawQR } from './qrfmt.js';
 import { Scanner } from './scanner.js';
-import { spriteCanvas, paint, monSprite } from './sprites.js';
-import { sfx, unlockAudio, isMuted, setMuted } from './sfx.js';
+import { spriteCanvas, paint, monSprite, aliasSprites } from './sprites.js';
+import { sfx, unlockAudio, isSfxOn, setSfxOn, isBgmOn, setBgmOn, bgmScene } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
-import { S, app, bag, collection, dexOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
+import { S, app, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
 import { fmtTime, openDetail, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
 import { loadBag, openBagScreen } from './bag.js';
 import { minigameButton } from './games/hub.js';
+import { playNotices, giftButton, noticeTabs, clearNoticeTab, dittoReveal } from './legends.js';
 import { loadAchievements, openAchievements, startSteps } from './eggs.js';
 import { clearGoogleIntents, linkIntent, maskName, maybeOnboard, renderConsent, renderInApp, renderLogin, renderRegister, showOnboarding, withEye } from './login.js';
 
@@ -44,6 +45,7 @@ export async function boot() {
   // iPhone: touchend/click 에서만 소리를 켤 수 있음 · 앱으로 돌아오면 다시 깨움
   for (const ev of ['touchend', 'click', 'keydown']) document.addEventListener(ev, unlockAudio, { passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) unlockAudio(); });
+  bgmScene('main');   // 배경 음악: 첫 터치 뒤에 시작 (배틀·잡기 장면은 배틀 곡으로 잠깐 바꿈)
   window.addEventListener('online', () => { S.online = true; renderStatus(); sync(); });
   window.addEventListener('offline', () => { S.online = false; renderStatus(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
@@ -84,8 +86,8 @@ export async function boot() {
   }
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
-  if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})))) S.catalog = null;   // 0032·0034 전 목록은 버리고 새로 받음
-  if (S.catalog?.lines) sortDex(S.catalog);
+  if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog))) S.catalog = null;   // 0032·0034·0037·0039 전 목록은 버리고 새로 받음
+  if (S.catalog?.lines) { sortDex(S.catalog); aliasSprites(S.catalog.species); }
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
 
@@ -164,22 +166,27 @@ export function renderRetry(msg) {
 }
 
 export async function loadCatalog() {
-  const [lines, species, qrs, moves, speciesMoves, typeChart, items] = await Promise.all([
+  const [lines, species, qrs, moves, speciesMoves, typeChart, items, evolutions, abilities] = await Promise.all([
     selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic', (q) => q.order('id')),
-    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item', (q) => q.order('id')),
+    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item,abilities,hidden_ability', (q) => q.order('id')),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
     selectAll('species_moves', 'species_id,slot,move_id', (q) => q.order('species_id').order('slot')),
     sb.from('type_chart').select('atk,def,mult'),
     sb.from('items').select('key,name,pocket,description,effect,move_id,sort').order('sort'),
+    selectAll('evolutions', 'from_species,to_species,how,lv,sort', (q) => q.order('from_species').order('sort')),   // 0037 갈래 진화
+    selectAll('abilities', 'key,name,description', (q) => q.order('key')),   // 0039 특성
   ]);
   if (lines.error || species.error || qrs.error) {
     if (S.catalog) return;
     throw Object.assign(new Error('OFFLINE'), { offline: true });
   }
   S.catalog = { lines: lines.data, species: species.data, qrs: qrs.data, at: new Date().toISOString(),
-                moves: moves.data || [], speciesMoves: speciesMoves.data || [], typeChart: typeChart.data || [], items: items.data || [] };
+                moves: moves.data || [], speciesMoves: speciesMoves.data || [], typeChart: typeChart.data || [], items: items.data || [],
+                evolutions: evolutions.error ? null : evolutions.data || [],   // null = 예전 서버 (계열의 다음 단계로 진화)
+                abilities: abilities.error ? [] : abilities.data || [] };
   sortDex(S.catalog);
+  aliasSprites(S.catalog.species);
   await kv.set('catalog', S.catalog);
 }
 
@@ -228,7 +235,7 @@ export function sync(opts = {}) {
       loadBag().catch(() => {});                   // 장소 QR·퀴즈·배틀에서 주운 물건 알림 (0020)
 
       // new redemptions → celebrate
-      const fresh = S.snap.tickets.filter((t) => t.status === 'redeemed' && t.species_id && !S.celebrated.has(t.nonce));
+      const fresh = S.snap.tickets.filter((t) => t.status === 'redeemed' && t.species_id && !S.celebrated.has(t.nonce) && t.qr_id !== 'GIFT');   // 0038: 소포는 잡기 장면 없이 알림 연출로
       if (S.celebrated.has('__init__')) {
         fresh.forEach((t) => S.celebrated.add(t.nonce));
         S.celebrated.delete('__init__');
@@ -243,6 +250,7 @@ export function sync(opts = {}) {
     } finally {
       S.syncing = null;
       if ($('nav.tabs')) { renderStatus(); if (!S.overlay) renderTab(); }
+      if ($('nav.tabs') && S.snap?.notices?.length) setTimeout(() => playNotices().catch(() => {}), 400);   // 0038: 특별한 보상 알림 (전체 화면 연출, 안 본 것만)
     }
   })();
   return S.syncing;
@@ -275,6 +283,7 @@ export function renderShell() {
     h('header.topbar', h('h1', { onclick: logoTap }, CONFIG.GAME_TITLE),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         h('div.status#status', { role: 'status' }),
+        h('span#gift-slot', giftButton()),
         h('button.gear', { 'aria-label': '설정', onclick: openSettings, html: ICON.gear }))),
     h('main#main', { tabindex: -1 }),
     h('nav.tabs', { 'aria-label': '메뉴' }, TABS.map(([id, label]) => id === 'scan'
@@ -311,6 +320,7 @@ export function logoTap() {
 export function go(tab, { push = true } = {}) {
   if (push && tab !== S.tab) history.pushState({ tab }, '');
   S.tab = tab;
+  clearNoticeTab(tab);
   document.querySelectorAll('nav.tabs button[data-tab]').forEach((b) => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
   renderTab();
   window.scrollTo(0, 0);
@@ -336,6 +346,14 @@ export function renderStatus() {
   homeBtn?.querySelector('.badge')?.remove();
   const n = (S.snap?.quizzes?.length || 0) + bag().length;
   if (homeBtn && n) homeBtn.append(h('span.badge', n));
+  // 0038: 새 알림이 있던 탭에 ★ (그 탭을 열면 사라짐) · 소포 단추의 ★
+  const stars = noticeTabs();
+  document.querySelectorAll('nav.tabs button[data-tab]').forEach((b) => {
+    b.querySelector('.badge.star')?.remove();
+    if (stars.has(b.dataset.tab) && b.dataset.tab !== S.tab && !b.querySelector('.badge')) b.append(h('span.badge.star', { 'aria-label': '새 소식' }, '★'));
+  });
+  const gs = $('#gift-slot');
+  if (gs) gs.replaceChildren(giftButton());
 }
 
 export function renderTab() {
@@ -355,12 +373,12 @@ export function nextAction() {
   const quizzes = S.snap.quizzes || [];
   const items = bag();
   const p = S.snap.profile;
-  if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 가끔 진화의돌`, 'gold', () => openQuiz()];
+  if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 가끔 진화의 돌`, 'gold', () => openQuiz()];
   if (items.length) return [pix('ticket', 'l'), `티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
   const ev = evolvable();
   if (p.evo_tickets > 0 && ev.length) {
-    return [pix('spark', 'l'), `진화의돌 ${p.evo_tickets}개 - 포켓몬을 진화시켜요`, 'gold',
-      () => openDetail(speciesOf(dexOf(ev[0].line_id, ev[0].stage)))];
+    return [pix('spark', 'l'), `진화의 돌 ${p.evo_tickets}개 - 포켓몬을 진화시켜요`, 'gold',
+      () => openDetail(monSp(ev[0]))];
   }
   return [pix('camera', 'l'), 'QR을 찾아서 찍어 보세요', 'go', openScanner];
 }
@@ -394,6 +412,7 @@ export function viewHome() {
     installBanner(),
     !S.updateReady && Number(R.min_client_version) > CONFIG.VERSION && h('div.box.warn-box', '⬆ 새 버전이 있어요! 앱(브라우저 탭)을 완전히 닫았다가 다시 열어 주세요.'),
     R.notice && h('div.box.notice-box', pix('mega'), String(R.notice)),
+    boxFull() && h('div.box.warn-box', pix('bag'), `박스가 꽉 찼어요 (${mons().length}/${boxMax()}마리). 가방 → 포켓몬에서 놓아주면 새 포켓몬을 받을 수 있어요.`),
     R.festival_ended && h('div.box.ended-box',
       h('div.big', pix('spark', 'l'), '축제 끝! 수고했어요'),
       h('div', p.in_ranking === false ? '선생님·손님 계정은 랭킹에서 제외돼요.' : `최종 순위 ${p.rank ? '#' + p.rank : '-'} · 점수 ${p.score} · 도감 ${D.found}/${total}`),
@@ -428,11 +447,11 @@ export function viewHome() {
       h('div', h('div.name', p.name || '트레이너'), h('div', { style: { fontSize: '13px' } }, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너'),
         titles.length ? h('div.titles', titles.map((t) => h('span.title-chip', t))) : null,
         S.ach?.some((a) => a.claimed) && h('div.titles', h('span.title-chip.ach-chip', { onclick: (e) => { e.stopPropagation(); openAchievements(); } }, pix('gold'), ` 도전과제 ${S.ach.filter((a) => a.claimed).length}/${S.ach.length}`))),
-      h('div.partner', { onclick: () => eggTap('card') }, partner ? monSprite(dexOf(partner.line_id, partner.stage), 88, partner) : spriteCanvas(1, 88, 'silhouette'),
+      h('div.partner', { onclick: () => eggTap('card') }, partner ? monSprite(spIdOf(partner), 88, partner) : spriteCanvas(1, 88, 'silhouette'),
         partner && h('button.partner-edit', { 'aria-label': '카드 포켓몬 바꾸기', onclick: (e) => { e.stopPropagation(); pickPartner(); } }, pix('pencil'))),
       h('div.stats',
         h('span', '도감', h('b', `${D.found}/${total}`)), h('span', '점수', h('b', p.score)),
-        h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화의돌', h('b', p.evo_tickets))),
+        h('span', '순위', h('b', p.in_ranking === false ? '제외' : p.rank ? `#${p.rank}` : '-')), h('span', '진화의 돌', h('b', p.evo_tickets))),
       h('div.badges', { title: '최종 진화시킨 쌤 포켓몬' }, S.catalog.lines.filter((l) => !l.secret && !l.bonus && l.subject !== '야생').map((l) => {
         const done = (owned(l.id)?.stage || 0) >= (l.max_stage ?? 3);
         return h(`i${done ? '.on.t-' + l.subject : ''}`, { title: done ? `${l.subject} 완성` : '?' });
@@ -442,7 +461,7 @@ export function viewHome() {
       h('div.banner', h('b', `티켓 주머니 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
         h('span', { style: { fontSize: '13px' } }, items.length ? '부스에서 포켓몬으로 바꿔요' : 'QR을 찍으면 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => (t.special
-        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성', egg: '숨은 선물' }[t.special.special] || ''}`))
+        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성', egg: '숨은 선물', quest: '전설 퀘스트', gift: '이상한 소포', legend: '전설', roam: '방랑 전설' }[t.special.special] || ''}`))
         : h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name)))) : null,
       h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '티켓 QR 보여주기'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
@@ -471,7 +490,7 @@ export function installBanner() {
   return box;
 }
 
-// ───────── 진화의돌 룰렛: every N minutes, the server picks 0/1/3/5 tickets ─────────
+// ───────── 진화의 돌 룰렛: every N minutes, the server picks 0/1/3/5 tickets ─────────
 export const rouletteWait = (r) => Math.max(0, (r.next_at ? new Date(r.next_at) - Date.now() : 0));
 export const fmtWait = (ms) => { const s = Math.ceil(ms / 1000); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
 
@@ -490,8 +509,8 @@ export function rouletteBox() {
   tick();
   clearInterval(S.rouletteTimer);
   S.rouletteTimer = setInterval(() => (btn.isConnected ? tick() : clearInterval(S.rouletteTimer)), 1000);
-  return h('section.box.roulette', { 'aria-label': '진화의돌 룰렛' },
-    h('div.banner', h('b', '진화의돌 룰렛'), h('span', { style: { fontSize: '13px' } }, `오늘 ${Math.max(0, left)}/${r.daily_max}번 남음`)),
+  return h('section.box.roulette', { 'aria-label': '진화의 돌 룰렛' },
+    h('div.banner', h('b', '진화의 돌 룰렛'), h('span', { style: { fontSize: '13px' } }, `오늘 ${Math.max(0, left)}/${r.daily_max}번 남음`)),
     h('div.reel-row', (r.odds || []).map(([n]) => h('span.reel-cell', n ? `${n}개` : '꽝'))),
     btn,
     h('small', `${r.every_min}분마다 한 번! 꽝이 나와도 다음 기회가 있어요.`));
@@ -536,7 +555,7 @@ export async function spinRoulette() {
     await typeText(text, '7 7 7 !!! 럭키 세븐!\n아주 드문 행운이에요. 칭호 「럭키 세븐」을 얻었다!');
   } else {
     if (res.prize > 0) { sfx.correct(); vibrate([40, 30, 80]); } else sfx.fail();
-    await typeText(text, res.prize > 0 ? `진화의돌 ${res.prize}개를 받았다! (지금 ${res.evo_tickets}개)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
+    await typeText(text, res.prize > 0 ? `진화의 돌 ${res.prize}개를 받았다! (지금 ${res.evo_tickets}개)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
   }
   S.overlay.dataset.locked = '0';
   text.append(h('button.btn.big.primary', { style: { marginTop: '10px' }, onclick: () => closeOverlay() }, '확인'));
@@ -544,7 +563,15 @@ export async function spinRoulette() {
   renderTab();
 }
 
-export const soundLabel = () => (isMuted() ? [pix('mute'), '소리 꺼짐 (누르면 켜기)'] : [pix('sound'), '소리 켜짐 (누르면 끄기)']);
+// 소리 설정: 효과음 · 배경 음악 따로 켜고 끄기 (이 폰에 기억)
+function soundRow(icon, label, get, set) {
+  const row = h('div.sound-row');
+  const draw = () => row.replaceChildren(h('span.sound-lbl', pix(get() ? icon : 'mute'), h('b', label)),
+    h('div.seg', { role: 'group', 'aria-label': label }, [[true, '켜기'], [false, '끄기']].map(([v, t]) =>
+      h('button', { 'aria-pressed': String(get() === v), onclick: () => { if (get() === v) return; set(v); unlockAudio(); if (v) sfx.blip(); draw(); } }, t))));
+  draw();
+  return row;
+}
 
 // ⚙ settings (top-right). Name visibility comes first so students can find it immediately.
 export function openSettings() {
@@ -570,9 +597,10 @@ export function openSettings() {
         ? h('small', pix('spark'), ` 복구용 구글: ${p.google_email || '연결됨'}`)
         : [h('small', '복구용 구글을 연결해 두면 비밀번호를 잊어도 그 구글로 들어와서 다시 정할 수 있어요.'),
           h('button.btn', { onclick: startGoogleLink }, pix('school'), '복구용 구글 연결하기')]),
+    h('section.box.setting-sound', { 'aria-label': '소리' },
+      soundRow('sound', '효과음', isSfxOn, setSfxOn),
+      soundRow('music', '배경 음악', isBgmOn, setBgmOn)),
     h('section.box', { style: { display: 'grid', gap: '8px' } },
-      h('button.btn', { onclick: (e) => { setMuted(!isMuted()); e.currentTarget.replaceChildren(...soundLabel()); } },
-        ...soundLabel()),
       h('button.btn', { onclick: () => showOnboarding(true) }, pix('book'), '게임 방법 다시 보기'),
       h('button.btn', { onclick: inquirySheet }, pix('memo'), '운영진에게 문의하기'),
       ['number', 'id'].includes(p.login) && h('button.btn', { onclick: () => passwordSheet() }, pix('ticket'), '비밀번호 바꾸기'),
@@ -652,23 +680,24 @@ export function startGoogleLink() {
 // 트레이너 카드에 띄울 포켓몬 고르기 (0024 set_partner — 서버에 저장되어 다른 폰에서도 같음)
 function pickPartner() {
   sfx.select();
-  const cur = partnerMon()?.line_id;
-  const choose = async (line) => {
+  const cur = S.snap.profile.partner;
+  const choose = async (id) => {
     try {
-      const prof = await rpc('set_partner', { p_line: line });
+      const prof = await rpc('set_partner', { p_mon: id });
       S.snap.profile = { ...S.snap.profile, ...prof };
       await kv.set('snap', S.snap);
       sfx.blip(); closeOverlay(); renderTab();
     } catch (e) { toast(errorText(e.message)); }
   };
-  const mons = [...collection()].sort((a, b) => b.stage - a.stage || a.line_id - b.line_id);
+  // 0036: 박스의 포켓몬 한 마리씩 (같은 종이 여러 마리면 레벨로 구별)
+  const list = [...mons()].sort((a, b) => b.stage - a.stage || a.line_id - b.line_id || b.level - a.level || a.id - b.id);
   sheet(h('div.stack',
     h('div.grab'),
     h('b', '트레이너 카드에 띄울 포켓몬'),
-    h('div.partner-grid', mons.map((c) => {
-      const sp = speciesOf(dexOf(c.line_id, c.stage));
-      return h(`button.partner-pick${c.line_id === cur ? '.on' : ''}`, { 'aria-pressed': String(c.line_id === cur), onclick: () => choose(c.line_id) },
-        spriteCanvas(sp.id, 56), h('small', sp.name));
+    h('div.partner-grid', list.map((c) => {
+      const sp = monSp(c);
+      return h(`button.partner-pick${c.id === cur ? '.on' : ''}`, { 'aria-pressed': String(c.id === cur), onclick: () => choose(c.id) },
+        monSprite(sp.id, 56, c), h('small', sp.name), h('small', `Lv.${c.level}`));
     })),
     h('button.btn', { onclick: () => choose(null) }, S.snap.profile.partner ? '자동으로 (가장 많이 진화한 포켓몬)' : '지금은 자동 — 위에서 골라 주세요')));
 }
@@ -941,7 +970,7 @@ export function handlePendingScan() {
 }
 
 // 이스터에그 (0024): 숨은 곳을 7번 연달아 누르면 환상 포켓몬 특별 티켓 (계정당 한 번씩, 서버 claim_egg 가 판정)
-//   card = 트레이너 카드 포켓몬 사진 / chart = 타입 상성표 지리×지리 칸 / map = 학교 지도 오른쪽 위 숲 모서리
+//   card = 트레이너 카드 포켓몬 사진 / chart = 타입 상성표 에스퍼×에스퍼 칸 / map = 학교 지도 오른쪽 위 숲 모서리
 const eggTaps = {};
 export async function eggTap(key) {
   const now = Date.now();
@@ -1095,12 +1124,15 @@ export async function celebrate(tickets, prevLines) {
   const done = async (t) => { S.celebrated.add(t.nonce); await kv.set('celebrated', [...S.celebrated]); };
   for (let i = 0; i < list.length; i++) {
     const t = list[i]; const sp = speciesOf(t.species_id);
+    // 0038: QR 에서 나온 야생 포켓몬이 사실 메타몽 → 잡기 장면에는 변신한 모습
+    const disg = speciesOf(S.snap?.disguised?.[t.nonce]);
+    const seen = disg || sp;
     // 0028/0030: 먼저 몬스터볼로 잡기 (공 3개 다 빗나가면 아주 가끔 도망). 장면을 못 띄우면 바로 축하로
     let c = null;
     try {
       cfg ||= S.online ? await catchConfig() : { flee: 0 };
       const { catchScene } = await import('./catch.js');
-      c = await catchScene({ dex: sp.id, name: sp.name, rarity: rarityFor(sp), ball: 'red', balls: 3,
+      c = await catchScene({ dex: seen.id, name: seen.name, rarity: rarityFor(seen), ball: 'red', balls: 3,
         fleeChance: S.online && cfg.ok ? Number(cfg.flee) || 0 : 0, remaining: list.length - 1 - i });
     } catch { /* 잡기 장면 없이 */ }
     if (c?.fled) {
@@ -1125,6 +1157,7 @@ export async function celebrate(tickets, prevLines) {
     const isNew = !prevLines.has(sp.line_id);
     prevLines.add(sp.line_id);
     const bonus = c ? await reportCatch(t, c, false) : null;
+    if (disg) await dittoReveal(disg.id, sp.id);
     const ov = await showCatch(sp, { isNew, sub: t.qr_name, bonus });
     await done(t);
     await tapToContinue(ov);
@@ -1138,42 +1171,74 @@ export async function celebrate(tickets, prevLines) {
 }
 
 // ───────── 레이드 보스 잡기 (0030 raid_mode 'catch'): HAFS 볼 N개, 다 빗나가면 도망 · 걸어서 만난 야생 포켓몬 (0032): 몬스터볼 N개 ─────────
+export const isBusy = () => !!(celebrating || encBusy || S.overlay || S.bagOpen);
 export const encounters = () => (S.snap?.encounters || []).filter((e) => !S.encDone?.has(e.id));
 let encBusy = false;
-// 사파리존 (0033): kind 'safari' = 사파리볼 enc.balls 개 (그날 남은 볼), 놓칠 때마다 enc.flee 확률로 도망, '도망가기' 버튼.
+// 사파리존 (0033): kind 'safari' = 사파리볼 enc.balls 개 (그날 남은 볼), '도망가기' 버튼.
+//   0037: 공을 놓칠 때마다 safari_turn → 서버가 도망을 정함 (3세대처럼 25%에서 차례마다 +5%, 전설은 더). 도망치면 그 결과를 그대로 씀.
 //   결과는 safari_result (던진 볼 수를 서버가 셈). 돌려줌 = 서버 결과 (r.safari = 바뀐 사파리 상태) 또는 undefined
 export async function catchEncounter(enc) {
   if (!enc || encBusy || celebrating) return;
-  const wild = enc.kind === 'wild'; const safari = enc.kind === 'safari';
-  if (!S.online) return say(`${josa(safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스', '을', '를')} 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
+  const roam = enc.kind === 'roam'; const legend = enc.kind === 'legend';   // 0038: 방랑 전설 (QR) · 사파리존 전설 (GO 방식)
+  const wild = enc.kind === 'wild' || roam; const safari = enc.kind === 'safari';
+  if (!S.online) return say(`${josa(legend || roam ? '전설의 포켓몬' : safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스', '을', '를')} 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
   const sp = speciesOf(enc.species_id);
   if (!sp) return;
+  // 0036: 박스가 꽉 차면 잡을 수 없음 (만남은 그대로 남음 → 놓아준 뒤 다시)
+  if (boxFull()) return say(`박스가 꽉 찼어요 (${boxMax()}마리). 가방 → 포켓몬에서 몇 마리를 놓아준 뒤에 잡아요.`, true);
   encBusy = true; celebrating = true;
   try {
     if (S.overlay) closeOverlay();
     const cfg = await catchConfig();
     const prev = new Set(collection().map((c) => c.line_id));
     let c = null;
+    // 사파리: 앞서 던진 볼 (앱을 닫았다 열었거나 새로 고침) · 보내지 못한 결과 (인터넷 끊김) 를 이어서 (safari-sync.js)
+    const ss = safari ? await import('./safari-sync.js') : null;
+    const prior = ss ? await ss.priorThrows(enc.id) : 0;
+    const lent = Number(enc.balls) || 1;
+    const queued = ss ? await ss.queuedResult() : null;
+    if (ss && (queued?.p_id === enc.id || prior >= lent)) {
+      // 결과를 이미 적어 둔 만남 / 볼을 다 던진 뒤 닫은 만남 → 다시 던지지 않고 결과만 보냄
+      c = queued?.p_id === enc.id ? { throws: queued.p_throws - prior, fled: !queued.p_caught, grade: queued.p_grade, curve: queued.p_curve, resend: true }
+        : { throws: 0, fled: true, grade: 'none', curve: false, resend: true, ran: true };
+    }
+    let turnRes = null;   // 사파리: safari_turn 에서 도망친 결과
+    const onMiss = safari ? async () => { const t = await rpc('safari_turn', { p_id: enc.id }, { retries: 1 }); if (t?.fled) turnRes = t; return !!t?.fled; } : null;
     try {
       const { catchScene } = await import('./catch.js');
+      if (c) { /* 이어서 보내기만 */ } else
       c = safari
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Number(enc.balls) || 1,
-          fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true })
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior),
+          fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true,
+          onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss })
+        : legend
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true,
+          intro: `전설의 포켓몬 ${josa(sp.name, '이', '가')} 나타났다!
+공 {n}개로 잡아 보자!` })
         : wild
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true })
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true,
+          intro: roam ? `방랑 전설 ${josa(sp.name, '이', '가')} 나타났다!
+공 {n}개로 잡아 보자!` : null })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
           balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false });
     } catch { /* */ }
     // 장면을 못 띄웠으면 (레이드엔 바로 잡기 버튼이 없으니 skipped = 실패) 결과를 보내지 않음 → 기회는 그대로 남음
     if (!c || c.skipped) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
     let r;
-    try {
-      r = safari
-        ? await rpc('safari_result', { p_id: enc.id, p_throws: c.throws || 0, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 })
-        : await rpc('encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
+    if (turnRes) {
+      r = turnRes;   // 0037: 서버가 이미 도망을 정함 (만남 끝남) → 결과를 따로 보내지 않음
+    } else if (safari) {
+      // 먼저 기기에 적고 보냄: 끊기면 남겨 두었다가 다시 연결되면 보냄 · 같은 만남은 한 번만 (서버도 끝난 만남은 NOT_FOUND)
+      const f = await ss.sendResult({ p_id: enc.id, p_throws: prior + (c.throws || 0), p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve });
+      if (f?.queued) { toast('인터넷이 끊겨서 결과를 기기에 적어 두었어요. 연결되면 바로 보낼게요.', { kind: 'error' }); return { queued: true }; }
+      if (f?.kept) { toast(errorText(f.error.message), { kind: 'error' }); return; }
+      if (f?.gone) { toast(errorText(f.error.message)); (S.encDone ||= new Set()).add(enc.id); return; }
+      r = f?.r;
+    } else try {
+      r = await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
     } catch (e) {
       if (e.offline) toast('결과를 보내지 못했어요. 인터넷이 연결되면 홈에서 다시 도전할 수 있어요.', { kind: 'error' });
-      else { toast(errorText(e.message)); (S.encDone ||= new Set()).add(enc.id); }
+      else { toast(errorText(e.message)); if (e.message !== 'BOX_FULL') (S.encDone ||= new Set()).add(enc.id); }
       return;
     }
     (S.encDone ||= new Set()).add(enc.id);
@@ -1181,9 +1246,11 @@ export async function catchEncounter(enc) {
     if (r?.nonce) { S.celebrated.add(r.nonce); await kv.set('celebrated', [...S.celebrated]); }
     const sp2 = speciesOf(r?.species_id) || sp;
     const fled = r ? !!r.fled || r.caught === false : !!c.fled;
-    const sub = safari ? '사파리존' : wild ? '야생 포켓몬' : enc.raid_title || '레이드 보스';
+    const sub = legend ? '전설의 포켓몬' : roam ? '방랑 전설' : safari ? '사파리존' : wild ? '야생 포켓몬' : enc.raid_title || '레이드 보스';
     if (fled && c.ran) return r;      // 사파리존에서 스스로 도망 → 알림 없이 맵으로
-    const ov = fled ? await showFled(sp2, sub, safari ? '풀숲을 걷다 보면 또 만날 수 있어요!' : wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
+    if (!fled && r?.ditto && r.disguised_as) await dittoReveal(r.disguised_as, r.species_id);   // 0038: 메타몽이었다!
+    const ov = fled ? await showFled(sp2, sub, legend ? '아직 그 자리에 있어요. 다시 말을 걸면 또 도전할 수 있어요!' : roam ? '방랑 전설은 다음 시간에 또 다른 곳으로 옮겨 간대요.'
+      : safari ? '풀숲을 걷다 보면 또 만날 수 있어요!' : wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
       : await showCatch(sp2, { isNew: r?.new ?? !prev.has(sp2.line_id), sub, bonus: r?.exp > 0 ? { ...r, grade: c.grade } : null });
     await tapToContinue(ov); closeOverlay();
     return r;
@@ -1230,7 +1297,7 @@ export function openQuiz() {
     await kv.set('snap', S.snap);
     if (r.correct) { sfx.correct(); vibrate(60); } else sfx.wrong();
     result.replaceChildren(h('div.box', r.correct
-      ? (r.granted ? '정답! 진화의돌을 1개 얻었다! (돌로 진화하는 포켓몬이나, 진화 레벨 전에 쓸 수 있어요)' : '정답! (이번엔 진화의돌이 없었어요)')
+      ? (r.granted ? '정답! 진화의 돌을 1개 얻었다! (돌로 진화하는 포켓몬이나, 진화 레벨 전에 쓸 수 있어요)' : '정답! (이번엔 진화의 돌이 없었어요)')
       : `아쉬워요! ${josa(sp?.name || '포켓몬', '이', '가')} 고개를 젓는다…`));
     decide.textContent = S.snap.quizzes.length ? '다음 퀴즈' : '닫기';
     decide.disabled = false;

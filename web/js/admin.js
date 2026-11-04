@@ -6,7 +6,7 @@ import { sb, rpc, errorText, selectAll } from './sb.js';
 import { h, $, toast, timeAgo, josa } from './ui.js';
 import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
-import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady } from './sprites.js';
+import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady, aliasSprites } from './sprites.js';
 
 const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '외국어', '정보', '한국사', '음악', '체육', '전설'];
 const RARITY = { common: '일반', rare: '희귀', legendary: '전설' };
@@ -15,7 +15,7 @@ const TSTATUS = { pending: ['대기', 'warn'], redeemed: ['사용', 'ok'], expir
 const SETTING_HELP = {
   festival_open: '게임 동작 ON/OFF (비상 스위치)',
   email_domains: '학교 구글 계정의 도메인 (예: ["hafs.hs.kr"]). 로그인은 아무 구글 계정이나 되지만, 이 도메인 계정이면 메일 속 고유번호를 알아봐서 학생이 직접 비밀번호를 초기화할 수 있어요. 축제 뒤 개인정보 삭제 때도 써요',
-  battle_daily_max: '배틀: 하루에 보상(진화의돌)을 받는 승리 수 (기본 3)', battle_turn_sec: '실시간 대전: 한 턴 제한 시간(초). 지나면 AI가 대신 골라요 (기본 30)',
+  battle_daily_max: '배틀: 하루에 보상(진화의 돌)을 받는 승리 수 (기본 3)', battle_turn_sec: '실시간 대전: 한 턴 제한 시간(초). 지나면 AI가 대신 골라요 (기본 30)',
   battle_invite_sec: '실시간 대전 신청: 이 시간(초) 안에 수락해야 시작 (기본 60)',
   email_regex: '학교 구글 메일에서 고유번호를 찾는 규칙 (email_domains 와 함께 씀)',
   admin_emails: '운영자 이메일 목록 (그 구글 계정으로 첫 로그인할 때 운영자가 됨)',
@@ -29,8 +29,8 @@ const SETTING_HELP = {
   bag_max: '가방에 들어가는 티켓 최대 수',
   ticket_ttl_hours: '안 쓴 티켓이 만료되는 시간(시간)',
   token_grace_minutes: '토큰 교체 후 옛 토큰이 유효한 시간(분)',
-  quiz_ticket_daily_cap: '하루에 퀴즈로 받을 수 있는 진화의돌 최대 수 (기본 30)',
-  roulette_enabled: '진화의돌 룰렛 ON/OFF (true/false)',
+  quiz_ticket_daily_cap: '하루에 퀴즈로 받을 수 있는 진화의 돌 최대 수 (기본 30)',
+  roulette_enabled: '진화의 돌 룰렛 ON/OFF (true/false)',
   code_self_signup: '구글 없이 고유번호 + 비밀번호로 새 계정을 만들 수 있게 할지 ON/OFF',
   reset_requests_per_10min: '비밀번호 초기화 요청을 10분 동안 전체에서 최대 몇 개 받을지 (장난 방지, 기본 30)',
   raid_slots: '시간대 전설 레이드 시간표 ([레이드] 탭에서 표로 고쳐요)',
@@ -44,7 +44,7 @@ const SETTING_HELP = {
   dev_login: '개발용 테스트 로그인(아무 이메일, 비밀번호 1234abcd!) — 실전 서버에서는 반드시 false',
   roulette_every_min: '룰렛을 한 번 돌린 뒤 다음까지 기다리는 시간(분, 기본 5)',
   roulette_daily_max: '한 사람이 하루에 돌릴 수 있는 룰렛 횟수 (기본 12)',
-  roulette_odds: '룰렛 칸 [진화의돌 수, 가중치] 목록. 기본 [[0,72],[1,24],[3,4]] = 꽝 72% · 1개 24% · 3개 4%',
+  roulette_odds: '룰렛 칸 [진화의 돌 수, 가중치] 목록. 기본 [[0,72],[1,24],[3,4]] = 꽝 72% · 1개 24% · 3개 4%',
   rotating_window_sec: '대형 화면 QR이 바뀌는 간격(초)',
   rotating_accept_sec: '대형 화면 QR을 찍은 뒤 인정되는 시간(초). 짧을수록 사진 공유가 어려워요',
   self_redeem: '셀프 지급 모드 ([축제 운영] 탭의 스위치)',
@@ -63,13 +63,14 @@ const SETTING_HELP = {
   drop_battle: '물건: 친구·실시간 배틀 승리 때 확률 (기본 0.5)', drop_practice: '물건: 연습 배틀 승리 때 확률 (기본 0.15)',
   drop_raid_tm: '물건: 레이드 승리 때 특별 기술머신 확률 (기본 0.3, 이상한사탕은 항상)',
   battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20)',
-  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","types":["불꽃","격투"]}, …] — 그 시간에 시작한 배틀은 그 타입 기술이 강해져요',
-  battle_field_mult: '배틀 시간표: 강해지는 배율 (기본 1.3)',
+  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","env":"grassy"}, …] — 그 시간에 시작한 배틀의 날씨·필드 (sun·rain·sand·hail·electric·grassy·misty·psychic)',
+  battle_field_mult: '필드 (일렉트릭·그래스·사이코필드): 그 타입 기술 위력 배율 (기본 1.3)',
+  ability_hidden_chance: '특성: 잡을 때 숨겨진 특성이 나올 확률 (기본 0.05 = 5%)',
   practice_exp_daily: '연습 배틀: 경험치·물건을 받는 판 수 (하루, 기본 10). 넘으면 연습은 할 수 있지만 경험치는 없어요',
 };
 const TABS = [
   ['dash', '현황'], ['ops', '축제 운영'], ['place', '장소·QR'], ['mon', '포켓몬·퀴즈'], ['raid', '레이드'], ['people', '학생·계정'],
-  ['mg', '미니게임'], ['grow', '성장·보상'], ['staff', '운영진'], ['adv', '고급 설정'],
+  ['mg', '미니게임'], ['grow', '성장·보상'], ['legend', '전설·소포'], ['staff', '운영진'], ['adv', '고급 설정'],
 ];
 // 예전 탭 주소(#qr, #set …) → 새 탭 [탭, 작은 탭]. 북마크·옛 링크가 계속 열리게.
 const TAB_ALIAS = {
@@ -91,18 +92,21 @@ const GUIDES = {
     'QR이 유출(사진 공유)됐으면 [토큰 교체]로 새 QR을 만들고 다시 인쇄해서 붙여요.',
     '[QR 인쇄]에서 A4에 2장씩 인쇄하거나 PNG로 저장해요.'],
   mon: ['선생님 포켓몬(계열)의 이름·설명·진화 단계를 고쳐요.',
-    '계열마다 퀴즈를 넣어요. 퀴즈를 맞히면 진화의돌을 받아요.',
+    '계열마다 퀴즈를 넣어요. 퀴즈를 맞히면 진화의 돌을 받아요.',
     '선생님이 동의를 철회하면 [선생님 동의 철회]를 켜서 숨겨요.'],
   raid: ['레이드 = 모두가 함께 보스를 탭해서 쓰러뜨리는 이벤트예요.',
     '[레이드 열기]로 아무 포켓몬이나 지금 바로 열 수 있어요 (TV 화면 또는 인쇄 QR).',
     '[시간대 전설]은 정해 둔 시간에 TV 화면이 저절로 여는 레이드예요. TV 화면이 켜져 있어야 해요.',
     '이긴 학생이 받는 보상(특별 티켓 또는 앱에서 잡기)도 여기서 정해요.'],
-  people: ['학생을 찾아서 진화의돌·포켓몬·물건·알·반·역할을 고쳐요.',
+  people: ['학생을 찾아서 진화의 돌·포켓몬·물건·알·반·역할을 고쳐요.',
     '비밀번호를 잊은 학생의 초기화 요청을 허용하거나, 학생 문의에 답해요.',
     '급할 때는 임시 비밀번호 쪽지를 인쇄해서 줄 수도 있어요.',
     '최종 랭킹(상품용 실명) CSV도 [학생 찾기·고치기]에 있어요.'],
   mg: ['미니게임이 열리는 포켓몬 수를 정하고, 문제가 생긴 게임만 잠깐 꺼요.',
     '이상한(부정) 기록을 지우거나, 연습 기간이 끝나면 랭킹을 초기화해요.'],
+  legend: ['이상한 소포 (선물 코드) 를 만들고, 받은 수를 보고, 끄거나 지워요. 환상의 포켓몬 (지라치 · 테오키스 …) 은 소포로만 받을 수 있어요.',
+    '전설 퀘스트의 숫자 (예: 퀴즈 10번 연속 정답) 와 사파리존 전설 · 방랑 전설 · 메타몽 변신 확률을 정해요.',
+    '방랑 전설 (라이코 · 앤테이 · 스이쿤) 이 지금 어느 장소 QR에 있는지도 여기서 볼 수 있어요 (학생에게는 소문만 보여요).'],
   grow: ['알 부화 걸음 수, 반짝이 확률, 잡기 경험치, 레벨이 오르는 방법, 물건이 나올 확률 등을 정해요.',
     '숫자 칸 옆에 단위와 설명이 있어요. 묶음마다 [저장]을 눌러야 반영돼요.',
     '잘못된 숫자(범위 밖)는 저장 전에 빨갛게 표시돼요.'],
@@ -292,6 +296,7 @@ async function loadCatalog() {
   S.lines = lines; S.species = species;
   S.lineById = new Map(lines.map((l) => [l.id, l]));
   S.spById = new Map(species.map((s) => [s.id, s]));
+  aliasSprites(species);   // 0037 갈래 종 (10000+) 그림
   const set = Object.fromEntries(sets.map((r) => [r.key, r.value]));
   if (set.token_grace_minutes != null) S.grace = Number(set.token_grace_minutes) || 30;
   if (set.qr_daily_cap != null) S.dailyCap = Number(set.qr_daily_cap) || S.dailyCap;
@@ -433,7 +438,7 @@ function setBanner(open, selfRedeem) {
 
 const RENDER = {
   dash: tabDash, ops: tabOps, place: tabSub, mon: tabMon, raid: tabRaid, people: tabSub,
-  mg: tabMg, grow: tabGrow, staff: tabStaff, adv: tabAdv,
+  mg: tabMg, grow: tabGrow, legend: tabLegend, staff: tabStaff, adv: tabAdv,
 };
 const SUB_RENDER = { qr: tabQr, print: tabPrint, stu: tabStu, code: tabCodes, req: tabReq };
 
@@ -513,7 +518,7 @@ function legendCard() {
 async function refreshStats(redraw = true) {
   try {
     S.stats = await rpc('admin_stats');
-    S.game = await rpc('admin_game_stats').catch(() => S.game);   // 오늘 배틀·레이드·진화의돌 (0019)
+    S.game = await rpc('admin_game_stats').catch(() => S.game);   // 오늘 배틀·레이드·진화의 돌 (0019)
     S.statsFailed = false;
   } catch (e) {
     if (!S.statsFailed) fail(e);               // toast once per failure streak
@@ -632,10 +637,10 @@ function dashBody() {
         `연습 ${g.battles.cpu} · 친구팀 ${g.battles.team} · 실시간 ${g.battles.pvp} · 2대2 ${g.battles.double}`),
       tile('배틀한 학생', g.battles.players),
       tile('지금 실시간 대전', g.pvp_live),
-      tile('배틀 승리 보상', g.battle_wins, '진화의돌 1개씩'),
+      tile('배틀 승리 보상', g.battle_wins, '진화의 돌 1개씩'),
       tile('레이드', g.raids.active, `진행 중 · 오늘 승리 ${g.raids.won} · 실패 ${g.raids.failed}`, g.raids.active ? 'good' : ''),
       tile('레이드 참가', g.raids.players, '오늘 참가한 학생'),
-      tile('나간 진화의돌', (g.tickets.quiz || 0) + (g.tickets.roulette || 0) + (g.tickets.battle || 0),
+      tile('나간 진화의 돌', (g.tickets.quiz || 0) + (g.tickets.roulette || 0) + (g.tickets.battle || 0),
         `퀴즈 ${g.tickets.quiz} · 룰렛 ${g.tickets.roulette} · 배틀 ${g.tickets.battle}`),
       tile('오늘 진화', g.evolve.success, `${g.evolve.tries}번 시도`)));
 
@@ -1309,7 +1314,7 @@ async function quizSection(l) {
     h('div.row', h('h2', `퀴즈 (${quizzes.length}개)`), h('span', { style: { flex: 1 } }),
       h('button.btn.small.go', { onclick: () => editQuiz(l, null, null) }, '+ 퀴즈 추가')),
     h('p.notice.red', '쌤 외모·사생활 금지! 과목/학교 관련 문제만 내 주세요. 학생은 같은 문제를 두 번 받지 않아요.'),
-    quizzes.length ? null : h('p.muted', '아직 퀴즈가 없어요. 퀴즈가 없으면 이 포켓몬을 잡아도 진화의돌 기회가 없어요.'),
+    quizzes.length ? null : h('p.muted', '아직 퀴즈가 없어요. 퀴즈가 없으면 이 포켓몬을 잡아도 진화의 돌 기회가 없어요.'),
     quizzes.map((z, i) => {
       const a = ans.get(z.id);
       return h('div.quiz-item',
@@ -1405,7 +1410,7 @@ async function tabStu() {
       results.replaceChildren(h('div.box',
         h('div.row', h('h2', { style: { flex: 1 } }, `검색 결과 (${rows.length}${rows.length === 50 ? '+' : ''}명)`), rows.length ? delBtn : null),
         rows.length ? h('div.tbl-wrap.scroll-y', h('table.tbl',
-          h('thead', h('tr', h('th.chk', all), h('th', '학번'), h('th', '이름'), h('th', '역할'), h('th.num', '점수'), h('th.num', '진화의돌'), h('th', '접속'))),
+          h('thead', h('tr', h('th.chk', all), h('th', '학번'), h('th', '이름'), h('th', '역할'), h('th.num', '점수'), h('th.num', '진화의 돌'), h('th', '접속'))),
           h('tbody', rows.map((p) => {
             const chk = p.role === 'student'
               ? h('input', { type: 'checkbox', 'data-sid': p.student_id, checked: S.stuChecked.has(p.student_id), 'aria-label': `${p.student_id} 체크`,
@@ -1448,8 +1453,8 @@ async function deleteStudents(ids, after) {
   if (!n) { toast(allMode ? '지울 학생 기록이 없어요.' : '먼저 지울 학생을 체크하세요.'); return; }
   const step1 = await confirmBox(allMode ? '학생 기록 전체 삭제 (1/2)' : `체크한 학생 기록 삭제 (1/2)`, [
     h('p.warn-txt', allMode
-      ? `학생 계정 ${n}명의 기록을 전부 지워요. 도감·티켓·진화의돌·점수·배틀 기록이 모두 사라지고 되돌릴 수 없어요.`
-      : `${n}명의 기록을 지워요. 도감·티켓·진화의돌·점수·배틀 기록이 모두 사라지고 되돌릴 수 없어요.`),
+      ? `학생 계정 ${n}명의 기록을 전부 지워요. 도감·티켓·진화의 돌·점수·배틀 기록이 모두 사라지고 되돌릴 수 없어요.`
+      : `${n}명의 기록을 지워요. 도감·티켓·진화의 돌·점수·배틀 기록이 모두 사라지고 되돌릴 수 없어요.`),
     allMode ? '축제 전에 테스트로 만든 데이터를 정리할 때만 쓰세요. 축제 중에는 절대 누르지 마세요!' : h('p.small-txt.mono', ids.slice(0, 30).join(', ') + (ids.length > 30 ? ` 외 ${ids.length - 30}명` : '')),
     '고유번호로 만든 계정은 로그인도 같이 지워져서, 같은 번호로 처음부터 다시 가입할 수 있어요.',
   ], { ok: '다음', danger: true });
@@ -1472,7 +1477,7 @@ async function studentDetail(sid, reload) {
   if (!p) return [h('div.box', h('p.muted', '이 학생을 찾지 못했어요 (연결 해제됐을 수 있어요).'))];
   const [tickets, coll, events] = await Promise.all([
     tq(sb.from('tickets').select('id,nonce,qr_id,status,created_at,redeemed_at,result_species').eq('user_id', p.user_id).order('created_at', { ascending: false }).limit(100)),
-    tq(sb.from('collection').select('line_id,stage,catch_count,evo_fails,first_caught_at').eq('user_id', p.user_id).order('line_id')),
+    tq(sb.from('collection').select('id,line_id,stage,species_id,catch_count,evo_fails,first_caught_at,level,released_at').eq('user_id', p.user_id).order('line_id')),
     tq(sb.from('events').select('at,kind,data').eq('user_id', p.user_id).order('at', { ascending: false }).limit(30)),
   ]);
 
@@ -1480,11 +1485,11 @@ async function studentDetail(sid, reload) {
     try { await rpc(fn, args); toast(okMsg); await reload(); } catch (e) { fail(e); }
   };
 
-  const delta = h('input.inp.w-num', { type: 'number', min: 1, step: 1, value: 1, 'aria-label': '진화의돌 개수' });
+  const delta = h('input.inp.w-num', { type: 'number', min: 1, step: 1, value: 1, 'aria-label': '진화의 돌 개수' });
   const adj = (sign) => () => {
     const n = Math.floor(Number(delta.value));
     if (!(n >= 1)) { toast('1 이상의 숫자를 넣으세요.'); return; }
-    act('admin_adjust_tickets', { p_student_id: sid, p_delta: sign * n }, `진화의돌 ${sign > 0 ? '+' : '-'}${n}`);
+    act('admin_adjust_tickets', { p_student_id: sid, p_delta: sign * n }, `진화의 돌 ${sign > 0 ? '+' : '-'}${n}`);
   };
   const roleSel = h('select.inp', { style: { width: 'auto' } }, Object.entries(ROLE).map(([k, v]) => h('option', { value: k, selected: p.role === k }, v)));
   const setRole = async () => {
@@ -1503,7 +1508,7 @@ async function studentDetail(sid, reload) {
   };
   const unlink = async () => {
     const ok = await confirmBox('기록까지 삭제', [
-      h('p.warn-txt', `${sid} 계정을 지워요. 이 학번의 도감·티켓·진화의돌·점수가 모두 사라지고 되돌릴 수 없어요.`),
+      h('p.warn-txt', `${sid} 계정을 지워요. 이 학번의 도감·티켓·진화의 돌·점수가 모두 사라지고 되돌릴 수 없어요.`),
       '폰을 잃어버린 경우에는 이걸 쓰지 말고, 새 폰에서 고유번호 + 비밀번호로 로그인하게 하세요.',
       '다른 사람이 이 학번을 잘못 가져갔을 때만 쓰세요. 삭제 후 진짜 학생이 다시 로그인하면 처음부터 시작해요.',
     ], { ok: '기록까지 삭제', danger: true, typeToConfirm: sid });
@@ -1523,12 +1528,12 @@ async function studentDetail(sid, reload) {
       h('dt', '기수'), h('dd', p.gen ? `${p.gen}기` : '–'),
       h('dt', '역할'), h('dd', ROLE[p.role] || p.role),
       h('dt', '점수'), h('dd', `${p.score}점 · 도감 ${p.dex_count}`),
-      h('dt', '진화의돌'), h('dd', h('b', p.evo_tickets)),
+      h('dt', '진화의 돌'), h('dd', h('b', p.evo_tickets)),
       h('dt', '랭킹 포함'), h('dd', p.in_ranking === false ? chip('랭킹 제외', 'off') : chip('랭킹 포함', 'ok')),
       h('dt', '랭킹 공개'), h('dd', p.show_on_board ? '공개' : '익명'),
       h('dt', '마지막 접속'), h('dd', p.last_seen ? `${fmtTime(p.last_seen)} (${timeAgo(p.last_seen)})` : '–'),
       h('dt', '가입'), h('dd', fmtTime(p.created_at))),
-    h('div.row', h('b', '진화의돌'), delta, h('button.btn.small', { onclick: adj(-1) }, '빼기 −'), h('button.btn.small.go', { onclick: adj(1) }, '더하기 +')),
+    h('div.row', h('b', '진화의 돌'), delta, h('button.btn.small', { onclick: adj(-1) }, '빼기 −'), h('button.btn.small.go', { onclick: adj(1) }, '더하기 +')),
     h('div.row', h('b', '역할'), roleSel, h('button.btn.small', { onclick: setRole }, '변경')),
     h('div.row', h('b', '랭킹'), h('button.btn.small', { onclick: toggleRanking }, p.in_ranking === false ? '랭킹에 넣기' : '랭킹에서 빼기'),
       h('span.small-txt.muted', '선생님·손님(g:) 계정은 처음부터 빠져 있어요.')));
@@ -1542,7 +1547,7 @@ async function studentDetail(sid, reload) {
     if (!/^[^\s@]+@[^\s@]+$/.test(em)) { toast('이메일을 정확히 넣어 주세요.'); email.classList.add('bad'); return; }
     email.classList.remove('bad');
     const ok = await confirmBox('다른 로그인으로 옮기기', [
-      `${sid}의 도감·티켓·진화의돌·점수를 모두 ${em} 로그인으로 옮겨요.`,
+      `${sid}의 도감·티켓·진화의 돌·점수를 모두 ${em} 로그인으로 옮겨요.`,
       '옮긴 뒤에는 예전 로그인(잃어버린 폰 등)으로는 이 기록을 볼 수 없어요.',
       '학생은 새 로그인으로 앱을 다시 열면 기록이 그대로 보여요.',
     ], { ok: '옮기기' });
@@ -1582,7 +1587,7 @@ async function studentDetail(sid, reload) {
     const dex = (line - 1) * 3 + stage;
     const ok = await confirmBox('포켓몬 직접 지급', [
       `${sid}에게 ${S.spById.get(dex)?.name || `#${dex}`} (${lineName(line)}, ${stage}단계)을(를) 줄까요?`,
-      '이미 가진 계열이면 잡은 횟수가 +1 되고, 단계는 더 높은 쪽으로 맞춰져요. 기록에 남아요.',
+      '같은 포켓몬을 이미 가지고 있어도 박스에 새로 한 마리가 더 생겨요 (박스가 꽉 차면 안 돼요). 기록에 남아요.',
     ], { ok: '지급' });
     if (!ok) return;
     busy(grantBtn, async () => {
@@ -1615,12 +1620,22 @@ async function studentDetail(sid, reload) {
           h('td', t.status === 'pending' ? h('button.btn.small', { onclick: cancel(t) }, '취소') : null));
       })))) : h('p.muted', '티켓이 없어요.'));
 
+  // 0036: collection 한 줄 = 한 마리 → 계열마다 묶어서 (가장 높은 단계 · 잡은 횟수 합 · 지금 박스에 있는 수)
+  const byLine = [...coll.reduce((mp, c) => {
+    const g = mp.get(c.line_id) || { line_id: c.line_id, stage: 0, catch_count: 0, now: 0, maxlv: 0, evo_fails: 0 };
+    if (c.stage > g.stage) g.sp = c.species_id;   // 0037: 갈래 종이면 그 종
+    g.stage = Math.max(g.stage, c.stage); g.catch_count += c.catch_count || 0;
+    if (!c.released_at) { g.now++; g.maxlv = Math.max(g.maxlv, c.level || 0); g.evo_fails = Math.max(g.evo_fails, c.evo_fails || 0); }
+    return mp.set(c.line_id, g);
+  }, new Map()).values()];
+  const inBox = coll.filter((c) => !c.released_at).length;
   const cBox = h('div.box',
-    h('h3', `도감 (${coll.length}계열)`),
-    coll.length ? h('div.coll-grid', coll.map((c) => {
-      const dex = (c.line_id - 1) * 3 + c.stage;
+    h('h3', `도감 (${byLine.length}계열 · 박스 ${inBox}마리)`),
+    byLine.length ? h('div.coll-grid', byLine.map((c) => {
+      const dex = c.sp || (c.line_id - 1) * 3 + c.stage;
       return h('div', sprite(dex, 64), h('div', h('b', S.spById.get(dex)?.name || `#${dex}`)),
-        h('div', `${c.stage}단계 · ${c.catch_count}회`), c.evo_fails ? h('div.muted', `진화 실패 ${c.evo_fails}`) : null);
+        h('div', `${c.stage}단계 · ${c.catch_count}회`), h('div.muted', c.now ? `박스 ${c.now}마리 · 최고 Lv.${c.maxlv}` : '놓아줌 (도감만 남음)'),
+        c.evo_fails ? h('div.muted', `진화 실패 ${c.evo_fails}`) : null);
     })) : h('p.muted', '아직 잡은 포켓몬이 없어요.'));
 
   const eBox = h('div.box',
@@ -1647,8 +1662,8 @@ async function studentDetail(sid, reload) {
   const lvInp = h('input.inp', { type: 'number', min: 1, max: 100, value: 50, style: { width: '72px' }, 'aria-label': '레벨' });
   const lvBtn = h('button.btn', '레벨 정하기');
   lvBtn.onclick = () => busy(lvBtn, async () => {
-    await rpc('admin_set_level', { p_student_id: sid, p_line: Number(lvLine.value), p_level: Number(lvInp.value) });
-    toast('레벨을 바꿨어요.');
+    const r = await rpc('admin_set_level', { p_student_id: sid, p_line: Number(lvLine.value), p_level: Number(lvInp.value) });
+    toast(`레벨을 바꿨어요. (그 계열 ${r?.mons ?? 1}마리 모두)`);
   });
   const growBox = h('div.box.stack',
     h('h3', '가방 물건 주기 · 레벨 정하기'),
@@ -1699,12 +1714,13 @@ async function studentDetail(sid, reload) {
   return [info, grantBox, growBox, eggBox, tBox, cBox, eBox, relinkBox, dangerBox];
 }
 
-const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자' };
+const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자', release: '놓아주기' };
 function eventText(e) {
   const d = e.data || {};
   if (e.kind === 'quiz') return d.correct ? '정답' : '오답';
   if (e.kind === 'evolve') return `${lineName(d.line)} 진화 ${d.success ? '성공' : '실패'} (지금 ${d.stage}단계)`;
   if (e.kind === 'redeem') return `포켓몬 ${d.n ?? '?'}건 처리`;
+  if (e.kind === 'release') return `${lineName(d.line)} ${d.stage}단계 Lv.${d.level} 놓아줌${d.held ? ' (지닌 물건은 가방으로)' : ''}`;
   return JSON.stringify(d);
 }
 
@@ -2282,12 +2298,13 @@ function showRaidQr(r) {
 // admin_emails · booth_emails 도 뺌 (기본값 [] 로 되돌리면 구글로 등록한 운영진이 모두 지워짐 → 운영진 탭에서 관리).
 const DEFAULTS = {
   // supabase/migrations/0001_init.sql
-  email_domains: ['test.local'], email_regex: '^([0-9]{5,6})@',
+  email_domains: ['hafs.hs.kr'], email_regex: '^([0-9]{5,6})@',
   stage_points: [0, 1, 3, 6], rarity_bonus: { common: 0, rare: 2, legendary: 10 },
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
-  safari_balls_daily: 10, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_daily_max_encounters: 15, safari_flee: 0.1, safari_steps_per_sec: 6,
+  safari_balls_daily: 20, safari_reset_hours: 24, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_daily_max_encounters: 15, safari_flee: 0.25, safari_steps_per_sec: 6,
+  safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
   evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2],
   qr_daily_cap: 3, bag_max: 5, ticket_ttl_hours: 10, token_grace_minutes: 30, rotating_window_sec: 30,
   quiz_ticket_daily_cap: 30,                 // 0001 은 20 → 0005_festival_ops.sql 에서 30 으로
@@ -2317,14 +2334,16 @@ const DEFAULTS = {
   drop_place: 0.3, drop_quiz: 0.4, drop_battle: 0.5, drop_practice: 0.15, drop_raid_tm: 0.3,
   battle_item_max: 2, battle_field_mult: 1.3, battle_turn_cap: 20,
   // seed_pokemon.sql (0032): 과목 대신 실제 포켓몬 타입
+  // 0039: 시간표 칸 = 실제 포켓몬 날씨 · 필드
   battle_fields: [
-    { from: '08:00', to: '10:00', name: '아침 조회', types: ['노말', '비행', '풀'] },
-    { from: '10:00', to: '12:00', name: '오전 수업', types: ['에스퍼', '강철', '전기'] },
-    { from: '12:00', to: '13:30', name: '점심시간', types: ['불꽃', '격투', '페어리'] },
-    { from: '13:30', to: '16:00', name: '오후 수업', types: ['물', '얼음', '벌레'] },
-    { from: '16:00', to: '18:30', name: '방과후', types: ['땅', '바위', '독'] },
-    { from: '18:30', to: '23:00', name: '야간 자율학습', types: ['고스트', '악', '드래곤'] },
+    { from: '08:00', to: '10:00', name: '아침 조회', env: 'sun' },
+    { from: '10:00', to: '12:00', name: '오전 수업', env: 'psychic' },
+    { from: '12:00', to: '13:30', name: '점심시간', env: 'grassy' },
+    { from: '13:30', to: '16:00', name: '오후 수업', env: 'electric' },
+    { from: '16:00', to: '18:30', name: '방과후', env: 'sand' },
+    { from: '18:30', to: '23:00', name: '야간 자율학습', env: 'misty' },
   ],
+  ability_hidden_chance: 0.05,
   // 0021_battle_end.sql · 0022_open_raids.sql · 0023_minigames.sql · 0025_minigame_admin.sql
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
   // 0027_eggs_class_achievements.sql
@@ -2334,6 +2353,16 @@ const DEFAULTS = {
   catch_exp: { none: 0, nice: 20, great: 40, excellent: 80, curve: 20 },
   // 0030_catch_raid_class.sql
   catch_flee: 0.05, raid_reward_mode: 'ticket', raid_catch_balls: 10, raid_catch_flee: true,
+  // 0038_legends.sql
+  ditto_disguise_chance: 0.005, roam_chance: 0.3, roam_balls: 8, legend_balls: 10, legend_daily_tries: 3, gift_fail_limit: 8, safari_cave_type_mult: 4,
+  legend_quests: [
+    { dex: 480, kind: 'quiz_streak', n: 10, reward: 'ticket' }, { dex: 481, kind: 'battle_wins', n: 10, reward: 'ticket' },
+    { dex: 482, kind: 'catches', n: 30, reward: 'ticket' }, { dex: 483, kind: 'raid_slots', n: 3, reward: 'ticket' }, { dex: 484, kind: 'qr_all', reward: 'ticket' },
+    { dex: 377, kind: 'type_catch', types: ['바위'], n: 8, reward: 'map' }, { dex: 378, kind: 'type_catch', types: ['얼음'], n: 5, reward: 'map' },
+    { dex: 379, kind: 'type_catch', types: ['강철'], n: 8, reward: 'map' }, { dex: 486, kind: 'caught_all', of: [377, 378, 379], reward: 'map' },
+    { dex: 249, kind: 'type_catch', types: ['물'], n: 20, reward: 'map' }, { dex: 250, kind: 'type_catch', types: ['불꽃', '비행'], n: 20, reward: 'map' },
+    { dex: 382, kind: 'safari_catches', n: 15, reward: 'map' }, { dex: 383, kind: 'type_catch', types: ['땅'], n: 15, reward: 'map' },
+    { dex: 384, kind: 'caught_all', of: [382, 383], reward: 'map' }],
 };
 const hasDefault = (key) => Object.prototype.hasOwnProperty.call(DEFAULTS, key);
 const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys)
@@ -2378,12 +2407,30 @@ const GROUPS = {
       P('wild_steps', '걸음마다 야생 포켓몬 1마리', 'int', { unit: '걸음', min: 0, max: 100000, help: '0 = 걸어서 만나기 끔. 앱 홈에 "야생 포켓몬이 나타났다!" 가 뜨고 잡기 장면에서 잡아요.' }),
       P('wild_daily', '걸어서 만나는 야생 포켓몬 (하루 최대)', 'int', { unit: '마리', min: 0, max: 100 }),
       P('wild_balls', '걸어서 만난 야생 포켓몬: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요.' }),
-      P('safari_balls_daily', '사파리존: 하루 사파리볼', 'int', { unit: '개', min: 0, max: 100, help: '앱 지도 탭 → 사파리존. 다 쓰면 그날은 끝 (서버가 셈). 0 = 사파리존 끔.' }),
+      P('safari_balls_daily', '사파리존: 사파리볼 개수', 'step', { unit: '개', min: 0, max: 100, help: '충전 주기마다 한 사람이 받는 사파리볼 (기본 20개). 다 쓰면 다음 충전까지 못 만나요 (서버가 셈). 0 = 사파리존 끔.' }),
+      P('safari_reset_hours', '사파리존: 충전 주기', 'seg', { unit: '시간', options: [[1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간']],
+        help: '서울 시각 00:00 부터 이 시간마다 사파리볼과 만남 수가 다시 차요. 예: 6시간 → 00 · 06 · 12 · 18시. 앱에 "다음 충전 15:00" 처럼 보여요. 바꾸면 바로 새 주기로 세요.' }),
       P('safari_min_steps', '사파리존: 풀숲 몇 걸음부터 만날 수 있나', 'int', { unit: '걸음', min: 0, max: 200 }),
       P('safari_encounter_rate', '사파리존: 그다음 풀숲 한 걸음마다 만날 확률', 'pct', { max: 100, help: '기본 12%. 확률은 서버가 굴려요.' }),
-      P('safari_daily_max_encounters', '사파리존: 하루 최대 만남', 'int', { unit: '마리', min: 0, max: 100 }),
-      P('safari_flee', '사파리존: 공이 빗나갈 때마다 도망칠 확률', 'pct', { max: 100 }),
+      P('safari_daily_max_encounters', '사파리존: 충전 주기마다 최대 만남', 'int', { unit: '마리', min: 0, max: 100 }),
+      P('safari_flee', '사파리존: 공을 처음 놓쳤을 때 도망칠 확률', 'pct', { max: 100, help: '기본 25% (3세대 사파리존처럼). 도망은 서버가 정해요 — 공을 놓칠 때마다 서버에 물어봐요.' }),
+      P('safari_flee_step', '사파리존: 놓칠 때마다 도망 확률이 더 오름', 'pct', { max: 100, help: '기본 +5%. 오래 머물수록 잘 도망가요 (25% → 30% → 35% …).' }),
+      P('safari_flee_legend', '사파리존: 전설 포켓몬은 도망 확률 더하기', 'pct', { max: 100, help: '기본 +15%.' }),
+      P('safari_flee_max', '사파리존: 도망 확률 최대', 'pct', { max: 100, help: '기본 90%. 아무리 올라도 이보다 높아지지 않아요.' }),
       P('safari_steps_per_sec', '사파리존: 1초에 셀 수 있는 걸음 (속임 막기)', 'int', { unit: '걸음', min: 1, max: 20, help: '앱은 1초에 5걸음 걸어요. 너무 낮추면 걸어도 만나지 못해요.' }),
+    ],
+  },
+  // 0038 전설 · 메타몽 · 방랑 전설 · 소포
+  legends: {
+    tab: '전설·소포', title: '전설 · 방랑 전설 · 메타몽 · 소포 숫자',
+    fields: [
+      P('ditto_disguise_chance', '메타몽 변신 확률', 'pct', { max: 100, help: '야생 (걸음 · QR 야생) · 사파리존에서 잡은 포켓몬이 사실 메타몽일 확률. 기본 0.5%. 전설 · 선생님 포켓몬 · 부스 특별 티켓 · 레이드 · 소포에는 없어요. 잡고 나면 "……? 메타몽이었다!" 장면이 나와요.' }),
+      P('roam_chance', '방랑 전설: 그 장소 QR을 찍으면 만날 확률', 'pct', { max: 100, help: '라이코 · 앤테이 · 스이쿤은 한 시간마다 지도의 장소 QR 하나로 옮겨 가요. 그 시간에 그 QR을 찍으면 이 확률로 만나요 (한 시간에 한 번 기회, 한 사람에 한 마리씩만 잡음). 0% = 끔.' }),
+      P('roam_balls', '방랑 전설: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요 (다음 시간에 다른 곳에서 다시).' }),
+      P('legend_balls', '사파리존 전설: HAFS 볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '조건을 채운 학생이 사파리존의 전설 자리에서 말을 걸면 이 개수로 잡아요 (포켓몬 GO 처럼). 다 빗나가면 도망 — 자리에 그대로 남아 다시 도전할 수 있어요.' }),
+      P('legend_daily_tries', '사파리존 전설: 하루 도전 횟수', 'int', { unit: '번', min: 1, max: 20, help: '같은 전설에게 하루에 도전할 수 있는 횟수 (한 사람마다).' }),
+      P('safari_cave_type_mult', '사파리존 동굴 · 깊은 곳: 바위 · 땅 · 고스트 · 악 · 강철 · 물 타입 배수', 'num', { min: 1, max: 20, help: '기본 4 = 동굴 · 깊은 곳에서는 이 타입들이 4배 자주 나와요. 울트라 스페이스에서는 울트라비스트만 나와요 (다른 곳에서는 절대 안 나옴).' }),
+      P('gift_fail_limit', '이상한 소포: 10분에 틀릴 수 있는 횟수', 'int', { unit: '번', min: 1, max: 100, help: '코드를 이만큼 틀리면 10분 동안 소포를 열 수 없어요 (코드 맞히기 장난 막기).' }),
     ],
   },
   // 레이드
@@ -2465,13 +2512,21 @@ const GROUPS = {
       P('drop_raid_tm', '레이드 이겼을 때 특별 기술머신 (이상한사탕은 항상)', 'pct'),
     ],
   },
-  tickets: {
-    tab: '성장·보상', title: '진화의돌 · 룰렛',
+  // 0039: 필드 배율 · 숨겨진 특성
+  battleEnv: {
+    tab: '성장·보상', title: '배틀: 필드 · 특성',
     fields: [
-      P('roulette_enabled', '진화의돌 룰렛', 'bool'),
+      P('battle_field_mult', '필드 기술 위력 배율', 'num', { min: 1, max: 3, help: '일렉트릭필드 = 전기, 그래스필드 = 풀, 사이코필드 = 에스퍼 기술 (땅에 있는 포켓몬이 쓸 때). 실제 게임 (8세대) = 1.3.' }),
+      P('ability_hidden_chance', '잡을 때 숨겨진 특성이 나올 확률', 'pct', { max: 100, help: '기본 5%. 나머지는 그 포켓몬의 보통 특성 중 하나. 이미 잡은 포켓몬은 바뀌지 않아요.' }),
+    ],
+  },
+  tickets: {
+    tab: '성장·보상', title: '진화의 돌 · 룰렛',
+    fields: [
+      P('roulette_enabled', '진화의 돌 룰렛', 'bool'),
       P('roulette_every_min', '룰렛: 다음 판까지 기다리는 시간', 'int', { unit: '분', min: 1, max: 240 }),
       P('roulette_daily_max', '룰렛: 하루에 돌리는 횟수', 'int', { unit: '번', min: 0, max: 100 }),
-      P('quiz_ticket_daily_cap', '퀴즈로 받는 진화의돌 (하루 최대)', 'int', { unit: '개', min: 0, max: 500 }),
+      P('quiz_ticket_daily_cap', '퀴즈로 받는 진화의 돌 (하루 최대)', 'int', { unit: '개', min: 0, max: 500 }),
       P('battle_daily_max', '배틀 승리 보상 (하루 최대)', 'int', { unit: '번', min: 0, max: 50 }),
     ],
   },
@@ -2481,12 +2536,12 @@ for (const g of Object.values(GROUPS)) for (const f of g.fields) if (!SPEC_BY_KE
 // 다른 탭에 전용 칸이 있는 설정 → 그 탭 이름 (고급 설정 표에서 기본으로 숨김)
 const KEY_HOME = {
   festival_open: '축제 운영', self_redeem: '축제 운영', notice: '축제 운영', prize_note: '축제 운영', festival_close_at: '축제 운영', dup_bonus_every: '축제 운영',
-  raid_slots: '레이드', minigame_unlock: '미니게임', minigame_off: '미니게임', admin_emails: '운영진', booth_emails: '운영진',
+  raid_slots: '레이드', battle_fields: '성장·보상', minigame_unlock: '미니게임', minigame_off: '미니게임', admin_emails: '운영진', booth_emails: '운영진',
 };
 for (const g of Object.values(GROUPS)) for (const f of g.fields) KEY_HOME[f.key] = KEY_HOME[f.key] || g.tab;
 // 더 이상 서버가 읽지 않는 설정 (지우지 않고 표시만)
 const UNUSED_KEYS = ['battle_stage_mult', 'rotating_accept_minutes'];   // 0031 이 battle_stage_mult 를 지움 (예전 서버에만 남아 있을 수 있음)
-const KEY_TITLE = { notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 포켓몬 수', minigame_off: '꺼 둔 미니게임' };
+const KEY_TITLE = { battle_fields: '배틀 시간표 (날씨 · 필드)', notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 포켓몬 수', minigame_off: '꺼 둔 미니게임' };
 const keyTitle = (key) => SPEC_BY_KEY[key]?.label || KEY_TITLE[key] || key;
 
 const pctTxt = (v) => `${+(Number(v) * 100).toFixed(2)}%`;
@@ -2501,6 +2556,7 @@ function fmtVal(key, v) {
   const sp = SPEC_BY_KEY[key];
   if (sp) {
     if (sp.kind === 'choice') return sp.options.find(([k]) => k === v)?.[1] || JSON.stringify(v);
+    if (sp.kind === 'seg') return sp.options.find(([k]) => Number(k) === Number(v))?.[1] || `${v}${sp.unit ? ' ' + sp.unit : ''}`;
     if (sp.kind === 'obj') return sp.parts.map(([k, l]) => `${l} ${fmtPart(sp.partKind, v?.[k], sp.unit)}`).join(' · ');
     return fmtPart(sp.kind, v, sp.unit);
   }
@@ -2508,6 +2564,7 @@ function fmtVal(key, v) {
   if (key === 'minigame_off' && Array.isArray(v)) return v.length ? `${v.map((id) => MG.find(([i]) => i === id)?.[1] || id).join(', ')} 꺼짐` : '모두 켜짐';
   if (key === 'festival_close_at') return v ? new Date(v).toLocaleString('ko-KR') : '없음 (자동 종료 안 함)';
   if (key === 'notice' || key === 'prize_note') return v ? `"${v}"` : '비어 있음';
+  if (key === 'legend_quests' && Array.isArray(v)) return `퀘스트 ${v.length}개 (${v.map((q) => q.n ?? '-').join(' · ')})`;
   if (key === 'dup_bonus_every') return Number(v) ? `${v}번째마다` : '끔 (0)';
   if (typeof v === 'number') return v.toLocaleString();
   const s = JSON.stringify(v);
@@ -2561,6 +2618,24 @@ function makeField(sp, row) {
     const cur = sp.kind === 'bool' ? String(isOn(v)) : v;
     const sel = h('select.inp.w-sel', { 'aria-label': sp.label }, opts.map(([k, l]) => h('option', { value: k, selected: k === cur }, l)));
     return { el: sel, read: () => ({ ok: true, value: sp.kind === 'bool' ? sel.value === 'true' : sel.value }) };
+  }
+  // 고르기 단추 (0037 사파리볼 충전 주기): 숫자 몇 개 중 하나
+  if (sp.kind === 'seg') {
+    let cur = Number(v);
+    const btns = sp.options.map(([k, l]) => h('button.btn.small.seg-btn', { type: 'button', 'aria-pressed': String(Number(k) === cur) }, l));
+    btns.forEach((b, i) => { b.onclick = () => { cur = Number(sp.options[i][0]); btns.forEach((x, j) => x.setAttribute('aria-pressed', String(j === i))); }; });
+    return { el: h('div.seg-ctl', { role: 'group', 'aria-label': sp.label }, btns), read: () => ({ ok: true, value: cur }) };
+  }
+  // − 숫자 + (0037 사파리볼 개수)
+  if (sp.kind === 'step') {
+    const inp = numInput('int', v, sp, sp.label);
+    const bump = (d) => { inp.value = Math.min(sp.max ?? Infinity, Math.max(sp.min ?? 0, (Number(inp.value) || 0) + d)); };
+    return {
+      el: h('span.part-in.stepper',
+        h('button.btn.small', { type: 'button', 'aria-label': `${sp.label} 하나 줄이기`, onclick: () => bump(-1) }, '−'), inp,
+        h('button.btn.small', { type: 'button', 'aria-label': `${sp.label} 하나 늘리기`, onclick: () => bump(1) }, '+'), unitSpan('int', sp.unit)),
+      read: () => readNum(inp, 'int', sp),
+    };
   }
   if (sp.kind === 'obj') {
     const ins = sp.parts.map(([k, l]) => [k, numInput(sp.partKind, v?.[k], sp, `${sp.label} ${l}`), l]);
@@ -2739,12 +2814,12 @@ function dupBonusCard(r) {
   save.onclick = () => {
     const n = Number(inp.value);
     if (!(Number.isInteger(n) && n >= 0)) { toast('0 이상의 정수를 넣으세요 (0 = 끔).'); inp.classList.add('bad'); return; }
-    busy(save, async () => { await saveSetting(r.key, n); toast(n ? `같은 쌤 ${n}번째마다 진화의돌 +1` : '중복 보너스를 껐어요.'); rerender(); });
+    busy(save, async () => { await saveSetting(r.key, n); toast(n ? `같은 쌤 ${n}번째마다 진화의 돌 +1` : '중복 보너스를 껐어요.'); rerender(); });
   };
   return h('div.box.stack',
     h('h2', '중복 보너스 (dup_bonus_every)'),
-    h('p.small-txt', '같은 쌤 포켓몬을 N번째로 또 잡을 때마다 진화의돌 +1. 0 = 끔.'),
-    h('div.row', '같은 쌤', inp, '번째 중복마다 진화의돌 +1', h('span', { style: { flex: 1 } }), save),
+    h('p.small-txt', '같은 쌤 포켓몬을 N번째로 또 잡을 때마다 진화의 돌 +1. 0 = 끔.'),
+    h('div.row', '같은 쌤', inp, '번째 중복마다 진화의 돌 +1', h('span', { style: { flex: 1 } }), save),
     h('div.row', resetBtn(r.key, r.value)), changedTxt(r));
 }
 
@@ -2862,13 +2937,209 @@ function slotEditor(set) {
 
 // ───────────────────────── 성장·보상 ─────────────────────────
 
+// 배틀 시간표 (0039): 시간대마다 날씨 · 필드 하나 (실제 포켓몬 효과). 그 시간에 시작한 배틀 내내 바탕으로 깔림
+const ENV_OPTS = [['', '없음 (보통 배틀)'], ['sun', '쾌청 — 불꽃 ×1.5 · 물 ×0.5'], ['rain', '비 — 물 ×1.5 · 불꽃 ×0.5'],
+  ['sand', '모래바람 — 바위 특방 ×1.5 · 매 턴 1/16 (바위·땅·강철 빼고)'], ['hail', '싸라기눈 — 매 턴 1/16 (얼음 빼고)'],
+  ['electric', '일렉트릭필드 — 전기 기술 강해짐 · 잠들지 않음'], ['grassy', '그래스필드 — 풀 기술 강해짐 · 매 턴 1/16 회복'],
+  ['misty', '미스트필드 — 드래곤 기술 ×0.5 · 상태 이상 안 걸림'], ['psychic', '사이코필드 — 에스퍼 기술 강해짐 · 선공기 막음']];
+function fieldEditor(set) {
+  const r = set.battle_fields;
+  if (!r) return h('div.box', h('h2', '배틀 시간표'), h('p.warn-txt', 'battle_fields 설정이 없어요.'));
+  let rows = (Array.isArray(r.value) ? r.value : []).map((x) => ({ from: String(x.from || ''), to: String(x.to || ''), name: String(x.name || ''), env: x.env || '' }));
+  const box = h('div.box.stack.slot-box');
+  const msg = h('div.slot-msg', { role: 'alert' });
+  const dirty = h('span.small-txt');
+  const tbody = h('tbody');
+  const validate = () => {
+    const errs = []; const bad = new Set();
+    rows.forEach((x, i) => {
+      if (!x.name.trim()) { errs.push(`${i + 1}번째 줄: 이름을 넣어 주세요.`); bad.add(i); }
+      if (!HHMM.test(x.from) || !HHMM.test(x.to)) { errs.push(`${i + 1}번째 줄: 시각은 "08:00"처럼 HH:MM으로 넣어 주세요.`); bad.add(i); return; }
+      if (x.from >= x.to) { errs.push(`${i + 1}번째 줄: 끝 시각이 시작보다 늦어야 해요 (자정을 넘으면 두 줄로).`); bad.add(i); }
+    });
+    rows.forEach((a, i) => rows.forEach((b, j) => {
+      if (j > i && HHMM.test(a.from) && HHMM.test(b.from) && a.from < b.to && b.from < a.to) { errs.push(`${i + 1}·${j + 1}번째 줄: 시간이 겹쳐요.`); bad.add(i); bad.add(j); }
+    }));
+    [...tbody.children].forEach((tr, i) => tr.classList.toggle('bad', bad.has(i)));
+    msg.replaceChildren(...errs.map((t) => h('p.warn-txt.small-txt', t)));
+    dirty.replaceChildren(sameVal(rows, r.value) ? '' : chip('저장 안 한 변경이 있어요', 'warn'));
+    return errs;
+  };
+  const draw = () => {
+    const now = kstNowHHMM();
+    tbody.replaceChildren(...rows.map((x, i) => {
+      const nm = h('input.inp', { value: x.name, maxlength: 20, 'aria-label': `${i + 1}번째 줄 이름` });
+      nm.oninput = () => { x.name = nm.value; validate(); };
+      const tIn = (k) => {
+        const inp = h('input.inp.w-time', { type: 'time', step: 60, value: x[k], 'aria-label': `${i + 1}번째 줄 ${k === 'from' ? '시작' : '끝'} 시각` });
+        inp.oninput = () => { x[k] = inp.value; validate(); };
+        return inp;
+      };
+      const sel = h('select.inp', { 'aria-label': `${i + 1}번째 줄 날씨·필드` }, ENV_OPTS.map(([v, t]) => h('option', { value: v, selected: v === x.env }, t)));
+      sel.onchange = () => { x.env = sel.value; validate(); };
+      const live = HHMM.test(x.from) && HHMM.test(x.to) && x.from <= now && now < x.to;
+      return h('tr', h('td', nm), h('td', tIn('from')), h('td', tIn('to')), h('td', sel), h('td', live ? chip('지금', 'ok') : null),
+        h('td', h('button.btn.small', { type: 'button', onclick: () => { rows.splice(i, 1); draw(); } }, '빼기')));
+    }));
+    validate();
+  };
+  const add = h('button.btn.small', { type: 'button', onclick: () => { rows.push({ from: '23:00', to: '23:59', name: '새 시간', env: '' }); draw(); } }, '+ 시간대 추가');
+  const save = h('button.btn.go', '시간표 저장');
+  save.onclick = () => {
+    const errs = validate();
+    if (errs.length) { toast(errs[0], 5000); return; }
+    busy(save, async () => {
+      const v = rows.slice().sort((a, b) => a.from.localeCompare(b.from))
+        .map(({ from, to, name, env }) => (env ? { from, to, name: name.trim(), env } : { from, to, name: name.trim() }));
+      await saveSetting('battle_fields', v);
+      toast(`배틀 시간표 ${v.length}칸을 저장했어요.`);
+      rerender();
+    });
+  };
+  draw();
+  box.append(
+    h('h2', '배틀 시간표 (날씨 · 필드)'),
+    h('p.small-txt', '그 시간(한국 시간)에 시작한 배틀은 내내 이 날씨·필드예요 (실제 포켓몬 효과). 특성(가뭄·잔비 …)이나 날씨 기술로 5턴 동안 바뀔 수 있고, 끝나면 이 날씨로 돌아와요. 이미 시작한 배틀은 바뀌지 않아요.'),
+    h('p.small-txt.muted', `지금 한국 시간 ${kstNowHHMM()} · 시간대 ${rows.length}개`),
+    h('div.tbl-wrap', h('table.tbl.slot-tbl',
+      h('thead', h('tr', h('th', '이름'), h('th', '시작'), h('th', '끝'), h('th', '날씨 · 필드'), h('th', '지금'), h('th', ''))), tbody)),
+    msg,
+    h('div.row', add, dirty, h('span', { style: { flex: 1 } }), save),
+    h('div.row', resetBtn('battle_fields', r.value)),
+    changedTxt(r));
+  return box;
+}
+
 async function tabGrow() {
   const set = await loadSettings();
   return [
+    h('div.cols.wide-left', fieldEditor(set), settingsGroup(GROUPS.battleEnv, set)),
     h('div.cols', h('div', settingsGroup(GROUPS.eggs, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
     h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
       h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),
   ];
+}
+
+// ───────────────────────── 전설 · 이상한 소포 (0038) ─────────────────────────
+const QUEST_KIND = {
+  quiz_streak: ['퀴즈 연속 정답', '번'], battle_wins: ['배틀 승리', '번'], catches: ['포켓몬 잡기', '마리'], raid_slots: ['서로 다른 시간대 레이드 참가', '번'],
+  qr_all: ['지도의 장소 QR 모두 찍기', null], type_catch: ['타입 포켓몬 잡기', '마리'], safari_catches: ['사파리존에서 잡기', '마리'], caught_all: ['앞의 전설 모두 잡기', null],
+};
+const spByDex = (d) => S.species.find((x) => x.dex === Number(d));
+
+async function tabLegend() {
+  if (!S.species?.length) await loadCatalog();
+  const set = await loadSettings();
+  let items = [];
+  try { items = await tq(sb.from('items').select('key,name,sort').order('sort')); } catch { /* 물건 목록 없이 */ }
+  return [h('div.cols', h('div', giftCard(items), roamCard()), h('div', questCard(set), settingsGroup(GROUPS.legends, set)))];
+}
+
+function giftCard(items) {
+  const list = h('div.stack', h('p.small-txt.muted', '불러오는 중…'));
+  const code = h('input.inp', { placeholder: '예: 축제 첫날 선물', maxlength: 60, 'aria-label': '소포 코드' });
+  const title = h('input.inp', { placeholder: '(선택) 메모 — 학생에게는 안 보여요', maxlength: 60, 'aria-label': '메모' });
+  const kind = h('select.inp.w-sel', { 'aria-label': '선물 종류' }, h('option', { value: 'mon' }, '포켓몬'), h('option', { value: 'item' }, '물건'));
+  const dex = h('input.inp.w-num', { type: 'number', min: 1, max: 809, placeholder: '번호', 'aria-label': '포켓몬 도감 번호' });
+  const dexName = h('span.small-txt.muted');
+  dex.oninput = () => { const sp = spByDex(dex.value); dexName.textContent = sp ? sp.name : dex.value ? '없는 번호' : ''; };
+  const item = h('select.inp.w-sel', { 'aria-label': '물건' }, h('option', { value: 'evo_stone' }, '진화의 돌'),
+    items.map((it) => h('option', { value: it.key }, it.name)));
+  const qty = h('input.inp.w-num', { type: 'number', min: 1, max: 99, value: 1, 'aria-label': '개수' });
+  const starts = h('input.inp', { type: 'datetime-local', 'aria-label': '시작 시각' });
+  const ends = h('input.inp', { type: 'datetime-local', 'aria-label': '끝 시각' });
+  const max = h('input.inp.w-num', { type: 'number', min: 0, placeholder: '0', 'aria-label': '최대 받는 사람 수' });
+  const monRow = h('div.row', h('label', '도감 번호 ', dex), dexName);
+  const itemRow = h('div.row', h('label', '물건 ', item));
+  itemRow.style.display = 'none';
+  kind.onchange = () => { monRow.style.display = kind.value === 'mon' ? '' : 'none'; itemRow.style.display = kind.value === 'mon' ? 'none' : ''; };
+  const make = h('button.btn.go', '소포 만들기');
+  make.onclick = () => busy(make, async () => {
+    const mon = kind.value === 'mon';
+    try {
+      await rpc('admin_create_gift', {
+        p_code: code.value, p_title: title.value || null, p_dex: mon ? Number(dex.value) || null : null, p_item: mon ? null : item.value,
+        p_qty: Number(qty.value) || 1, p_starts: starts.value ? new Date(starts.value).toISOString() : null,
+        p_ends: ends.value ? new Date(ends.value).toISOString() : null, p_max: Number(max.value) || null,
+      });
+    } catch (e) { toast(errorText(e.message), 5000); return; }
+    toast('소포를 만들었어요. 코드를 학생들에게 알려 주세요!');
+    code.value = ''; title.value = '';
+    load();
+  });
+  async function load() {
+    let rows;
+    try { rows = await rpc('admin_list_gifts', {}); } catch (e) { list.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
+    if (!rows.length) { list.replaceChildren(h('p.small-txt.muted', '아직 만든 소포가 없어요.')); return; }
+    list.replaceChildren(...rows.map((g) => {
+      const what = g.species_id ? `${g.species_name} (No.${g.dex})${g.qty > 1 ? ` ×${g.qty}` : ''}` : `${g.item_name || g.item} ×${g.qty}`;
+      const when = [g.starts_at && `${new Date(g.starts_at).toLocaleString('ko-KR')}부터`, g.ends_at && `${new Date(g.ends_at).toLocaleString('ko-KR')}까지`]
+        .filter(Boolean).join(' · ') || '기간 제한 없음';
+      const tog = h('button.btn.small', g.active ? '끄기' : '켜기');
+      tog.onclick = () => busy(tog, async () => { await rpc('admin_set_gift', { p_id: g.id, p_active: !g.active }); load(); });
+      const del = h('button.btn.small.danger', '지우기');
+      del.onclick = async () => {
+        if (!(await confirmBox('소포 지우기', [`"${g.code}" 소포를 지울까요?`, '이미 받은 학생의 포켓몬 · 물건은 그대로 남아요. 지운 뒤에는 같은 코드로 다시 만들 수 있어요.'], { ok: '지우기', danger: true }))) return;
+        busy(del, async () => { await rpc('admin_delete_gift', { p_id: g.id }); load(); });
+      };
+      return h('div.box.gift-row',
+        h('div', h('b', g.code), ' ', h('span', { class: g.live ? 'ok-txt' : 'muted' }, g.live ? '● 받을 수 있음' : g.active ? '○ 기간 밖' : '○ 꺼짐')),
+        h('div.small-txt', what, ' · ', `받은 사람 ${g.claims}${g.max_claims ? `/${g.max_claims}` : ''}명`),
+        h('div.small-txt.muted', when, g.title ? ` · ${g.title}` : ''),
+        h('div.row', tog, del));
+    }));
+  }
+  load();
+  return h('div.box.stack',
+    h('h2', '이상한 소포 (선물 코드)'),
+    h('p.small-txt', '학생 앱 위쪽의 소포 단추 (설정 단추 왼쪽) 에서 코드를 넣으면 받아요. 띄어쓰기 · 대소문자는 상관없고 한글도 돼요. 한 사람에 한 번씩만 받을 수 있어요. 받을 수 있는 소포가 있으면 단추에 ★ 가 떠요 (코드는 보이지 않아요).'),
+    h('label.stack', '코드 (2~40글자, 띄어쓰기 빼고 셈)', code), h('label.stack', '메모', title),
+    h('div.row', h('label', '선물 ', kind), h('label', '개수 ', qty)), monRow, itemRow,
+    h('div.row', h('label.stack', '시작 (비우면 바로)', starts), h('label.stack', '끝 (비우면 계속)', ends)),
+    h('label', '최대 받는 사람 수 (0 = 제한 없음) ', max),
+    h('div.row.end', make), h('h3', '만든 소포'), list);
+}
+
+function roamCard() {
+  const body = h('div.stack', h('p.small-txt.muted', '불러오는 중…'));
+  const load = async () => {
+    let rows;
+    try { rows = await rpc('admin_roam_spots', { p_at: new Date().toISOString() }); } catch (e) { body.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
+    body.replaceChildren(...rows.map((r) => h('div.small-txt', h('b', r.name), ` → ${r.qr_name || '(장소 없음)'} (${r.qr}) · 학생 소문: ${r.area}`)));
+  };
+  load();
+  return h('div.box.stack', h('h2', '방랑 전설 (지금 이 시간)'),
+    h('p.small-txt', '한 시간마다 (정각) 지도에 보이는 장소 QR 중 하나로 옮겨 가요. 학생 앱 지도에는 소문 (예: "D홀 근처에서 번개 같은 울음소리가 들렸대!") 만 보여요. 만날 확률은 오른쪽 숫자 묶음에서 정해요.'),
+    body, h('div.row.end', h('button.btn.small', { onclick: load }, '새로 고침')));
+}
+
+function questCard(set) {
+  const r = set.legend_quests;
+  if (!r) return missingCard('legend_quests', '전설 퀘스트');
+  const qs = structuredClone(Array.isArray(r.value) ? r.value : []);
+  const ins = [];
+  const rows = qs.map((q) => {
+    const sp = spByDex(q.dex); const [label, unit] = QUEST_KIND[q.kind] || [q.kind, null];
+    const detail = q.kind === 'type_catch' ? `${(q.types || []).join('·')} ${label}`
+      : q.kind === 'caught_all' ? `${(q.of || []).map((d) => spByDex(d)?.name || d).join('·')} 모두 잡기` : label;
+    const inp = unit ? h('input.inp.w-num', { type: 'number', min: 0, max: 1000, value: q.n ?? 0, 'aria-label': `${sp?.name || q.dex} 조건 숫자` }) : null;
+    if (inp) ins.push([q, inp]);
+    return h('div.setrow',
+      h('div.setlbl', h('b', sp?.name || `No.${q.dex}`), h('div.small-txt.muted', `${detail} · ${q.reward === 'map' ? '사파리존 지도 자리에서 만남' : '특별 티켓 (부스에서 받기)'}`)),
+      h('div.setctl', inp ? h('span.part-in', inp, h('span.unit', unit)) : h('span.small-txt.muted', '숫자 없음')));
+  });
+  const save = h('button.btn.go', '저장');
+  save.onclick = () => {
+    for (const [q, inp] of ins) {
+      const n = Number(inp.value);
+      if (!Number.isInteger(n) || n < 0 || n > 1000) { toast('0~1000 사이 정수로 넣어 주세요.'); return; }
+      q.n = n;
+    }
+    busy(save, async () => { await saveSetting('legend_quests', qs); toast('전설 퀘스트 숫자를 저장했어요.'); rerender(); });
+  };
+  return h('div.box.stack.setgroup', h('h2', '전설 퀘스트 조건'),
+    h('p.small-txt', '조건을 채우면 특별 티켓을 받거나 (유크시 · 엠라이트 · 아그놈 · 디아루가 · 펄기아), 사파리존의 전설 자리에서 만날 수 있어요 (나머지). 한 번 채운 조건은 숫자를 올려도 그대로예요. 학생 앱에 "퀴즈 연속 정답 7/10" 처럼 진행이 보여요.'),
+    h('div.setrows', rows), h('div.row.end', resetBtn('legend_quests', r.value), save));
 }
 
 // ───────────────────────── 고급 설정 (JSON) ─────────────────────────

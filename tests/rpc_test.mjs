@@ -63,9 +63,15 @@ const patchSetting = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { m
 // 0032: QR 에서 야생 포켓몬이 나올 확률 — 예전 시험은 정해 둔 포켓몬을 기대하므로 시험 동안 0 (끝에서 되돌림)
 const WILD0 = (await admin.select('settings?key=eq.wild_chance')).data?.[0]?.value ?? 0.4;
 await patchSetting('wild_chance', 0);
-// 0034: 진화의돌은 퀴즈·배틀에서 확률로 — 예전 시험은 늘 받는다고 보므로 시험 동안 100% (끝에서 되돌림)
+// 0034: 진화의 돌은 퀴즈·배틀에서 확률로 — 예전 시험은 늘 받는다고 보므로 시험 동안 100% (끝에서 되돌림)
 const STONE0 = Object.fromEntries((await admin.select('settings?key=in.(quiz_stone_chance,battle_stone_chance)&select=key,value')).data.map((x) => [x.key, x.value]));
 await patchSetting('quiz_stone_chance', 1); await patchSetting('battle_stone_chance', 1);
+// 0038: 야생 · 사파리 잡기가 아주 가끔 메타몽 — 예전 시험은 잡은 포켓몬이 그대로라고 보므로 시험 동안 0 (끝에서 되돌림)
+const DITTO0 = (await admin.select('settings?key=eq.ditto_disguise_chance')).data?.[0]?.value ?? 0.005;
+await patchSetting('ditto_disguise_chance', 0);
+// 0039: 시간표 칸의 날씨 · 필드 (모래바람 데미지 등) — 예전 배틀 시험이 시각에 따라 달라지지 않게 시험 동안 빈 시간표 (끝에서 되돌림)
+const BF_ORIG = (await admin.select('settings?key=eq.battle_fields')).data?.[0]?.value ?? [];
+await patchSetting('battle_fields', []);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -73,6 +79,10 @@ for (const e of ['022901', '022902', '022903', '021904']) await client(null).rpc
 const STOK = await login('022901@test.local');
 for (const e of ['022901', '022902', '022903', '021904']) S.push(client(e === '022901' ? STOK : await login(`${e}@test.local`)));
 const anon = client(null);
+// 0036: 포켓몬 번호 (박스의 한 마리). 같은 계열이 여러 마리면 먼저 잡은 것. 없는 계열 = -계열 (서버가 거절)
+const myMons = async (c) => { const r = await c.select('collection?select=id,line_id,stage,level,pos,held,catch_count&released_at=is.null&order=id'); return Array.isArray(r.data) ? r.data : []; };
+const monId = async (c, line) => (line == null ? null : (await myMons(c)).find((m) => m.line_id === line)?.id ?? -line);
+const monIds = async (c, lines) => { const ms = await myMons(c); return lines.map((l) => ms.find((m) => m.line_id === l)?.id ?? -l); };
 
 console.log('\n[0] setup');
 await admin.rpc('ensure_profile'); await booth.rpc('ensure_profile');
@@ -106,7 +116,7 @@ ok((await S[0].rpc('admin_stats')).error === 'NOT_ADMIN', 'student cannot call a
 ok((await anon.rpc('sync', { p_scans: [] })).error, 'anon cannot call sync');
 for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette', 'register_profile', 'admin_invite_staff', 'admin_list_staff', 'link_number', 'send_inquiry', 'admin_list_requests', 'admin_decide_reset'])
   ok((await anon.rpc(fn, {})).error, `anon cannot call ${fn}`);
-for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name', '_attach_google', '_kick_number', '_set_number_account', '_number_owner', '_school_sid'])
+for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name', '_attach_google', '_kick_number', '_set_number_account', '_number_owner', '_school_sid', '_mon_new', '_box_count', '_box_max', '_ticket_mon', '_team_mons'])
   ok((await S[0].rpc(fn, {})).error, `student cannot call internal ${fn}`);
 
 console.log('\n[2] scan / sync / lock');
@@ -191,12 +201,13 @@ ok(r.data?.correct === false && r.data.granted === false && r.data.answer_pos ==
   'wrong answer → no ticket, shows right position', r);
 
 console.log('\n[8] evolve race (5 parallel taps, 1 ticket)');
-// 3단계 계열 · 진화 레벨 전 (0032/0034: 레벨이 되면 무료, 돌 진화는 100% — 진화의돌 1개 경쟁을 보려면 둘 다 아니어야)
+// 3단계 계열 · 진화 레벨 전 (0032/0034: 레벨이 되면 무료, 돌 진화는 100% — 진화의 돌 1개 경쟁을 보려면 둘 다 아니어야)
 const three8 = new Set((await admin.select('lines?select=id&max_stage=eq.3')).data.map((l) => l.id));
 const line = (st.collection.find((c) => c.stage === 1 && three8.has(c.line_id) && c.level < 15) || st.collection[0]).line_id;
 const have = (await S[0].rpc('sync')).data.state.profile.evo_tickets;
 if (have !== 1) await admin.rpc('admin_adjust_tickets', { p_student_id: '022901', p_delta: 1 - have });   // exactly 1 ticket for the race
-const evs = await Promise.all(Array.from({ length: 5 }, () => S[0].rpc('evolve', { p_line: line })));
+const mon8 = await monId(S[0], line);
+const evs = await Promise.all(Array.from({ length: 5 }, () => S[0].rpc('evolve', { p_mon: mon8 })));
 const spent = evs.filter(e => e.data);
 ok(spent.length === 1 && evs.filter(e => e.error === 'NO_TICKET').length === 4, 'exactly one evolve consumed the ticket', evs.map(e => e.error || 'ok'));
 
@@ -204,14 +215,14 @@ console.log('\n[9] pity: guaranteed after 1 fail at stage 1');
 await admin.rpc('admin_adjust_tickets', { p_student_id: '022902', p_delta: 2 });
 const settings = (await admin.select('settings?key=eq.evo_prob')).data[0].value;
 await patchSetting('evo_prob', [0, 0, 0]);
-// 3단계 계열 (0032: 실제 포켓몬은 1~3단계) + 아직 진화 레벨 전 (레벨이 되면 진화의돌 없이 진화하므로)
+// 3단계 계열 (0032: 실제 포켓몬은 1~3단계) + 아직 진화 레벨 전 (레벨이 되면 진화의 돌 없이 진화하므로)
 const three = new Set((await admin.select('lines?select=id&max_stage=eq.3')).data.map((l) => l.id));
 const line2 = (await S[1].rpc('sync')).data.state.collection.find(c => c.stage === 1 && three.has(c.line_id) && c.level < 15).line_id;
-const e1 = await S[1].rpc('evolve', { p_line: line2 });
-const e2 = await S[1].rpc('evolve', { p_line: line2 });
+const e1 = await S[1].rpc('evolve', { p_mon: await monId(S[1], line2) });
+const e2 = await S[1].rpc('evolve', { p_mon: await monId(S[1], line2) });
 ok(e1.data?.success === false && e2.data?.success === true && e2.data.stage === 2, 'fail at 0% then guaranteed success', [e1.data?.success, e2.data?.success]);
 await patchSetting('evo_prob', [0, 0.7, 0.35]);
-ok((await S[1].rpc('evolve', { p_line: line2 })).error === 'NO_TICKET', 'no tickets left → NO_TICKET');
+ok((await S[1].rpc('evolve', { p_mon: await monId(S[1], line2) })).error === 'NO_TICKET', 'no tickets left → NO_TICKET');
 
 console.log('\n[10] rotating legendary QR');
 // legendary QRs start switched off; an operator puts one on the TV (admin 현황판 → 전설 출현)
@@ -232,7 +243,7 @@ r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: rt2.data.token
 ok(r.data?.acks?.[0]?.status === 'daily_cap', 'legendary QR: once per day', r.data?.acks);
 const leg = (await S[3].rpc('sync')).data.state.collection.find(c => c.line_id >= 35);
 await admin.rpc('admin_adjust_tickets', { p_student_id: '021904', p_delta: 1 });
-ok(leg && (await S[3].rpc('evolve', { p_line: leg.line_id })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
+ok(leg && (await S[3].rpc('evolve', { p_mon: await monId(S[3], leg.line_id) })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
 await admin.rpc('admin_adjust_tickets', { p_student_id: '021904', p_delta: -1 });
 ok((await booth.rpc('screen_feed')).data?.rotating?.some(x => x.id === 'L01'), 'TV shows the legendary QR while it is on');
 await legendOn(false);
@@ -419,7 +430,9 @@ console.log('\n[17] open login: register screen, 학번 code accounts, dev accou
   ok(need?.needs_register === true && need.code_id === sid, 'code account asks for a name, knows its number', need);
   r = await cl.rpc('register_profile', { p_kind: 'guest', p_student_id: '022902', p_name: '코드생' });
   ok(r.data?.student_id === sid && r.data.in_ranking === true, 'code account is always its own student number', r.data);
-  await admin.rpc('admin_unlink', { p_student_id: sid });
+  // 지움 (계정까지): 남겨 두면 020500~020999 임시 번호가 바닥나서 다음 실행이 실패함
+  const del = await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  if (!del.data?.deleted) await admin.rpc('admin_unlink', { p_student_id: sid });
 
   await setS('admin_emails', ['admin@staff.test', 'evil@x.test']);
   const ev = await fresh('evil@x.test');
@@ -520,12 +533,17 @@ let NA, NB;
 
   console.log('\n[21] 문의함');
   ok((await anon.rpc('send_inquiry', { p_body: 'hi there' })).error, 'anon cannot send inquiries');
-  ok((await S[0].rpc('send_inquiry', { p_body: ' ' })).error === 'BAD_INQUIRY', 'empty inquiry refused');
+  // 학생마다 1시간에 5개까지 → 같은 시험 학생으로 여러 번 돌리면 TRY_LATER. 그래서 이번에만 쓰는 새 번호 학생 (끝에서 지움)
+  let qsid; do { qsid = '020' + rnd3(); } while ((await anon.rpc('create_number_account', { p_student_id: qsid, p_password: 'iq1234' })).error);
+  const Q = client(await pwLogin(`${qsid}@code.local`, 'iq1234'));
+  await Q.rpc('register_profile', { p_kind: 'student', p_student_id: qsid, p_name: '문의테스트' });
+  ok((await Q.rpc('send_inquiry', { p_body: ' ' })).error === 'BAD_INQUIRY', 'empty inquiry refused');
   const body = '부스 줄이 너무 길어요 ' + nonce();
-  ok((await S[0].rpc('send_inquiry', { p_body: body })).data?.ok, 'student sends an inquiry');
+  ok((await Q.rpc('send_inquiry', { p_body: body })).data?.ok, 'student sends an inquiry');
   const iq = (await admin.rpc('admin_list_requests')).data?.inquiries?.find(x => x.body === body);
-  ok(iq?.student_id === '022901' && iq.status === 'open', 'admin sees it with the student number', iq);
-  ok((await admin.rpc('admin_set_inquiry', { p_id: iq.id, p_done: true })).data?.inquiries?.find(x => x.id === iq.id)?.status === 'done', 'admin marks it done');
+  ok(iq?.student_id === qsid && iq.status === 'open', 'admin sees it with the student number', iq);
+  ok(iq && (await admin.rpc('admin_set_inquiry', { p_id: iq.id, p_done: true })).data?.inquiries?.find(x => x.id === iq.id)?.status === 'done', 'admin marks it done');
+  await admin.rpc('admin_delete_students', { p_student_ids: [qsid], p_confirm: '삭제' });
 
   console.log('\n[22] easter eggs: secret QR + roulette 777');
   ok(T.S01, 'secret QR S01 exists');
@@ -553,8 +571,11 @@ console.log('\n[23] battle data: real Pokémon (0032) — types, moves, stats');
   // PostgREST 는 한 번에 1000줄까지 → 나눠 받기
   const all = async (c, path) => { const out = []; for (let o = 0; ; o += 1000) { const d = (await c.select(`${path}&limit=1000&offset=${o}`)).data || []; out.push(...d); if (d.length < 1000) return out; } };
   const sp = await all(S[0], 'species?select=id,line_id,stage,dex,btype,name,hp,atk,def,spa,spd,spe&order=id');
-  ok(sp.length === 809 && sp.every(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].every(v => v > 0)), 'all 809 Pokémon (#1–809) have 6 base stats', sp.length);
-  ok(new Set(sp.map(x => x.dex)).size === 809 && Math.min(...sp.map(x => x.dex)) === 1 && Math.max(...sp.map(x => x.dex)) === 809, 'national dex numbers 1–809, each once');
+  // 0037: + 갈래 종 20 (id 10000 + 도감 번호, 같은 번호가 따로 있는 계열에도 있음)
+  const main = sp.filter(x => x.id < 10000);
+  ok(main.length === 809 && sp.length === 829 && sp.every(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].every(v => v > 0)), 'all 809 Pokémon (#1–809) + 20 branch rows have 6 base stats', sp.length);
+  ok(new Set(main.map(x => x.dex)).size === 809 && Math.min(...main.map(x => x.dex)) === 1 && Math.max(...main.map(x => x.dex)) === 809
+     && sp.filter(x => x.id >= 10000).every(x => x.id === 10000 + x.dex), 'national dex numbers 1–809, each once (branch rows reuse their number)');
   const byDex = Object.fromEntries(sp.map(x => [x.dex, x]));
   const st = (x) => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].join('/');
   ok(st(byDex[1]) === '45/49/49/65/65/45' && byDex[1].name === '이상해씨' && byDex[1].btype === '풀/독', '이상해씨 = real stats and types', [byDex[1].name, st(byDex[1]), byDex[1].btype]);
@@ -566,8 +587,10 @@ console.log('\n[23] battle data: real Pokémon (0032) — types, moves, stats');
   const sm = await all(S[0], 'species_moves?select=species_id,slot,move_id&order=species_id,slot');
   const per = {};
   for (const x of sm) (per[x.species_id] ||= []).push(kind[x.move_id]);
-  const bad = sp.filter(x => (per[x.id] || []).sort().join() !== 'attack,attack,defense,status').map(x => x.id);
-  ok(bad.length === 0, 'every species: 2 attack + 1 status + 1 defense move', bad.slice(0, 20));
+  // 0039: 메타몽 (전국도감 132) 은 실제처럼 변신 하나뿐
+  const bad = sp.filter(x => x.dex !== 132 && (per[x.id] || []).sort().join() !== 'attack,attack,defense,status').map(x => x.id);
+  const ditto = sp.filter(x => x.dex === 132).map(x => (per[x.id] || []).join());
+  ok(bad.length === 0 && ditto.every((k) => k === 'status'), 'every species: 2 attack + 1 status + 1 defense move (메타몽: 변신 only)', [bad.slice(0, 20), ditto]);
   ok(mv.find(m => m.name === '화염방사')?.type === '불꽃' && mv.find(m => m.name === '10만볼트')?.type === '전기' && mv.find(m => m.name === '깨뜨리다')?.type === '격투',
      'moves have their real types (and official Korean names)');
   const tc = (await S[0].select('type_chart?select=atk,def,mult')).data || [];
@@ -599,9 +622,9 @@ console.log('\n[24] raids + special tickets');
   const rd = (await admin.rpc('admin_create_raid', { p_species: 3, p_hp: 300, p_minutes: 5, p_tv: false })).data;
   ok(rd?.q === `R${rd.id}` && rd.t && rd.hp === 300 && rd.status === 'active', 'admin opens a printable raid (static QR)', rd);
   ok((await A.c.rpc('raid_join', { p_q: rd.q, p_t: 'deadbeef00' })).error === 'RAID_BAD_TOKEN', 'wrong raid token refused');
-  let r = await A.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t, p_line: 32 });
+  let r = await A.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t, p_mon: await monId(A.c, 32) });
   ok(r.data?.players === 1 && r.data.me?.line_id === 32 && r.data.me.per_tap > 3, 'join with my 체육 monster (better per-tap damage)', r.data?.me);
-  r = await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 1000, p_line: 32 });
+  r = await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 1000, p_mon: await monId(A.c, 32) });
   ok(r.data?.accepted <= 20 && r.data.dealt === r.data.accepted * r.data.me.per_tap, 'tap cap: 1000 taps sent → only ~8/s accepted', { accepted: r.data?.accepted, dealt: r.data?.dealt });
   ok((await B.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 5 })).error === 'RAID_NOT_JOINED', 'must join before attacking');
   await B.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t });
@@ -653,10 +676,30 @@ console.log('\n[24] raids + special tickets');
   await setS('raid_slots', slotsBefore);
 
   // dex rewards: 50 % → 과연기, 100 % → 창문기 (special tickets, no raid)
-  for (let l = 1; l <= 36; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: l >= 35 ? 1 : 3 });   // 104 of 206 = 50 %
+  // 0037: 학교 도감 = 전국도감 번호 213칸 (206 + 선생님 계열의 갈래 종 7: 엘레이드 · 왕구리 · 홍수몬 · 카포에라 · 야도킹 · 눈여아 · 아르코)
+  //       → 갈래 종은 진화로 (그 앞 단계를 받아서 Lv.100 + 진화의 돌 1개, p_to)
+  const branchEvolve = async (lo, hi) => {
+    const brs = ((await admin.select('species?id=gte.10000&select=id,line_id,stage')).data || []).filter((x) => x.line_id >= lo && x.line_id <= hi);
+    const evs = (await admin.select('evolutions?to_species=gte.10000&select=from_species,to_species')).data || [];
+    for (const b of brs) {
+      const e = evs.find((x) => x.to_species === b.id);
+      const from = e && (await admin.select(`species?id=eq.${e.from_species}&select=id,stage`)).data?.[0];
+      if (!from || from.id >= 10000) continue;
+      await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: b.line_id, p_stage: from.stage });
+      await admin.rpc('admin_set_level', { p_student_id: B.sid, p_line: b.line_id, p_level: 100 });
+      await admin.rpc('admin_adjust_tickets', { p_student_id: B.sid, p_delta: 1 });
+      const m = (await myMons(B.c)).filter((x) => x.line_id === b.line_id && x.stage === from.stage).pop();
+      await B.c.rpc('evolve', { p_mon: m?.id, p_to: b.id });
+    }
+  };
+  for (let l = 1; l <= 36; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: l >= 35 ? 1 : 3 });   // 104 + 4 갈래 = 108 of 213 ≥ 50 %
+  await branchEvolve(1, 36);
   st = (await B.c.rpc('sync')).data.state;
   ok(st.special?.some(x => x.special === 'dex50' && x.species_id === 121) && !st.special.some(x => x.special === 'dex100'), '도감 50% → 과연기 ticket', st.special);
   for (let l = 43; l <= 76; l++) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 3 });
+  st = (await B.c.rpc('sync')).data.state;
+  ok(!st.special?.some(x => x.special === 'dex100'), '0037: every teacher line at its last stage is not 100% yet (branch species still missing)', st.special);
+  await branchEvolve(43, 76);
   st = (await B.c.rpc('sync')).data.state;
   ok(st.special?.some(x => x.special === 'dex100' && x.species_id === 124) && st.special.filter(x => x.special === 'dex50').length === 1, '도감 100% → 창문기 ticket (once each)', st.special);
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
@@ -691,10 +734,10 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: 4, p_stage: 1 });
   for (const fn of ['_bt_move', '_bt_turn', '_bt_finish', '_bt_resolve', '_bt_ai', '_bt_new'])
     ok((await A.c.rpc(fn, {})).error, `student cannot call internal ${fn}`);
-  ok((await anon.rpc('battle_start_cpu', { p_lines: [32] })).error, 'anon cannot battle');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [4] })).error === 'BAD_TEAM', 'team must be my own monsters');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 32] })).error === 'BAD_TEAM', 'no duplicates in a team');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 1] })).error === 'BAD_TEAM', 'at most 3');
+  ok((await anon.rpc('battle_start_cpu', { p_mons: await monIds(anon, [32]) })).error, 'anon cannot battle');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [4]) })).error === 'BAD_TEAM', 'team must be my own monsters');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 32]) })).error === 'BAD_TEAM', 'no duplicates in a team');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 1]) })).error === 'BAD_TEAM', 'at most 3');
 
   // play until the end: move 1 each turn, pick the next monster when one faints
   const play = async (c, b, pick = () => ({ move: 1 })) => {
@@ -709,7 +752,7 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   };
 
   // CPU practice
-  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61] })).data;
+  let b = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61]) })).data;
   const foe = b?.sides?.[1];
   ok(b?.mode === 'cpu' && b.status === 'active' && b.sides[0].mons.length === 3 && foe?.mons?.length === 3, 'CPU practice starts 3 vs 3', b);
   ok(b?.sides[0].mons[0].moves?.length === 4 && b.sides[0].mons[0].hp === b.sides[0].mons[0].max && b.sides[0].mons[0].max > 100, 'my monsters: L50 HP + 4 moves');
@@ -726,12 +769,12 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   // friend team vs AI (B's team = strongest monsters since no team saved)
   const codeB = (await B.c.rpc('battle_code')).data;
   ok(/^[a-z2-9]{8}$/.test(codeB || '') && (await B.c.rpc('battle_code')).data === codeB, 'battle QR code (stable)', codeB);
-  ok((await B.c.rpc('battle_start_team', { p_code: codeB, p_lines: [4] })).error === 'BATTLE_SELF', 'cannot battle myself');
-  ok((await A.c.rpc('battle_start_team', { p_code: 'zzzzzzzz', p_lines: [32] })).error === 'BATTLE_CODE_NOT_FOUND', 'unknown code');
+  ok((await B.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(B.c, [4]) })).error === 'BATTLE_SELF', 'cannot battle myself');
+  ok((await A.c.rpc('battle_start_team', { p_code: 'zzzzzzzz', p_mons: await monIds(A.c, [32]) })).error === 'BATTLE_CODE_NOT_FOUND', 'unknown code');
   const t0 = (await A.c.rpc('sync')).data.state.profile.evo_tickets;
   let won = null;
   for (let tries = 0; tries < 4 && !won; tries++) {
-    b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+    b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
     if (tries === 0) ok(b?.mode === 'team' && b.sides[1].mons.length === 1 && b.names[1], 'friend team vs AI starts (friend has 1 monster)', b?.sides?.[1]);
     b = await play(A.c, b);
     if (b?.winner === 0) won = b;
@@ -741,33 +784,37 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok(st1.evo_tickets === t0 + 1, 'evo ticket +1', [t0, st1.evo_tickets]);
   const rkA = (await A.c.rpc('get_ranking_by', { p_kind: 'battle' })).data;
   ok(rkA?.me?.value === 1, 'battle win counts in the ranking', rkA?.me);
-  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
   b = await play(A.c, b);
   ok(b?.winner !== 0 || b.reward?.why === 'same_opp', 'same friend again today → no 2nd ticket', b?.reward);
 
   // live PvP: invite → home inbox → accept → both choose (hidden from each other)
   await setS('battle_turn_sec', 3);
   const codeA = (await A.c.rpc('battle_code')).data;
-  let inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
+  let inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_mons: await monIds(B.c, [4]) })).data;
   ok(inv?.status === 'invite' && inv.mode === 'pvp', 'B sends a live battle request', inv);
   let box = (await A.c.rpc('battle_inbox')).data;
   ok(box?.invites?.some(x => x.id === inv.id && x.from), 'A sees "배틀 신청!" in the inbox', box);
-  ok((await S[0].rpc('battle_accept', { p_id: inv.id, p_lines: [1] })).error, 'only the invited friend can accept');
-  let pa = (await A.c.rpc('battle_accept', { p_id: inv.id, p_lines: [32, 17] })).data;
+  ok((await S[0].rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(S[0], [1]) })).error, 'only the invited friend can accept');
+  let pa = (await A.c.rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(A.c, [32, 17]) })).data;
   ok(pa?.status === 'active' && pa.me === 1 && pa.sides[1].mons.length === 2 && pa.sides[0].mons.length === 1, 'A accepts → battle starts (A is side 1)', pa);
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32] })).error === 'IN_PVP_BATTLE' && (await B.c.rpc('battle_start_cpu', { p_lines: [4] })).error === 'IN_PVP_BATTLE', 'cannot start another battle during a live one (no silent forfeit)');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32]) })).error === 'IN_PVP_BATTLE' && (await B.c.rpc('battle_start_cpu', { p_mons: await monIds(B.c, [4]) })).error === 'IN_PVP_BATTLE', 'cannot start another battle during a live one (no silent forfeit)');
   r = await B.c.rpc('battle_act', { p_id: inv.id, p_action: { move: 1 } });
   ok(r.data?.chosen === true && r.data.turn === 0, 'B chose; waits for A');
   const pa2 = (await A.c.rpc('battle_state', { p_id: inv.id })).data;
   ok(pa2?.chosen === false && !JSON.stringify(pa2).includes('"acts"'), "A cannot see B's choice");
   ok((await B.c.rpc('battle_act', { p_id: inv.id, p_action: { move: 2 } })).error === 'BATTLE_WAIT', 'cannot choose twice');
-  await new Promise(res => setTimeout(res, 3500));
-  const pa3 = (await A.c.rpc('battle_state', { p_id: inv.id })).data;
+  let pa3;
+  for (const t0 = Date.now(); Date.now() - t0 < 15000;) {      // 턴 시간이 지나면 AI 가 고름 — 될 때까지 0.5초마다 (최대 15초)
+    pa3 = (await A.c.rpc('battle_state', { p_id: inv.id })).data;
+    if (pa3?.turn === 1 || pa3?.status === 'over') break;
+    await new Promise(res => setTimeout(res, 500));
+  }
   ok(pa3?.turn === 1 || pa3?.status === 'over', 'time up → AI chooses for A, the turn is played', pa3?.turn);
   await setS('battle_turn_sec', 45);
   await A.c.rpc('battle_forfeit', { p_id: inv.id });
-  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
-  await A.c.rpc('battle_accept', { p_id: inv.id, p_lines: [32] });
+  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_mons: await monIds(B.c, [4]) })).data;
+  await A.c.rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(A.c, [32]) });
   const tB = (await B.c.rpc('sync')).data.state.profile.evo_tickets;
   r = await A.c.rpc('battle_forfeit', { p_id: inv.id });
   ok(r.data?.status === 'over' && r.data.winner === 0, 'A gives up → B wins', r.data?.winner);
@@ -776,11 +823,12 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   // 이 친구한테서 오늘 이미 받았으면 (앞의 배틀 결과는 능력치·주사위에 따라 다름) same_opp 가 맞는 결과
   ok((rb?.reward?.ticket === true && tB2 === tB + 1) || (rb?.reward?.why === 'same_opp' && tB2 === tB), 'B gets the 진화권 (once per friend per day)', rb?.reward);
 
-  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
+  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_mons: await monIds(B.c, [4]) })).data;
   await A.c.rpc('battle_decline', { p_id: inv.id });
   ok((await B.c.rpc('battle_state', { p_id: inv.id })).data?.status === 'declined', 'declined request shows as declined');
-  ok((await A.c.rpc('battle_set_team', { p_lines: [61, 17] })).data?.ok && (await A.c.rpc('battle_today')).data?.team?.join() === '61,17', 'save my battle team');
-  ok((await A.c.rpc('battle_set_team', { p_lines: [99] })).error === 'BAD_TEAM', 'cannot save monsters I do not have');
+  const t6117 = await monIds(A.c, [61, 17]);
+  ok((await A.c.rpc('battle_set_team', { p_mons: t6117 })).data?.ok && (await A.c.rpc('battle_today')).data?.team?.join() === t6117.join(), 'save my battle team (Pokémon numbers)');
+  ok((await A.c.rpc('battle_set_team', { p_mons: await monIds(A.c, [99]) })).error === 'BAD_TEAM', 'cannot save monsters I do not have');
   ok((await A.c.rpc('battle_today')).data?.wins === 1, 'today: 1 rewarded win of 3');
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
 }
@@ -796,9 +844,9 @@ console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)')
   const A = await mk('더블에이'), B = await mk('더블비');
   for (const l of [32, 17, 61, 44]) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 3 });
   for (const l of [4, 5]) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 1 });
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44] })).error === 'BAD_TEAM', '1 vs 1 takes at most 3');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44], p_format: 'triple' })).error === 'BAD_FORMAT', 'unknown format refused');
-  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44], p_format: 'double' })).data;
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]) })).error === 'BAD_TEAM', '1 vs 1 takes at most 3');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]), p_format: 'triple' })).error === 'BAD_FORMAT', 'unknown format refused');
+  let b = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]), p_format: 'double' })).data;
   ok(b?.format === 'double' && b.sides[0].act?.length === 2 && b.sides[1].act?.length === 2 && b.sides[0].mons.length === 4 && b.sides[1].mons.length === 4,
     '2 vs 2 practice: 4 monsters each, 2 on the field', { f: b?.format, act: b?.sides?.map(x => x.act) });
   const foe = b?.sides?.[1];
@@ -827,12 +875,12 @@ console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)')
   ok((await B.c.rpc('battle_today')).data?.format === 'double', 'QR owner chose 2 vs 2');
   const pk = (await A.c.rpc('battle_peek', { p_code: codeB })).data;
   ok(pk?.format === 'double' && pk.name, 'scanner sees the format before starting', pk);
-  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61, 44] })).data;
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61, 44]) })).data;
   ok(b?.format === 'double' && b.sides[1].mons.length === 2 && b.sides[1].act.length === 2, 'friend team vs AI uses the friend\'s 2 vs 2 (friend has 2 monsters)', b?.sides?.[1]);
   await A.c.rpc('battle_forfeit', { p_id: b.id });
   await B.c.rpc('battle_code', { p_format: 'single' });
   ok((await B.c.rpc('battle_code', { p_format: 'x' })).error === 'BAD_FORMAT', 'bad format refused');
-  ok((await A.c.rpc('battle_set_team', { p_lines: [44, 61, 17, 32] })).data?.ok, 'a battle team can hold 4 (first 3 used for 1 vs 1)');
+  ok((await A.c.rpc('battle_set_team', { p_mons: await monIds(A.c, [44, 61, 17, 32]) })).data?.ok, 'a battle team can hold 4 (first 3 used for 1 vs 1)');
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
 }
 
@@ -927,7 +975,7 @@ console.log('\n[30] 운영 다듬기 (0019): 가입 제한 · 최근 배틀 상�
   await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: 4, p_stage: 1 });
   ok(Array.isArray((await A.c.rpc('battle_recent')).data) && (await A.c.rpc('battle_recent')).data.length === 0, 'no recent opponents yet');
   const codeB = (await B.c.rpc('battle_code')).data;
-  const b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+  const b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
   await A.c.rpc('battle_forfeit', { p_id: b.id });
   const rec = (await A.c.rpc('battle_recent')).data;
   ok(rec?.length === 1 && rec[0].code === codeB && rec[0].mode === 'team' && rec[0].won === false && rec[0].name, 'recent opponent listed with their battle code (rematch without the QR)', rec);
@@ -961,12 +1009,14 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   ok(m12()?.level === L12 && m12().need === 8 * L12 && m12().moves.length === 4 && m12().known.length >= 4, `new final-stage catch starts at its evolution level (Lv.${L12}) with 4 moves`, m12());
   await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: 12, p_stage: 3 });
   bag = (await A.c.rpc('bag_state')).data;
-  ok(m12().level === L12 + 1, 'catching the same teacher again: +1 level', m12()?.level);
+  const twelves = bag.box.filter((x) => x.line === 12);
+  ok(twelves.length === 2 && twelves[0].id !== twelves[1].id && twelves.every((x) => x.level === L12) && twelves[0].pos !== twelves[1].pos,
+     '0036: catching the same Pokémon again = a second one in the box (own level, own slot)', twelves.map((x) => [x.id, x.level, x.pos]));
   // 이상한사탕
-  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 12 })).error === 'NO_ITEM', 'cannot use an item you do not have');
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_mon: await monId(A.c, 12) })).error === 'NO_ITEM', 'cannot use an item you do not have');
   ok((await A.c.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 1 })).error === 'NOT_ADMIN', 'students cannot give items');
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 2 });
-  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 12 })).data?.level === L12 + 2, 'rare candy: +1 level');
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_mon: await monId(A.c, 12) })).data?.level === L12 + 1, 'rare candy: +1 level (only that one)');
   // 기술머신: 맞는 몬스터만, 한 번 배우면 끝
   const tms = (await A.c.select('items?pocket=eq.tm&select=key,move_id')).data;
   const ok12 = new Set((await A.c.select('learnset?line_id=eq.12&how=eq.tm&select=move_id')).data.map((x) => x.move_id));
@@ -975,31 +1025,31 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: tmOk.key, p_qty: 2 });
   if (tmNo) {
     await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: tmNo.key, p_qty: 1 });
-    ok((await A.c.rpc('bag_use', { p_item: tmNo.key, p_line: 12 })).error === 'TM_NOT_COMPATIBLE', 'TM the monster cannot learn is refused');
+    ok((await A.c.rpc('bag_use', { p_item: tmNo.key, p_mon: await monId(A.c, 12) })).error === 'TM_NOT_COMPATIBLE', 'TM the monster cannot learn is refused');
   }
-  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_line: 12 })).data?.learned === tmOk.move_id, 'TM teaches the move (kept in the monster\'s move list)');
-  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_line: 12 })).error === 'ALREADY_KNOWN', 'cannot learn the same move twice');
+  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_mon: await monId(A.c, 12) })).data?.learned === tmOk.move_id, 'TM teaches the move (kept in the monster\'s move list)');
+  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_mon: await monId(A.c, 12) })).error === 'ALREADY_KNOWN', 'cannot learn the same move twice');
   bag = (await A.c.rpc('bag_state')).data;
   ok(bag.items.find((x) => x.key === tmOk.key)?.qty === 1, 'TM is one-use (second copy still in the bag)');
   // 기술 고르기
   const cur = m12().moves;
-  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [cur[0], cur[0]] })).error === 'BAD_MOVES', 'duplicate moves refused');
-  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [999999] })).error === 'MOVE_NOT_KNOWN', 'unknown move refused');
-  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [tmOk.move_id, cur[0], cur[1], cur[2]] })).data?.moves?.[0] === tmOk.move_id, 'forget a move and use the TM move instead');
+  ok((await A.c.rpc('bag_set_moves', { p_mon: await monId(A.c, 12), p_moves: [cur[0], cur[0]] })).error === 'BAD_MOVES', 'duplicate moves refused');
+  ok((await A.c.rpc('bag_set_moves', { p_mon: await monId(A.c, 12), p_moves: [999999] })).error === 'MOVE_NOT_KNOWN', 'unknown move refused');
+  ok((await A.c.rpc('bag_set_moves', { p_mon: await monId(A.c, 12), p_moves: [tmOk.move_id, cur[0], cur[1], cur[2]] })).data?.moves?.[0] === tmOk.move_id, 'forget a move and use the TM move instead');
   // 지닌 물건
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'cushion', p_qty: 1 });
-  ok((await A.c.rpc('bag_set_held', { p_line: 13, p_item: 'cushion' })).data?.held === 'cushion', 'give a held item');
+  ok((await A.c.rpc('bag_set_held', { p_mon: await monId(A.c, 13), p_item: 'cushion' })).data?.held === 'cushion', 'give a held item');
   bag = (await A.c.rpc('bag_state')).data;
   ok(!bag.items.find((x) => x.key === 'cushion') && bag.box.find((x) => x.line === 13).held === 'cushion', 'held item leaves the bag');
-  ok((await A.c.rpc('bag_set_held', { p_line: 13, p_item: 'bandage' })).error === 'BAD_ITEM', 'medicine cannot be held');
+  ok((await A.c.rpc('bag_set_held', { p_mon: await monId(A.c, 13), p_item: 'bandage' })).error === 'BAD_ITEM', 'medicine cannot be held');
   // 회복약: 배틀 중에만
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'bandage', p_qty: 3 });
-  ok((await A.c.rpc('bag_use', { p_item: 'bandage', p_line: 12 })).error === 'BATTLE_ONLY', 'medicine only in battle');
+  ok((await A.c.rpc('bag_use', { p_item: 'bandage', p_mon: await monId(A.c, 12) })).error === 'BATTLE_ONLY', 'medicine only in battle');
   // 연습 배틀: 상대 레벨 = 내 팀 평균, 내 기술·지닌 물건·시너지가 들어감
-  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [12, 13, 5], p_format: 'single' })).data;
+  let b = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [12, 13, 5]), p_format: 'single' })).data;
   const me = b.sides[0], foe = b.sides[1];
-  ok(me.mons[0].lv === L12 + 2 && me.mons[0].moves[0].id === tmOk.move_id, 'battle uses my level and my chosen moves', me.mons[0].lv);
-  ok(me.mons[1].held === 'cushion' && foe.mons[0].lv === Math.round((L12 + 2 + L13 + L5) / 3), 'held item in battle; practice foe level = my team average', foe.mons[0].lv);
+  ok(me.mons[0].lv === L12 + 1 && me.mons[0].moves[0].id === tmOk.move_id && me.mons.every((m) => m.mon > 0), 'battle uses my level and my chosen moves', me.mons[0].lv);
+  ok(me.mons[1].held === 'cushion' && foe.mons[0].lv === Math.round((L12 + 1 + L13 + L5) / 3), 'held item in battle; practice foe level = my team average', foe.mons[0].lv);
   // 0032 시너지 = 실제 타입 그룹: 라이츄(전기) · 자포코일(전기/강철) = '질풍' (스피드 +1), 질뻐기(독) 는 혼자
   ok(me.mons[0].syn === 'spe' && me.mons[2].syn === 'spe' && !me.mons[1].syn && me.mons[0].stg?.spe === 1, 'same type-group synergy (2 electric): speed +1 on entry', [me.mons.map((m) => m.syn), me.mons[0].stg]);
   ok(b.items_left === 2 && 'field' in b, 'battle shows items left and the timetable field', b.field);
@@ -1032,7 +1082,7 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   // 공정 모드: QR 보여주는 사람이 정함 → 모두 Lv.50, 회복약 금지
   const codeB = (await B.c.rpc('battle_code', { p_format: 'single', p_fair: true })).data;
   ok((await A.c.rpc('battle_peek', { p_code: codeB })).data?.fair === true, 'friend QR says fair mode');
-  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [12, 13, 5] })).data;
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [12, 13, 5]) })).data;
   ok(b.fair && b.sides[0].mons.every((m) => m.lv === 50) && b.sides[1].mons.filter((m) => m.seen).every((m) => m.lv === 50) && b.items_left === 0, 'fair mode: everyone Lv.50, no medicine', { fair: b.fair, me: b.sides?.[0]?.mons?.map((m) => m.lv), foe: b.sides?.[1]?.mons?.map((m) => m.lv), left: b.items_left });
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).error === 'NO_ITEMS_FAIR', 'medicine refused in fair mode');
   await A.c.rpc('battle_forfeit', { p_id: b.id });
@@ -1040,7 +1090,7 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   // 운영자: 레벨 정하기
   ok((await admin.rpc('admin_set_level', { p_student_id: A.sid, p_line: 5, p_level: 100 })).data?.level === 100, 'admin sets a level');
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 1 });
-  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 5 })).error === 'MAX_LEVEL', 'Lv.100 is the cap');
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_mon: await monId(A.c, 5) })).error === 'MAX_LEVEL', 'Lv.100 is the cap');
   await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid], p_confirm: '삭제' });
 }
 
@@ -1061,14 +1111,14 @@ console.log('\n[32] 배틀 끝 (0021): 새 배틀이면 하던 배틀 취소 · 
     if (b.status === 'active') await C.rpc('battle_forfeit', { p_id: b.id });
     return (await C.rpc('battle_state', { p_id: b.id })).data;
   };
-  const b1 = (await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data;
-  const b2 = (await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data;
+  const b1 = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [12, 13, 5]) })).data;
+  const b2 = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [12, 13, 5]) })).data;
   const old = (await C.rpc('battle_state', { p_id: b1.id })).data;
   ok(old.status === 'cancelled' && old.reward?.why === 'replaced' && old.winner == null, 'starting a new practice battle cancels the old one (no loss)', old.status);
   ok(await admin.patch('settings?key=eq.practice_exp_daily', { value: 1 }) < 300, 'admin sets the practice EXP limit');
   const e1 = await play2(b2);
   ok(e1.reward?.practice_counted === true && e1.reward?.practice_left === 0, 'first practice battle of the day counts for EXP', e1.reward);
-  const e2 = await play2((await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data);
+  const e2 = await play2((await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [12, 13, 5]) })).data);
   ok(e2.reward?.exp_why === 'practice_max' && !e2.reward?.exp, 'over the daily limit: practice gives no EXP', e2.reward);
   await admin.patch('settings?key=eq.practice_exp_daily', { value: 10 });
   // 영구 기술머신: 써도 그대로
@@ -1078,8 +1128,8 @@ console.log('\n[32] 배틀 끝 (0021): 새 배틀이면 하던 배틀 취소 · 
   const pm = pms.map((x) => ({ ...x, lines: box.filter((m) => !m.known.includes(x.move_id)).map((m) => m.line) })).find((x) => x.lines.length >= 2) || pms[0];
   const pmMove = pm.move_id; const lines = pm.lines || [];
   await admin.rpc('admin_give_item', { p_student_id: sid, p_item: pm.key, p_qty: 1 });
-  ok(lines.length >= 2 && (await C.rpc('bag_use', { p_item: pm.key, p_line: lines[0] })).data?.learned === pmMove
-     && (await C.rpc('bag_use', { p_item: pm.key, p_line: lines[1] })).data?.learned === pmMove, 'permanent TM teaches two Pokémon', [pm.key, lines]);
+  ok(lines.length >= 2 && (await C.rpc('bag_use', { p_item: pm.key, p_mon: await monId(C, lines[0]) })).data?.learned === pmMove
+     && (await C.rpc('bag_use', { p_item: pm.key, p_mon: await monId(C, lines[1]) })).data?.learned === pmMove, 'permanent TM teaches two Pokémon', [pm.key, lines]);
   ok((await C.rpc('bag_state')).data.items.find((x) => x.key === pm.key)?.qty === 1, 'permanent TM stays in the bag');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
@@ -1121,8 +1171,12 @@ console.log('\n[34] 미니게임 (0023) · 야자 전설 · 환상 이스터에�
   ok((await C.rpc('submit_minigame_score', { p_game: 'surf', p_score: 1600, p_ms: 60000 })).error === 'TRY_LATER', 'one submit per 5 s per game');
   ok((await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 50000, p_ms: 90000 })).error === 'BAD_SCORE', 'maze time must match real time');
   ok((await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 50000, p_ms: 50500 })).data?.me?.score === 50000, 'maze time saved');
-  await new Promise((r) => setTimeout(r, 5200));
-  const m2 = (await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 40000, p_ms: 40100 })).data;
+  let m2;
+  for (const t0 = Date.now(); Date.now() - t0 < 15000;) {      // 게임마다 5초에 한 번 — TRY_LATER 가 풀릴 때까지 다시 (최대 15초)
+    const r2 = await C.rpc('submit_minigame_score', { p_game: 'maze', p_score: 40000, p_ms: 40100 });
+    if (r2.error !== 'TRY_LATER') { m2 = r2.data; break; }
+    await new Promise((r) => setTimeout(r, 500));
+  }
   ok(m2?.me?.score === 40000, 'maze: faster time becomes my best (lower is better)', m2?.me);
   const rk = (await C.rpc('minigame_ranking', { p_game: 'surf' })).data;
   ok(rk?.top?.some((x) => x.me && x.score === 1500) && rk.unlock === 10, 'ranking lists me with my best', rk?.me);
@@ -1147,9 +1201,10 @@ console.log('\n[34] 미니게임 (0023) · 야자 전설 · 환상 이스터에�
   const sp = (await C.rpc('sync')).data.state.special || [];
   ok(sp.filter((x) => x.special === 'egg').map((x) => x.species_id).sort().join() === '238,241,244', 'three egg tickets in the pouch', sp);
   // 트레이너 카드 몬스터 고르기
-  ok((await C.rpc('set_partner', { p_line: 30 })).error === 'NOT_OWNED', 'cannot pick a monster I do not own as card partner');
-  ok((await C.rpc('set_partner', { p_line: 5 })).data?.partner === 5 && (await C.rpc('sync')).data.state.profile.partner === 5, 'pick card partner (saved on the server)');
-  ok((await C.rpc('set_partner', { p_line: null })).data?.partner === null, 'back to automatic partner');
+  ok((await C.rpc('set_partner', { p_mon: await monId(C, 30) })).error === 'NOT_OWNED', 'cannot pick a monster I do not own as card partner');
+  const p5 = await monId(C, 5);
+  ok(p5 > 0 && (await C.rpc('set_partner', { p_mon: p5 })).data?.partner === p5 && (await C.rpc('sync')).data.state.profile.partner === p5, 'pick card partner (saved on the server, Pokémon number)');
+  ok((await C.rpc('set_partner', { p_mon: null })).data?.partner === null, 'back to automatic partner');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
@@ -1176,10 +1231,10 @@ console.log('\n[35] 미니게임 운영 · 연습 배틀 공정 모드 (0025)');
   ok((await admin.rpc('admin_reset_minigame', { p_game: 'dodge', p_confirm: '삭제' })).error === 'CONFIRM_MISMATCH', 'reset needs the word 초기화');
   ok((await C.rpc('admin_reset_minigame', { p_game: 'dodge', p_confirm: '초기화' })).error === 'NOT_ADMIN', 'students cannot reset');
   // 연습 배틀 공정 모드
-  const bf = (await C.rpc('battle_start_cpu', { p_lines: [1, 2, 3], p_fair: true })).data;
+  const bf = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [1, 2, 3]), p_fair: true })).data;
   ok(bf?.fair === true && bf.items_left === 0, 'practice battle in fair mode (Lv.50, no items)', { fair: bf?.fair, items: bf?.items_left });
   ok((bf?.sides?.[0]?.mons || []).every((m) => m.lv === 50 || m.level === 50 || m.lv == null), 'my monsters are Lv.50 in fair mode', bf?.sides?.[0]?.mons?.map((m) => m.lv ?? m.level));
-  const bn = (await C.rpc('battle_start_cpu', { p_lines: [1, 2, 3] })).data;
+  const bn = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [1, 2, 3]) })).data;
   ok(bn?.fair === false, 'practice battle default stays normal', bn?.fair);
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
@@ -1232,11 +1287,11 @@ console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
   ok(col?.from_egg === true && typeof col.shiny === 'boolean' && typeof col.shiny_on === 'boolean', 'collection row from_egg (+ shiny flags in sync)', col);
   ok(s1.profile.score >= 1 && s1.profile.dex_count === 1, 'score / dex updated like a catch', s1.profile);
   ok((await C.rpc('egg_hatch', { p_egg: ids[0] })).error === 'NOT_FOUND', 'an egg hatches only once');
-  ok((await C.rpc('set_shiny', { p_line: 99, p_on: true })).error === 'NOT_OWNED', 'set_shiny: not owned');
+  ok((await C.rpc('set_shiny', { p_mon: await monId(C, 99), p_on: true })).error === 'NOT_OWNED', 'set_shiny: not owned');
   const other = h.line === 1 ? 2 : 1;
   await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: other, p_stage: 1 });
-  ok((await C.rpc('set_shiny', { p_line: other, p_on: true })).error === 'SHINY_LOCKED', 'set_shiny refused while the shiny colour is locked');
-  if (col?.shiny) ok((await C.rpc('set_shiny', { p_line: h.line, p_on: false })).data?.on === false, 'shiny unlocked → can turn it off');
+  ok((await C.rpc('set_shiny', { p_mon: await monId(C, other), p_on: true })).error === 'SHINY_LOCKED', 'set_shiny refused while the shiny colour is locked');
+  if (col?.shiny) ok((await C.rpc('set_shiny', { p_mon: await monId(C, h.line), p_on: false })).data?.on === false, 'shiny unlocked → can turn it off');
   await C.rpc('egg_hatch', { p_egg: ids[1] }); await C.rpc('egg_hatch', { p_egg: ids[2] });
   // 노랑·보라 (짧은 걸음으로 만들어서) + 처음 가 보는 장소 QR = 보너스 걸음 · 알
   await patchSetting('egg_steps', { green: 1000, yellow: 300, purple: 300 });
@@ -1260,7 +1315,7 @@ console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
   const st4 = (await C.rpc('egg_state')).data;
   ok(st4.eggs.find((e) => e.id === ids[3])?.steps === 300, 'same place again: no bonus steps', sc2?.acks);
   const hy = (await C.rpc('egg_hatch', { p_egg: yid })).data;
-  const box = (await C.rpc('bag_state', { p_since: 0 })).data.box.find((b) => b.line === hy?.line);
+  const box = (await C.rpc('bag_state', { p_since: 0 })).data.box.find((b) => b.id === hy?.mon);
   ok(hy?.tier === 'yellow' && hy.rarity === 'rare' && Number.isInteger(hy.egg_move) && box?.learned.includes(hy.egg_move) && box.moves.includes(hy.egg_move),
      'yellow egg → rare monster + egg move learned and in the 4 moves', { hy, box });
   const hp = (await C.rpc('egg_hatch', { p_egg: pid })).data;
@@ -1390,7 +1445,8 @@ console.log('\n[39] 잡기 도망 · 레이드 보스 잡기 · 반 이름 (0030
   const box3b = (await A.c.rpc('bag_state')).data.box;
   const before3 = s3a.collection.find((c) => c.line_id === res3?.line_id), after3 = s3b.collection.find((c) => c.line_id === res3?.line_id);
   ok(r3?.fled === true && r3.removed === false && after3 && after3.catch_count === before3.catch_count, 'flee on a duplicate → row kept, catch_count back', { r3, before3, after3 });
-  ok(box3b.find((m) => m.line === res3?.line_id)?.level === box3a.find((m) => m.line === res3?.line_id)?.level, 'dup-catch level +1 taken back');
+  ok(box3b.length === box3a.length && box3b.find((m) => m.line === res3?.line_id)?.level === box3a.find((m) => m.line === res3?.line_id)?.level,
+     '0036: the duplicate that fled is gone from the box (the first one unchanged)', [box3a.length, box3b.length]);
   ok(s3b.profile.dex_count === s3a.profile.dex_count && s3b.profile.score === s3a.profile.score && s3b.profile.evo_tickets === s3a.profile.evo_tickets,
      'dex / score / evo tickets same as before the catch', { a: [s3a.profile.dex_count, s3a.profile.score, s3a.profile.evo_tickets], b: [s3b.profile.dex_count, s3b.profile.score, s3b.profile.evo_tickets] });
   // 4) 옛 앱의 catch_bonus 도 그대로
@@ -1570,15 +1626,15 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
     ok(f2?.fled === true && f2.caught === false, 'missing every ball → the wild Pokémon flees (even with raid flee off)', f2);
   } else ok(true, 'second encounter skipped (step speed limit)');
   await admin.patch('settings?key=eq.raid_catch_flee', { value: true });
-  // 3) 진화 = 진화 레벨에 닿으면 진화의돌 없이
+  // 3) 진화 = 진화 레벨에 닿으면 진화의 돌 없이
   await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 20, p_stage: 1 });       // 이상해씨 (16 에 이상해풀)
   await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 21, p_stage: 1 });       // 파이리 (16 에 리자드)
   const ev20 = (await admin.select('species?line_id=eq.20&stage=eq.2&select=evo_lv,name')).data[0];
   ok(ev20?.evo_lv === 16 && ev20.name === '이상해풀', 'real evolution level: 이상해씨 → 이상해풀 at Lv.16', ev20);
   await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 21, p_level: 15 });
-  ok((await P.rpc('evolve', { p_line: 21 })).error === 'NO_TICKET', 'below the evolution level and no 진화의돌 → NO_TICKET');
+  ok((await P.rpc('evolve', { p_mon: await monId(P, 21) })).error === 'NO_TICKET', 'below the evolution level and no 진화의 돌 → NO_TICKET');
   await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 20, p_level: 16 });
-  const ev = (await P.rpc('evolve', { p_line: 20 })).data;
+  const ev = (await P.rpc('evolve', { p_mon: await monId(P, 20) })).data;
   ok(ev?.success === true && ev.by_level === true && ev.stage === 2 && ev.evo_tickets === 0, 'at the evolution level → evolves for free, always', ev);
   const st = (await P.rpc('sync')).data.state;
   ok(st.collection.find((c) => c.line_id === 20)?.level === 16, 'sync sends my Pokémon level (for the dex evolution panel)');
@@ -1600,17 +1656,17 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
      && (await admin.select('quizzes?line_id=eq.83&select=id')).data.length === q3, 'teacher + quizzes move to the new Pokémon line, old line becomes wild', l3);
   ok((await admin.rpc('admin_assign_teacher', { p_from: 83, p_to: 3 })).data?.ok
      && (await admin.select('lines?id=eq.3&select=subject')).data[0].subject !== '야생', 'and back again (restored)');
-  // 6) 돌 진화 (0034): 피카츄 → 라이츄 는 레벨로 안 됨, 진화의돌 1개로 100%
+  // 6) 돌 진화 (0034): 피카츄 → 라이츄 는 레벨로 안 됨, 진화의 돌 1개로 100%
   const rai = (await admin.select('species?line_id=eq.12&stage=eq.3&select=name,evo_lv,evo_item')).data[0];
   ok(rai?.name === '라이츄' && rai.evo_item === true && rai.evo_lv === null, '라이츄 = stone evolution (no level)', rai);
   await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 12, p_stage: 2 });
   await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 12, p_level: 80 });
-  ok((await P.rpc('evolve', { p_line: 12 })).error === 'NO_TICKET', 'stone evolution needs a 진화의돌 even at high level');
+  ok((await P.rpc('evolve', { p_mon: await monId(P, 12) })).error === 'NO_TICKET', 'stone evolution needs a 진화의 돌 even at high level');
   await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: 1 });
   await patchSetting('evo_prob', [0, 0, 0]);   // 확률 0 이어도 돌 진화는 100%
-  const ev12 = (await P.rpc('evolve', { p_line: 12 })).data;
+  const ev12 = (await P.rpc('evolve', { p_mon: await monId(P, 12) })).data;
   await patchSetting('evo_prob', [0, 0.7, 0.35]);
-  ok(ev12?.success === true && ev12.by_item === true && ev12.stage === 3 && ev12.evo_tickets === 0, 'with a 진화의돌 → evolves 100% (uses the stone)', ev12);
+  ok(ev12?.success === true && ev12.by_item === true && ev12.stage === 3 && ev12.evo_tickets === 0, 'with a 진화의 돌 → evolves 100% (uses the stone)', ev12);
   // 7) 색이 다른 그림 목록
   const ov = (await anon.rpc('sprite_overrides')).data || {};
   ok(Object.keys(ov).length >= 800 && /\|/.test(ov['1'] || ''), 'sprite list has a shiny picture for each Pokémon', [Object.keys(ov).length, ov['1']]);
@@ -1619,15 +1675,28 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
 
 console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 만남 · 사파리볼 하루 개수 · 잡기/도망');
 {
-  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec'];
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
   const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  await setS('safari_reset_hours', 24);   // 0037: 충전 주기 — 예전 시험은 하루 (24시간)
   await setS('safari_balls_daily', 10); await setS('safari_min_steps', 8); await setS('safari_daily_max_encounters', 15); await setS('safari_steps_per_sec', 6);
   await setS('safari_encounter_rate', 1);              // 시험: 8걸음이 지나면 바로 만남
+  await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);   // 0037: 도망은 서버가 굴림 → 아래 예전 시험 동안은 0 ([44] 에서 따로)
   let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sf1234' })).error);
   const F = client(await pwLogin(`${sid}@code.local`, 'sf1234'));
   await F.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '사파리' });
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  // 걸음 속도 제한 (초당 6걸음): 만날 때까지 (또는 이유가 나올 때까지) 0.5초마다 8걸음씩 — 최대 10초. 정해진 잠깐 쉬기 대신
+  const walk = async () => {
+    let a;
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      a = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+      if (a?.encounter || a?.reason) return a;
+      await wait(500);
+    }
+    return a;
+  };
   ok((await anon.rpc('safari_state')).error, 'anon cannot call safari_state');
   ok((await anon.rpc('safari_encounter', { p_steps: 5 })).error, 'anon cannot call safari_encounter');
   const s0 = (await F.rpc('safari_state')).data;
@@ -1642,8 +1711,7 @@ console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 �
   await setS('safari_encounter_rate', 1);
   ok(a2?.encounter === null && a2.accepted <= 20, 'claiming 500 steps right away → speed limit accepts only a few, no encounter', a2);
   ok((await F.rpc('sync')).data.state.encounters.length === 0, 'nothing appears on the home banner');
-  await wait(1500);
-  const a3 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+  const a3 = await walk();
   const e1 = a3?.encounter;
   ok(e1?.kind === 'safari' && e1.balls === 10 && a3.encounters_today === 1, 'enough plausible grass steps → a safari encounter with 10 balls', a3);
   const encSp = e1 && (await admin.select(`species?id=eq.${e1.species_id}&select=line_id,stage`)).data[0];
@@ -1657,38 +1725,957 @@ console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 �
   ok((await F.rpc('sync')).data.state.collection.some((x) => x.line_id === encSp?.line_id), 'the Pokémon is in my collection');
   const tk = c1?.nonce && (await admin.select(`tickets?nonce=eq.${c1.nonce}&select=special,qr_id,status`)).data[0];
   ok(tk?.special === 'safari' && tk.qr_id === 'SAFARI' && tk.status === 'redeemed', 'recorded as a SAFARI special ticket', tk);
-  ok((await F.rpc('safari_result', { p_id: e1?.id, p_throws: 1, p_caught: true })).error === 'NOT_FOUND', 'an encounter can be used once');
+  const c1b = (await F.rpc('safari_result', { p_id: e1?.id, p_throws: 1, p_caught: true })).data;   // 0038: 다시 보내면 적어 둔 결과 그대로
+  ok(c1b?.replay === true && c1b.caught === true && c1b.nonce === c1?.nonce && c1b.safari?.balls_left === 7, 'an encounter is used once (re-send = the stored result, no extra balls)', c1b);
   // 0 개 던졌다고 해도 잡으면 1개는 씀
-  await wait(1500);
-  const e2 = (await F.rpc('safari_encounter', { p_steps: 8 })).data?.encounter;
+  const e2 = (await walk())?.encounter;
   ok(e2?.balls === 7, 'next encounter borrows the 7 balls left', e2);
   const c2 = (await F.rpc('safari_result', { p_id: e2?.id, p_throws: 0, p_caught: true })).data;
   ok(c2?.caught && c2.safari?.balls_left === 6, 'catching always costs at least one ball (claiming 0 throws)', c2?.safari);
   // 도망: 던진 수만큼 씀
-  await wait(1500);
-  const e3 = (await F.rpc('safari_encounter', { p_steps: 8 })).data?.encounter;
+  const e3 = (await walk())?.encounter;
   const c3 = (await F.rpc('safari_result', { p_id: e3?.id, p_throws: 2, p_caught: false })).data;
   ok(c3?.fled === true && c3.caught === false && c3.safari?.balls_left === 4, 'missing → it flees, 2 thrown balls used', c3);
   // encounter_result 를 바로 부르면 빌린 볼 모두 씀 → 0 → 오늘은 끝
-  await wait(1500);
-  const e4 = (await F.rpc('safari_encounter', { p_steps: 8 })).data?.encounter;
+  const e4 = (await walk())?.encounter;
   const c4 = (await F.rpc('encounter_result', { p_id: e4?.id, p_caught: true })).data;
   const s4 = (await F.rpc('safari_state')).data;
   ok(c4?.caught && e4?.balls === 4 && s4?.balls_left === 0, 'encounter_result without a throw count spends every borrowed ball', [e4, s4]);
-  await wait(1500);
-  const a5 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+  const a5 = await walk();
   ok(a5?.encounter === null && a5.reason === 'no_balls' && a5.balls_left === 0, 'daily ball cap: no balls left → no more encounters today', a5);
   // 하루 최대 만남
   await setS('safari_balls_daily', 30); await setS('safari_daily_max_encounters', 4);
-  await wait(1500);
-  const a6 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+  const a6 = await walk();
   ok(a6?.encounter === null && a6.reason === 'max' && a6.balls_left === 20, 'daily encounter cap reached → no encounter', a6);
   for (const k of keys) await setS(k, old[k]);
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
+console.log('\n[43] PC 박스 (0036): 같은 포켓몬 여러 마리 · 진화의 돌 (중복) · 카드/팀 = 포켓몬 번호 · 놓아주기 · 옮기기 · 900 마리');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'box123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'box123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const X = await mk('박스테스트');
+  const st = async () => (await X.c.rpc('sync')).data.state;
+  // 1) 같은 포켓몬 세 마리 = 세 줄 (따로 번호 · 칸), 도감·점수는 계열 하나
+  for (let i = 0; i < 3; i++) await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 7, p_stage: 1 });
+  let s1 = await st();
+  const sevens = s1.mons.filter((m) => m.line_id === 7);
+  ok(sevens.length === 3 && new Set(sevens.map((m) => m.id)).size === 3 && sevens.map((m) => m.pos).join() === '0,1,2',
+     'three of the same Pokémon → three box entries (own id, slots 1~3 of BOX 1)', sevens);
+  const c7 = s1.collection.find((c) => c.line_id === 7);
+  ok(c7?.count === 3 && c7.catch_count === 3 && s1.profile.dex_count === 1 && s1.rules.box_max === 900,
+     'dex row: count 3, catches 3, dex counts the species once; box_max 900', { c7, dex: s1.profile.dex_count });
+  const score1 = s1.profile.score;
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 7, p_stage: 1 });
+  s1 = await st();
+  ok(s1.profile.score === score1 && s1.mons.length === 4, 'another duplicate does not raise the score', [score1, s1.profile.score]);
+  const [m1, m2, m3, m4] = s1.mons.filter((m) => m.line_id === 7).map((m) => m.id);
+  // 2) 중복 잡기 = dup_bonus_every 번째마다 진화의 돌 (예전 규칙 그대로)
+  const every0 = (await admin.select('settings?key=eq.dup_bonus_every')).data?.[0]?.value ?? 3;
+  await patchSetting('dup_bonus_every', 5);                      // 지금 4번 잡음 → 부스에서 5번째 = 진화의 돌
+  const pool18 = (await admin.select('qr_rewards?qr_id=eq.A18&select=line_id,weight')).data;
+  await fetch(`${URL_}/rest/v1/qr_rewards?qr_id=eq.A18`, { method: 'DELETE', headers: H0 });
+  await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: JSON.stringify([{ qr_id: 'A18', line_id: 7, weight: 1 }]) });
+  await patchSetting('wild_chance', 0);
+  const t0 = s1.profile.evo_tickets;
+  const n5 = nonce();
+  await X.c.rpc('sync', { p_scans: [{ n: n5, q: 'A18', t: T.A18.token }] });
+  const r5 = (await booth.rpc('booth_redeem', { p_payload: X.sid })).data?.results?.find((x) => x.nonce === n5);
+  await fetch(`${URL_}/rest/v1/qr_rewards?qr_id=eq.A18`, { method: 'DELETE', headers: H0 });
+  await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: JSON.stringify(pool18.map((x) => ({ qr_id: 'A18', ...x }))) });
+  await patchSetting('dup_bonus_every', every0);
+  s1 = await st();
+  ok(r5?.is_new === false && r5.bonus_ticket === true && r5.mon_id > m4 && s1.profile.evo_tickets === t0 + 1 && s1.mons.filter((m) => m.line_id === 7).length === 5,
+     'duplicate booth catch: new 5th one in the box + 진화의 돌 on the Nth catch', { r5, t: [t0, s1.profile.evo_tickets] });
+  const m5 = r5?.mon_id;
+  // 3) 진화 = 그 한 마리만
+  await admin.rpc('admin_adjust_tickets', { p_student_id: X.sid, p_delta: 2 });
+  await patchSetting('evo_prob', [0, 1, 1]);
+  const ev = (await X.c.rpc('evolve', { p_mon: m2 })).data;
+  await patchSetting('evo_prob', [0, 0.7, 0.35]);
+  s1 = await st();
+  ok(ev?.success === true && ev.mon === m2 && s1.mons.find((m) => m.id === m2)?.stage === 2 && s1.mons.find((m) => m.id === m1)?.stage === 1,
+     'evolve(p_mon) evolves only that one', s1.mons.filter((m) => m.line_id === 7).map((m) => [m.id, m.stage]));
+  ok(s1.collection.find((c) => c.line_id === 7)?.stage === 2, 'dex row shows the highest stage reached');
+  // 4) 카드 · 배틀 팀 = 포켓몬 번호 (같은 종 두 마리도 한 팀)
+  ok((await X.c.rpc('set_partner', { p_mon: m3 })).data?.partner === m3, 'card partner = one particular Pokémon');
+  ok((await X.c.rpc('battle_set_team', { p_mons: [m1, m4] })).data?.ok, 'battle team may hold two of the same species');
+  ok((await X.c.rpc('battle_set_team', { p_mons: [m1, m1] })).error === 'BAD_TEAM', 'but not the same one twice');
+  const bt = (await X.c.rpc('battle_start_cpu', { p_mons: [m1, m4] })).data;
+  ok(bt?.sides?.[0]?.mons?.map((m) => m.mon).join() === `${m1},${m4}`, 'battle state carries the Pokémon numbers', bt?.sides?.[0]?.mons?.map((m) => m.mon));
+  // 5) 놓아주기 규칙
+  ok((await X.c.rpc('mon_release', { p_mon: m3 })).error === 'MON_PARTNER', 'cannot release the card partner');
+  ok((await X.c.rpc('mon_release', { p_mon: m1 })).error === 'MON_IN_TEAM', 'cannot release a saved battle-team member');
+  await X.c.rpc('battle_forfeit', { p_id: bt?.id });
+  const bt2 = (await X.c.rpc('battle_start_cpu', { p_mons: [m5] })).data;
+  ok((await X.c.rpc('mon_release', { p_mon: m5 })).error === 'MON_BUSY', 'cannot release a Pokémon in an active battle');
+  await X.c.rpc('battle_forfeit', { p_id: bt2?.id });
+  ok((await anon.rpc('mon_release', { p_mon: m5 })).error, 'anon cannot release');
+  ok((await S[0].rpc('mon_release', { p_mon: m5 })).error === 'NO_MONSTER', 'cannot release someone else\'s Pokémon');
+  await admin.rpc('admin_give_item', { p_student_id: X.sid, p_item: 'cushion', p_qty: 1 });
+  await X.c.rpc('bag_set_held', { p_mon: m5, p_item: 'cushion' });
+  const sA = await st();
+  const rel = (await X.c.rpc('mon_release', { p_mon: m5 })).data;
+  const sB = await st();
+  const bagB = (await X.c.rpc('bag_state')).data;
+  ok(rel?.ok && rel.held_back === 'cushion' && bagB.items.find((x) => x.key === 'cushion')?.qty === 1 && !bagB.box.some((m) => m.id === m5),
+     'release → gone from the box, held item back in the bag', rel);
+  ok(sB.mons.length === sA.mons.length - 1 && sB.profile.dex_count === sA.profile.dex_count && sB.profile.score === sA.profile.score
+     && sB.collection.find((c) => c.line_id === 7)?.catch_count === sA.collection.find((c) => c.line_id === 7)?.catch_count,
+     'dex / score / catch count stay after releasing', { a: [sA.mons.length, sA.profile.dex_count, sA.profile.score], b: [sB.mons.length, sB.profile.dex_count, sB.profile.score] });
+  ok((await X.c.rpc('mon_release', { p_mon: m5 })).error === 'NO_MONSTER', 'a released Pokémon cannot be released again');
+  ok((await X.c.rpc('evolve', { p_mon: m5 })).error === 'NOT_OWNED' && (await X.c.rpc('battle_set_team', { p_mons: [m5] })).error === 'BAD_TEAM',
+     'a released Pokémon cannot evolve or battle');
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 8, p_stage: 1 });
+  const m8 = await monId(X.c, 8);
+  const d8a = (await st()).profile.dex_count;
+  await X.c.rpc('mon_release', { p_mon: m8 });
+  const s8 = await st();
+  ok(s8.collection.find((c) => c.line_id === 8)?.count === 0 && s8.profile.dex_count === d8a,
+     'releasing the only one of a species: dex keeps it as caught (count 0)', s8.collection.find((c) => c.line_id === 8));
+  // 6) 옮기기 (그 칸에 있으면 서로 바꿈)
+  ok((await X.c.rpc('box_move', { p_mon: m1, p_pos: 35 })).data?.pos === 35, 'move to BOX 2 slot 6');
+  const sw = (await X.c.rpc('box_move', { p_mon: m4, p_pos: 35 })).data;
+  const s9 = await st();
+  ok(sw?.swap === m1 && s9.mons.find((m) => m.id === m4)?.pos === 35 && s9.mons.find((m) => m.id === m1)?.pos === sw.swap_pos,
+     'moving onto a filled slot swaps the two', sw);
+  ok((await X.c.rpc('box_move', { p_mon: m1, p_pos: 900 })).error === 'BAD_POS' && (await X.c.rpc('box_move', { p_mon: m5, p_pos: 3 })).error === 'NO_MONSTER',
+     'bad slot / released Pokémon refused');
+  // 7) 꽉 참: box_max (시험용으로 지금 마리 수) → 지급·부스 모두 거절, 티켓은 그대로
+  const nowN = s9.mons.length;
+  await patchSetting('box_max', nowN);
+  try {
+    ok((await X.c.rpc('sync')).data.state.rules.box_max === nowN, 'box_max setting reaches the app');
+    ok((await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 9, p_stage: 1 })).error === 'BOX_FULL', 'full box: admin grant refused (BOX_FULL)');
+    const nf = nonce(); const qf = Object.keys(T).find((k) => /^A\d+$/.test(k) && k !== 'A18');
+    await X.c.rpc('sync', { p_scans: [{ n: nf, q: qf, t: T[qf].token }] });
+    const rf = (await booth.rpc('booth_redeem', { p_payload: X.sid })).data?.results?.find((x) => x.nonce === nf);
+    const tf = (await st()).tickets.find((t) => t.nonce === nf);
+    ok(rf?.error === 'box_full' && tf?.status === 'pending', 'full box: booth does not use the ticket (still pending)', { rf, tf });
+    await patchSetting('box_max', 900);
+    const rg = (await booth.rpc('booth_redeem', { p_payload: X.sid })).data?.results?.find((x) => x.nonce === nf);
+    ok(rg?.species_id && rg.mon_id > 0 && (await st()).mons.length === nowN + 1, 'after making room the same ticket works', rg);
+  } finally { await patchSetting('box_max', 900); }
+  // 8) 마지막 한 마리
+  const Y = await mk('박스한마리');
+  await admin.rpc('admin_grant_monster', { p_student_id: Y.sid, p_line: 7, p_stage: 1 });
+  ok((await Y.c.rpc('mon_release', { p_mon: await monId(Y.c, 7) })).error === 'LAST_MON', 'cannot release the last Pokémon');
+  await admin.rpc('admin_delete_students', { p_student_ids: [X.sid, Y.sid], p_confirm: '삭제' });
+}
+
+console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈래 거절 · 돌/레벨 갈래 · 도감 수 · 사파리 도망 (서버) · 진화의 돌 이름');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'evo123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'evo123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const X = await mk('갈래진화');
+  const st = async () => (await X.c.rpc('sync')).data.state;
+  const spOf = async (q) => (await admin.select(`species?${q}&select=id,line_id,stage,dex,name,evo_lv,evo_item`)).data || [];
+  const ev = (await admin.select('evolutions?select=from_species,to_species,how,lv&limit=2000')).data || [];
+  const eevee = (await spOf('dex=eq.133&id=lt.10000'))[0];
+  const L = eevee?.line_id;
+  const outs = ev.filter((e) => e.from_species === eevee?.id);
+  ok(outs.length === 8 && outs.filter((e) => e.how === 'item').length === 5 && outs.filter((e) => e.how === 'level').every((e) => e.lv === 25),
+     'evolutions: 이브이 has 8 branches (5 stone, 3 level 25)', outs);
+  const br = await spOf('id=gte.10000&order=id');
+  ok(br.length === 20 && br.every((x) => x.id === 10000 + x.dex), 'branch species rows: id = 10000 + national dex', br.length);
+  const jolt = br.find((x) => x.dex === 135);
+  ok(jolt?.line_id === L && jolt.stage === 2 && jolt.evo_item === true, '쥬피썬더 branch = 이브이 line, stage 2, stone', jolt);
+  const lunala = br.find((x) => x.dex === 792);
+  ok(lunala?.stage === 3 && ev.some((e) => e.to_species === lunala.id && e.lv === 53), '루나아라 = 코스모움 stage-3 branch at Lv.53 (its own legend line stays)', lunala);
+  ok((await X.c.select('evolutions?select=from_species&limit=1')).data?.length === 1, 'students can read evolutions (catalog)');
+  ok((await X.c.patch('evolutions?from_species=eq.1', { lv: 2 })) >= 400 || (await admin.select('evolutions?from_species=eq.1&select=lv')).data?.[0]?.lv !== 2, 'students cannot change evolutions');
+
+  // 1) 이브이 #1: 갈래 고르기 필수 · 틀린 갈래 · 돌 진화
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
+  const m1 = (await st()).mons.find((m) => m.line_id === L);
+  ok(m1?.species_id === eevee.id && m1.stage === 1, 'a new 이브이 knows its species id', m1);
+  await admin.rpc('admin_adjust_tickets', { p_student_id: X.sid, p_delta: -((await st()).profile.evo_tickets) });
+  ok((await X.c.rpc('evolve', { p_mon: m1.id })).error === 'PICK_BRANCH', '이브이 without p_to → PICK_BRANCH (must choose)');
+  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: 2 })).error === 'BAD_BRANCH', 'a species that is not one of its branches → BAD_BRANCH');
+  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: 10475 })).error === 'BAD_BRANCH', "another line's branch (엘레이드) → BAD_BRANCH");
+  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: jolt.id })).error === 'NO_TICKET', 'stone branch without a 진화의 돌 → NO_TICKET');
+  await admin.rpc('admin_adjust_tickets', { p_student_id: X.sid, p_delta: 2 });
+  const r1 = (await X.c.rpc('evolve', { p_mon: m1.id, p_to: jolt.id })).data;
+  ok(r1?.success === true && r1.by_item === true && r1.species_id === jolt.id && r1.stage === 2 && r1.evo_tickets === 1,
+     'stone branch: 1 진화의 돌 → 100% 쥬피썬더 (species 10135, stage 2)', r1);
+  let s1 = await st();
+  const m1b = s1.mons.find((m) => m.id === m1.id);
+  ok(m1b?.species_id === jolt.id && m1b.stage === 2, 'sync: that mon is now 쥬피썬더', m1b);
+  ok(s1.seen?.includes(eevee.id) && s1.seen.includes(jolt.id) && s1.profile.dex_count === 2, 'seen = 이브이 + 쥬피썬더, dex_count 2', { seen: s1.seen, dex: s1.profile.dex_count });
+  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: jolt.id })).error === 'MAX_STAGE', '쥬피썬더 cannot evolve further');
+  const bag1 = (await X.c.rpc('bag_state')).data;
+  const bx1 = bag1?.box?.find((m) => m.id === m1.id);
+  const smJ = ((await admin.select(`species_moves?species_id=eq.${jolt.id}&select=move_id&order=slot`)).data || []).map((x) => x.move_id);
+  ok(bx1?.species_id === jolt.id && smJ.length === 4 && smJ.every((x) => bx1.known.includes(x)), "bag: 쥬피썬더's own 4 moves are known", { bx1, smJ });
+  const team = (await X.c.rpc('battle_set_team', { p_mons: [m1.id] }));
+  ok(!team.error, 'a branch Pokémon can be in the battle team', team);
+
+  // 2) 이브이 #2: 레벨 갈래 (에브이 Lv.25) — 돌 없이 100%
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
+  const m2 = (await st()).mons.find((m) => m.line_id === L && m.stage === 1);
+  await admin.rpc('admin_set_level', { p_student_id: X.sid, p_line: L, p_level: 25 });
+  const r2 = (await X.c.rpc('evolve', { p_mon: m2.id, p_to: 10196 })).data;
+  ok(r2?.success && r2.by_level === true && r2.species_id === 10196 && r2.evo_tickets === 1, 'level branch at Lv.25: 에브이, no 진화의 돌 used', r2);
+
+  // 3) 이브이 #3: 레벨 갈래를 일찍 (Lv.5) = 진화의 돌 + 확률 (시험 동안 100%)
+  const EP = (await admin.select('settings?key=eq.evo_prob&select=value')).data?.[0]?.value ?? [0, 0.7, 0.35];
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
+  const m3 = (await st()).mons.find((m) => m.line_id === L && m.stage === 1);
+  await patchSetting('evo_prob', [0, 1, 1]);
+  let r3;
+  try { r3 = (await X.c.rpc('evolve', { p_mon: m3.id, p_to: 10197 })).data; } finally { await patchSetting('evo_prob', EP); }
+  ok(r3?.success && r3.by_level === false && r3.by_item === false && r3.species_id === 10197 && r3.evo_tickets === 0,
+     'early level branch (Lv.5 → 블래키): uses a 진화의 돌 (probability)', r3);
+  s1 = await st();
+  ok(s1.profile.dex_count === 4, 'dex counts 이브이 once + 쥬피썬더 + 에브이 + 블래키 = 4', s1.profile.dex_count);
+  ok(s1.collection.find((c) => c.line_id === L)?.count === 3, 'collection row: 3 Pokémon in the 이브이 line', s1.collection.find((c) => c.line_id === L));
+
+  // 4) 같은 전국도감 번호 = 한 칸: 따로 있는 야생 쥬피썬더 계열을 잡아도 도감 수는 그대로
+  const joltWild = (await spOf('dex=eq.135&id=lt.10000'))[0];
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: joltWild.line_id, p_stage: 1 });
+  s1 = await st();
+  ok(joltWild.line_id !== L && s1.profile.dex_count === 4 && s1.seen.includes(joltWild.id), 'catching the standalone 쥬피썬더 line: same dex number → dex_count stays 4', { dex: s1.profile.dex_count });
+
+  // 5) 한 갈래뿐이면 p_to 없이 · 3단계 갈래 (개무소 → 카스쿤 → 독케일)
+  const kakuna = (await spOf('dex=eq.268&id=gte.10000'))[0];
+  const wurm = (await spOf(`line_id=eq.${kakuna.line_id}&stage=eq.1`))[0];
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: wurm.line_id, p_stage: 1 });
+  await admin.rpc('admin_set_level', { p_student_id: X.sid, p_line: wurm.line_id, p_level: 10 });
+  const mw = (await st()).mons.find((m) => m.line_id === wurm.line_id);
+  ok((await X.c.rpc('evolve', { p_mon: mw.id })).error === 'PICK_BRANCH', '개무소 (실쿤 / 카스쿤) → PICK_BRANCH');
+  const rw = (await X.c.rpc('evolve', { p_mon: mw.id, p_to: kakuna.id })).data;
+  ok(rw?.success && rw.by_level && rw.species_id === kakuna.id, '개무소 Lv.10 → 카스쿤 (level branch)', rw);
+  const rw2 = (await X.c.rpc('evolve', { p_mon: mw.id })).data;
+  ok(rw2?.success && rw2.by_level && rw2.species_id === 10269 && rw2.stage === 3, '카스쿤 has one way → evolve without p_to → 독케일 (stage 3)', rw2);
+  ok(((await st()).seen || []).filter((x) => [wurm.id, kakuna.id, 10269].includes(x)).length === 3, 'seen keeps the whole branch path (개무소 · 카스쿤 · 독케일)');
+  // 곧은 계열은 예전처럼 p_to 없이
+  const one = (await spOf('id=eq.1'))[0];
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: one.line_id, p_stage: 1 });
+  await admin.rpc('admin_set_level', { p_student_id: X.sid, p_line: one.line_id, p_level: 50 });
+  const r5 = (await X.c.rpc('evolve', { p_mon: (await st()).mons.find((m) => m.line_id === one.line_id).id })).data;
+  ok(r5?.success && r5.species_id === 2, 'a single-path line still evolves without p_to', r5);
+
+  // 6) 학교 도감: 선생님 계열의 갈래 종 (냄새꼬 → 아르코) 도 학교 도감 칸
+  const bell = (await spOf('dex=eq.182&id=gte.10000'))[0];
+  const bellLine = (await admin.select(`lines?id=eq.${bell?.line_id}&select=subject`)).data?.[0];
+  ok(bell?.stage === 3 && bellLine?.subject && bellLine.subject !== '야생', '아르코 is a stage-3 branch of a teacher line (counts in the school dex)', { bell, bellLine });
+
+  // 7) 사파리존 도망 (서버): 25% + 놓칠 때마다 +5% (전설 +15%), safari_turn · safari_result
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  ok(Number(old.safari_balls_daily) === 20 && Number(old.safari_reset_hours) === 24, 'safari ball defaults: 20 balls, refill every 24 h', old);
+  ok(Number(old.safari_flee) === 0.25 && Number(old.safari_flee_step) === 0.05 && Number(old.safari_flee_legend) === 0.15 && Number(old.safari_flee_max) === 0.9,
+     'flee settings: 25% base, +5% per turn, +15% legend, max 90%', old);
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const walk = async () => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const a = (await X.c.rpc('safari_encounter', { p_steps: 8 })).data;
+      if (a?.encounter || a?.reason) return a;
+      await wait(500);
+    }
+    return null;
+  };
+  try {
+    await setS('safari_balls_daily', 30); await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1);
+    await setS('safari_daily_max_encounters', 20); await setS('safari_steps_per_sec', 6);
+    // 첫 차례 0% (전설 더하기도 0) → 반드시 남음. 그다음 차례의 확률은 굴리지 않고 safari_state 로만 봄 (결정적)
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0.05); await setS('safari_flee_legend', 0); await setS('safari_flee_max', 0.9);
+    const e1 = (await walk())?.encounter;
+    ok(e1?.turns === 0 && e1.flee_now === 0, 'pending safari encounter shows turns 0 and the flee chance now', e1);
+    const t1 = (await X.c.rpc('safari_turn', { p_id: e1?.id })).data;
+    ok(t1?.fled === false && t1.turn === 1 && t1.rate === 0 && Math.abs(t1.next_rate - 0.05) < 1e-9, 'safari_turn: 0% → stays; next miss +5%', t1);
+    const p1 = (await X.c.rpc('safari_state')).data?.pending;
+    ok(p1?.turns === 1 && Math.abs(p1.flee_now - 0.05) < 1e-9, 'the chance rises each turn the Pokémon stays (0% → 5%)', p1);
+    await setS('safari_flee_legend', 0.15);
+    const leg = (await admin.select(`species?id=eq.${e1?.species_id}&select=lines(rarity)`)).data?.[0]?.lines?.rarity === 'legendary';
+    ok(Math.abs(((await X.c.rpc('safari_state')).data?.pending?.flee_now ?? -1) - (leg ? 0.2 : 0.05)) < 1e-9, 'legend bonus only for legendary lines', leg);
+    ok((await anon.rpc('safari_turn', { p_id: e1?.id })).error, 'anon cannot call safari_turn');
+    ok((await S[0].rpc('safari_turn', { p_id: e1?.id })).error === 'NOT_FOUND', "cannot roll someone else's encounter");
+    await setS('safari_flee_max', 0.03);
+    ok(Math.abs(((await X.c.rpc('safari_state')).data?.pending?.flee_now ?? -1) - 0.03) < 1e-9, 'capped at safari_flee_max');
+    // 서버가 도망을 정함: 100% 로 두면 safari_turn 에서 도망 → 그 만남은 끝, 결과를 다시 보내도 도망
+    await setS('safari_flee_max', 1); await setS('safari_flee', 1);
+    const t3 = (await X.c.rpc('safari_turn', { p_id: e1?.id })).data;
+    ok(t3?.fled === true && t3.caught === false && t3.safari?.balls_left === 28, 'flee 100%: safari_turn → it fled, 2 missed balls used', t3);
+    const t3b = (await X.c.rpc('safari_result', { p_id: e1?.id, p_throws: 4, p_caught: true })).data;
+    ok(t3b?.fled === true && t3b.caught === false && t3b.safari?.balls_left === 28, 'claiming a catch after it fled → still fled (no extra balls)', t3b);
+    ok((await X.c.rpc('safari_turn', { p_id: e1?.id })).error === 'NOT_FOUND', 'a finished encounter cannot roll again');
+    // 앱이 safari_turn 을 건너뛰고 '3번째 공으로 잡음' 이라고 보내도, 놓친 2개의 도망 판정은 서버가 굴림
+    const e2 = (await walk())?.encounter;
+    const c2 = (await X.c.rpc('safari_result', { p_id: e2?.id, p_throws: 3, p_caught: true })).data;
+    ok(c2?.caught === false && c2.fled === true && c2.server_fled === true && c2.safari?.balls_left === 27,
+       'skipping safari_turn does not help: the server rolls the missed balls (flees after the 1st miss)', c2);
+    // 첫 공에 잡으면 놓친 공이 없으니 도망 판정 없음
+    const e3 = (await walk())?.encounter;
+    const c3 = (await X.c.rpc('safari_result', { p_id: e3?.id, p_throws: 1, p_caught: true })).data;
+    ok(c3?.caught === true && c3.server_fled === false && c3.safari?.balls_left === 26, 'caught with the first ball → no flee roll', c3);
+    // 0% 면 놓친 공이 있어도 잡힘
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);
+    const e4 = (await walk())?.encounter;
+    const c4 = (await X.c.rpc('safari_result', { p_id: e4?.id, p_throws: 5, p_caught: true })).data;
+    ok(c4?.caught === true && c4.server_fled === false && c4.safari?.balls_left === 21, 'flee 0%: missed balls never flee', c4);
+
+    // 사파리볼 충전 주기 (서울 00:00 부터 safari_reset_hours 마다)
+    const seoulH = Number(new Date().toLocaleString('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', hourCycle: 'h23' }));
+    const z0 = (await X.c.rpc('safari_state')).data;
+    ok(z0?.reset_hours === 24 && z0.balls === 21 && z0.max_balls === 30 && z0.balls === z0.balls_left
+       && new Date(z0.next_reset_at) - new Date(z0.period_start) === 24 * 3600e3, 'safari_state: balls · max_balls · next_reset_at (24 h = next 00:00)', z0);
+    await setS('safari_reset_hours', 6);
+    const z6 = (await X.c.rpc('safari_state')).data;
+    const st6 = Math.floor(seoulH / 6) * 6;
+    const hOf = (iso) => Number(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Seoul', hour: 'numeric', hourCycle: 'h23' }));
+    ok(z6?.reset_hours === 6 && hOf(z6.period_start) === st6 && hOf(z6.next_reset_at) === (st6 + 6) % 24
+       && new Date(z6.next_reset_at) - new Date(z6.period_start) === 6 * 3600e3, `6 h: period ${st6}:00 → next refill ${(st6 + 6) % 24}:00 (Seoul)`, z6);
+    ok(st6 === 0 ? z6.balls === 21 : z6.balls === 30, st6 === 0 ? 'same 00:00 period → same balls' : 'a new 6 h period → balls refilled to the max', z6?.balls);
+    const e5 = (await walk())?.encounter;
+    const c5 = (await X.c.rpc('safari_result', { p_id: e5?.id, p_throws: 2, p_caught: true })).data;
+    ok(c5?.caught && c5.safari?.balls === (st6 === 0 ? 19 : 28), 'balls used in this period come out of this period', c5?.safari);
+    await setS('safari_reset_hours', 24);
+    const z24 = (await X.c.rpc('safari_state')).data;
+    ok(z24?.balls === (st6 === 0 ? 19 : 21), "back to 24 h: today's (00:00) period kept its own count", z24?.balls);
+    await setS('safari_reset_hours', 1);
+    const z1 = (await X.c.rpc('safari_state')).data;
+    ok(hOf(z1?.period_start) === seoulH && new Date(z1.next_reset_at) - new Date(z1.period_start) === 3600e3, '1 h: refills every hour on the hour', z1);
+    await setS('safari_reset_hours', 99);
+    ok((await X.c.rpc('safari_state')).data?.reset_hours === 24, 'reset hours are clamped to 1–24');
+  } finally {
+    for (const k of keys) await setS(k, old[k]);
+  }
+
+  // 8) 이름 '진화의 돌' (붙여 쓴 옛 이름이 서버 자료에 없음)
+  const oldName = (await admin.select(`items?select=key&name=like.*${encodeURIComponent('진화의돌')}*`)).data;
+  ok(Array.isArray(oldName) && oldName.length === 0, "no item is called '진화의돌' (renamed to 진화의 돌)", oldName);
+  await admin.rpc('admin_delete_students', { p_student_ids: [X.sid], p_confirm: '삭제' });
+}
+
+console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이상한 소포 · 울트라비스트 구역 · 메타몽 · 사파리 정리/같은 결과');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'lg1234' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'lg1234'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const L = await mk('전설테스트');
+  const M = await mk('소포테스트');
+  const st = async (c = L.c) => (await c.rpc('sync')).data.state;
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours',
+                'legend_quests', 'roam_chance', 'legend_daily_tries', 'legend_balls', 'gift_fail_limit', 'ditto_disguise_chance', 'wild_chance', 'self_redeem'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const gifts = [];
+  const mkGift = async (o) => {
+    const r = await admin.rpc('admin_create_gift', { p_code: null, p_title: null, p_dex: null, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null, ...o });
+    if (r.data?.id) gifts.push(r.data.id);
+    return r;
+  };
+  const uidOf = async (sid) => (await admin.select(`profiles?student_id=eq.${sid}&select=user_id`)).data?.[0]?.user_id;
+  try {
+    ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
+       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto (0 during the suite), roam 30%, legend 3 tries · 10 balls, 14 quests', old);
+    ok(Number(DITTO0) === 0.005, 'ditto_disguise_chance default 0.5% (user choice)', DITTO0);
+    // ── 0. 야생 무리: 퀘스트 · 사파리 · 방랑 · 소포 전설과 울트라비스트는 빠짐 ──
+    const ln = (await admin.select('lines?select=id,ultra,legend_src&or=(ultra.eq.true,legend_src.not.is.null)')).data;
+    const src = Object.fromEntries(['quest', 'safari', 'roam', 'gift'].map((k) => [k, ln.filter((x) => x.legend_src === k).length]));
+    ok(ln.filter((x) => x.ultra).length === 10 && src.quest === 5 && src.safari === 9 && src.roam === 3 && src.gift === 13,
+       'lines flagged: 10 Ultra Beasts, 5 quest, 9 safari, 3 roaming, 13 gift-only mythics', src);
+
+    // ── A. 알림 ──
+    await L.c.rpc('claim_egg', { p_key: 'card' });
+    let s1 = await st();
+    const nEgg = s1.notices.find((n) => n.kind === 'egg');
+    ok(nEgg?.title && nEgg.body.includes('부스') && nEgg.data?.pending === true && nEgg.species_id, 'easter-egg ticket → a notice that says where to redeem it', s1.notices);
+    ok((await anon.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).error, 'anon cannot call notice_seen');
+    ok((await M.c.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).data?.seen === 0, "cannot mark someone else's notice as seen");
+    ok((await L.c.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).data?.seen === 1 && !(await st()).notices.some((n) => n.id === nEgg?.id),
+       'notice_seen → it is no longer in the sync payload (never replayed)');
+    ok((await L.c.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).data?.seen === 0, 'marking it again does nothing');
+
+    // ── B. 퀘스트 ──
+    const row = (s, dex) => s.legends.find((x) => x.dex === dex);
+    s1 = await st();
+    ok(s1.legends.length === 14 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
+       'quest rows in sync: 유크시 quiz streak 0/10', row(s1, 480));
+    ok(row(s1, 481)?.prog === '배틀 승리 0/10' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
+       'battle wins 0/10 · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
+    const spots = (await admin.select('qr_points?select=id&kind=eq.static&visible_on_map=eq.true&active=eq.true&order=id')).data.map((x) => x.id);
+    await L.c.rpc('sync', { p_scans: [{ n: nonce(), q: spots[0], t: T[spots[0]].token }] });
+    ok(row(await st(), 484)?.cur === 1, 'a scanned QR spot counts toward 펄기아');
+    for (let i = 0; i < 2; i++) await admin.rpc('admin_grant_monster', { p_student_id: L.sid, p_line: 7, p_stage: 1 });
+    s1 = await st();
+    ok(row(s1, 482)?.cur === 2 && row(s1, 482).ok === false && row(s1, 482).cond.includes('30마리'), 'catches quest counts caught Pokémon (2/30)', row(s1, 482));
+    const Q = structuredClone(old.legend_quests);
+    Q.find((q) => q.dex === 482).n = 2; Q.find((q) => q.dex === 481).n = 0;
+    await setS('legend_quests', Q);
+    s1 = await st();
+    const agn = row(s1, 482);
+    ok(agn?.done && agn.ok && agn.granted && s1.special.filter((t) => t.special === 'quest' && t.species_id === agn.species_id).length === 1,
+       'condition met → 아그놈 special quest ticket (in the ticket bag)', agn);
+    ok(s1.notices.some((n) => n.kind === 'quest' && n.species_id === agn?.species_id) && row(s1, 481)?.done,
+       'quest notice (fanfare) · 0-win quest done right away', s1.notices.map((n) => n.kind));
+    s1 = await st();
+    ok(s1.special.filter((t) => t.special === 'quest').length === 2, 'quest tickets are granted once each (no repeats on later syncs)', s1.special);
+    Q.find((q) => q.dex === 482).n = 30; await setS('legend_quests', Q);
+    ok(row(await st(), 482)?.ok === true, 'a finished quest stays finished even if the number goes up later');
+    const water = (await admin.select(`lines?select=id&subject=eq.${encodeURIComponent('야생')}&rarity=eq.common&ultra=eq.false&legend_src=is.null&btype=eq.${encodeURIComponent('물')}&order=id&limit=1`)).data?.[0]?.id;
+    await admin.rpc('admin_grant_monster', { p_student_id: L.sid, p_line: water, p_stage: 1 });
+    ok(row(await st(), 249)?.prog === '물 타입 1/20', 'type quest counts caught water types (루기아 1/20)', row(await st(), 249));
+    const regiLines = (await admin.select('species?select=line_id,dex&dex=in.(377,378,379)&stage=eq.1')).data.map((x) => x.line_id);
+    s1 = await st();
+    ok(row(s1, 486)?.ok === false && row(s1, 486).cond.includes('레지락·레지아이스·레지스틸을 모두'), '레지기가스: not ready, condition text names the trio', row(s1, 486));
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).error === 'NOT_READY', 'legend_encounter refuses before the condition is met');
+    ok((await L.c.rpc('legend_encounter', { p_dex: 480 })).error === 'BAD_LEGEND', 'non-map quest legends cannot be met in the Safari');
+    ok((await anon.rpc('legend_encounter', { p_dex: 486 })).error, 'anon cannot call legend_encounter');
+    for (const l of regiLines) await admin.rpc('admin_grant_monster', { p_student_id: L.sid, p_line: l, p_stage: 1 });
+    s1 = await st();
+    ok(row(s1, 486)?.ok && row(s1, 486).prog === '잡은 전설 3/3' && row(s1, 377)?.caught, 'all three Regi caught → 레지기가스 ready (3/3)', row(s1, 486));
+    ok(s1.notices.some((n) => n.kind === 'legend_ready' && n.data?.dex === 486), "'깨어났다' notice for a map legend that became ready", s1.notices.map((n) => n.kind));
+    const ss = (await L.c.rpc('safari_state')).data;
+    ok(ss?.legends?.find((x) => x.dex === 486)?.ok === true, 'safari_state carries the legend rows (keeper NPC uses real state)');
+    await setS('legend_daily_tries', 2); await setS('legend_balls', 7);
+    const le1 = (await L.c.rpc('legend_encounter', { p_dex: 486 })).data;
+    ok(le1?.encounter?.kind === 'legend' && le1.encounter.balls === 7 && le1.tries_left === 1, 'legend_encounter → pending legend encounter with legend_balls', le1);
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).data?.encounter?.id === le1?.encounter?.id, 'calling again resumes the same encounter');
+    ok(!(await st()).encounters.some((e) => e.kind === 'legend'), 'legend encounters stay off the home banner');
+    const lr1 = (await L.c.rpc('legend_result', { p_id: le1?.encounter?.id, p_caught: false })).data;
+    ok(lr1?.fled === true && lr1.caught === false, 'legend flees (all balls missed)', lr1);
+    const lr1b = (await L.c.rpc('legend_result', { p_id: le1?.encounter?.id, p_caught: true })).data;
+    ok(lr1b?.replay === true && lr1b.fled === true && lr1b.caught === false, 'legend_result is idempotent: re-send returns the stored outcome', lr1b);
+    const le2 = (await L.c.rpc('legend_encounter', { p_dex: 486 })).data;
+    ok(le2?.encounter?.id && le2.encounter.id !== le1?.encounter?.id && le2.tries_left === 0, 'after fleeing it can be challenged again (stays on the map)', le2);
+    const lr2 = (await L.c.rpc('legend_result', { p_id: le2?.encounter?.id, p_caught: false })).data;
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).error === 'NO_TRIES' && lr2?.fled, 'per-day attempts (legend_daily_tries)');
+    await setS('legend_daily_tries', 5);
+    const le3 = (await L.c.rpc('legend_encounter', { p_dex: 486 })).data;
+    const lr3 = (await L.c.rpc('legend_result', { p_id: le3?.encounter?.id, p_caught: true, p_grade: 'great' })).data;
+    const giga = row(await st(), 486);
+    ok(lr3?.caught === true && lr3.ditto === false && giga?.caught, 'caught → 레지기가스 in the collection (never a Ditto)', lr3);
+    ok((await st()).notices.some((n) => n.kind === 'legend' && n.species_id === giga?.species_id), 'legend catch notice');
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).error === 'ALREADY_CAUGHT', 'one catch per account');
+
+    // ── C. 방랑 전설 ──
+    ok((await L.c.rpc('admin_roam_spots', {})).error === 'NOT_ADMIN', 'students cannot see where the roamers are');
+    const at = new Date().toISOString();
+    const r1 = (await admin.rpc('admin_roam_spots', { p_at: at })).data, r2 = (await admin.rpc('admin_roam_spots', { p_at: at })).data;
+    ok(r1?.length === 3 && JSON.stringify(r1) === JSON.stringify(r2) && r1.every((x) => spots.includes(x.qr)), 'roamer hour assignment is deterministic and on a visible QR spot', r1);
+    const hrs = [];
+    for (let k = 0; k < 12; k++) hrs.push((await admin.rpc('admin_roam_spots', { p_at: new Date(Date.parse(at) + k * 3600e3).toISOString() })).data?.[0]?.qr);
+    const same = (await admin.rpc('admin_roam_spots', { p_at: new Date(Math.floor(Date.parse(at) / 3600e3) * 3600e3 + 59 * 60e3).toISOString() })).data;
+    ok(new Set(hrs).size >= 3 && same?.[0]?.qr === r1[0].qr, 'it moves between hours, stays put within an hour', hrs);
+    const rum = (await st()).roamers;
+    ok(rum?.length === 3 && rum.every((x) => x.rumour && !x.rumour.includes(r1.find((y) => y.dex === x.dex).qr_name)), 'rumours hint the area, not the exact spot', rum);
+    await setS('roam_chance', 1);
+    const raiko = r1.find((x) => x.dex === 243);
+    await L.c.rpc('sync', { p_scans: [{ n: nonce(), q: raiko.qr, t: T[raiko.qr].token }] });
+    s1 = await st();
+    const rq = s1.encounters.find((e) => e.kind === 'roam' && e.species_id === rum.find((x) => x.dex === 243).species_id);
+    ok(!!rq && rq.balls >= 1, 'scanning the roamer QR during its hour → a roaming encounter on the home banner', s1.encounters);
+    const rc = (await L.c.rpc('encounter_result', { p_id: rq?.id, p_caught: true, p_grade: 'nice' })).data;
+    s1 = await st();
+    ok(rc?.caught && s1.roamers.find((x) => x.dex === 243)?.caught && s1.notices.some((n) => n.kind === 'roam'), 'caught 라이코 → marked caught + notice', rc);
+    await setS('roam_chance', 0);
+    await M.c.rpc('sync', { p_scans: [{ n: nonce(), q: raiko.qr, t: T[raiko.qr].token }] });
+    ok(!(await st(M.c)).encounters.some((e) => e.kind === 'roam'), 'roam_chance 0 → no encounter');
+
+    // ── D. 이상한 소포 ──
+    const tag = Math.random().toString(36).slice(2, 7);
+    const code = `Gift 테스트 ${tag}`;
+    ok((await L.c.rpc('admin_create_gift', { p_code: code, p_title: 'x', p_dex: 385, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: 1 })).error === 'NOT_ADMIN', 'students cannot create gifts');
+    const g1 = (await mkGift({ p_code: code, p_title: '시험 소포', p_dex: 385, p_max: 1 })).data;
+    ok(g1?.code === `gift테스트${tag}` && g1.species_id, 'admin_create_gift (code stored without spaces, lower case)', g1);
+    ok((await mkGift({ p_code: code, p_dex: 385 })).error === 'GIFT_EXISTS', 'duplicate code rejected');
+    ok((await mkGift({ p_code: `x${tag}`, p_dex: 385, p_item: 'candy' })).error === 'BAD_GIFT_REWARD', 'Pokémon OR item, not both');
+    ok((await st()).gifts_open >= 1, 'students see that a gift is claimable (count only)');
+    const c1 = (await L.c.rpc('gift_claim', { p_code: `  GIFT테스트 ${tag.toUpperCase()} ` })).data;
+    ok(c1?.ok && c1.species_id === g1?.species_id && c1.mon, 'case/space-insensitive Korean code → 지라치 in the box', c1);
+    s1 = await st();
+    ok(s1.notices.some((n) => n.kind === 'gift' && n.species_id === g1?.species_id && n.body.includes('박스')), 'gift notice (went straight to the box)', s1.notices);
+    ok((await L.c.rpc('gift_claim', { p_code: code })).data?.error === 'GIFT_CLAIMED', 'one per account');
+    ok((await M.c.rpc('gift_claim', { p_code: code })).data?.error === 'GIFT_GONE', 'max claims reached');
+    const past = new Date(Date.now() - 3600e3).toISOString(), soon = new Date(Date.now() + 3600e3).toISOString();
+    await mkGift({ p_code: `old${tag}`, p_dex: 386, p_ends: past });
+    await mkGift({ p_code: `new${tag}`, p_dex: 386, p_starts: soon });
+    ok((await M.c.rpc('gift_claim', { p_code: `old${tag}` })).data?.error === 'GIFT_EXPIRED', 'expired gift');
+    ok((await M.c.rpc('gift_claim', { p_code: `new${tag}` })).data?.error === 'GIFT_NOT_YET', 'not-yet-started gift');
+    const candyGift = (await mkGift({ p_code: `사탕${tag}`, p_item: 'candy', p_qty: 2 })).data;
+    const qty = async () => ((await M.c.rpc('bag_state', {})).data?.items || []).find((x) => x.key === 'candy')?.qty || 0;
+    const before = await qty();
+    const c2 = (await M.c.rpc('gift_claim', { p_code: `사탕 ${tag}` })).data;
+    const after = await qty();
+    ok(c2?.ok && c2.item === 'candy' && after - before === 2 && (await st(M.c)).notices.some((n) => n.kind === 'gift'), 'item gift → inventory +2 and a notice', [c2, before, after]);
+    await mkGift({ p_code: `돌${tag}`, p_item: 'evo_stone', p_qty: 1 });
+    const ev0 = (await st(M.c)).profile.evo_tickets;
+    const c3 = (await M.c.rpc('gift_claim', { p_code: `돌${tag}` })).data;
+    ok(c3?.ok && c3.evo_tickets === ev0 + 1, '진화의 돌 gift', [ev0, c3]);
+    const lst = (await admin.rpc('admin_list_gifts')).data;
+    ok(lst?.find((g) => g.id === g1?.id)?.claims === 1, 'admin_list_gifts shows claim counts');
+    await admin.rpc('admin_set_gift', { p_id: candyGift?.id, p_active: false });
+    ok((await L.c.rpc('gift_claim', { p_code: `사탕${tag}` })).data?.error === 'GIFT_EXPIRED', 'disabled gift cannot be claimed');
+    await setS('gift_fail_limit', 3);
+    for (let i = 0; i < 3; i++) ok((await M.c.rpc('gift_claim', { p_code: `wrong${tag}${i}` })).data?.error === 'BAD_GIFT', `wrong code → BAD_GIFT (${i + 1})`);
+    await mkGift({ p_code: `right${tag}`, p_item: 'candy', p_qty: 1 });
+    ok((await M.c.rpc('gift_claim', { p_code: `right${tag}` })).data?.error === 'TRY_LATER', 'rate limit: too many wrong codes → TRY_LATER even for a right code');
+    ok((await anon.rpc('gift_claim', { p_code: code })).error, 'anon cannot claim gifts');
+
+    // ── E · F · G. 사파리: 구역 · 메타몽 · 정리 · 같은 결과 ──
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1);
+    await setS('safari_daily_max_encounters', 100); await setS('safari_steps_per_sec', 6);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);
+    const walk = async (zone) => {
+      for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+        const a = (await M.c.rpc('safari_encounter', { p_steps: 8, p_zone: zone })).data;
+        if (a?.encounter || a?.reason) return a;
+        await wait(500);
+      }
+      return null;
+    };
+    const ub = new Set((await admin.select('lines?select=id&ultra=eq.true')).data.map((x) => x.id));
+    const lineOfSp = async (sp) => (await admin.select(`species?id=eq.${sp}&select=line_id`)).data?.[0]?.line_id;
+    const ultra = [], grass = [];
+    for (let i = 0; i < 3; i++) {
+      const a = await walk('ultra'); ultra.push([a?.zone, await lineOfSp(a?.encounter?.species_id)]);
+      await M.c.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+    }
+    for (const z of ['grass', 'cave', 'deep', 'bogus', 'grass']) {
+      const a = await walk(z); grass.push([a?.zone, await lineOfSp(a?.encounter?.species_id)]);
+      await M.c.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+    }
+    ok(ultra.every(([z, l]) => z === 'ultra' && ub.has(l)), "zone 'ultra' → only Ultra Beasts", ultra);
+    ok(grass.every(([, l]) => l && !ub.has(l)) && grass[3][0] === 'grass' && grass[1][0] === 'cave', 'grass · cave · deep never give Ultra Beasts; unknown zone = grass', grass);
+    await setS('ditto_disguise_chance', 1);
+    const d1 = (await walk('grass'))?.encounter;
+    const dc = (await M.c.rpc('safari_result', { p_id: d1?.id, p_throws: 1, p_caught: true })).data;
+    const dittoSp = (await admin.select('species?dex=eq.132&select=id')).data?.[0]?.id;
+    ok(dc?.caught && dc.ditto === true && dc.species_id === dittoSp && dc.disguised_as === d1?.species_id, 'ditto chance 1 → the caught Pokémon was 메타몽 (disguised_as)', dc);
+    ok((await myMons(M.c)).some((m) => m.line_id === 116), '메타몽 is in the box');
+    await setS('wild_chance', 1); await setS('self_redeem', true);
+    const qn = nonce();
+    await M.c.rpc('sync', { p_scans: [{ n: qn, q: spots[5], t: T[spots[5]].token }] });
+    await M.c.rpc('self_redeem');
+    s1 = await st(M.c);
+    ok(s1.disguised?.[qn] && s1.tickets.find((t) => t.nonce === qn)?.species_id === dittoSp, 'QR wild Pokémon can be a disguised 메타몽 too (state.disguised)', s1.disguised);
+    await setS('wild_chance', 0); await setS('self_redeem', false);
+    await setS('ditto_disguise_chance', 0);
+    const d2 = (await walk('grass'))?.encounter;
+    const dc2 = (await M.c.rpc('safari_result', { p_id: d2?.id, p_throws: 1, p_caught: true })).data;
+    ok(dc2?.caught && dc2.ditto === false && dc2.species_id === d2?.species_id, 'ditto chance 0 → never', dc2);
+    const dc2b = (await M.c.rpc('safari_result', { p_id: d2?.id, p_throws: 3, p_caught: true })).data;
+    ok(dc2b?.replay && dc2b.caught && dc2b.nonce === dc2?.nonce && dc2b.safari?.balls_left === dc2?.safari?.balls_left, 'safari_result re-send → stored outcome, no extra balls', dc2b);
+    const e5 = (await walk('grass'))?.encounter;
+    const b0 = (await M.c.rpc('safari_state')).data?.balls_left;
+    ok((await M.c.rpc('safari_throws', { p_id: e5?.id, p_n: 2 })).data?.throws === 2, 'safari_throws records throws as they happen');
+    ok((await M.c.rpc('safari_throws', { p_id: e5?.id, p_n: 1 })).data?.throws === 2, 'throw count never goes down');
+    ok((await L.c.rpc('admin_encounter_age', { p_id: e5?.id, p_minutes: 60 })).error === 'NOT_ADMIN', 'admin_encounter_age is admin-only');
+    ok((await admin.rpc('admin_encounter_age', { p_id: e5?.id, p_minutes: 60 * 26 })).data?.ok, 'admin_encounter_age (test helper)');
+    const z5 = (await M.c.rpc('safari_state')).data;
+    ok(z5?.expired === 1 && z5.pending === null && z5.balls_left === b0, 'stale pending (older than this refill period) → auto-fled; only its 2 throws are charged (to the old period)', z5);
+    const r5 = (await M.c.rpc('safari_result', { p_id: e5?.id, p_throws: 2, p_caught: true })).data;
+    ok(r5?.replay && r5.fled === true && r5.caught === false && r5.expired === true, 'sending a result for it later → the stored (fled) outcome', r5);
+    ok((await M.c.rpc('safari_throws', { p_id: e5?.id, p_n: 3 })).error === 'NOT_FOUND', 'cannot record throws on a finished encounter');
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    for (const id of gifts) await admin.rpc('admin_delete_gift', { p_id: id });
+    await admin.rpc('admin_delete_students', { p_student_ids: [L.sid, M.sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[46] 특성 · 변신 · 날씨 / 필드 (0039): admin_bt_sim (고정 난수) · 시간표 칸 · 잡을 때 특성 · 메타몽');
+{
+  const spRows = (await admin.select('species?select=id,dex,line_id,stage,abilities,hidden_ability&id=lt.10000&order=id&limit=1000')).data || [];
+  const SP = Object.fromEntries(spRows.map((r) => [r.dex, r.id]));
+  const mvRows = (await admin.select('moves?select=id,name,pp&limit=400')).data || [];
+  const MV = Object.fromEntries(mvRows.map((m) => [m.name, m.id]));
+  const abRows = (await admin.select('abilities?select=key,name,description&limit=400')).data || [];
+  ok(abRows.length >= 200 && abRows.every((a) => a.name && a.description), `abilities table: ${abRows.length} with Korean name + description`, abRows.length);
+  ok(spRows.length >= 800 && spRows.every((r) => Array.isArray(r.abilities) && r.abilities.length >= 1), 'every species has 1–2 normal abilities', spRows.filter((r) => !r.abilities?.length).slice(0, 3));
+  const br = (await admin.select('species?select=id,abilities,hidden_ability&id=gte.10000')).data || [];
+  ok(br.length > 0 && br.every((r) => r.abilities?.length), `branch species (10000+) have abilities too (${br.length})`);
+  const sp = (d) => spRows.find((r) => r.dex === d);
+  ok(sp(1)?.abilities?.[0] === 'overgrow' && sp(1)?.hidden_ability === 'chlorophyll' && sp(132)?.abilities?.[0] === 'limber' && sp(132)?.hidden_ability === 'imposter'
+     && sp(94)?.abilities?.[0] === 'cursed-body' && sp(130)?.abilities?.[0] === 'intimidate', 'PokeAPI gen-7 abilities (이상해씨 심록/엽록소, 메타몽 유연/괴짜, 팬텀 저주받은바디, 갸라도스 위협)',
+  [sp(1), sp(132), sp(94), sp(130)].map((x) => [x?.abilities, x?.hidden_ability]));
+  const nm = (k) => abRows.find((a) => a.key === k)?.name;
+  ok(nm('overgrow') === '심록' && nm('intimidate') === '위협' && nm('levitate') === '부유' && nm('sturdy') === '옹골참', 'Korean names (심록 · 위협 · 부유 · 옹골참)');
+
+  const SIMR = async (p) => { const r = await admin.rpc('admin_bt_sim', { p }); if (r.error) console.log('   sim error', r.error); return r.data; };
+  const BASE = { r: 0.5, crit: false, roll: 100, nopar: true };
+  // 기본 기술 = 고속이동 (스피드만 바뀜 → 공격 · 방어 랭크 시험을 건드리지 않음)
+  const M = (dex, o = {}) => ({ sp: SP[dex], lv: 50, ...o, moves: (o.moves || ['고속이동']).map((n) => MV[n]) });
+  const A = (m0 = 1, m1 = 1, t0 = 0, t1 = 0) => ({ 0: [{ move: m0, target: t0 }], 1: [{ move: m1, target: t1 }] });
+  const sim = (s0, s1, o = {}) => SIMR({ sides: [s0, s1], sim: { ...BASE, ...(o.sim || {}) }, turns: o.turns || [A()], ...(o.p || {}) });
+  const L = (x, k = 0) => x?.logs?.[k] || [];
+  const all = (x) => [...(x?.intro || []), ...(x?.logs || []).flat()];
+  const dmgTo = (lg, u) => lg.filter((e) => e.hp && e.hp[0] === u && e.dmg).reduce((a, e) => a + e.dmg, 0);
+  const msgs = (lg) => lg.filter((e) => e.m).map((e) => e.m).join(' / ');
+  const pops = (lg) => lg.filter((e) => e.ab).map((e) => e.ab[1]);
+  const mon = (x, u) => x?.st?.sides?.[u >> 1]?.mons?.[x.st.sides[u >> 1].act[u & 1]];
+  // 같은 조건에서 특성만 다르게: 데미지 비율 (내 쪽 자리 0 이 상대 자리 2 를 때림)
+  const ratio = async (ab, move, { att = 151, def = 113, ao = {}, dobj = {}, dab = null, s = {}, p = {}, side = 'a' } = {}) => {
+    const run = async (x) => {
+      const a = M(att, { lv: 100, ...ao, moves: [move], ...(side === 'a' && x ? { ab: x } : {}) });
+      const d = M(def, { lv: 100, ...dobj, ...(side === 'd' && x ? { ab: x } : {}), ...(dab ? { ab: dab } : {}) });
+      return dmgTo(L(await sim([a], [d], { sim: s, p })), 2);
+    };
+    const [w, wo] = [await run(ab), await run(null)];
+    return { r: wo ? w / wo : null, w, wo };
+  };
+  const near = (x, v, tol = 0.08) => x != null && Math.abs(x - v) <= tol;
+  const R = async (ab, move, want, o = {}, label = '') => {
+    const q = await ratio(ab, move, o);
+    ok(near(q.r, want, o.tol ?? 0.08), `${ab}${label}: ${move} damage ×${want}`, q);
+  };
+
+  // 1) 위력 · 공격 특성
+  await R('overgrow', '덩굴채찍', 1.5, { ao: { hpfrac: 0.3 } }, ' (HP ≤ 1/3)');
+  await R('overgrow', '덩굴채찍', 1, {}, ' (HP full)');
+  await R('blaze', '불꽃세례', 1.5, { ao: { hpfrac: 0.3 } });
+  await R('torrent', '물대포', 1.5, { ao: { hpfrac: 0.3 } });
+  await R('swarm', '벌레먹기', 1.5, { ao: { hpfrac: 0.3 } });
+  await R('technician', '몸통박치기', 1.5);
+  await R('technician', '하이퍼보이스', 1, {}, ' (power 90 → no boost)');
+  await R('iron-fist', '불꽃펀치', 1.2);
+  await R('tough-claws', '몸통박치기', 1.3);
+  await R('strong-jaw', '물기', 1.5);
+  await R('reckless', '이판사판태클', 1.2);
+  await R('huge-power', '막치기', 2, { tol: 0.12 });
+  await R('pure-power', '막치기', 2, { tol: 0.12 });
+  await R('hustle', '막치기', 1.5, { tol: 0.1 });
+  await R('guts', '막치기', 3, { ao: { st: 'brn' }, tol: 0.25 }, ' (burned: ×1.5, no burn halving)');
+  await R('adaptability', '사이코키네시스', 1.333, {}, ' (STAB 2 instead of 1.5)');
+  await R('sniper', '막치기', 1.5, { s: { crit: true } }, ' (critical ×3)');
+  await R('tinted-lens', '사이코키네시스', 2, { def: 81, tol: 0.15 }, ' (not very effective ×2)');
+  await R('solar-power', '사이코키네시스', 1.5, { p: { wx: 'sun' }, tol: 0.1 }, ' (sun)');
+  await R('sand-force', '지진', 1.3, { p: { wx: 'sand' }, def: 113, tol: 0.1 }, ' (sand)');
+  {
+    const q = await ratio('pixilate', '몸통박치기', {});
+    ok(near(q.r, 1.2, 0.08), 'pixilate: normal move → fairy ×1.2', q);
+    const x = await sim([M(151, { ab: 'refrigerate', moves: ['몸통박치기'] })], [M(113, { lv: 100 })]);
+    ok(L(x).some((e) => e.use && e.use[1] === '얼음'), 'refrigerate: 몸통박치기 used as 얼음 type', L(x).filter((e) => e.use));
+    const y = await sim([M(151, { ab: 'aerilate', moves: ['몸통박치기'] })], [M(113, { lv: 100 })]);
+    const z = await sim([M(151, { ab: 'galvanize', moves: ['몸통박치기'] })], [M(113, { lv: 100 })]);
+    ok(L(y).some((e) => e.use?.[1] === '비행') && L(z).some((e) => e.use?.[1] === '전기'), 'aerilate → 비행 · galvanize → 전기');
+  }
+  // 2) 받는 쪽 특성 (데미지 배율)
+  await R('thick-fat', '불꽃세례', 0.5, { side: 'd' });
+  await R('heatproof', '불꽃세례', 0.5, { side: 'd' });
+  await R('dry-skin', '불꽃세례', 1.25, { side: 'd', tol: 0.1 }, ' (fire)');
+  await R('multiscale', '사이코키네시스', 0.5, { side: 'd' }, ' (full HP)');
+  await R('shadow-shield', '사이코키네시스', 0.5, { side: 'd' }, ' (full HP)');
+  await R('filter', '사이코키네시스', 0.75, { side: 'd', def: 89, ao: { lv: 50 } }, ' (super effective)');
+  await R('solid-rock', '사이코키네시스', 0.75, { side: 'd', def: 89, ao: { lv: 50 } });
+  await R('prism-armor', '사이코키네시스', 0.75, { side: 'd', def: 89, ao: { lv: 50 } });
+  await R('marvel-scale', '막치기', 0.667, { side: 'd', dobj: { st: 'psn' }, tol: 0.07 }, ' (statused, physical)');
+  await R('fur-coat', '막치기', 0.5, { side: 'd', tol: 0.07 });
+  // 3) 막음 · 흡수
+  const hit = async (dab, move, { att = 151, def = 113, ao = {}, dobj = {}, s = {}, p = {} } = {}) =>
+    sim([M(att, { ...ao, moves: [move] })], [M(def, { lv: 100, ...dobj, ab: dab })], { sim: s, p });
+  {
+    let x = await hit('levitate', '지진');
+    ok(dmgTo(L(x), 2) === 0 && pops(L(x)).includes('levitate') && /효과가 없는/.test(msgs(L(x))), 'levitate: ground move does nothing (+ popup)', msgs(L(x)));
+    x = await sim([M(151, { ab: 'mold-breaker', moves: ['지진'] })], [M(113, { lv: 100, ab: 'levitate' })]);
+    ok(dmgTo(L(x), 2) > 0 && pops(x.intro).includes('mold-breaker'), 'mold-breaker: ignores levitate (+ entry message)', msgs(all(x)));
+    x = await hit('volt-absorb', '10만볼트', { dobj: { hpfrac: 0.5 } });
+    ok(mon(x, 2).hp > mon(x, 2).max / 2 && dmgTo(L(x), 2) === 0, 'volt-absorb: electric heals 1/4', [mon(x, 2).hp, mon(x, 2).max]);
+    x = await hit('water-absorb', '물대포', { dobj: { hpfrac: 0.5 } });
+    ok(mon(x, 2).hp > mon(x, 2).max / 2, 'water-absorb: water heals 1/4');
+    x = await hit('dry-skin', '물대포', { dobj: { hpfrac: 0.5 } });
+    ok(mon(x, 2).hp > mon(x, 2).max / 2, 'dry-skin: water heals');
+    x = await hit('motor-drive', '전기쇼크', { dobj: { moves: ['칼춤'].map((n) => n) } });
+    ok(mon(x, 2).stg?.spe === 1 && dmgTo(L(x), 2) === 0, 'motor-drive: electric → speed +1', mon(x, 2).stg);
+    x = await hit('lightning-rod', '전기쇼크');
+    ok(mon(x, 2).stg?.spa === 1, 'lightning-rod: electric → sp.atk +1');
+    x = await hit('storm-drain', '물대포');
+    ok(mon(x, 2).stg?.spa === 1, 'storm-drain: water → sp.atk +1');
+    x = await hit('sap-sipper', '덩굴채찍');
+    ok(mon(x, 2).stg?.atk === 1, 'sap-sipper: grass → attack +1');
+    x = await hit('flash-fire', '불꽃세례');
+    ok(dmgTo(L(x), 2) === 0 && mon(x, 2).ff === true && /불꽃의 위력이 올라갔다/.test(msgs(L(x))), 'flash-fire: fire absorbed, own fire moves powered up', msgs(L(x)));
+    x = await hit('wonder-guard', '사이코키네시스', { def: 292 });
+    const x2 = await hit('wonder-guard', '섀도볼', { def: 292 });
+    ok(dmgTo(L(x), 2) === 0 && dmgTo(L(x2), 2) > 0, 'wonder-guard: only super-effective moves hit (껍질몬 vs 섀도볼)', [dmgTo(L(x), 2), dmgTo(L(x2), 2)]);
+    x = await sim([M(151, { ab: 'scrappy', moves: ['몸통박치기'] })], [M(92, { lv: 100 })]);
+    const x3 = await sim([M(151, { moves: ['몸통박치기'] })], [M(92, { lv: 100 })]);
+    ok(dmgTo(L(x), 2) > 0 && dmgTo(L(x3), 2) === 0, 'scrappy: normal move hits a ghost', [dmgTo(L(x), 2), dmgTo(L(x3), 2)]);
+  }
+  // 4) 접촉 (r = 0 → 반드시 발동)
+  {
+    const C = async (dab, move = '막치기') => sim([M(151, { moves: [move] })], [M(113, { lv: 100, ab: dab })], { sim: { r: 0 } });
+    let x = await C('static'); ok(mon(x, 0).st === 'par' && pops(L(x)).includes('static'), 'static: contact → attacker paralyzed', mon(x, 0).st);
+    x = await C('poison-point'); ok(mon(x, 0).st === 'psn', 'poison-point: contact → poisoned');
+    x = await C('flame-body'); ok(mon(x, 0).st === 'brn', 'flame-body: contact → burned');
+    x = await C('effect-spore'); ok(['psn', 'par', 'slp'].includes(mon(x, 0).st), 'effect-spore: contact → psn/par/slp', mon(x, 0).st);
+    x = await C('static', '사이코키네시스'); ok(!mon(x, 0).st, 'static: special (no contact) → nothing');
+    x = await C('rough-skin'); ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 8), 'rough-skin: attacker loses 1/8', [mon(x, 0).hp, mon(x, 0).max]);
+    x = await C('iron-barbs'); ok(mon(x, 0).hp < mon(x, 0).max, 'iron-barbs: attacker loses 1/8');
+    x = await sim([M(151, { ab: 'magic-guard', moves: ['막치기'] })], [M(113, { lv: 100, ab: 'rough-skin' })]);
+    ok(mon(x, 0).hp === mon(x, 0).max, 'magic-guard: no rough-skin damage');
+  }
+  // 5) 버티기 · 탈
+  {
+    let x = await sim([M(151, { lv: 100, moves: ['사이코키네시스'] })], [M(10, { lv: 5, ab: 'sturdy' })]);
+    ok(mon(x, 2).hp === 1 && pops(L(x)).includes('sturdy') && /버텼다/.test(msgs(L(x))), 'sturdy: survives a OHKO from full HP with 1 HP', mon(x, 2).hp);
+    x = await sim([M(151, { lv: 100, moves: ['사이코키네시스'] })], [M(10, { lv: 5, ab: 'sturdy', hpfrac: 0.9 })]);
+    ok(mon(x, 2).hp === 0, 'sturdy: not at full HP → faints');
+    x = await sim([M(151, { moves: ['사이코키네시스'] })], [M(778, { lv: 50, ab: 'disguise' })], { turns: [A(), A()] });
+    ok(dmgTo(L(x, 0), 2) === 0 && /탈이 벗겨졌다/.test(msgs(L(x, 0))) && dmgTo(L(x, 1), 2) > 0, 'disguise: first hit blocked, then busted', msgs(L(x, 0)));
+  }
+  // 6) 등장 특성
+  {
+    let x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100 })]);
+    ok(mon(x, 2).stg?.atk === -1 && pops(x.intro).includes('intimidate'), 'intimidate: foe attack −1 on entry', mon(x, 2).stg);
+    for (const k of ['clear-body', 'white-smoke', 'hyper-cutter', 'full-metal-body']) {
+      x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100, ab: k })]);
+      ok(!mon(x, 2).stg?.atk && /떨어지지 않는다/.test(msgs(x.intro)), `${k}: blocks intimidate`, msgs(x.intro));
+    }
+    x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100, ab: 'defiant' })]);
+    ok(mon(x, 2).stg?.atk === 1, 'defiant: −1 then +2 = +1', mon(x, 2).stg);
+    x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100, ab: 'competitive' })]);
+    ok(mon(x, 2).stg?.atk === -1 && mon(x, 2).stg?.spa === 2, 'competitive: sp.atk +2 after a drop', mon(x, 2).stg);
+    x = await sim([M(151, { moves: ['모래뿌리기'] })], [M(113, { lv: 100, ab: 'keen-eye' })]);
+    ok(!mon(x, 2).stg?.acc, 'keen-eye: accuracy drop blocked');
+    x = await sim([M(151, { moves: ['꼬리흔들기'] })], [M(113, { lv: 100, ab: 'big-pecks' })]);
+    ok(!mon(x, 2).stg?.def, 'big-pecks: defense drop blocked');
+    for (const [k, w] of [['drought', 'sun'], ['drizzle', 'rain'], ['sand-stream', 'sand'], ['snow-warning', 'hail']]) {
+      x = await sim([M(151, { ab: k })], [M(113, { lv: 100 })]);
+      ok(x?.st?.wx?.k === w && pops(x.intro).includes(k) && x.intro.some((e) => e.wx === w), `${k}: ${w} on entry (5 turns)`, x?.st?.wx);
+    }
+    for (const t of ['electric', 'grassy', 'misty', 'psychic']) {
+      x = await sim([M(151, { ab: `${t}-surge` })], [M(113, { lv: 100 })]);
+      ok(x?.st?.ter?.k === t && x.intro.some((e) => e.ter === t), `${t}-surge: ${t} terrain on entry`, x?.st?.ter);
+    }
+    x = await sim([M(151, { moves: ['막치기'] })], [M(113, { lv: 100, ab: 'pressure' })]);
+    ok(/프레셔를 발산/.test(msgs(x.intro)) && mon(x, 0).moves[0].pp === mvRows.find((m) => m.name === '막치기').pp - 2, 'pressure: entry message + PP −2', mon(x, 0).moves);
+    x = await sim([M(151, { lv: 100, moves: ['물대포'] })], [M(113, { lv: 100, ab: 'cloud-nine' })], { p: { wx: 'sun' } });
+    const x0 = await sim([M(151, { lv: 100, moves: ['물대포'] })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(dmgTo(L(x), 2) > dmgTo(L(x0), 2) * 1.8, 'cloud-nine: sun does not halve water', [dmgTo(L(x), 2), dmgTo(L(x0), 2)]);
+    x = await sim([M(132, { ab: 'imposter' })], [M(151)]);
+    ok(mon(x, 0).tf === true && mon(x, 0).tsp === SP[151] && x.intro.some((e) => e.tf), 'imposter: 메타몽 transforms on entry', mon(x, 0));
+  }
+  // 7) 상태 이상 막기
+  {
+    const S1 = async (dab, move, o = {}) => sim([M(151, { moves: [move] })], [M(113, { lv: 100, ab: dab })], { sim: { r: 0, ...(o.s || {}) }, p: o.p || {} });
+    for (const [k, mvn, st] of [['limber', '전기자석파', 'par'], ['insomnia', '버섯포자', 'slp'], ['vital-spirit', '버섯포자', 'slp'], ['sweet-veil', '버섯포자', 'slp'],
+      ['immunity', '맹독', 'psn'], ['water-veil', '도깨비불', 'brn'], ['comatose', '버섯포자', 'slp']]) {
+      const x = await S1(k, mvn);
+      ok(!mon(x, 2).st && pops(L(x)).includes(k), `${k}: ${mvn} does not ${st}`, msgs(L(x)));
+    }
+    let x = await S1('magma-armor', '눈싸라기'); ok(!mon(x, 2).st, 'magma-armor: never frozen');
+    x = await S1('own-tempo', '이상한빛'); ok(!(mon(x, 2).cnf > 0) && pops(L(x)).includes('own-tempo'), 'own-tempo: no confusion');
+    x = await S1('leaf-guard', '버섯포자', { p: { wx: 'sun' } }); ok(!mon(x, 2).st, 'leaf-guard: no status in sun');
+    x = await S1(null, '버섯포자'); ok(mon(x, 2).st === 'slp', '(control) no ability → asleep');
+    x = await S1('shield-dust', '누르기'); ok(!mon(x, 2).st, 'shield-dust: no secondary paralysis');
+    x = await sim([M(151, { moves: ['누르기'] })], [M(113, { lv: 100 })], { sim: { r: 0.45 } });
+    const y = await sim([M(151, { ab: 'serene-grace', moves: ['누르기'] })], [M(113, { lv: 100 })], { sim: { r: 0.45 } });
+    ok(!mon(x, 2).st && mon(y, 2).st === 'par', 'serene-grace: 30% → 60% (roll 45)', [mon(x, 2).st, mon(y, 2).st]);
+  }
+  // 8) 명중 · 급소 · 여러 번
+  {
+    const acc = async (ab, dab, move, r, p = {}) => dmgTo(L(await sim([M(151, { ab, moves: [move] })], [M(113, { lv: 100, ab: dab })], { sim: { r }, p })), 2) > 0;
+    ok(!(await acc(null, null, '눈보라', 0.8)) && (await acc('compound-eyes', null, '눈보라', 0.8)), 'compound-eyes: 70% move hits at roll 80');
+    ok(!(await acc('hustle', null, '막치기', 0.85)) && (await acc(null, null, '막치기', 0.85)), 'hustle: physical accuracy ×0.8');
+    ok((await acc('no-guard', null, '눈보라', 0.95)) && (await acc(null, 'no-guard', '눈보라', 0.95)), 'no-guard: always hits (both ways)');
+    ok(!(await acc(null, 'sand-veil', '막치기', 0.85, { wx: 'sand' })) && (await acc(null, 'sand-veil', '막치기', 0.85)), 'sand-veil: evasion in sand');
+    ok(!(await acc(null, 'snow-cloak', '막치기', 0.85, { wx: 'hail' })), 'snow-cloak: evasion in hail');
+    const cr = async (ab, dab, s) => /급소/.test(msgs(L(await sim([M(151, { ab, moves: ['막치기'] })], [M(113, { lv: 100, ab: dab })], { sim: { crit: undefined, ...s } }))));
+    ok(!(await cr(null, null, { crit_r: 0.1 })) && (await cr('super-luck', null, { crit_r: 0.1 })), 'super-luck: crit stage +1 (1/16 → 1/8)');
+    ok(!(await cr(null, 'battle-armor', { crit: true })) && !(await cr(null, 'shell-armor', { crit: true })) && (await cr(null, null, { crit: true })), 'battle-armor · shell-armor: no critical hits');
+    const x = await sim([M(151, { ab: 'skill-link', moves: ['마구찌르기'] })], [M(113, { lv: 100 })]);
+    ok(/5번 맞았다/.test(msgs(L(x))), 'skill-link: multi-hit always 5', msgs(L(x)));
+  }
+  // 9) 쓰러뜨림 · 맞음 · 반동 · 풀죽음
+  {
+    let x = await sim([M(151, { lv: 100, ab: 'moxie', moves: ['사이코키네시스'] })], [M(10, { lv: 5 })]);
+    ok(mon(x, 0).stg?.atk === 1, 'moxie: KO → attack +1', mon(x, 0).stg);
+    x = await sim([M(151, { lv: 100, ab: 'beast-boost', moves: ['사이코키네시스'] })], [M(10, { lv: 5 })]);
+    ok(Object.values(mon(x, 0).stg || {}).includes(1), 'beast-boost: KO → highest stat +1', mon(x, 0).stg);
+    x = await sim([M(151, { moves: ['악의파동'] })], [M(113, { lv: 100, ab: 'justified' })]);
+    ok(mon(x, 2).stg?.atk === 1, 'justified: hit by dark → attack +1');
+    x = await sim([M(151, { ab: 'rock-head', moves: ['이판사판태클'] })], [M(113, { lv: 100 })]);
+    const y = await sim([M(151, { moves: ['이판사판태클'] })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).hp === mon(x, 0).max && mon(y, 0).hp < mon(y, 0).max, 'rock-head: no recoil (control: recoil)');
+    x = await sim([M(151, { ab: 'magic-guard', moves: ['이판사판태클'] })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).hp === mon(x, 0).max, 'magic-guard: no recoil');
+    x = await sim([M(151, { lv: 100, moves: ['속이기'] })], [M(208, { lv: 50, ab: 'inner-focus', moves: ['칼춤'] })], { sim: { r: 0 } });
+    ok(L(x).filter((e) => e.use).length === 2, 'inner-focus: no flinch (both moved)');
+    x = await sim([M(151, { lv: 100, moves: ['속이기'] })], [M(208, { lv: 50, ab: 'steadfast', moves: ['칼춤'] })], { sim: { r: 0 } });
+    ok(mon(x, 2).stg?.spe === 1 && /풀이 죽어/.test(msgs(L(x))), 'steadfast: flinched → speed +1', mon(x, 2).stg);
+  }
+  // 10) 스피드 · 턴 끝
+  {
+    const first = async (ab, wx, st, foeDex = 151) => {
+      const x = await sim([M(113, { lv: 50, ab, st, moves: ['칼춤'] })], [M(foeDex, { lv: 50, moves: ['칼춤'] })], { p: wx ? { wx } : {} });
+      return L(x).find((e) => e.use)?.use?.[0] === 0;
+    };
+    for (const [k, w] of [['chlorophyll', 'sun'], ['swift-swim', 'rain'], ['sand-rush', 'sand'], ['slush-rush', 'hail']]) {
+      ok(!(await first(null, w)) && (await first(k, w)) && !(await first(k, null)), `${k}: speed ×2 in ${w} (moves first)`);
+    }
+    ok(!(await first(null, null, 'psn', 54)) && (await first('quick-feet', null, 'psn', 54)), 'quick-feet: speed ×1.5 when statused');
+    let x = await sim([M(151, { ab: 'speed-boost', moves: ['칼춤'] })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).stg?.spe === 1 && pops(L(x)).includes('speed-boost'), 'speed-boost: speed +1 at end of turn');
+    x = await sim([M(151, { ab: 'shed-skin', st: 'psn' })], [M(113, { lv: 100 })], { sim: { r: 0 } });
+    ok(!mon(x, 0).st, 'shed-skin: status cured at end of turn (30%)');
+    x = await sim([M(151, { ab: 'hydration', st: 'psn' })], [M(113, { lv: 100 })], { p: { wx: 'rain' } });
+    ok(!mon(x, 0).st, 'hydration: status cured in rain');
+    x = await sim([M(151, { ab: 'poison-heal', st: 'psn', hpfrac: 0.5 })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).hp > Math.floor(mon(x, 0).max / 2), 'poison-heal: poison heals 1/8');
+    x = await sim([M(151, { ab: 'magic-guard', st: 'psn' })], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+    ok(mon(x, 0).hp === mon(x, 0).max, 'magic-guard: no poison / sandstorm damage');
+    for (const [k, w] of [['rain-dish', 'rain'], ['ice-body', 'hail'], ['dry-skin', 'rain']]) {
+      x = await sim([M(151, { ab: k, hpfrac: 0.5 })], [M(113, { lv: 100 })], { p: { wx: w } });
+      ok(mon(x, 0).hp > Math.floor(mon(x, 0).max / 2), `${k}: heals in ${w}`, [mon(x, 0).hp, mon(x, 0).max]);
+    }
+    x = await sim([M(151, { ab: 'dry-skin' })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 8), 'dry-skin: loses 1/8 in sun');
+    x = await sim([M(151, { ab: 'solar-power' })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(mon(x, 0).hp < mon(x, 0).max, 'solar-power: loses 1/8 in sun');
+    for (const k of ['sand-veil', 'overcoat']) {
+      x = await sim([M(151, { ab: k })], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+      ok(mon(x, 0).hp === mon(x, 0).max, `${k}: no sandstorm damage`);
+    }
+    x = await sim([M(151, { moves: ['칼춤', '칼춤'] })], [M(287, { lv: 50, ab: 'truant', moves: ['몸통박치기'] })], { turns: [A(), A()] });
+    ok(L(x, 0).some((e) => e.use?.[0] === 2) && /게으름/.test(msgs(L(x, 1))), 'truant: acts, then loafs the next turn', msgs(L(x, 1)));
+    const sl = async (ab) => { const z = await sim([M(151, { ab, st: 'slp' })], [M(113, { lv: 100 })], { turns: [A(), A()] }); return L(z, 1).some((e) => e.use?.[0] === 0); };
+    ok(!(await sl(null)) && (await sl('early-bird')), 'early-bird: wakes up twice as fast');
+  }
+  // 11) 교체
+  {
+    const sw = { 0: [{ switch: 1 }], 1: [{ move: 1, target: 0 }] };
+    let x = await sim([M(151, { ab: 'natural-cure', st: 'psn' }), M(113)], [M(113, { lv: 100 })], { turns: [sw] });
+    ok(!x?.st?.sides?.[0]?.mons?.[0]?.st, 'natural-cure: status cured on switch-out');
+    x = await sim([M(151, { ab: 'regenerator', hpfrac: 0.3 }), M(113)], [M(113, { lv: 100 })], { turns: [sw] });
+    const m0 = x?.st?.sides?.[0]?.mons?.[0];
+    ok(m0 && m0.hp >= Math.floor(m0.max * 0.3) + Math.floor(m0.max / 3) - 1, 'regenerator: heals 1/3 on switch-out', m0 && [m0.hp, m0.max]);
+    x = await sim([M(151), M(130, { ab: 'intimidate' })], [M(113, { lv: 100 })], { turns: [sw] });
+    ok(mon(x, 2).stg?.atk === -1 && pops(L(x)).includes('intimidate'), 'switch-in: entry ability fires (intimidate)');
+  }
+  // 12) 날씨 · 필드 배율 · 턴 끝 데미지 · 끝남
+  {
+    const W = async (move, wx, o = {}) => { const q = await ratio(null, move, { p: { wx }, ...o }); return q; };
+    const dm = async (move, p) => dmgTo(L(await sim([M(151, { lv: 100, moves: [move] })], [M(113, { lv: 100 })], { p })), 2);
+    const base = { fire: await dm('불꽃세례', {}), water: await dm('물대포', {}), psy: await dm('사이코키네시스', {}), grass: await dm('덩굴채찍', {}), elec: await dm('전기쇼크', {}) };
+    ok(near((await dm('불꽃세례', { wx: 'sun' })) / base.fire, 1.5, 0.1) && near((await dm('물대포', { wx: 'sun' })) / base.water, 0.5, 0.1), 'sun: fire ×1.5 · water ×0.5');
+    ok(near((await dm('물대포', { wx: 'rain' })) / base.water, 1.5, 0.1) && near((await dm('불꽃세례', { wx: 'rain' })) / base.fire, 0.5, 0.1), 'rain: water ×1.5 · fire ×0.5');
+    const rk = async (wx) => dmgTo(L(await sim([M(151, { moves: ['사이코키네시스'] })], [M(74, { lv: 100 })], { p: wx ? { wx } : {} })), 2);
+    ok(near((await rk('sand')) / (await rk(null)), 0.667, 0.06), 'sand: rock-type sp.def ×1.5');
+    let x = await sim([M(151)], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+    ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 16) && /모래바람이 .*덮쳤다/.test(msgs(L(x))), 'sand: 1/16 to non rock/ground/steel', msgs(L(x)));
+    x = await sim([M(74)], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+    ok(mon(x, 0).hp === mon(x, 0).max, 'sand: rock type takes no damage');
+    x = await sim([M(151)], [M(124, { lv: 100 })], { p: { wx: 'hail' } });
+    ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 16) && mon(x, 2).hp === mon(x, 2).max && /싸라기눈이/.test(msgs(L(x))), 'hail: 1/16 to non-ice (ice 루주라 safe)');
+    ok(near((await dm('전기쇼크', { ter: 'electric' })) / base.elec, 1.3, 0.1), 'electric terrain: electric ×1.3 (grounded)');
+    const fly = async (ter) => dmgTo(L(await sim([M(145, { moves: ['전기쇼크'] })], [M(113, { lv: 100 })], { p: ter ? { ter } : {} })), 2);
+    ok(near((await fly('electric')) / (await fly(null)), 1, 0.05), 'electric terrain: flying attacker not boosted');
+    x = await sim([M(151, { moves: ['버섯포자'] })], [M(113, { lv: 100 })], { sim: { r: 0 }, p: { ter: 'electric' } });
+    ok(!mon(x, 2).st && /일렉트릭필드/.test(msgs(L(x))), 'electric terrain: no sleep');
+    ok(near((await dm('덩굴채찍', { ter: 'grassy' })) / base.grass, 1.3, 0.1), 'grassy terrain: grass ×1.3');
+    x = await sim([M(151, { hpfrac: 0.5 })], [M(113, { lv: 100 })], { p: { ter: 'grassy' } });
+    ok(mon(x, 0).hp === Math.floor(mon(x, 0).max * 0.5) + Math.floor(mon(x, 0).max / 16), 'grassy terrain: heals 1/16', [mon(x, 0).hp, mon(x, 0).max]);
+    const dr = async (ter) => dmgTo(L(await sim([M(151, { moves: ['용의파동'] })], [M(113, { lv: 100 })], { p: ter ? { ter } : {} })), 2);
+    ok(near((await dr('misty')) / (await dr(null)), 0.5, 0.06), 'misty terrain: dragon ×0.5');
+    x = await sim([M(151, { moves: ['도깨비불'] })], [M(113, { lv: 100 })], { sim: { r: 0 }, p: { ter: 'misty' } });
+    ok(!mon(x, 2).st && /미스트필드/.test(msgs(L(x))), 'misty terrain: no status');
+    ok(near((await dm('사이코키네시스', { ter: 'psychic' })) / base.psy, 1.3, 0.1), 'psychic terrain: psychic ×1.3');
+    x = await sim([M(151, { moves: ['전광석화'] })], [M(113, { lv: 100 })], { p: { ter: 'psychic' } });
+    ok(dmgTo(L(x), 2) === 0 && /사이코필드에 보호/.test(msgs(L(x))), 'psychic terrain: priority moves blocked');
+    // 5턴 뒤 끝남 → 시간표 바탕 날씨로
+    x = await SIMR({ sides: [[M(151, { ab: 'drizzle' })], [M(113, { lv: 100 })]], env: 'sun', sim: BASE, turns: [A(), A(), A(), A(), A()] });
+    ok(x?.intro?.some((e) => e.wx === 'rain') && /비가 그쳤다/.test(msgs(L(x, 4))) && /햇살이 강해졌다/.test(msgs(L(x, 4))) && x.st.wx.k === 'sun' && x.st.wx.n == null,
+      'drizzle over a sunny timetable slot: rain 5 turns → back to sun', x?.st?.wx);
+    // 날씨 기술
+    for (const [mvn, w] of [['쾌청', 'sun'], ['비바라기', 'rain'], ['모래바람', 'sand'], ['싸라기눈', 'hail']]) {
+      x = await sim([M(151, { moves: [mvn] })], [M(113, { lv: 100 })]);
+      ok(x?.st?.wx?.k === w && x.st.wx.n === 4 && L(x).some((e) => e.wx === w), `${mvn}: ${w} for 5 turns`, x?.st?.wx);
+    }
+    x = await sim([M(151, { moves: ['쾌청'] })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(/실패/.test(msgs(L(x))), 'weather move fails when that weather is already up');
+  }
+  // 13) 변신 (메타몽)
+  {
+    const foe = M(151, { moves: ['칼춤', '사이코키네시스'], ab: 'synchronize' });
+    const x = await sim([M(132, { moves: ['변신'] }), M(113)], [foe], { turns: [A(), { 0: [{ switch: 1 }], 1: [{ move: 1, target: 0 }] }] });
+    const tf = (L(x, 0).find((e) => e.tf) || {});
+    const d0 = x?.st?.sides?.[0]?.mons?.[0];
+    ok(tf.tf?.[1] === SP[151] && /메타몽.* 변신했다!/.test(msgs(L(x, 0))), 'Transform: "메타몽은 … 변신했다!" + tf event with target sprite', msgs(L(x, 0)));
+    const first = await sim([M(132, { moves: ['변신'] })], [foe]);
+    const t = mon(first, 0); const f = mon(first, 2);
+    ok(t?.tf && t.type === f.type && t.atk === f.atk && t.spa === f.spa && t.spe === f.spe && t.hp === t.max && t.max !== f.max && t.ab === 'synchronize'
+       && t.moves.length === 2 && t.moves.every((m) => m.pp === 5) && t.moves[0].id === MV['칼춤'] && t.stg?.atk === 2,
+    'Transform: copies types · stats (not HP) · stat stages · ability · moves with PP 5', t);
+    ok(d0 && !d0.tf && !d0.tsp && d0.type === '노말' && d0.moves?.[0]?.id === MV['변신'], 'Transform: reverts on switch-out', d0);
+    const twice = await sim([M(132, { moves: ['변신'] })], [M(132, { moves: ['변신'] })]);
+    ok(/실패/.test(msgs(L(twice))), 'Transform: fails on an already transformed target', msgs(L(twice)));
+    const dm = (await admin.select(`species_moves?species_id=eq.${SP[132]}&select=move_id`)).data || [];
+    ok(dm.length === 1 && dm[0].move_id === MV['변신'], '메타몽 default moves = 변신 only', dm);
+    const ls = (await admin.select(`learnset?move_id=eq.${MV['변신']}&select=line_id,lv,how`)).data || [];
+    const lineOfDex = (d) => spRows.find((r) => r.dex === d)?.line_id;
+    ok(ls.some((r) => r.line_id === lineOfDex(132) && r.lv === 1) && ls.some((r) => r.line_id === lineOfDex(151)) && ls.length === 2, '변신 learnset: 메타몽 (Lv.1) + 뮤 only (PokeAPI)', ls);
+  }
+  // 14) 시간표 칸 → 날씨 · 필드 (실제 배틀), 운영자만 고침
+  {
+    const seed = BF_ORIG || [];
+    ok(Array.isArray(seed) && seed.length >= 6 && seed.every((x) => x.env && !x.types), 'battle_fields: every slot has an env (no type lists)', seed);
+    const envs = Object.fromEntries((seed || []).map((x) => [x.name, x.env]));
+    ok(envs['아침 조회'] === 'sun' && envs['점심시간'] === 'grassy' && envs['야간 자율학습'] === 'misty', 'slot mapping: 아침 조회 = 쾌청 · 점심 = 그래스필드 · 야자 = 미스트필드', envs);
+    const X = S[0];
+    const mine = (await myMons(X)).slice(0, 1).map((m) => m.id);
+    for (const [env, kind] of [['rain', 'wx'], ['psychic', 'ter']]) {
+      await setS('battle_fields', [{ from: '00:00', to: '23:59', name: '시험 칸', env }]);
+      const b = (await X.rpc('battle_start_cpu', { p_mons: mine, p_format: 'single', p_fair: false })).data;
+      const moved = (b?.log || []).some((e) => kind in e || ['cloud-nine', 'air-lock'].includes(e.ab?.[1]));   // 상대 특성이 날씨를 바꿨으면 (드묾)
+      ok(b?.field?.env === env && (b?.[kind] === env || moved), `cpu battle in a '${env}' slot starts with ${kind} = ${env}`, { field: b?.field, wx: b?.wx, ter: b?.ter });
+      ok(b?.sides?.[b.me]?.mons?.every((m) => 'ab' in m), 'my side: every mon carries its ability (ab)');
+      if (b?.id) await X.rpc('battle_forfeit', { p_id: b.id });
+    }
+    const st = await fetch(`${URL_}/rest/v1/settings?key=eq.battle_fields`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${STOK}`, Prefer: 'return=representation' }, body: JSON.stringify({ value: [] }) });
+    const stBody = await st.json().catch(() => null);
+    ok(!Array.isArray(stBody) || stBody.length === 0, 'a student cannot change battle_fields', stBody);
+    await setS('battle_fields', BF_ORIG);
+    ok(JSON.stringify((await admin.select('settings?key=eq.battle_fields')).data?.[0]?.value) === JSON.stringify(BF_ORIG), 'admin can edit + restore battle_fields');
+    await setS('battle_fields', []);   // 시험 동안은 날씨 없이 (끝에서 되돌림)
+  }
+  // 15) 잡을 때 특성 · 내 특성 · 예전 포켓몬
+  {
+    const H0c = (await admin.select('settings?key=eq.ability_hidden_chance')).data?.[0]?.value ?? 0.05;
+    await setS('ability_hidden_chance', 1);
+    await admin.rpc('admin_grant_monster', { p_student_id: '022903', p_line: 1, p_stage: 1 });
+    const c3 = S[2];
+    let ms = (await c3.select('collection?select=id,species_id,ability,ability_slot&released_at=is.null&order=id.desc&limit=1')).data || [];
+    const sp1 = spRows.find((r) => r.id === ms[0]?.species_id);
+    ok(ms[0]?.ability_slot === 2 && ms[0]?.ability === sp1?.hidden_ability, 'catch with hidden chance 100% → hidden ability', [ms[0], sp1?.hidden_ability]);
+    await setS('ability_hidden_chance', 0);
+    await admin.rpc('admin_grant_monster', { p_student_id: '022903', p_line: 1, p_stage: 1 });
+    ms = (await c3.select('collection?select=id,species_id,ability,ability_slot&released_at=is.null&order=id.desc&limit=1')).data || [];
+    const sp2 = spRows.find((r) => r.id === ms[0]?.species_id);
+    ok(ms[0]?.ability_slot < 2 && sp2?.abilities?.includes(ms[0]?.ability), 'catch with 0% → one of the normal abilities', [ms[0], sp2?.abilities]);
+    await setS('ability_hidden_chance', H0c);
+    const mine = (await c3.rpc('my_abilities')).data;
+    ok(mine && Object.keys(mine).length > 0 && mine[ms[0].id] === ms[0].ability, 'my_abilities: {mon id: ability}', mine && Object.keys(mine).length);
+    const nulls = (await admin.select('collection?select=id&ability=is.null&limit=5')).data || [];
+    ok(nulls.length === 0, 'every existing mon has an ability (backfilled)', nulls);
+    const anonTry = await anon.rpc('admin_bt_sim', { p: {} });
+    const stuTry = await c3.rpc('admin_bt_sim', { p: {} });
+    ok(!!anonTry.error && !!stuTry.error, 'admin_bt_sim: admins only', [anonTry.error, stuTry.error]);
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
+await patchSetting('ditto_disguise_chance', DITTO0);
+await patchSetting('battle_fields', BF_ORIG);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

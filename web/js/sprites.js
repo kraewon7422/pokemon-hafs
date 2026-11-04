@@ -180,8 +180,17 @@ function loadPath(path) {
   return p;
 }
 
+// 갈래 종 (0037, species.id 10000+): 그림판에는 같은 전국도감 번호의 종 (따로 있는 계열) 그림을 씀. 운영자가 그 갈래 종에 그림을 올렸으면 그것
+const ALIAS = new Map();
+export function aliasSprites(species = []) {
+  const base = new Map();
+  for (const s of species) if (s.id < 10000 && s.dex && !base.has(s.dex)) base.set(s.dex, s.id);
+  for (const s of species) if (s.id >= 10000 && base.has(s.dex)) ALIAS.set(s.id, base.get(s.dex));
+}
+const realId = (d) => (d >= 10000 && !MAP.has(d) ? ALIAS.get(d) ?? d : d);
+
 // 이 포켓몬 그림을 받아 둠 (미니게임·잡기 장면이 시작 전에 부름)
-export const ensureSprites = (list, shiny = false) => Promise.all([...new Set(list.map(Number))].map((d) => {
+export const ensureSprites = (list, shiny = false) => Promise.all([...new Set(list.map(Number).map(realId))].map((d) => {
   const cp = customPath(d, shiny);
   if (cp) return loadPath(cp);
   const ent = (shiny && IDX.s[d]) || IDX.n[d];
@@ -212,6 +221,7 @@ export const spritesReady = Promise.race([firstSync, timeout(3000)]);
 //    fx = 덧입힐 효과 (normal · silhouette · white · shiny = 색 돌리기)
 function sourceOf(dex, mode, preview) {
   const shiny = mode === 'shiny';
+  dex = realId(dex);
   if (preview) {
     const n = normRec(preview);
     return { img: n.cv, sx: 0, sy: 0, w: n.w, h: n.h, key: (preview._k ||= `pv${Math.random()}`), fx: mode };
