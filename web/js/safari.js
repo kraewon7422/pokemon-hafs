@@ -1,182 +1,138 @@
-// 사파리존: 지도 탭의 작은 도트 맵. 키 큰 풀숲을 걸으면 야생 포켓몬이 나오고 사파리볼(하루 N개)로 잡는다.
+// 사파리존: 지도 탭의 큰 도트 맵 (3세대 사파리존처럼 가운데 + 북서·북동·남서·남동 구역, 모래길로 이어짐).
+// 키 큰 풀숲을 걸으면 야생 포켓몬이 나오고 사파리볼(하루 N개)로 잡는다.
 // 걸음 판정·볼 개수는 서버 (0033 safari_encounter · safari_result) — 앱은 풀숲 걸음 수만 보냄.
-// 그림은 모두 이 파일에서 도트로 그림 (원래 게임의 지도·타일을 베끼지 않은 새 그림). 타일 16×16, 화면은 기기 픽셀 정수 배.
+// 그림: web/img/safari-tiles.png (16px 타일, 위치표 safari-tiles.js) · safari-hero.png (교복 주인공 16×24) — tools/build_safari_tiles.py 가 그림.
+// 맵은 그림이 오면 한 번 큰 캔버스 2장(물·꽃 움직임 2장)에 미리 그려 두고, 매 프레임 카메라 부분만 옮겨 그림. 화면은 기기 픽셀 정수 배.
 // 화면은 한 번 만들고 계속 씀 (sync 가 지도 탭을 다시 그려도 걷던 자리·애니메이션이 이어지게).
 import { rpc, errorText } from './sb.js';
 import { sfx } from './sfx.js';
 import { h } from './ui.js';
 import { S } from './state.js';
 import { catchEncounter } from './app.js';
+import TI from '../img/safari-tiles.js';
 
 const TS = 16;
-// T 나무 · . 풀밭 · , 키 큰 풀숲 · # 길 · ~ 물 · b 다리 · F 울타리 · f 꽃 · R 바위 · S 표지판 · G 문기둥
+// T 나무 · . 풀밭 · , 키 큰 풀숲 · # 모래길 · ~ 물 · b 다리 · F 울타리 · f 꽃 · R 바위 · S 표지판 · G 입구 기둥
 const MAP = [
-  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
-  'TT,,,,,,,,,..TTTTT..,,,,,,,,TT',
-  'TT,,,,,,,,,,..TTT..,,,,,,,,,TT',
-  'TT,,,R,,,,,,,.......,,,,R,,,TT',
-  'TT,,,,,,,,,,,..#....,,,,,,,,TT',
-  'TT..,,,,,,,f...#...,,,,,,,..TT',
-  'TT.....,,,..f..#.....,,,....TT',
-  'TT...S.........#.........f..TT',
-  'TTFFFFFFF......#..~~~~~~~...TT',
-  'TT,,,,,,F......#.~~~~~~~~~..TT',
-  'TT,,,,,,F..R...#.~~~~~~~~~~.TT',
-  'TT,,,,,,.......#bbbbbbbbbbb.TT',
-  'TT,,,,,,F...f..#.~~~~~~~~~,,TT',
-  'TT,,R,,,F......#..~~~~~~~,,,TT',
-  'TTFFFFFFF......#.......,,,,,TT',
-  'TT.....f.......#......,,,R,,TT',
-  'TT..,,,,....####......,,,,,,TT',
-  'TT.,,,,,,...#..f.....,,,,,,.TT',
-  'TT.,,,,,,,..#.......,,,,,,..TT',
-  'TT..,,,R,,..#..........ff...TT',
-  'TT...,,,,...#.....R.........TT',
-  'TT..........#..S............TT',
-  'TTTTTTTTTTTG#GTTTTTTTTTTTTTTTT',
-  'TTTTTTTTTTT.#.TTTTTTTTTTTTTTTT',
-  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TTTTT.....................................................TTTTTT',
+  'TTTTT,,,,,,,,........,,,,,...,,,,,,.......................TTTTTT',
+  'TTTTT,,,,,,,,........,,,,,...,,,,,,.........,,,,,,,,,,,,,,,TTTTT',
+  'TTTTT,,,,,,,,........,,,,,...,,,,,,.........,,,,,,,,R,,,,,,..TTT',
+  'TTT........~~~~~.....,,,,,..................,,,,,,,,,,,,,,,..TTT',
+  'TTT......~~~~~~~~~...,,,,,..................,,,R,,,,,,,,,,,..TTT',
+  'TTT....~~~~~~~~~~~~~.......TTTTTTTTTT.......,,,,,,,,,,,,R,,..TTT',
+  'TTT....~~~~~~~~~~~~~.......TTTTTTTTTT.......,,,,,,,,,,,,,,,..TTT',
+  'TTT...~~~~~~~~~~~~~~~......TTTTTTTTTT.......,,,,,,,,,,,,,,,..TTT',
+  'TTT...bbbbbbbbbbbbbbb......TTTTTTTTTT.....R..................TTT',
+  'TTT...~~~~~~~~~~~~~~~......TTTTTTTTTT...........##.R.....R...TTT',
+  'TTT....~~~~~~~~~~~~~.......TTTTTTTTTT..,,,,,,,,,##,..........TTT',
+  'TTT....~~~~~~~~~~~~~.......TTTTTTTTTT..,,,,,,,,,##,..,,,,,,,.TTT',
+  'TTT......~~~~~~~~~.........TTTTTTTTTT..,,,,,,,,,##,..,,,,,,,.TTT',
+  'TTT,,,,,,..~~~~~.,,,,,,,,,.TTTTTTTTTT..,,,,,,R,,##,..,,,,,,,.TTT',
+  'TTT,,,,,,........,,,,,,,,,.............,,,,,,,,,##,..,,R,,,,.TTT',
+  'TTT,,,,,,.....##.,,,,,,,,,,,,,....,,,,,,,,,,,,,,##,..,,,,,,,.TTT',
+  'TTT,,,,,,.....##.,,,,,,,,,,,,,....,,,,,,,,,,,,,,##,..,,,,,,,.TTT',
+  'TTT,,,,,,...S.##.,,,,,,,,,,,,,....,,,,,,,,,,,,,,##,S.,,,,,,,.TTT',
+  'TTT...........##.......,,,,,,,....,,,,,,,.......##...........TTT',
+  'TTTTTTTTTTTTTT##TTTTTT....................TTTTTT##TTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTT##TTTTTT.......S............TTTTTT##TTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTT####################################TTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTT####################################TTTTTTTTTTTTTT',
+  'TTT............................##............................TTT',
+  'TTT............,,,,,,,,,,......##.......,,,,,,,,,,,,,........TTT',
+  'TTT..FFFFFFFFF.,,,,,,,,,,......##.......,,,,,,,,,,,,,.~~~~~..TTT',
+  'TTT..FfffffffF.,,,,,,,,,FFFFFF.##.FFFFFF,,,,,,,,,,,,,~~~~~~~.TTT',
+  'TTT..FfffffffF.,,,,,,,,,FffffF.##.FffffF,,,,,,,,,,,,,~~~~~~~.TTT',
+  'TTT..FfffffffF.,,,,,,,,,FffffF.##.FffffF,,,,,,,,,,,,,~~~~~~~.TTT',
+  'TTT..FfffffffF.,,,,,,,,,Fffff..##..ffffF,,,,,,,,,,,,,.~~~~~..TTT',
+  'TTT..FfffffffF.,,,,,,,,,FffffF.##.FffffF,,,,,,,,,,,,,........TTT',
+  'TTT..FFFF.FFFF..........FFFFFF.##.FFFFFF,,,,,,,,,,,,,........TTT',
+  'TTT......########################.............S...........R..TTT',
+  'TTT......########################.................R..........TTT',
+  'TTT..........S.........,,,,,,..##..,,,,,,...,,,,,,,,,,,,,,,,.TTT',
+  'TTT,,,,,,,,,,..FFF.FFFF,,,,,,..##..,,,,,,...,,,,,,,,,,,,,,,,.TTT',
+  'TTT,,,,,,,,,,..FffffffF,,,,,,..###############,,,,,,,,,,,,,,.TTT',
+  'TTT,,,,,,,,,,..FffffffF,,,,,,..###############,,,,,,,,,,,,,,.TTT',
+  'TTT,,,,,,,,,,..FffffffF,,,,,,..##..,,,,,,.TT,,,,,,,,,,,,,,,,.TTT',
+  'TTT,,,,,,,,,,..FffffffF,,,,,,..##..,,,,,,.TT,,,,,,,,,,,,,,,,.TTT',
+  'TTT,,,,,,,,,,..FffffffF........##.........TT,,,,,,,,,,,,,,,,.TTT',
+  'TTT,,,,,,,,,,..FFFFFFFF........##.S.......TT,,,,,,,,,,,,,,,,.TTT',
+  'TTTTTTTTTTT.........TTTTTTTTT..##..TTTTTTTTT..........TTTTTTTTTT',
+  'TTTTTTTTTTT.........TTTTTTTTT..##..TTTTTTTTT..........TTTTTTTTTT',
+  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTG##GTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT##TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT##TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+  'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT##TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
 ];
 const MW = MAP[0].length, MH = MAP.length;
-const START = { x: 12, y: 22, dir: 'up' };
+const START = { x: 31, y: 47, dir: 'up' };
 const SOLID = new Set(['T', '~', 'F', 'R', 'S', 'G']);
 const SIGNS = {
-  '5,8': '← 울타리 안 풀숲은 아주 넓어요. 포켓몬이 많이 숨어 있대요!',
-  '15,22': '사파리존에 어서 와요! 키 큰 풀숲을 걸으면 야생 포켓몬이 나와요.',
+  '34,45': '사파리존에 어서 와요! 키 큰 풀숲을 걸으면 야생 포켓몬이 나와요.',
+  '29,24': '↖ 연못 구역   ↗ 바위 구역   ↓ 입구',
+  '12,21': '연못 구역: 다리를 건너 보세요. 물가 풀숲에도 포켓몬이 숨어 있대요!',
+  '51,21': '바위 구역: 바위 사이 풀숲이 아주 넓어요.',
+  '46,36': '← 꽃밭   남동 풀숲은 사파리존에서 가장 넓은 풀숲이에요!',
+  '13,38': '울타리 안 꽃밭은 들어가서 구경할 수 있어요.',
 };
 const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW || y >= MH ? 'T' : MAP[y][x]);
 const STEP_MS = 200;               // 한 칸 걷는 시간 (서버 걸음 속도 제한 6걸음/초 안쪽)
 const SEND_EVERY = 3;              // 풀숲 걸음을 몇 걸음마다 서버로 보낼지
 
-// ─────────────────────── 도트 그림 ───────────────────────
-const hash = (x, y) => { let n = x * 374761393 + y * 668265263; n = (n ^ (n >>> 13)) * 1274126177; return ((n ^ (n >>> 16)) >>> 0) / 4294967296; };
-const C = {
-  grass: '#8fd06c', grassD: '#72b856', grassL: '#b4e48a',
-  tall: '#3e9a3c', tallD: '#26702a', tallL: '#74c65a', tallK: '#1c5420',
-  path: '#e4cc94', pathD: '#c8a86c', pathL: '#f4e2b4',
-  water: '#4a8ed8', waterD: '#2e6cb8', waterL: '#a0d0f4',
-  leaf: '#2f7d3a', leafD: '#1d5428', leafL: '#56a24a', trunk: '#7a4a28', trunkD: '#4e2e18',
-  wood: '#c08040', woodD: '#7a4a20', woodL: '#e0a868',
-  rock: '#9ca2ac', rockD: '#646a76', rockL: '#d0d4da',
-  stone: '#b8b0a0', stoneD: '#7a7266',
-};
-function makeTiles() {
-  const cv = document.createElement('canvas'); cv.width = TS * 16; cv.height = TS * 2;
-  const g = cv.getContext('2d');
-  const at = {}; let n = 0;
-  const tile = (key, frames, draw) => {
-    at[key] = [];
-    for (let f = 0; f < frames; f++) {
-      const ox = n * TS, oy = f * TS;
-      const px = (x, y, c, w = 1, hh = 1) => { g.fillStyle = c; g.fillRect(ox + x, oy + y, w, hh); };
-      draw(px, f);
-      at[key].push([ox, oy]);
-    }
-    if (frames === 1) at[key].push(at[key][0]);
-    n++;
-  };
-  const grass = (px) => {
-    px(0, 0, C.grass, 16, 16);
-    for (const [x, y] of [[2, 3], [10, 2], [6, 9], [13, 11], [3, 13]]) { px(x, y, C.grassD); px(x + 1, y - 1, C.grassD); px(x + 2, y, C.grassD); }
-    px(8, 5, C.grassL); px(12, 7, C.grassL); px(4, 7, C.grassL);
-  };
-  tile('.', 1, grass);
-  // 키 큰 풀숲: 뾰족한 잎 두 줄, 바람에 살짝 흔들림 (2장)
-  tile(',', 2, (px, f) => {
-    px(0, 0, C.tall, 16, 16);
-    for (const [bx, by] of [[0, 1], [8, 1], [4, 9], [12, 9]]) {
-      const s = f ? 1 : 0;
-      px(bx + 1, by + 6, C.tallD, 6, 1);
-      px(bx + 1 + s, by + 1, C.tallK); px(bx + 1 + s, by + 2, C.tallL); px(bx + 1, by + 3, C.tallL, 1, 3);
-      px(bx + 3, by, C.tallK); px(bx + 3, by + 1, C.tallL); px(bx + 3, by + 2, C.tallL, 1, 4);
-      px(bx + 5 - s, by + 1, C.tallK); px(bx + 5 - s, by + 2, C.tallL); px(bx + 5, by + 3, C.tallL, 1, 3);
-      px(bx + 2, by + 4, C.tallD, 1, 2); px(bx + 4, by + 4, C.tallD, 1, 2); px(bx + 6, by + 4, C.tallD, 1, 2);
-    }
-  });
-  tile('#', 1, (px) => {
-    px(0, 0, C.path, 16, 16);
-    for (const [x, y] of [[3, 4], [11, 2], [7, 10], [13, 13], [2, 12]]) { px(x, y, C.pathD, 2, 1); px(x, y - 1, C.pathL, 1, 1); }
-  });
-  tile('~', 2, (px, f) => {
-    px(0, 0, C.water, 16, 16);
-    const o = f ? 3 : 0;
-    for (const [x, y] of [[1, 3], [9, 6], [4, 11], [11, 13]]) { px((x + o) % 13, y, C.waterL, 3, 1); px((x + o) % 13 + 1, y + 1, C.waterD, 3, 1); }
-  });
-  tile('b', 1, (px) => {
-    px(0, 0, C.water, 16, 16);
-    px(0, 1, C.woodD, 16, 1); px(0, 14, C.woodD, 16, 1);
-    px(0, 2, C.wood, 16, 12);
-    for (let x = 0; x < 16; x += 4) { px(x, 2, C.woodD, 1, 12); px(x + 1, 2, C.woodL, 1, 12); }
-  });
-  tile('F', 1, (px) => {
-    grass(px);
-    px(0, 5, C.woodD, 16, 1); px(0, 6, C.wood, 16, 2); px(0, 8, C.woodD, 16, 1);
-    px(0, 10, C.woodD, 16, 1); px(0, 11, C.wood, 16, 1); px(0, 12, C.woodD, 16, 1);
-    for (const x of [2, 10]) { px(x, 2, C.woodD, 4, 12); px(x + 1, 3, C.woodL, 2, 10); px(x + 1, 2, C.wood, 2, 1); }
-  });
-  tile('f', 2, (px, f) => {
-    grass(px);
-    for (const [x, y, c] of [[3, 3, '#f06878'], [10, 5, '#ffd84a'], [5, 11, '#ffd84a'], [12, 12, '#f06878']]) {
-      const yy = y + (f && (x + y) % 2 ? 1 : 0);
-      px(x, yy - 1, c); px(x - 1, yy, c); px(x + 1, yy, c); px(x, yy + 1, c); px(x, yy, '#fff4c8'); px(x, yy + 2, C.grassD, 1, 2);
-    }
-  });
-  tile('R', 1, (px) => {
-    grass(px);
-    px(3, 13, C.grassD, 11, 1);
-    px(4, 4, C.rockD, 8, 1); px(3, 5, C.rockD, 10, 1); px(2, 6, C.rockD, 12, 7); px(3, 13, C.rockD, 10, 1);
-    px(4, 5, C.rock, 8, 1); px(3, 6, C.rock, 10, 6); px(4, 12, C.rock, 8, 1);
-    px(4, 6, C.rockL, 3, 2); px(5, 8, C.rockL, 1, 1); px(9, 10, C.rockD, 3, 1);
-  });
-  tile('S', 1, (px) => {
-    grass(px);
-    px(7, 9, C.trunkD, 2, 6);
-    px(2, 2, C.woodD, 12, 8); px(3, 3, C.wood, 10, 6); px(3, 3, C.woodL, 10, 1);
-    px(5, 5, C.woodD, 6, 1); px(5, 7, C.woodD, 4, 1);
-  });
-  tile('G', 1, (px) => {
-    px(0, 0, C.path, 16, 16);
-    px(2, 0, C.stoneD, 12, 16); px(3, 1, C.stone, 10, 14); px(3, 1, '#d8d0c0', 10, 2);
-    px(2, 0, '#c84838', 12, 3); px(3, 0, '#e86a50', 10, 1);
-  });
-  tile('T', 1, () => { /* 나무는 아래 drawTree */ });
-  return { cv, at };
+// ─────────────────────── 도트 그림 (그림판 → 미리 그린 맵) ───────────────────────
+const loadImg = (name) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = new URL(`../img/${name}`, import.meta.url).href; });
+// 이웃 비트 N1 E2 S4 W8 (이웃도 같은 땅이면 1). 맵 밖은 모래길만 이어짐 (입구 길이 아래로 빠져나감)
+const same = (x, y, test, out) => (x < 0 || y < 0 || x >= MW || y >= MH ? out : test(MAP[y][x]));
+const isSand = (c) => c === '#';
+const isWater = (c) => c === '~' || c === 'b';
+const isFence = (c) => c === 'F';
+function maskOf(x, y, test, out = false) {
+  return (same(x, y - 1, test, out) ? 1 : 0) | (same(x + 1, y, test, out) ? 2 : 0) | (same(x, y + 1, test, out) ? 4 : 0) | (same(x - 1, y, test, out) ? 8 : 0);
 }
-// 나무: 둥근 잎 덩어리 (칸마다 무늬가 조금 다름)
-function drawTree(g, x, y, v) {
-  g.fillStyle = C.grassD; g.fillRect(x, y, TS, TS);
-  g.fillStyle = C.trunkD; g.fillRect(x + 6, y + 11, 4, 5);
-  g.fillStyle = C.trunk; g.fillRect(x + 7, y + 11, 2, 4);
-  g.fillStyle = C.leafD; g.fillRect(x + 2, y + 1, 12, 11); g.fillRect(x + 1, y + 3, 14, 7); g.fillRect(x + 4, y, 8, 13);
-  g.fillStyle = C.leaf; g.fillRect(x + 3, y + 1, 10, 9); g.fillRect(x + 2, y + 3, 12, 6); g.fillRect(x + 5, y + 1, 6, 11);
-  g.fillStyle = C.leafL; g.fillRect(x + 4, y + 2 + (v > 0.5 ? 1 : 0), 4, 2); g.fillRect(x + 3, y + 4, 2, 2); g.fillRect(x + 9 + (v > 0.7 ? 1 : 0), y + 4, 2, 1);
-  g.fillStyle = C.leafD; g.fillRect(x + 6, y + 7, 1, 1); g.fillRect(x + 10, y + 8, 1, 1);
+// 안쪽 모서리: 두 옆은 같은 땅인데 대각선만 다른 땅
+function corners(x, y, m, test, out = false) {
+  const r = [];
+  if ((m & 9) === 9 && !same(x - 1, y - 1, test, out)) r.push('nw');
+  if ((m & 3) === 3 && !same(x + 1, y - 1, test, out)) r.push('ne');
+  if ((m & 12) === 12 && !same(x - 1, y + 1, test, out)) r.push('sw');
+  if ((m & 6) === 6 && !same(x + 1, y + 1, test, out)) r.push('se');
+  return r;
 }
-
-// 주인공 (새 그림): 카키 사파리 모자 · 파란 옷. 12×16, 방향마다 [서기, 걷기]. 위·아래는 반쪽 + 거울
-const PAL = { k: '#283040', h: '#d8c070', H: '#9a8440', s: '#f8c8a0', S: '#d89870', r: '#6a4028', c: '#3a8ad0', C: '#28609a', w: '#f8f8f8', p: '#4a4a5a', b: '#7a4a24' };
-const mirror = (rows) => rows.map((r) => r + [...r].reverse().join(''));
-const flipRows = (rows) => rows.map((r) => [...r].reverse().join(''));
-const DOWN = mirror(['....kk', '..kkhh', '.khhhh', '.khhhh', 'kHHHHH', '.kssss', '.ksskS', '.kssss', '..kkss', '.kccww', 'kscccc', 'kscccc', '.kpppp', '.kpppk', '.kbbbk', '..kkk.']);
-const UP = mirror(['....kk', '..kkhh', '.khhhh', '.khhhh', 'kHHHHH', '.krrrr', '.krrrr', '.krrrr', '..kkrr', '.kcccc', 'kscccc', 'kscccc', '.kpppp', '.kpppk', '.kbbbk', '..kkk.']);
-const stepDown = (rows) => [...rows.slice(0, 13), '.kpppkkbbbk.', '.kbbbk.kkk..', '..kkk.......'];
-const LEFT = ['.....kkkk...', '...kkhhhhk..', '..khhhhhhhk.', '..khhhhhhhk.', 'kHHHHHHHHk..', '.kssssrrrk..', '.ksksssrrk..', '.kssssssrk..', '..kkssskk...', '..kccccck...', '..kcsccck...', '..kcsccck...', '..kpppppk...', '..kppkppk...', '..kbbkbbk...', '..kkk.kkk...'];
-const LEFT_STEP = [...LEFT.slice(0, 12), '..kpppppk...', '.kppk.kppk..', '.kbbk..kbbk.', '..kk....kk..'];
-const HERO = {
-  down: [DOWN, stepDown(DOWN), flipRows(stepDown(DOWN))],
-  up: [UP, stepDown(UP), flipRows(stepDown(UP))],
-  left: [LEFT, LEFT_STEP, LEFT_STEP],
-  right: [flipRows(LEFT), flipRows(LEFT_STEP), flipRows(LEFT_STEP)],
-};
-function makeHero() {
-  const cv = document.createElement('canvas'); cv.width = 12 * 3; cv.height = 16 * 4;
-  const g = cv.getContext('2d');
-  ['down', 'up', 'left', 'right'].forEach((d, j) => HERO[d].forEach((rows, i) => rows.forEach((r, y) => [...r].forEach((ch, x) => {
-    if (PAL[ch]) { g.fillStyle = PAL[ch]; g.fillRect(i * 12 + x, j * 16 + y, 1, 1); }
-  }))));
+function prerender(sheet, f) {
+  const cv = document.createElement('canvas'); cv.width = MW * TS; cv.height = MH * TS;
+  const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+  const put = (name, x, y) => { const t = TI[name]; if (t) g.drawImage(sheet, t[0], t[1], t[2], t[3], x, y + TS - t[3], t[2], t[3]); };
+  for (let y = 0; y < MH; y++) {
+    for (let x = 0; x < MW; x++) {
+      const c = MAP[y][x], X = x * TS, Y = y * TS;
+      if (c === '#') {
+        const m = maskOf(x, y, isSand, true); put(`sand${m}`, X, Y);
+        for (const k of corners(x, y, m, isSand, true)) put(`sandc${k}`, X, Y);
+        continue;
+      }
+      if (isWater(c)) {
+        const m = maskOf(x, y, isWater); put(`water${f}`, X, Y); put(`shore${m}`, X, Y);
+        for (const k of corners(x, y, m, isWater)) put(`shorec${k}`, X, Y);
+        if (c === 'b') put('bridge', X, Y);
+        continue;
+      }
+      put('ground', X, Y);
+      if (c === ',') put('tall', X, Y);
+      else if (c === 'f') put(`flower${(x + y) & 1 ? 'B' : 'A'}${(f + x) & 1}`, X, Y);
+      else if (c === 'F') put(`fence${maskOf(x, y, isFence)}`, X, Y);
+      else if (c === 'R') put('rock', X, Y);
+      else if (c === 'S') put('sign', X, Y);
+      else if (c === 'G') put('post', X, Y);
+    }
+  }
+  // 나무는 위 줄부터: 뾰족한 머리가 윗칸으로 8px 솟아 윗나무 밑동을 덮음 (숲이 빽빽해 보임)
+  for (let y = 0; y < MH; y++) for (let x = 0; x < MW; x++) if (MAP[y][x] === 'T') put('tree', x * TS, y * TS);
   return cv;
 }
+const HW = 16, HH = 24;              // 주인공 한 칸 (발 = 칸 아래쪽, 머리는 윗칸으로 8px)
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const DIR_ROW = { down: 0, up: 1, left: 2, right: 3 };
 
@@ -192,7 +148,10 @@ export function viewSafari() {
 }
 
 function build() {
-  const tiles = makeTiles(); const hero = makeHero();
+  let maps = null, hero = null;      // 미리 그린 맵 2장 · 주인공 그림판 (그림이 오기 전엔 빈 배경)
+  Promise.all([loadImg('safari-tiles.png'), loadImg('safari-hero.png')]).then(([sheet, hr]) => {
+    maps = [prerender(sheet, 0), prerender(sheet, 1)]; hero = hr;
+  }).catch(() => {});
   const cv = h('canvas.sf-canvas', { 'aria-label': '사파리존 지도. 아래 방향 버튼이나 키보드 화살표로 걸어요.' });
   const g = cv.getContext('2d');
   const cover = h('div.sf-cover', { hidden: true });
@@ -345,33 +304,21 @@ function build() {
     const px = Math.round(P.fx * TS + TS / 2), py = Math.round(P.fy * TS + TS / 2);
     const camX = Math.max(0, Math.min(MW * TS - VW, px - Math.floor(VW / 2)));
     const camY = Math.max(0, Math.min(MH * TS - VH, py - Math.floor(VH / 2)));
-    const x0 = Math.floor(camX / TS), y0 = Math.floor(camY / TS);
-    for (let ty = y0; ty <= y0 + Math.ceil(VH / TS) + 1; ty++) {
-      for (let tx = x0; tx <= x0 + Math.ceil(VW / TS) + 1; tx++) {
-        if (tx >= MW || ty >= MH) continue;
-        const c = MAP[ty][tx]; const sx = tx * TS - camX, sy = ty * TS - camY;
-        if (c === 'T') { drawTree(g, sx, sy, hash(tx, ty)); continue; }
-        const fr = tiles.at[c] || tiles.at['.'];
-        const [ox, oy] = fr[(af + ((tx + ty) & 1)) % 2];
-        g.drawImage(tiles.cv, ox, oy, TS, TS, sx, sy, TS, TS);
-      }
-    }
-    // 주인공 (그림자 + 걷기 그림)
-    const hx = Math.round(P.fx * TS) - camX + 2, hy = Math.round(P.fy * TS) - camY - 3;
+    if (!maps) { g.fillStyle = '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
+    const map = maps[af];
+    g.drawImage(map, camX, camY, VW, VH, 0, 0, VW, VH);
+    // 주인공 (그림자 + 걷기 그림): 발이 칸 아래쪽, 머리는 윗칸으로
+    const hx = Math.round(P.fx * TS) - camX, hy = Math.round(P.fy * TS) - camY + TS - HH;
     const k = P.moving ? (now - P.t0) / STEP_MS : 0;
-    const fi = P.moving && k > 0.2 && k < 0.8 ? (P.stepN % 2 ? 1 : 2) : 0;
-    g.fillStyle = 'rgba(20,40,20,.28)'; g.fillRect(hx + 2, hy + 16, 8, 2);
-    g.drawImage(hero, fi * 12, DIR_ROW[P.dir] * 16, 12, 16, hx, hy, 12, 16);
-    // 풀숲 안이면 다리를 풀잎이 가림
-    const under = tileAt(Math.round(P.fx), Math.round(P.fy));
-    if (under === ',') {
-      const [ox, oy] = tiles.at[','][af];
-      const gx = Math.round(P.fx) * TS - camX, gy = Math.round(P.fy) * TS - camY;
-      g.drawImage(tiles.cv, ox, oy + 9, TS, 7, gx, gy + 9, TS, 7);
-    }
+    const fi = P.moving && k > 0.15 && k < 0.85 ? (P.stepN % 2 ? 1 : 2) : 0;
+    g.fillStyle = 'rgba(20,60,40,.25)'; g.fillRect(hx + 3, hy + HH - 2, 10, 2); g.fillRect(hx + 4, hy + HH - 1, 8, 1);
+    g.drawImage(hero, fi * HW, DIR_ROW[P.dir] * HH, HW, HH, hx, hy, HW, HH);
+    // 풀숲 안이면 다리를 풀잎이 가림 (미리 그린 맵의 그 칸 아랫부분을 다시 덮음)
+    const gx = Math.round(P.fx), gy = Math.round(P.fy);
+    if (tileAt(gx, gy) === ',') g.drawImage(map, gx * TS, gy * TS + 10, TS, 6, gx * TS - camX, gy * TS - camY + 10, TS, 6);
     // 만남: 머리 위 '!' → 화면 번쩍
     if (bubbleT > 0) {
-      const bx = hx + 3, by = hy - 11;
+      const bx = hx + 5, by = hy - 8;
       g.fillStyle = '#283040'; g.fillRect(bx - 1, by - 1, 8, 11);
       g.fillStyle = '#ffffff'; g.fillRect(bx, by, 6, 9);
       g.fillStyle = '#e83838'; g.fillRect(bx + 2, by + 1, 2, 5); g.fillRect(bx + 2, by + 7, 2, 1);
@@ -384,7 +331,7 @@ function build() {
   }
   const start = () => { requestAnimationFrame(() => { fit(); if (!raf && root.isConnected) raf = requestAnimationFrame(frame); }); };
   // 시험용
-  window.__safari = { P, state: () => st, tile: tileAt, map: MAP, move: (d) => kick(d), busy: () => busy, view: () => ({ VW, VH }) };
+  window.__safari = { P, maps: () => maps, state: () => st, tile: tileAt, map: MAP, move: (d) => kick(d), busy: () => busy, view: () => ({ VW, VH }) };
   return { root, start, refresh };
 }
 
