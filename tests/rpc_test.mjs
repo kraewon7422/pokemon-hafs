@@ -66,6 +66,9 @@ await patchSetting('wild_chance', 0);
 // 0034: 진화의 돌은 퀴즈·배틀에서 확률로 — 예전 시험은 늘 받는다고 보므로 시험 동안 100% (끝에서 되돌림)
 const STONE0 = Object.fromEntries((await admin.select('settings?key=in.(quiz_stone_chance,battle_stone_chance)&select=key,value')).data.map((x) => [x.key, x.value]));
 await patchSetting('quiz_stone_chance', 1); await patchSetting('battle_stone_chance', 1);
+// 0038: 야생 · 사파리 잡기가 아주 가끔 메타몽 — 예전 시험은 잡은 포켓몬이 그대로라고 보므로 시험 동안 0 (끝에서 되돌림)
+const DITTO0 = (await admin.select('settings?key=eq.ditto_disguise_chance')).data?.[0]?.value ?? 0.005;
+await patchSetting('ditto_disguise_chance', 0);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -1715,7 +1718,8 @@ console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 �
   ok((await F.rpc('sync')).data.state.collection.some((x) => x.line_id === encSp?.line_id), 'the Pokémon is in my collection');
   const tk = c1?.nonce && (await admin.select(`tickets?nonce=eq.${c1.nonce}&select=special,qr_id,status`)).data[0];
   ok(tk?.special === 'safari' && tk.qr_id === 'SAFARI' && tk.status === 'redeemed', 'recorded as a SAFARI special ticket', tk);
-  ok((await F.rpc('safari_result', { p_id: e1?.id, p_throws: 1, p_caught: true })).error === 'NOT_FOUND', 'an encounter can be used once');
+  const c1b = (await F.rpc('safari_result', { p_id: e1?.id, p_throws: 1, p_caught: true })).data;   // 0038: 다시 보내면 적어 둔 결과 그대로
+  ok(c1b?.replay === true && c1b.caught === true && c1b.nonce === c1?.nonce && c1b.safari?.balls_left === 7, 'an encounter is used once (re-send = the stored result, no extra balls)', c1b);
   // 0 개 던졌다고 해도 잡으면 1개는 씀
   const e2 = (await walk())?.encounter;
   ok(e2?.balls === 7, 'next encounter borrows the 7 balls left', e2);
@@ -2048,8 +2052,242 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
   await admin.rpc('admin_delete_students', { p_student_ids: [X.sid], p_confirm: '삭제' });
 }
 
+console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이상한 소포 · 울트라비스트 구역 · 메타몽 · 사파리 정리/같은 결과');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'lg1234' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'lg1234'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const L = await mk('전설테스트');
+  const M = await mk('소포테스트');
+  const st = async (c = L.c) => (await c.rpc('sync')).data.state;
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours',
+                'legend_quests', 'roam_chance', 'legend_daily_tries', 'legend_balls', 'gift_fail_limit', 'ditto_disguise_chance', 'wild_chance', 'self_redeem'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const gifts = [];
+  const mkGift = async (o) => {
+    const r = await admin.rpc('admin_create_gift', { p_code: null, p_title: null, p_dex: null, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null, ...o });
+    if (r.data?.id) gifts.push(r.data.id);
+    return r;
+  };
+  const uidOf = async (sid) => (await admin.select(`profiles?student_id=eq.${sid}&select=user_id`)).data?.[0]?.user_id;
+  try {
+    ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
+       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto (0 during the suite), roam 30%, legend 3 tries · 10 balls, 14 quests', old);
+    ok(Number(DITTO0) === 0.005, 'ditto_disguise_chance default 0.5% (user choice)', DITTO0);
+    // ── 0. 야생 무리: 퀘스트 · 사파리 · 방랑 · 소포 전설과 울트라비스트는 빠짐 ──
+    const ln = (await admin.select('lines?select=id,ultra,legend_src&or=(ultra.eq.true,legend_src.not.is.null)')).data;
+    const src = Object.fromEntries(['quest', 'safari', 'roam', 'gift'].map((k) => [k, ln.filter((x) => x.legend_src === k).length]));
+    ok(ln.filter((x) => x.ultra).length === 10 && src.quest === 5 && src.safari === 9 && src.roam === 3 && src.gift === 13,
+       'lines flagged: 10 Ultra Beasts, 5 quest, 9 safari, 3 roaming, 13 gift-only mythics', src);
+
+    // ── A. 알림 ──
+    await L.c.rpc('claim_egg', { p_key: 'card' });
+    let s1 = await st();
+    const nEgg = s1.notices.find((n) => n.kind === 'egg');
+    ok(nEgg?.title && nEgg.body.includes('부스') && nEgg.data?.pending === true && nEgg.species_id, 'easter-egg ticket → a notice that says where to redeem it', s1.notices);
+    ok((await anon.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).error, 'anon cannot call notice_seen');
+    ok((await M.c.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).data?.seen === 0, "cannot mark someone else's notice as seen");
+    ok((await L.c.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).data?.seen === 1 && !(await st()).notices.some((n) => n.id === nEgg?.id),
+       'notice_seen → it is no longer in the sync payload (never replayed)');
+    ok((await L.c.rpc('notice_seen', { p_ids: [nEgg?.id ?? 0] })).data?.seen === 0, 'marking it again does nothing');
+
+    // ── B. 퀘스트 ──
+    const row = (s, dex) => s.legends.find((x) => x.dex === dex);
+    s1 = await st();
+    ok(s1.legends.length === 14 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
+       'quest rows in sync: 유크시 quiz streak 0/10', row(s1, 480));
+    ok(row(s1, 481)?.prog === '배틀 승리 0/10' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
+       'battle wins 0/10 · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
+    const spots = (await admin.select('qr_points?select=id&kind=eq.static&visible_on_map=eq.true&active=eq.true&order=id')).data.map((x) => x.id);
+    await L.c.rpc('sync', { p_scans: [{ n: nonce(), q: spots[0], t: T[spots[0]].token }] });
+    ok(row(await st(), 484)?.cur === 1, 'a scanned QR spot counts toward 펄기아');
+    for (let i = 0; i < 2; i++) await admin.rpc('admin_grant_monster', { p_student_id: L.sid, p_line: 7, p_stage: 1 });
+    s1 = await st();
+    ok(row(s1, 482)?.cur === 2 && row(s1, 482).ok === false && row(s1, 482).cond.includes('30마리'), 'catches quest counts caught Pokémon (2/30)', row(s1, 482));
+    const Q = structuredClone(old.legend_quests);
+    Q.find((q) => q.dex === 482).n = 2; Q.find((q) => q.dex === 481).n = 0;
+    await setS('legend_quests', Q);
+    s1 = await st();
+    const agn = row(s1, 482);
+    ok(agn?.done && agn.ok && agn.granted && s1.special.filter((t) => t.special === 'quest' && t.species_id === agn.species_id).length === 1,
+       'condition met → 아그놈 special quest ticket (in the ticket bag)', agn);
+    ok(s1.notices.some((n) => n.kind === 'quest' && n.species_id === agn?.species_id) && row(s1, 481)?.done,
+       'quest notice (fanfare) · 0-win quest done right away', s1.notices.map((n) => n.kind));
+    s1 = await st();
+    ok(s1.special.filter((t) => t.special === 'quest').length === 2, 'quest tickets are granted once each (no repeats on later syncs)', s1.special);
+    Q.find((q) => q.dex === 482).n = 30; await setS('legend_quests', Q);
+    ok(row(await st(), 482)?.ok === true, 'a finished quest stays finished even if the number goes up later');
+    const water = (await admin.select(`lines?select=id&subject=eq.${encodeURIComponent('야생')}&rarity=eq.common&ultra=eq.false&legend_src=is.null&btype=eq.${encodeURIComponent('물')}&order=id&limit=1`)).data?.[0]?.id;
+    await admin.rpc('admin_grant_monster', { p_student_id: L.sid, p_line: water, p_stage: 1 });
+    ok(row(await st(), 249)?.prog === '물 타입 1/20', 'type quest counts caught water types (루기아 1/20)', row(await st(), 249));
+    const regiLines = (await admin.select('species?select=line_id,dex&dex=in.(377,378,379)&stage=eq.1')).data.map((x) => x.line_id);
+    s1 = await st();
+    ok(row(s1, 486)?.ok === false && row(s1, 486).cond.includes('레지락·레지아이스·레지스틸을 모두'), '레지기가스: not ready, condition text names the trio', row(s1, 486));
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).error === 'NOT_READY', 'legend_encounter refuses before the condition is met');
+    ok((await L.c.rpc('legend_encounter', { p_dex: 480 })).error === 'BAD_LEGEND', 'non-map quest legends cannot be met in the Safari');
+    ok((await anon.rpc('legend_encounter', { p_dex: 486 })).error, 'anon cannot call legend_encounter');
+    for (const l of regiLines) await admin.rpc('admin_grant_monster', { p_student_id: L.sid, p_line: l, p_stage: 1 });
+    s1 = await st();
+    ok(row(s1, 486)?.ok && row(s1, 486).prog === '잡은 전설 3/3' && row(s1, 377)?.caught, 'all three Regi caught → 레지기가스 ready (3/3)', row(s1, 486));
+    ok(s1.notices.some((n) => n.kind === 'legend_ready' && n.data?.dex === 486), "'깨어났다' notice for a map legend that became ready", s1.notices.map((n) => n.kind));
+    const ss = (await L.c.rpc('safari_state')).data;
+    ok(ss?.legends?.find((x) => x.dex === 486)?.ok === true, 'safari_state carries the legend rows (keeper NPC uses real state)');
+    await setS('legend_daily_tries', 2); await setS('legend_balls', 7);
+    const le1 = (await L.c.rpc('legend_encounter', { p_dex: 486 })).data;
+    ok(le1?.encounter?.kind === 'legend' && le1.encounter.balls === 7 && le1.tries_left === 1, 'legend_encounter → pending legend encounter with legend_balls', le1);
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).data?.encounter?.id === le1?.encounter?.id, 'calling again resumes the same encounter');
+    ok(!(await st()).encounters.some((e) => e.kind === 'legend'), 'legend encounters stay off the home banner');
+    const lr1 = (await L.c.rpc('legend_result', { p_id: le1?.encounter?.id, p_caught: false })).data;
+    ok(lr1?.fled === true && lr1.caught === false, 'legend flees (all balls missed)', lr1);
+    const lr1b = (await L.c.rpc('legend_result', { p_id: le1?.encounter?.id, p_caught: true })).data;
+    ok(lr1b?.replay === true && lr1b.fled === true && lr1b.caught === false, 'legend_result is idempotent: re-send returns the stored outcome', lr1b);
+    const le2 = (await L.c.rpc('legend_encounter', { p_dex: 486 })).data;
+    ok(le2?.encounter?.id && le2.encounter.id !== le1?.encounter?.id && le2.tries_left === 0, 'after fleeing it can be challenged again (stays on the map)', le2);
+    const lr2 = (await L.c.rpc('legend_result', { p_id: le2?.encounter?.id, p_caught: false })).data;
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).error === 'NO_TRIES' && lr2?.fled, 'per-day attempts (legend_daily_tries)');
+    await setS('legend_daily_tries', 5);
+    const le3 = (await L.c.rpc('legend_encounter', { p_dex: 486 })).data;
+    const lr3 = (await L.c.rpc('legend_result', { p_id: le3?.encounter?.id, p_caught: true, p_grade: 'great' })).data;
+    const giga = row(await st(), 486);
+    ok(lr3?.caught === true && lr3.ditto === false && giga?.caught, 'caught → 레지기가스 in the collection (never a Ditto)', lr3);
+    ok((await st()).notices.some((n) => n.kind === 'legend' && n.species_id === giga?.species_id), 'legend catch notice');
+    ok((await L.c.rpc('legend_encounter', { p_dex: 486 })).error === 'ALREADY_CAUGHT', 'one catch per account');
+
+    // ── C. 방랑 전설 ──
+    ok((await L.c.rpc('admin_roam_spots', {})).error === 'NOT_ADMIN', 'students cannot see where the roamers are');
+    const at = new Date().toISOString();
+    const r1 = (await admin.rpc('admin_roam_spots', { p_at: at })).data, r2 = (await admin.rpc('admin_roam_spots', { p_at: at })).data;
+    ok(r1?.length === 3 && JSON.stringify(r1) === JSON.stringify(r2) && r1.every((x) => spots.includes(x.qr)), 'roamer hour assignment is deterministic and on a visible QR spot', r1);
+    const hrs = [];
+    for (let k = 0; k < 12; k++) hrs.push((await admin.rpc('admin_roam_spots', { p_at: new Date(Date.parse(at) + k * 3600e3).toISOString() })).data?.[0]?.qr);
+    const same = (await admin.rpc('admin_roam_spots', { p_at: new Date(Math.floor(Date.parse(at) / 3600e3) * 3600e3 + 59 * 60e3).toISOString() })).data;
+    ok(new Set(hrs).size >= 3 && same?.[0]?.qr === r1[0].qr, 'it moves between hours, stays put within an hour', hrs);
+    const rum = (await st()).roamers;
+    ok(rum?.length === 3 && rum.every((x) => x.rumour && !x.rumour.includes(r1.find((y) => y.dex === x.dex).qr_name)), 'rumours hint the area, not the exact spot', rum);
+    await setS('roam_chance', 1);
+    const raiko = r1.find((x) => x.dex === 243);
+    await L.c.rpc('sync', { p_scans: [{ n: nonce(), q: raiko.qr, t: T[raiko.qr].token }] });
+    s1 = await st();
+    const rq = s1.encounters.find((e) => e.kind === 'roam' && e.species_id === rum.find((x) => x.dex === 243).species_id);
+    ok(!!rq && rq.balls >= 1, 'scanning the roamer QR during its hour → a roaming encounter on the home banner', s1.encounters);
+    const rc = (await L.c.rpc('encounter_result', { p_id: rq?.id, p_caught: true, p_grade: 'nice' })).data;
+    s1 = await st();
+    ok(rc?.caught && s1.roamers.find((x) => x.dex === 243)?.caught && s1.notices.some((n) => n.kind === 'roam'), 'caught 라이코 → marked caught + notice', rc);
+    await setS('roam_chance', 0);
+    await M.c.rpc('sync', { p_scans: [{ n: nonce(), q: raiko.qr, t: T[raiko.qr].token }] });
+    ok(!(await st(M.c)).encounters.some((e) => e.kind === 'roam'), 'roam_chance 0 → no encounter');
+
+    // ── D. 이상한 소포 ──
+    const tag = Math.random().toString(36).slice(2, 7);
+    const code = `Gift 테스트 ${tag}`;
+    ok((await L.c.rpc('admin_create_gift', { p_code: code, p_title: 'x', p_dex: 385, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: 1 })).error === 'NOT_ADMIN', 'students cannot create gifts');
+    const g1 = (await mkGift({ p_code: code, p_title: '시험 소포', p_dex: 385, p_max: 1 })).data;
+    ok(g1?.code === `gift테스트${tag}` && g1.species_id, 'admin_create_gift (code stored without spaces, lower case)', g1);
+    ok((await mkGift({ p_code: code, p_dex: 385 })).error === 'GIFT_EXISTS', 'duplicate code rejected');
+    ok((await mkGift({ p_code: `x${tag}`, p_dex: 385, p_item: 'candy' })).error === 'BAD_GIFT_REWARD', 'Pokémon OR item, not both');
+    ok((await st()).gifts_open >= 1, 'students see that a gift is claimable (count only)');
+    const c1 = (await L.c.rpc('gift_claim', { p_code: `  GIFT테스트 ${tag.toUpperCase()} ` })).data;
+    ok(c1?.ok && c1.species_id === g1?.species_id && c1.mon, 'case/space-insensitive Korean code → 지라치 in the box', c1);
+    s1 = await st();
+    ok(s1.notices.some((n) => n.kind === 'gift' && n.species_id === g1?.species_id && n.body.includes('박스')), 'gift notice (went straight to the box)', s1.notices);
+    ok((await L.c.rpc('gift_claim', { p_code: code })).data?.error === 'GIFT_CLAIMED', 'one per account');
+    ok((await M.c.rpc('gift_claim', { p_code: code })).data?.error === 'GIFT_GONE', 'max claims reached');
+    const past = new Date(Date.now() - 3600e3).toISOString(), soon = new Date(Date.now() + 3600e3).toISOString();
+    await mkGift({ p_code: `old${tag}`, p_dex: 386, p_ends: past });
+    await mkGift({ p_code: `new${tag}`, p_dex: 386, p_starts: soon });
+    ok((await M.c.rpc('gift_claim', { p_code: `old${tag}` })).data?.error === 'GIFT_EXPIRED', 'expired gift');
+    ok((await M.c.rpc('gift_claim', { p_code: `new${tag}` })).data?.error === 'GIFT_NOT_YET', 'not-yet-started gift');
+    const candyGift = (await mkGift({ p_code: `사탕${tag}`, p_item: 'candy', p_qty: 2 })).data;
+    const qty = async () => ((await M.c.rpc('bag_state', {})).data?.items || []).find((x) => x.key === 'candy')?.qty || 0;
+    const before = await qty();
+    const c2 = (await M.c.rpc('gift_claim', { p_code: `사탕 ${tag}` })).data;
+    const after = await qty();
+    ok(c2?.ok && c2.item === 'candy' && after - before === 2 && (await st(M.c)).notices.some((n) => n.kind === 'gift'), 'item gift → inventory +2 and a notice', [c2, before, after]);
+    await mkGift({ p_code: `돌${tag}`, p_item: 'evo_stone', p_qty: 1 });
+    const ev0 = (await st(M.c)).profile.evo_tickets;
+    const c3 = (await M.c.rpc('gift_claim', { p_code: `돌${tag}` })).data;
+    ok(c3?.ok && c3.evo_tickets === ev0 + 1, '진화의 돌 gift', [ev0, c3]);
+    const lst = (await admin.rpc('admin_list_gifts')).data;
+    ok(lst?.find((g) => g.id === g1?.id)?.claims === 1, 'admin_list_gifts shows claim counts');
+    await admin.rpc('admin_set_gift', { p_id: candyGift?.id, p_active: false });
+    ok((await L.c.rpc('gift_claim', { p_code: `사탕${tag}` })).data?.error === 'GIFT_EXPIRED', 'disabled gift cannot be claimed');
+    await setS('gift_fail_limit', 3);
+    for (let i = 0; i < 3; i++) ok((await M.c.rpc('gift_claim', { p_code: `wrong${tag}${i}` })).data?.error === 'BAD_GIFT', `wrong code → BAD_GIFT (${i + 1})`);
+    await mkGift({ p_code: `right${tag}`, p_item: 'candy', p_qty: 1 });
+    ok((await M.c.rpc('gift_claim', { p_code: `right${tag}` })).data?.error === 'TRY_LATER', 'rate limit: too many wrong codes → TRY_LATER even for a right code');
+    ok((await anon.rpc('gift_claim', { p_code: code })).error, 'anon cannot claim gifts');
+
+    // ── E · F · G. 사파리: 구역 · 메타몽 · 정리 · 같은 결과 ──
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1);
+    await setS('safari_daily_max_encounters', 100); await setS('safari_steps_per_sec', 6);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);
+    const walk = async (zone) => {
+      for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+        const a = (await M.c.rpc('safari_encounter', { p_steps: 8, p_zone: zone })).data;
+        if (a?.encounter || a?.reason) return a;
+        await wait(500);
+      }
+      return null;
+    };
+    const ub = new Set((await admin.select('lines?select=id&ultra=eq.true')).data.map((x) => x.id));
+    const lineOfSp = async (sp) => (await admin.select(`species?id=eq.${sp}&select=line_id`)).data?.[0]?.line_id;
+    const ultra = [], grass = [];
+    for (let i = 0; i < 3; i++) {
+      const a = await walk('ultra'); ultra.push([a?.zone, await lineOfSp(a?.encounter?.species_id)]);
+      await M.c.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+    }
+    for (const z of ['grass', 'cave', 'deep', 'bogus', 'grass']) {
+      const a = await walk(z); grass.push([a?.zone, await lineOfSp(a?.encounter?.species_id)]);
+      await M.c.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+    }
+    ok(ultra.every(([z, l]) => z === 'ultra' && ub.has(l)), "zone 'ultra' → only Ultra Beasts", ultra);
+    ok(grass.every(([, l]) => l && !ub.has(l)) && grass[3][0] === 'grass' && grass[1][0] === 'cave', 'grass · cave · deep never give Ultra Beasts; unknown zone = grass', grass);
+    await setS('ditto_disguise_chance', 1);
+    const d1 = (await walk('grass'))?.encounter;
+    const dc = (await M.c.rpc('safari_result', { p_id: d1?.id, p_throws: 1, p_caught: true })).data;
+    const dittoSp = (await admin.select('species?dex=eq.132&select=id')).data?.[0]?.id;
+    ok(dc?.caught && dc.ditto === true && dc.species_id === dittoSp && dc.disguised_as === d1?.species_id, 'ditto chance 1 → the caught Pokémon was 메타몽 (disguised_as)', dc);
+    ok((await myMons(M.c)).some((m) => m.line_id === 116), '메타몽 is in the box');
+    await setS('wild_chance', 1); await setS('self_redeem', true);
+    const qn = nonce();
+    await M.c.rpc('sync', { p_scans: [{ n: qn, q: spots[5], t: T[spots[5]].token }] });
+    await M.c.rpc('self_redeem');
+    s1 = await st(M.c);
+    ok(s1.disguised?.[qn] && s1.tickets.find((t) => t.nonce === qn)?.species_id === dittoSp, 'QR wild Pokémon can be a disguised 메타몽 too (state.disguised)', s1.disguised);
+    await setS('wild_chance', 0); await setS('self_redeem', false);
+    await setS('ditto_disguise_chance', 0);
+    const d2 = (await walk('grass'))?.encounter;
+    const dc2 = (await M.c.rpc('safari_result', { p_id: d2?.id, p_throws: 1, p_caught: true })).data;
+    ok(dc2?.caught && dc2.ditto === false && dc2.species_id === d2?.species_id, 'ditto chance 0 → never', dc2);
+    const dc2b = (await M.c.rpc('safari_result', { p_id: d2?.id, p_throws: 3, p_caught: true })).data;
+    ok(dc2b?.replay && dc2b.caught && dc2b.nonce === dc2?.nonce && dc2b.safari?.balls_left === dc2?.safari?.balls_left, 'safari_result re-send → stored outcome, no extra balls', dc2b);
+    const e5 = (await walk('grass'))?.encounter;
+    const b0 = (await M.c.rpc('safari_state')).data?.balls_left;
+    ok((await M.c.rpc('safari_throws', { p_id: e5?.id, p_n: 2 })).data?.throws === 2, 'safari_throws records throws as they happen');
+    ok((await M.c.rpc('safari_throws', { p_id: e5?.id, p_n: 1 })).data?.throws === 2, 'throw count never goes down');
+    ok((await L.c.rpc('admin_encounter_age', { p_id: e5?.id, p_minutes: 60 })).error === 'NOT_ADMIN', 'admin_encounter_age is admin-only');
+    ok((await admin.rpc('admin_encounter_age', { p_id: e5?.id, p_minutes: 60 * 26 })).data?.ok, 'admin_encounter_age (test helper)');
+    const z5 = (await M.c.rpc('safari_state')).data;
+    ok(z5?.expired === 1 && z5.pending === null && z5.balls_left === b0, 'stale pending (older than this refill period) → auto-fled; only its 2 throws are charged (to the old period)', z5);
+    const r5 = (await M.c.rpc('safari_result', { p_id: e5?.id, p_throws: 2, p_caught: true })).data;
+    ok(r5?.replay && r5.fled === true && r5.caught === false && r5.expired === true, 'sending a result for it later → the stored (fled) outcome', r5);
+    ok((await M.c.rpc('safari_throws', { p_id: e5?.id, p_n: 3 })).error === 'NOT_FOUND', 'cannot record throws on a finished encounter');
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    for (const id of gifts) await admin.rpc('admin_delete_gift', { p_id: id });
+    await admin.rpc('admin_delete_students', { p_student_ids: [L.sid, M.sid], p_confirm: '삭제' });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
+await patchSetting('ditto_disguise_chance', DITTO0);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
