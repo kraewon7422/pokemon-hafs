@@ -424,7 +424,9 @@ console.log('\n[17] open login: register screen, 학번 code accounts, dev accou
   ok(need?.needs_register === true && need.code_id === sid, 'code account asks for a name, knows its number', need);
   r = await cl.rpc('register_profile', { p_kind: 'guest', p_student_id: '022902', p_name: '코드생' });
   ok(r.data?.student_id === sid && r.data.in_ranking === true, 'code account is always its own student number', r.data);
-  await admin.rpc('admin_unlink', { p_student_id: sid });
+  // 지움 (계정까지): 남겨 두면 020500~020999 임시 번호가 바닥나서 다음 실행이 실패함
+  const del = await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  if (!del.data?.deleted) await admin.rpc('admin_unlink', { p_student_id: sid });
 
   await setS('admin_emails', ['admin@staff.test', 'evil@x.test']);
   const ev = await fresh('evil@x.test');
