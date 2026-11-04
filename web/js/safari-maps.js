@@ -153,7 +153,7 @@ export const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTT',
       'TTTTTTTTTTTTTTTTTTTTTT',
     ],
-    warps: { '11,12': 'deep3.out', '10,2': ['skyShrine', 9, 17, 'up'] },
+    warps: { '11,12': 'deep3.out', '10,2': ['skyShrine', 9, 19, 'up'] },
     signs: {}, npcs: [], legends: [{ dex: 250, x: 16, y: 7 }],
   },
 
@@ -163,32 +163,36 @@ export const MAPS = {
     rows: [
       'PPPPPPPPPPPPPPPPPPPP',
       'PPPPPPPPPPPPPPPPPPPP',
-      'PP.I...AAAAAA...I.PP',
+      'PP.I............I.PP',
+      'PP....I......I....PP',
+      'PPI..............IPP',
       'PP.....AAAAAA.....PP',
-      'PPI....AAALAA....IPP',
-      'PP.....AAAAAA.....PP',
-      'PP.I.....==.....I.PP',
+      'PP..I..AAAAAA..I..PP',
+      'PP.....AAALAA.....PP',
+      'PP..I..AAAAAA..I..PP',
       'PP.......==.......PP',
-      'PPI..r...==...r..IPP',
+      'PP.I..I..==..I..I.PP',
       'PP.......==.......PP',
-      'PP.I.....==.....I.PP',
-      'PP.......==.......PP',
-      'PPI......==......IPP',
+      'PPI...I..==..I...IPP',
       'PP...r...==...r...PP',
-      'PP.I.....==.....I.PP',
+      'PP.I..I..==..I..I.PP',
+      'PP.......==.......PP',
+      'PPI...I..==..I...IPP',
       'PP.......==.......PP',
       'PPPPPPPP.==.PPPPPPPP',
       'PPPPPPPP.==.PPPPPPPP',
       'PPPPPPPPPEEPPPPPPPPP',
     ],
-    warps: { '9,18': ['skyHill', 10, 3, 'down'], '10,18': ['skyHill', 10, 3, 'down'] },
-    signs: {}, npcs: [], legends: [{ dex: 384, x: 10, y: 4 }],
+    warps: { '9,20': ['skyHill', 10, 3, 'down'], '10,20': ['skyHill', 10, 3, 'down'] },
+    signs: {}, npcs: [], legends: [{ dex: 384, x: 10, y: 7 }],
   },
   regiShrine: {
     name: '거인의 제단', kind: 'shrine', zone: 'deep',
     rows: [
       'PPPPPPPPPPPPPPPPPP',
       'PPPBPPPPPPPPPPBPPP',
+      'PP..............PP',
+      'PP....I....I....PP',
       'PP..I..AAAA..I..PP',
       'PP.....AAAA.....PP',
       'PP.....ALAA.....PP',
@@ -201,9 +205,9 @@ export const MAPS = {
       'PPPPPPP.==.PPPPPPP',
       'PPPPPPPPUPPPPPPPPP',
     ],
-    warps: { '8,12': 'maze4.down' },
+    warps: { '8,14': 'maze4.down' },
     signs: { '3,1': '점자가 새겨져 있다… "바위 · 얼음 · 강철의 거인이 모이면 왕이 깨어난다."', '14,1': BRAILLE },
-    npcs: [], legends: [{ dex: 486, x: 8, y: 4 }],
+    npcs: [], legends: [{ dex: 486, x: 8, y: 6 }],
   },
 
   // 울트라 스페이스: 깊은 동굴의 울트라 워프홀 너머. 발판·빛의 길 모두 만남 칸 (울트라비스트 전용 구역)
@@ -233,7 +237,7 @@ export const MAPS = {
 };
 
 // 바깥 지도로 들어오는 칸 (동굴 쪽 warps 의 [지도, 'in'] 이 여기로)
-const OUT_PORTS = { 'deepPond.in': [4, 3, 'down'], 'skyHill.in': [11, 13, 'down'], 'regiShrine.in': [8, 11, 'up'], 'ultra.in': [11, 12, 'up'] };
+const OUT_PORTS = { 'deepPond.in': [4, 3, 'down'], 'skyHill.in': [11, 13, 'down'], 'regiShrine.in': [8, 13, 'up'], 'ultra.in': [11, 12, 'up'] };
 Object.assign(MAPS, CAVES);
 for (const m of Object.values(MAPS)) {
   for (const [k, w] of Object.entries(m.warps)) {
