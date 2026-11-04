@@ -53,6 +53,45 @@ function play(notes, { bpm = 600, type = 'square', vol = 0.08 } = {}) {
   }
 }
 
+// 미끄러지는 소리 (0039): from → to Hz 를 dur 초 동안 (능력 변화 · 변신). steps > 0 이면 계단처럼 (8비트 느낌)
+function sweep(from, to, dur, { type = 'square', vol = 0.06, steps = 0, delay = 0 } = {}) {
+  if (!sfxOn || !ctx) return;
+  const t = ctx.currentTime + 0.02 + delay;
+  const o = ctx.createOscillator(); const g = ctx.createGain();
+  o.type = type;
+  if (steps > 0) {
+    for (let i = 0; i <= steps; i++) o.frequency.setValueAtTime(from * (to / from) ** (i / steps), t + (dur * i) / steps);
+  } else {
+    o.frequency.setValueAtTime(from, t);
+    o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  }
+  g.gain.setValueAtTime(vol, t);
+  g.gain.setValueAtTime(vol, t + dur * 0.7);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  o.connect(g).connect(ctx.destination);
+  o.start(t); o.stop(t + dur + 0.02);
+}
+// 잡음 (비 · 모래바람 · 싸라기눈): 걸러서 dur 초
+let noiseBuf = null;
+function noise(dur, { freq = 1200, q = 0.8, vol = 0.08, type = 'bandpass', delay = 0 } = {}) {
+  if (!sfxOn || !ctx) return;
+  if (!noiseBuf) {
+    noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const t = ctx.currentTime + 0.02 + delay;
+  const src = ctx.createBufferSource(); src.buffer = noiseBuf; src.loop = true;
+  const f = ctx.createBiquadFilter(); f.type = type; f.frequency.value = freq; f.Q.value = q;
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(0.0008, t);
+  g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.15, dur / 3));
+  g.gain.setValueAtTime(vol, t + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.0008, t + dur);
+  src.connect(f).connect(g).connect(ctx.destination);
+  src.start(t); src.stop(t + dur + 0.02);
+}
+
 export const sfx = {
   blip:    () => play([[84, 0.5]], { vol: 0.05 }),
   select:  () => play([[76, 0.5], [88, 0.7]], { vol: 0.06 }),
@@ -68,8 +107,24 @@ export const sfx = {
   ballThrow: () => play([[91, 0.4], [86, 0.4], [81, 0.4], [76, 0.4], [71, 0.6]], { bpm: 1400, vol: 0.05 }),
   ballPop:   () => play([[72, 0.5], [84, 0.5], [96, 1]], { bpm: 1200, vol: 0.07 }),
   hit:       () => play([[45, 0.6], [40, 0.8]], { type: 'sawtooth', bpm: 900, vol: 0.09 }),
-  statUp:    () => play([[72, 1], [76, 1], [79, 1], [84, 1], [88, 1], [91, 2]], { bpm: 1300, vol: 0.06 }),
-  statDown:  () => play([[91, 1], [88, 1], [84, 1], [79, 1], [76, 1], [72, 2]], { bpm: 1300, type: 'triangle', vol: 0.09 }),
+  // 능력 변화 (0039): 올라가면 높아지는 소리, 내려가면 낮아지는 소리. big = 2단계 (더 빠르고 넓게, 두 번)
+  statUp:    (big = false) => { sweep(330, big ? 1760 : 1320, big ? 0.34 : 0.5, { steps: big ? 10 : 14, vol: 0.05 }); if (big) sweep(440, 2093, 0.3, { steps: 10, vol: 0.035, delay: 0.3 }); },
+  statDown:  (big = false) => { sweep(1320, big ? 165 : 262, big ? 0.34 : 0.5, { steps: big ? 10 : 14, type: 'triangle', vol: 0.09 }); if (big) sweep(1100, 131, 0.3, { steps: 10, type: 'triangle', vol: 0.07, delay: 0.3 }); },
+  // 특성 알림 띠
+  ability:   () => play([[79, 0.5], [86, 0.5], [91, 1]], { bpm: 1400, vol: 0.05 }),
+  // 변신: 떨리며 올라갔다 내려옴
+  transform: () => { sweep(220, 1760, 0.36, { steps: 18, vol: 0.045 }); sweep(1760, 440, 0.36, { steps: 18, vol: 0.04, delay: 0.36 }); },
+  // 날씨 · 필드가 시작될 때
+  weather:   (k) => {
+    if (k === 'rain') noise(1.1, { freq: 3800, q: 0.5, vol: 0.07, type: 'highpass' });
+    else if (k === 'sand') noise(1.1, { freq: 700, q: 0.6, vol: 0.09 });
+    else if (k === 'hail') { noise(0.9, { freq: 5200, q: 2, vol: 0.05 }); for (let i = 0; i < 5; i++) play([[null, i * 0.7], [100 - (i % 3) * 3, 0.2]], { bpm: 900, type: 'triangle', vol: 0.04 }); }
+    else if (k === 'sun') { sweep(523, 1568, 0.45, { type: 'triangle', vol: 0.06 }); play([[null, 2], [84, 0.6], [88, 0.6], [91, 1.6]], { bpm: 900, type: 'triangle', vol: 0.05 }); }
+    else if (k === 'electric') sweep(110, 880, 0.4, { type: 'sawtooth', steps: 16, vol: 0.04 });
+    else if (k === 'grassy') play([[72, 0.6], [76, 0.6], [79, 0.6], [84, 1.4]], { bpm: 900, type: 'triangle', vol: 0.07 });
+    else if (k === 'misty') sweep(880, 660, 0.7, { type: 'sine', vol: 0.07 });
+    else if (k === 'psychic') { sweep(330, 660, 0.35, { type: 'sine', vol: 0.06 }); sweep(660, 330, 0.35, { type: 'sine', vol: 0.06, delay: 0.35 }); }
+  },
   faint:     () => play([[67, 1], [63, 1], [58, 1], [53, 3]], { bpm: 720, type: 'triangle', vol: 0.1 }),
 };
 
