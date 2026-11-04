@@ -110,12 +110,11 @@ export function fmtSeg(cur, onpick) {
 export function typeTable() {
   const T = TYPES;
   const cell = (v) => (v === 2 ? h('td.x2', '2') : v === 0.5 ? h('td.xh', '½') : v === 0 ? h('td.x0', '0') : h('td', ''));
-  const short = (t) => ({ 에스퍼: '에스', 고스트: '고스', 드래곤: '드래', 페어리: '페어' }[t] || t);
   return [
     h('small', '왼쪽 = 공격하는 기술의 타입, 위 = 맞는 포켓몬의 타입. 2 = 효과가 굉장했다 · ½ = 별로인 듯하다 · 0 = 효과가 없다. 타입이 두 개인 포켓몬은 두 칸을 곱해요 (×4 · ×¼).'),
     h('div.type-table-wrap', h('table.type-table',
-      h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, { title: d }, short(d))))),
-      h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, { title: a }, short(a)), T.map((d) => {
+      h('thead', h('tr', h('th', ''), T.map((d) => h(`th.t-${d}`, { title: d }, d)))),
+      h('tbody', T.map((a) => h('tr', h(`th.t-${a}`, { title: a }, a), T.map((d) => {
         const td = cell(typeMult(a, d));
         if (a === '에스퍼' && d === '에스퍼') td.onclick = () => eggTap('chart');   // 에스퍼 × 에스퍼 칸 (이스터에그)
         return td;

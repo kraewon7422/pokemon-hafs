@@ -951,7 +951,7 @@ export function handlePendingScan() {
 }
 
 // 이스터에그 (0024): 숨은 곳을 7번 연달아 누르면 환상 포켓몬 특별 티켓 (계정당 한 번씩, 서버 claim_egg 가 판정)
-//   card = 트레이너 카드 포켓몬 사진 / chart = 타입 상성표 지리×지리 칸 / map = 학교 지도 오른쪽 위 숲 모서리
+//   card = 트레이너 카드 포켓몬 사진 / chart = 타입 상성표 에스퍼×에스퍼 칸 / map = 학교 지도 오른쪽 위 숲 모서리
 const eggTaps = {};
 export async function eggTap(key) {
   const now = Date.now();

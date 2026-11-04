@@ -456,9 +456,11 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 
 /* 타입 상성표 (배틀 탭) */
 .type-table-wrap { overflow-x: auto; margin: 0 -6px; }
-.type-table { border-collapse: collapse; font-size: 11px; min-width: 100%; }
+.type-table { border-collapse: collapse; font-size: 11px; width: 100%; table-layout: fixed; }
+.type-table thead th:first-child, .type-table tbody th { width: calc(3em + 6px); }   /* 에스퍼·고스트·드래곤·페어리 세 글자가 한 줄에 */
 .type-table th, .type-table td { border: 1px solid #c8d0e0; text-align: center; padding: 2px 1px; min-width: 20px; }
-.type-table thead th { writing-mode: vertical-rl; white-space: nowrap; height: auto; padding: 4px 0; }
+.type-table thead th { writing-mode: vertical-rl; white-space: nowrap; height: auto; padding: 4px 0; line-height: 1.1; }
+.type-table td { line-height: 1.2; }
 .type-table tbody th { white-space: nowrap; padding: 2px 4px; text-align: left; }
 .type-table th[class*='t-'] { text-shadow: none; }   /* 색 칸 위 글자 그림자 = 번져 보임 */
 .type-table td.x2 { background: #ffd0a0; color: #a02010; font-weight: bold; }
