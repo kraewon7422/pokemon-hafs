@@ -24,6 +24,8 @@ export const lineOf = (id) => S.catalog?.lines.find((l) => l.id === id);
 export const maxStage = (line) => lineOf(line)?.max_stage ?? 3;
 export const speciesOf = (id) => S.catalog?.species.find((s) => s.id === id);
 export const qrName = (id) => S.catalog?.qrs.find((q) => q.id === id)?.name;
+// 특성 (0039): key → {key, name, description}. 모르는 key 면 null
+export const abilityOf = (key) => (key && (S.catalog?.abilities || []).find((a) => a.key === key)) || null;
 // 계열의 곧은 길 (첫 갈래) 의 종 번호. 갈래 종 (0037: 쥬피썬더 · 엘레이드 …) 은 id 10000+ → 포켓몬마다 species_id 를 씀 (spIdOf · monSp)
 export const dexOf = (line, stage) => (line - 1) * 3 + stage;
 // 도감 번호 = 실제 전국도감 번호 (No.001 이상해씨 … No.809 멜메탈). species.id 는 (계열-1)*3+단계 그대로 (서버가 씀)

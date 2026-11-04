@@ -4,7 +4,7 @@ import { kv } from './db.js';
 import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, bag, dexKey, dexNo, dexStats, evosFrom, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, vibrate } from './state.js';
+import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, vibrate } from './state.js';
 import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
 import { rumourBox } from './legends.js';
 
@@ -306,12 +306,31 @@ export function openDetail(sp) {
             evo ? h('span.mm-tag.evo', '진화') : null));
       }))),
     h('div.box', flavor),
+    sp.abilities?.length ? h('div.box', h('b', '특성'), abilityBox(sp.abilities, sp.hidden_ability)) : null,
     top > 1 && h('div.box', h('b', '진화'), h(`div.chain.n${top}`, chain)),
     top === 1 && h('div.box', isLegendLine(sp.line_id) ? '★ 전설의 포켓몬은 진화하지 않아요.' : '이 포켓몬은 진화하지 않아요.'),
     h('button.btn.primary', { onclick: () => { closeOverlay({ replacing: true }); openSummary(sp); } }, pix('book'), '능력치 · 기술 보기'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기'),
   ]);
   typeText(flavor, sp.flavor);
+}
+
+// 특성 (0039): 칩을 누르면 아래에 설명. keys = [보통 특성…], hidden = 숨겨진 특성 (없으면 null), mine = 이 포켓몬의 특성 (강조)
+export function abilityBox(keys, hidden = null, mine = null) {
+  const list = [...(keys || []).map((k) => [k, false]), ...(hidden ? [[hidden, true]] : [])].filter(([k]) => abilityOf(k));
+  if (!list.length) return null;
+  const desc = h('p.ab-desc');
+  const btns = list.map(([k, hid]) => {
+    const a = abilityOf(k);
+    const b = h(`button.ab-chip${hid ? '.hid' : ''}${k === mine ? '.mine' : ''}`, { type: 'button', 'aria-pressed': 'false',
+      onclick: () => { sfx.blip(); btns.forEach((x) => x.setAttribute('aria-pressed', String(x === b))); desc.textContent = a.description || a.name; } },
+    a.name, hid ? h('small', ' 숨겨진 특성') : null);
+    return b;
+  });
+  const first = list.find(([k]) => k === mine) || list[0];
+  desc.textContent = abilityOf(first[0]).description || '';
+  btns[list.indexOf(first)].setAttribute('aria-pressed', 'true');
+  return h('div.ab-box', h('div.ab-chips', btns), desc);
 }
 
 // 지닌 물건 이름 (가방 모듈을 부르지 않고 카탈로그에서)
@@ -408,6 +427,7 @@ export function sumInfo(sp, type) {
       h('dt', '분류'), h('dd', sp.category),
       h('dt', isWild(sp.line_id) ? '만나는 곳' : '정체'), h('dd', isWild(sp.line_id) ? '야생' : line?.teacher || '?'),
       h('dt', '성향'), h('dd', statNote(sp))),
+    sp.abilities?.length ? h('div.sum-ab', h('small', '특성 (눌러서 설명)'), abilityBox(sp.abilities, sp.hidden_ability)) : null,
     h('div.sum-match', h('small', '효과가 굉장한 상대'), h('div', ...chips(m.strong))),
     h('div.sum-match', h('small', '조심해야 할 상대'), h('div', ...chips(m.weak))),
   ];

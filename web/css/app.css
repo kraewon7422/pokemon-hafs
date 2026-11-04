@@ -534,13 +534,116 @@ details.box[open] > summary::after { content: ' ▴'; }
 @keyframes bt-hit { 0%, 50% { opacity: .15; } 25%, 75% { opacity: 1; } }
 @keyframes bt-faint { to { transform: translateY(45%); opacity: 0; } }
 
-/* 능력 변화: 빨간 줄이 올라가거나(좋음) 내려감(나쁨) */
-.bt-fx { position: absolute; inset: 8% 14% 0; pointer-events: none; opacity: 0;
-  background: repeating-linear-gradient(0deg, transparent 0 7px, rgba(240, 56, 40, .8) 7px 10px); }
-.bt-fx.up.run { animation: bt-fx-up .9s steps(9); }
-.bt-fx.down.run { animation: bt-fx-down .9s steps(9); }
-@keyframes bt-fx-up { 0% { opacity: 0; background-position: 0 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; background-position: 0 -60px; } }
-@keyframes bt-fx-down { 0% { opacity: 0; background-position: 0 0; } 15%, 80% { opacity: 1; } 100% { opacity: 0; background-position: 0 60px; } }
+/* 능력 변화 (0039): 가는 줄무늬가 원뿔 모양으로 — 올라가면 빨강·주황이 위로 (위가 좁음), 내려가면 파랑이 아래로 (아래가 좁음).
+   2단계 (크게) = 더 빠르고 촘촘하게. 줄무늬는 안쪽 i 를 transform 으로만 움직임 (60fps) */
+.bt-fx { position: absolute; inset: -10% 4% 2%; pointer-events: none; opacity: 0; overflow: hidden; z-index: 2;
+  -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); }
+.bt-fx.up { clip-path: polygon(24% 0, 76% 0, 100% 100%, 0 100%); }
+.bt-fx.down { clip-path: polygon(0 0, 100% 0, 76% 100%, 24% 100%); }
+.bt-fx i { position: absolute; left: 0; right: 0; top: 0; height: 200%; background-size: 30px 30px; image-rendering: pixelated; will-change: transform; }
+.bt-fx.up i { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' shape-rendering='crispEdges'%3E%3Cpath fill='%23ff3820' d='M0 2h2v8h-2zM6 13h2v9h-2zM12 5h2v7h-2zM18 16h2v7h-2z'/%3E%3Cpath fill='%23ffb040' d='M3 9h2v7h-2zM9 0h2v6h-2zM15 18h2v6h-2zM21 7h2v8h-2z'/%3E%3C/svg%3E"); }
+.bt-fx.down i { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' shape-rendering='crispEdges'%3E%3Cpath fill='%232c60f8' d='M0 2h2v8h-2zM6 13h2v9h-2zM12 5h2v7h-2zM18 16h2v7h-2z'/%3E%3Cpath fill='%238cc8ff' d='M3 9h2v7h-2zM9 0h2v6h-2zM15 18h2v6h-2zM21 7h2v8h-2z'/%3E%3C/svg%3E"); }
+.bt-fx.big i { background-size: 22px 22px; }
+.bt-fx.run { animation: bt-fx-show .8s steps(10); filter: drop-shadow(0 0 2px rgba(255, 255, 255, .7)); }
+.bt-fx.up.run i { animation: bt-fx-rise .8s steps(12); }
+.bt-fx.down.run i { animation: bt-fx-fall .8s steps(12); }
+.bt-fx.big.run, .bt-fx.big.run i { animation-duration: .6s; }
+.bt-fx.big.run { filter: brightness(1.25) saturate(1.4) drop-shadow(0 0 2px rgba(255, 255, 255, .8)); }
+@keyframes bt-fx-show { 0% { opacity: 0; } 12%, 78% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes bt-fx-rise { from { transform: translateY(0); } to { transform: translateY(-50%); } }
+@keyframes bt-fx-fall { from { transform: translateY(-50%); } to { transform: translateY(0); } }
+.bt-fx.big.up.run i { animation-name: bt-fx-rise; animation-timing-function: steps(8); }
+.bt-fx.big.down.run i { animation-name: bt-fx-fall; animation-timing-function: steps(8); }
+/* 능력 변화 때 잠깐 색 (올라감 = 붉게, 내려감 = 푸르게) */
+.bt-bob.tint-up canvas { animation: bt-tint-up .72s steps(6); }
+.bt-bob.tint-down canvas { animation: bt-tint-down .72s steps(6); }
+@keyframes bt-tint-up { 20%, 60% { filter: sepia(1) saturate(3) hue-rotate(-25deg) brightness(1.15); } }
+@keyframes bt-tint-down { 20%, 60% { filter: sepia(1) saturate(3) hue-rotate(170deg) brightness(.95); } }
+/* 변신: 하얗게 번쩍이며 좁아졌다가 상대 모습으로 */
+.bt-spr.tf .bt-bob { animation: bt-tf .74s steps(8); }
+@keyframes bt-tf { 0% { transform: none; filter: none; } 35%, 55% { transform: scale(.15, 1.1); filter: brightness(5) saturate(0); } 100% { transform: none; filter: none; } }
+
+/* 날씨 (0039): 화면 위에 계속 (비 · 모래바람 · 싸라기눈은 무늬가 transform 으로 흐름) */
+.bt-wx { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.bt-wx::before { content: ''; position: absolute; left: -10%; right: -10%; top: -100%; height: 200%; will-change: transform; image-rendering: pixelated; }
+.bt-wx:not([class*='wx-'])::before { content: none; }
+.bt-wx.wx-rain { background: rgba(40, 70, 120, .16); }
+.bt-wx.wx-rain::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='32' shape-rendering='crispEdges'%3E%3Cpath fill='%23b8d8ff' d='M3 2h1v5h-1zM15 12h1v5h-1zM9 22h1v5h-1zM21 4h1v4h-1z'/%3E%3C/svg%3E"); background-size: 24px 32px; animation: bt-wx-rain .5s steps(8) infinite; }
+.bt-wx.wx-hail { background: rgba(200, 230, 255, .12); }
+.bt-wx.wx-hail::before { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='32' shape-rendering='crispEdges'%3E%3Cpath fill='%23ffffff' d='M3 3h2v2h-2zM15 14h2v2h-2zM9 24h2v2h-2zM20 6h1v1h-1z'/%3E%3Cpath fill='%23a8e0f8' d='M5 5h1v1h-1zM17 16h1v1h-1z'/%3E%3C/svg%3E"); background-size: 24px 32px; animation: bt-wx-hail .9s steps(10) infinite; }
+.bt-wx.wx-sand { background: rgba(200, 150, 70, .22); }
+.bt-wx.wx-sand::before { top: 0; height: 100%; left: -100%; right: auto; width: 200%; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='24' shape-rendering='crispEdges'%3E%3Cpath fill='%23e8c088' d='M2 3h4v1h-4zM18 9h5v1h-5zM8 17h3v1h-3zM26 20h4v1h-4z'/%3E%3Cpath fill='%23b08040' d='M12 5h2v1h-2zM28 13h2v1h-2zM3 21h2v1h-2z'/%3E%3C/svg%3E"); background-size: 32px 24px;
+  animation: bt-wx-blow .8s steps(10) infinite; }
+.bt-wx.wx-sun { background: radial-gradient(circle at 88% -6%, rgba(255, 244, 190, .75), rgba(255, 210, 110, .22) 32%, rgba(255, 220, 140, .08) 60%); }
+.bt-wx.wx-sun::before { top: -40%; left: 50%; right: -30%; height: 90%;
+  background: repeating-conic-gradient(from 0deg at 75% 30%, rgba(255, 250, 210, .28) 0 6deg, transparent 6deg 22deg);
+  animation: bt-wx-glare 2.4s steps(6) infinite alternate; }
+@keyframes bt-wx-rain { from { transform: skewX(-14deg) translateY(0); } to { transform: skewX(-14deg) translateY(32px); } }
+@keyframes bt-wx-hail { from { transform: skewX(-8deg) translateY(0); } to { transform: skewX(-8deg) translateY(32px); } }
+@keyframes bt-wx-blow { from { transform: translateX(0); } to { transform: translateX(64px); } }
+@keyframes bt-wx-glare { from { opacity: .45; } to { opacity: 1; } }
+/* 필드: 바닥이 빛남 (포켓몬 뒤) */
+.bt-ter { position: absolute; left: 0; right: 0; bottom: 0; height: 55%; z-index: 0; pointer-events: none; opacity: 0; }
+.bt-ter[class*='ter-'] { opacity: 1; }
+.bt-ter.ter-electric { background: linear-gradient(transparent, rgba(255, 230, 60, .4)); animation: bt-ter-flick 1.2s steps(3) infinite; }
+.bt-ter.ter-grassy { background: linear-gradient(transparent, rgba(80, 200, 80, .42)); }
+.bt-ter.ter-misty { background: linear-gradient(transparent, rgba(255, 170, 230, .46)); }
+.bt-ter.ter-psychic { background: linear-gradient(transparent, rgba(220, 70, 200, .4)); animation: bt-ter-flick 2s steps(4) infinite; }
+@keyframes bt-ter-flick { 50% { opacity: .6; } }
+/* 날씨 · 필드 띠 (오른쪽 위) */
+.bt-env { position: absolute; right: 2%; top: 2%; z-index: 3; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; pointer-events: none; }
+.bt-env[hidden] { display: none; }
+.env-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px 1px 3px; border: 2px solid #182030; border-radius: 4px; background: #f8f8e8;
+  font-size: 11px; font-weight: bold; white-space: nowrap; box-shadow: 1px 1px 0 #0c101860; }
+.env-ico { line-height: 0; }
+.env-ico svg { width: 14px; height: 14px; image-rendering: pixelated; }
+/* 날씨 · 필드가 시작될 때 한 번 */
+.bt-envfx { position: absolute; inset: 0; z-index: 3; pointer-events: none; opacity: 0; animation: bt-envfx 1.2s steps(8) forwards; }
+.bt-envfx.fx-sun { background: radial-gradient(circle at 88% 0, #fffbe0, rgba(255, 220, 120, .7) 30%, transparent 70%); }
+.bt-envfx.fx-rain { background: linear-gradient(rgba(60, 100, 190, .55), rgba(60, 100, 190, .1)); }
+.bt-envfx.fx-sand { background: linear-gradient(90deg, rgba(210, 160, 80, .8), rgba(210, 160, 80, .2)); }
+.bt-envfx.fx-hail { background: rgba(235, 248, 255, .75); }
+.bt-envfx.fx-electric { background: linear-gradient(transparent 40%, rgba(255, 240, 80, .8)); }
+.bt-envfx.fx-grassy { background: linear-gradient(transparent 40%, rgba(90, 220, 90, .8)); }
+.bt-envfx.fx-misty { background: linear-gradient(transparent 30%, rgba(255, 190, 240, .85)); }
+.bt-envfx.fx-psychic { background: linear-gradient(transparent 40%, rgba(230, 80, 210, .8)); }
+@keyframes bt-envfx { 0% { opacity: 0; } 20% { opacity: 1; } 45% { opacity: .6; } 60% { opacity: 1; } 100% { opacity: 0; } }
+/* 특성 알림 띠 (5세대처럼 옆에서 나옴): "<포켓몬>의 / <특성>" */
+.ab-pop { position: absolute; z-index: 4; display: grid; padding: 3px 12px 4px; background: #283850; color: #fff; border: 2px solid #f0d060;
+  box-shadow: 2px 2px 0 #0c101880; pointer-events: none; max-width: 62%; line-height: 1.25; box-sizing: border-box; }
+.ab-pop small { font-size: 11px; color: #c8d8f0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ab-pop b { font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ab-pop.foe { right: 0; top: 33%; border-right: 0; border-radius: 6px 0 0 6px; animation: ab-in-r .22s steps(4); }
+.ab-pop.me { left: 0; top: 47%; border-left: 0; border-radius: 0 6px 6px 0; animation: ab-in-l .22s steps(4); }
+.ab-pop.foe.k1 { top: 22%; }
+.ab-pop.me.k1 { top: 36%; }
+.ab-pop.out.foe { animation: ab-out-r .25s steps(4) forwards; }
+.ab-pop.out.me { animation: ab-out-l .25s steps(4) forwards; }
+@keyframes ab-in-r { from { transform: translateX(105%); } }
+@keyframes ab-in-l { from { transform: translateX(-105%); } }
+@keyframes ab-out-r { to { transform: translateX(105%); } }
+@keyframes ab-out-l { to { transform: translateX(-105%); } }
+/* 포켓몬 정보 (HP 상자 · 포켓몬을 누르면) */
+.bt-info { position: absolute; z-index: 6; left: 50%; top: 50%; translate: -50% -50%; width: min(86%, 340px); max-height: 92%; overflow-y: auto; box-sizing: border-box;
+  display: grid; gap: 3px; padding: 8px 10px; background: #f8f8e8; border: 3px solid #384050; border-radius: 8px; box-shadow: 3px 3px 0 #0c101860; font-size: 13px; }
+.bt-info p { margin: 0; line-height: 1.4; }
+.bt-info-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.bt-info-ab { display: flex; align-items: baseline; gap: 6px; }
+.bt-info-ab small { color: #586890; font-weight: bold; }
+.bt-box, .bt-spr { cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .bt-wx::before, .bt-ter, .bt-fx i { animation: none !important; } }
+
+/* 특성 칩 (도감 · 요약 · 박스, 0039) */
+.ab-box { display: grid; gap: 4px; }
+.ab-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.ab-chip { font: inherit; font-size: var(--fs-s); font-weight: bold; padding: 3px 9px; min-height: 32px; border: 2px solid #384050; border-radius: 6px; background: #fff; white-space: nowrap; }
+.ab-chip small { font-weight: normal; color: #586890; }
+.ab-chip.hid { border-style: dashed; }
+.ab-chip[aria-pressed='true'] { background: #ffe8a0; }
+.ab-chip.mine { border-color: #c03020; }
+.ab-desc { margin: 0; font-size: var(--fs-s); line-height: 1.45; color: #303848; word-break: keep-all; overflow-wrap: break-word; }
+.sum-ab { display: grid; gap: 3px; margin-top: 4px; }
+.sum-ab > small { color: #586890; font-weight: bold; }
 
 /* 몬스터볼 + 열릴 때 번쩍 */
 .bt-ball { position: absolute; left: 0; top: 0; z-index: 3; line-height: 0; }

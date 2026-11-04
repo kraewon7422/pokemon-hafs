@@ -63,8 +63,9 @@ const SETTING_HELP = {
   drop_battle: '물건: 친구·실시간 배틀 승리 때 확률 (기본 0.5)', drop_practice: '물건: 연습 배틀 승리 때 확률 (기본 0.15)',
   drop_raid_tm: '물건: 레이드 승리 때 특별 기술머신 확률 (기본 0.3, 이상한사탕은 항상)',
   battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20)',
-  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","types":["불꽃","격투"]}, …] — 그 시간에 시작한 배틀은 그 타입 기술이 강해져요',
-  battle_field_mult: '배틀 시간표: 강해지는 배율 (기본 1.3)',
+  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","env":"grassy"}, …] — 그 시간에 시작한 배틀의 날씨·필드 (sun·rain·sand·hail·electric·grassy·misty·psychic)',
+  battle_field_mult: '필드 (일렉트릭·그래스·사이코필드): 그 타입 기술 위력 배율 (기본 1.3)',
+  ability_hidden_chance: '특성: 잡을 때 숨겨진 특성이 나올 확률 (기본 0.05 = 5%)',
   practice_exp_daily: '연습 배틀: 경험치·물건을 받는 판 수 (하루, 기본 10). 넘으면 연습은 할 수 있지만 경험치는 없어요',
 };
 const TABS = [
@@ -2333,14 +2334,16 @@ const DEFAULTS = {
   drop_place: 0.3, drop_quiz: 0.4, drop_battle: 0.5, drop_practice: 0.15, drop_raid_tm: 0.3,
   battle_item_max: 2, battle_field_mult: 1.3, battle_turn_cap: 20,
   // seed_pokemon.sql (0032): 과목 대신 실제 포켓몬 타입
+  // 0039: 시간표 칸 = 실제 포켓몬 날씨 · 필드
   battle_fields: [
-    { from: '08:00', to: '10:00', name: '아침 조회', types: ['노말', '비행', '풀'] },
-    { from: '10:00', to: '12:00', name: '오전 수업', types: ['에스퍼', '강철', '전기'] },
-    { from: '12:00', to: '13:30', name: '점심시간', types: ['불꽃', '격투', '페어리'] },
-    { from: '13:30', to: '16:00', name: '오후 수업', types: ['물', '얼음', '벌레'] },
-    { from: '16:00', to: '18:30', name: '방과후', types: ['땅', '바위', '독'] },
-    { from: '18:30', to: '23:00', name: '야간 자율학습', types: ['고스트', '악', '드래곤'] },
+    { from: '08:00', to: '10:00', name: '아침 조회', env: 'sun' },
+    { from: '10:00', to: '12:00', name: '오전 수업', env: 'psychic' },
+    { from: '12:00', to: '13:30', name: '점심시간', env: 'grassy' },
+    { from: '13:30', to: '16:00', name: '오후 수업', env: 'electric' },
+    { from: '16:00', to: '18:30', name: '방과후', env: 'sand' },
+    { from: '18:30', to: '23:00', name: '야간 자율학습', env: 'misty' },
   ],
+  ability_hidden_chance: 0.05,
   // 0021_battle_end.sql · 0022_open_raids.sql · 0023_minigames.sql · 0025_minigame_admin.sql
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
   // 0027_eggs_class_achievements.sql
@@ -2509,6 +2512,14 @@ const GROUPS = {
       P('drop_raid_tm', '레이드 이겼을 때 특별 기술머신 (이상한사탕은 항상)', 'pct'),
     ],
   },
+  // 0039: 필드 배율 · 숨겨진 특성
+  battleEnv: {
+    tab: '성장·보상', title: '배틀: 필드 · 특성',
+    fields: [
+      P('battle_field_mult', '필드 기술 위력 배율', 'num', { min: 1, max: 3, help: '일렉트릭필드 = 전기, 그래스필드 = 풀, 사이코필드 = 에스퍼 기술 (땅에 있는 포켓몬이 쓸 때). 실제 게임 (8세대) = 1.3.' }),
+      P('ability_hidden_chance', '잡을 때 숨겨진 특성이 나올 확률', 'pct', { max: 100, help: '기본 5%. 나머지는 그 포켓몬의 보통 특성 중 하나. 이미 잡은 포켓몬은 바뀌지 않아요.' }),
+    ],
+  },
   tickets: {
     tab: '성장·보상', title: '진화의 돌 · 룰렛',
     fields: [
@@ -2525,12 +2536,12 @@ for (const g of Object.values(GROUPS)) for (const f of g.fields) if (!SPEC_BY_KE
 // 다른 탭에 전용 칸이 있는 설정 → 그 탭 이름 (고급 설정 표에서 기본으로 숨김)
 const KEY_HOME = {
   festival_open: '축제 운영', self_redeem: '축제 운영', notice: '축제 운영', prize_note: '축제 운영', festival_close_at: '축제 운영', dup_bonus_every: '축제 운영',
-  raid_slots: '레이드', minigame_unlock: '미니게임', minigame_off: '미니게임', admin_emails: '운영진', booth_emails: '운영진',
+  raid_slots: '레이드', battle_fields: '성장·보상', minigame_unlock: '미니게임', minigame_off: '미니게임', admin_emails: '운영진', booth_emails: '운영진',
 };
 for (const g of Object.values(GROUPS)) for (const f of g.fields) KEY_HOME[f.key] = KEY_HOME[f.key] || g.tab;
 // 더 이상 서버가 읽지 않는 설정 (지우지 않고 표시만)
 const UNUSED_KEYS = ['battle_stage_mult', 'rotating_accept_minutes'];   // 0031 이 battle_stage_mult 를 지움 (예전 서버에만 남아 있을 수 있음)
-const KEY_TITLE = { notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 포켓몬 수', minigame_off: '꺼 둔 미니게임' };
+const KEY_TITLE = { battle_fields: '배틀 시간표 (날씨 · 필드)', notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 포켓몬 수', minigame_off: '꺼 둔 미니게임' };
 const keyTitle = (key) => SPEC_BY_KEY[key]?.label || KEY_TITLE[key] || key;
 
 const pctTxt = (v) => `${+(Number(v) * 100).toFixed(2)}%`;
@@ -2926,9 +2937,83 @@ function slotEditor(set) {
 
 // ───────────────────────── 성장·보상 ─────────────────────────
 
+// 배틀 시간표 (0039): 시간대마다 날씨 · 필드 하나 (실제 포켓몬 효과). 그 시간에 시작한 배틀 내내 바탕으로 깔림
+const ENV_OPTS = [['', '없음 (보통 배틀)'], ['sun', '쾌청 — 불꽃 ×1.5 · 물 ×0.5'], ['rain', '비 — 물 ×1.5 · 불꽃 ×0.5'],
+  ['sand', '모래바람 — 바위 특방 ×1.5 · 매 턴 1/16 (바위·땅·강철 빼고)'], ['hail', '싸라기눈 — 매 턴 1/16 (얼음 빼고)'],
+  ['electric', '일렉트릭필드 — 전기 기술 강해짐 · 잠들지 않음'], ['grassy', '그래스필드 — 풀 기술 강해짐 · 매 턴 1/16 회복'],
+  ['misty', '미스트필드 — 드래곤 기술 ×0.5 · 상태 이상 안 걸림'], ['psychic', '사이코필드 — 에스퍼 기술 강해짐 · 선공기 막음']];
+function fieldEditor(set) {
+  const r = set.battle_fields;
+  if (!r) return h('div.box', h('h2', '배틀 시간표'), h('p.warn-txt', 'battle_fields 설정이 없어요.'));
+  let rows = (Array.isArray(r.value) ? r.value : []).map((x) => ({ from: String(x.from || ''), to: String(x.to || ''), name: String(x.name || ''), env: x.env || '' }));
+  const box = h('div.box.stack.slot-box');
+  const msg = h('div.slot-msg', { role: 'alert' });
+  const dirty = h('span.small-txt');
+  const tbody = h('tbody');
+  const validate = () => {
+    const errs = []; const bad = new Set();
+    rows.forEach((x, i) => {
+      if (!x.name.trim()) { errs.push(`${i + 1}번째 줄: 이름을 넣어 주세요.`); bad.add(i); }
+      if (!HHMM.test(x.from) || !HHMM.test(x.to)) { errs.push(`${i + 1}번째 줄: 시각은 "08:00"처럼 HH:MM으로 넣어 주세요.`); bad.add(i); return; }
+      if (x.from >= x.to) { errs.push(`${i + 1}번째 줄: 끝 시각이 시작보다 늦어야 해요 (자정을 넘으면 두 줄로).`); bad.add(i); }
+    });
+    rows.forEach((a, i) => rows.forEach((b, j) => {
+      if (j > i && HHMM.test(a.from) && HHMM.test(b.from) && a.from < b.to && b.from < a.to) { errs.push(`${i + 1}·${j + 1}번째 줄: 시간이 겹쳐요.`); bad.add(i); bad.add(j); }
+    }));
+    [...tbody.children].forEach((tr, i) => tr.classList.toggle('bad', bad.has(i)));
+    msg.replaceChildren(...errs.map((t) => h('p.warn-txt.small-txt', t)));
+    dirty.replaceChildren(sameVal(rows, r.value) ? '' : chip('저장 안 한 변경이 있어요', 'warn'));
+    return errs;
+  };
+  const draw = () => {
+    const now = kstNowHHMM();
+    tbody.replaceChildren(...rows.map((x, i) => {
+      const nm = h('input.inp', { value: x.name, maxlength: 20, 'aria-label': `${i + 1}번째 줄 이름` });
+      nm.oninput = () => { x.name = nm.value; validate(); };
+      const tIn = (k) => {
+        const inp = h('input.inp.w-time', { type: 'time', step: 60, value: x[k], 'aria-label': `${i + 1}번째 줄 ${k === 'from' ? '시작' : '끝'} 시각` });
+        inp.oninput = () => { x[k] = inp.value; validate(); };
+        return inp;
+      };
+      const sel = h('select.inp', { 'aria-label': `${i + 1}번째 줄 날씨·필드` }, ENV_OPTS.map(([v, t]) => h('option', { value: v, selected: v === x.env }, t)));
+      sel.onchange = () => { x.env = sel.value; validate(); };
+      const live = HHMM.test(x.from) && HHMM.test(x.to) && x.from <= now && now < x.to;
+      return h('tr', h('td', nm), h('td', tIn('from')), h('td', tIn('to')), h('td', sel), h('td', live ? chip('지금', 'ok') : null),
+        h('td', h('button.btn.small', { type: 'button', onclick: () => { rows.splice(i, 1); draw(); } }, '빼기')));
+    }));
+    validate();
+  };
+  const add = h('button.btn.small', { type: 'button', onclick: () => { rows.push({ from: '23:00', to: '23:59', name: '새 시간', env: '' }); draw(); } }, '+ 시간대 추가');
+  const save = h('button.btn.go', '시간표 저장');
+  save.onclick = () => {
+    const errs = validate();
+    if (errs.length) { toast(errs[0], 5000); return; }
+    busy(save, async () => {
+      const v = rows.slice().sort((a, b) => a.from.localeCompare(b.from))
+        .map(({ from, to, name, env }) => (env ? { from, to, name: name.trim(), env } : { from, to, name: name.trim() }));
+      await saveSetting('battle_fields', v);
+      toast(`배틀 시간표 ${v.length}칸을 저장했어요.`);
+      rerender();
+    });
+  };
+  draw();
+  box.append(
+    h('h2', '배틀 시간표 (날씨 · 필드)'),
+    h('p.small-txt', '그 시간(한국 시간)에 시작한 배틀은 내내 이 날씨·필드예요 (실제 포켓몬 효과). 특성(가뭄·잔비 …)이나 날씨 기술로 5턴 동안 바뀔 수 있고, 끝나면 이 날씨로 돌아와요. 이미 시작한 배틀은 바뀌지 않아요.'),
+    h('p.small-txt.muted', `지금 한국 시간 ${kstNowHHMM()} · 시간대 ${rows.length}개`),
+    h('div.tbl-wrap', h('table.tbl.slot-tbl',
+      h('thead', h('tr', h('th', '이름'), h('th', '시작'), h('th', '끝'), h('th', '날씨 · 필드'), h('th', '지금'), h('th', ''))), tbody)),
+    msg,
+    h('div.row', add, dirty, h('span', { style: { flex: 1 } }), save),
+    h('div.row', resetBtn('battle_fields', r.value)),
+    changedTxt(r));
+  return box;
+}
+
 async function tabGrow() {
   const set = await loadSettings();
   return [
+    h('div.cols.wide-left', fieldEditor(set), settingsGroup(GROUPS.battleEnv, set)),
     h('div.cols', h('div', settingsGroup(GROUPS.eggs, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
     h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
       h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),

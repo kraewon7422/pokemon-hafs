@@ -69,6 +69,9 @@ await patchSetting('quiz_stone_chance', 1); await patchSetting('battle_stone_cha
 // 0038: 야생 · 사파리 잡기가 아주 가끔 메타몽 — 예전 시험은 잡은 포켓몬이 그대로라고 보므로 시험 동안 0 (끝에서 되돌림)
 const DITTO0 = (await admin.select('settings?key=eq.ditto_disguise_chance')).data?.[0]?.value ?? 0.005;
 await patchSetting('ditto_disguise_chance', 0);
+// 0039: 시간표 칸의 날씨 · 필드 (모래바람 데미지 등) — 예전 배틀 시험이 시각에 따라 달라지지 않게 시험 동안 빈 시간표 (끝에서 되돌림)
+const BF_ORIG = (await admin.select('settings?key=eq.battle_fields')).data?.[0]?.value ?? [];
+await patchSetting('battle_fields', []);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -584,8 +587,10 @@ console.log('\n[23] battle data: real Pokémon (0032) — types, moves, stats');
   const sm = await all(S[0], 'species_moves?select=species_id,slot,move_id&order=species_id,slot');
   const per = {};
   for (const x of sm) (per[x.species_id] ||= []).push(kind[x.move_id]);
-  const bad = sp.filter(x => (per[x.id] || []).sort().join() !== 'attack,attack,defense,status').map(x => x.id);
-  ok(bad.length === 0, 'every species: 2 attack + 1 status + 1 defense move', bad.slice(0, 20));
+  // 0039: 메타몽 (전국도감 132) 은 실제처럼 변신 하나뿐
+  const bad = sp.filter(x => x.dex !== 132 && (per[x.id] || []).sort().join() !== 'attack,attack,defense,status').map(x => x.id);
+  const ditto = sp.filter(x => x.dex === 132).map(x => (per[x.id] || []).join());
+  ok(bad.length === 0 && ditto.every((k) => k === 'status'), 'every species: 2 attack + 1 status + 1 defense move (메타몽: 변신 only)', [bad.slice(0, 20), ditto]);
   ok(mv.find(m => m.name === '화염방사')?.type === '불꽃' && mv.find(m => m.name === '10만볼트')?.type === '전기' && mv.find(m => m.name === '깨뜨리다')?.type === '격투',
      'moves have their real types (and official Korean names)');
   const tc = (await S[0].select('type_chart?select=atk,def,mult')).data || [];
@@ -2287,9 +2292,390 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
   }
 }
 
+console.log('\n[46] 특성 · 변신 · 날씨 / 필드 (0039): admin_bt_sim (고정 난수) · 시간표 칸 · 잡을 때 특성 · 메타몽');
+{
+  const spRows = (await admin.select('species?select=id,dex,line_id,stage,abilities,hidden_ability&id=lt.10000&order=id&limit=1000')).data || [];
+  const SP = Object.fromEntries(spRows.map((r) => [r.dex, r.id]));
+  const mvRows = (await admin.select('moves?select=id,name,pp&limit=400')).data || [];
+  const MV = Object.fromEntries(mvRows.map((m) => [m.name, m.id]));
+  const abRows = (await admin.select('abilities?select=key,name,description&limit=400')).data || [];
+  ok(abRows.length >= 200 && abRows.every((a) => a.name && a.description), `abilities table: ${abRows.length} with Korean name + description`, abRows.length);
+  ok(spRows.length >= 800 && spRows.every((r) => Array.isArray(r.abilities) && r.abilities.length >= 1), 'every species has 1–2 normal abilities', spRows.filter((r) => !r.abilities?.length).slice(0, 3));
+  const br = (await admin.select('species?select=id,abilities,hidden_ability&id=gte.10000')).data || [];
+  ok(br.length > 0 && br.every((r) => r.abilities?.length), `branch species (10000+) have abilities too (${br.length})`);
+  const sp = (d) => spRows.find((r) => r.dex === d);
+  ok(sp(1)?.abilities?.[0] === 'overgrow' && sp(1)?.hidden_ability === 'chlorophyll' && sp(132)?.abilities?.[0] === 'limber' && sp(132)?.hidden_ability === 'imposter'
+     && sp(94)?.abilities?.[0] === 'cursed-body' && sp(130)?.abilities?.[0] === 'intimidate', 'PokeAPI gen-7 abilities (이상해씨 심록/엽록소, 메타몽 유연/괴짜, 팬텀 저주받은바디, 갸라도스 위협)',
+  [sp(1), sp(132), sp(94), sp(130)].map((x) => [x?.abilities, x?.hidden_ability]));
+  const nm = (k) => abRows.find((a) => a.key === k)?.name;
+  ok(nm('overgrow') === '심록' && nm('intimidate') === '위협' && nm('levitate') === '부유' && nm('sturdy') === '옹골참', 'Korean names (심록 · 위협 · 부유 · 옹골참)');
+
+  const SIMR = async (p) => { const r = await admin.rpc('admin_bt_sim', { p }); if (r.error) console.log('   sim error', r.error); return r.data; };
+  const BASE = { r: 0.5, crit: false, roll: 100, nopar: true };
+  // 기본 기술 = 고속이동 (스피드만 바뀜 → 공격 · 방어 랭크 시험을 건드리지 않음)
+  const M = (dex, o = {}) => ({ sp: SP[dex], lv: 50, ...o, moves: (o.moves || ['고속이동']).map((n) => MV[n]) });
+  const A = (m0 = 1, m1 = 1, t0 = 0, t1 = 0) => ({ 0: [{ move: m0, target: t0 }], 1: [{ move: m1, target: t1 }] });
+  const sim = (s0, s1, o = {}) => SIMR({ sides: [s0, s1], sim: { ...BASE, ...(o.sim || {}) }, turns: o.turns || [A()], ...(o.p || {}) });
+  const L = (x, k = 0) => x?.logs?.[k] || [];
+  const all = (x) => [...(x?.intro || []), ...(x?.logs || []).flat()];
+  const dmgTo = (lg, u) => lg.filter((e) => e.hp && e.hp[0] === u && e.dmg).reduce((a, e) => a + e.dmg, 0);
+  const msgs = (lg) => lg.filter((e) => e.m).map((e) => e.m).join(' / ');
+  const pops = (lg) => lg.filter((e) => e.ab).map((e) => e.ab[1]);
+  const mon = (x, u) => x?.st?.sides?.[u >> 1]?.mons?.[x.st.sides[u >> 1].act[u & 1]];
+  // 같은 조건에서 특성만 다르게: 데미지 비율 (내 쪽 자리 0 이 상대 자리 2 를 때림)
+  const ratio = async (ab, move, { att = 151, def = 113, ao = {}, dobj = {}, dab = null, s = {}, p = {}, side = 'a' } = {}) => {
+    const run = async (x) => {
+      const a = M(att, { lv: 100, ...ao, moves: [move], ...(side === 'a' && x ? { ab: x } : {}) });
+      const d = M(def, { lv: 100, ...dobj, ...(side === 'd' && x ? { ab: x } : {}), ...(dab ? { ab: dab } : {}) });
+      return dmgTo(L(await sim([a], [d], { sim: s, p })), 2);
+    };
+    const [w, wo] = [await run(ab), await run(null)];
+    return { r: wo ? w / wo : null, w, wo };
+  };
+  const near = (x, v, tol = 0.08) => x != null && Math.abs(x - v) <= tol;
+  const R = async (ab, move, want, o = {}, label = '') => {
+    const q = await ratio(ab, move, o);
+    ok(near(q.r, want, o.tol ?? 0.08), `${ab}${label}: ${move} damage ×${want}`, q);
+  };
+
+  // 1) 위력 · 공격 특성
+  await R('overgrow', '덩굴채찍', 1.5, { ao: { hpfrac: 0.3 } }, ' (HP ≤ 1/3)');
+  await R('overgrow', '덩굴채찍', 1, {}, ' (HP full)');
+  await R('blaze', '불꽃세례', 1.5, { ao: { hpfrac: 0.3 } });
+  await R('torrent', '물대포', 1.5, { ao: { hpfrac: 0.3 } });
+  await R('swarm', '벌레먹기', 1.5, { ao: { hpfrac: 0.3 } });
+  await R('technician', '몸통박치기', 1.5);
+  await R('technician', '하이퍼보이스', 1, {}, ' (power 90 → no boost)');
+  await R('iron-fist', '불꽃펀치', 1.2);
+  await R('tough-claws', '몸통박치기', 1.3);
+  await R('strong-jaw', '물기', 1.5);
+  await R('reckless', '이판사판태클', 1.2);
+  await R('huge-power', '막치기', 2, { tol: 0.12 });
+  await R('pure-power', '막치기', 2, { tol: 0.12 });
+  await R('hustle', '막치기', 1.5, { tol: 0.1 });
+  await R('guts', '막치기', 3, { ao: { st: 'brn' }, tol: 0.25 }, ' (burned: ×1.5, no burn halving)');
+  await R('adaptability', '사이코키네시스', 1.333, {}, ' (STAB 2 instead of 1.5)');
+  await R('sniper', '막치기', 1.5, { s: { crit: true } }, ' (critical ×3)');
+  await R('tinted-lens', '사이코키네시스', 2, { def: 81, tol: 0.15 }, ' (not very effective ×2)');
+  await R('solar-power', '사이코키네시스', 1.5, { p: { wx: 'sun' }, tol: 0.1 }, ' (sun)');
+  await R('sand-force', '지진', 1.3, { p: { wx: 'sand' }, def: 113, tol: 0.1 }, ' (sand)');
+  {
+    const q = await ratio('pixilate', '몸통박치기', {});
+    ok(near(q.r, 1.2, 0.08), 'pixilate: normal move → fairy ×1.2', q);
+    const x = await sim([M(151, { ab: 'refrigerate', moves: ['몸통박치기'] })], [M(113, { lv: 100 })]);
+    ok(L(x).some((e) => e.use && e.use[1] === '얼음'), 'refrigerate: 몸통박치기 used as 얼음 type', L(x).filter((e) => e.use));
+    const y = await sim([M(151, { ab: 'aerilate', moves: ['몸통박치기'] })], [M(113, { lv: 100 })]);
+    const z = await sim([M(151, { ab: 'galvanize', moves: ['몸통박치기'] })], [M(113, { lv: 100 })]);
+    ok(L(y).some((e) => e.use?.[1] === '비행') && L(z).some((e) => e.use?.[1] === '전기'), 'aerilate → 비행 · galvanize → 전기');
+  }
+  // 2) 받는 쪽 특성 (데미지 배율)
+  await R('thick-fat', '불꽃세례', 0.5, { side: 'd' });
+  await R('heatproof', '불꽃세례', 0.5, { side: 'd' });
+  await R('dry-skin', '불꽃세례', 1.25, { side: 'd', tol: 0.1 }, ' (fire)');
+  await R('multiscale', '사이코키네시스', 0.5, { side: 'd' }, ' (full HP)');
+  await R('shadow-shield', '사이코키네시스', 0.5, { side: 'd' }, ' (full HP)');
+  await R('filter', '사이코키네시스', 0.75, { side: 'd', def: 89, ao: { lv: 50 } }, ' (super effective)');
+  await R('solid-rock', '사이코키네시스', 0.75, { side: 'd', def: 89, ao: { lv: 50 } });
+  await R('prism-armor', '사이코키네시스', 0.75, { side: 'd', def: 89, ao: { lv: 50 } });
+  await R('marvel-scale', '막치기', 0.667, { side: 'd', dobj: { st: 'psn' }, tol: 0.07 }, ' (statused, physical)');
+  await R('fur-coat', '막치기', 0.5, { side: 'd', tol: 0.07 });
+  // 3) 막음 · 흡수
+  const hit = async (dab, move, { att = 151, def = 113, ao = {}, dobj = {}, s = {}, p = {} } = {}) =>
+    sim([M(att, { ...ao, moves: [move] })], [M(def, { lv: 100, ...dobj, ab: dab })], { sim: s, p });
+  {
+    let x = await hit('levitate', '지진');
+    ok(dmgTo(L(x), 2) === 0 && pops(L(x)).includes('levitate') && /효과가 없는/.test(msgs(L(x))), 'levitate: ground move does nothing (+ popup)', msgs(L(x)));
+    x = await sim([M(151, { ab: 'mold-breaker', moves: ['지진'] })], [M(113, { lv: 100, ab: 'levitate' })]);
+    ok(dmgTo(L(x), 2) > 0 && pops(x.intro).includes('mold-breaker'), 'mold-breaker: ignores levitate (+ entry message)', msgs(all(x)));
+    x = await hit('volt-absorb', '10만볼트', { dobj: { hpfrac: 0.5 } });
+    ok(mon(x, 2).hp > mon(x, 2).max / 2 && dmgTo(L(x), 2) === 0, 'volt-absorb: electric heals 1/4', [mon(x, 2).hp, mon(x, 2).max]);
+    x = await hit('water-absorb', '물대포', { dobj: { hpfrac: 0.5 } });
+    ok(mon(x, 2).hp > mon(x, 2).max / 2, 'water-absorb: water heals 1/4');
+    x = await hit('dry-skin', '물대포', { dobj: { hpfrac: 0.5 } });
+    ok(mon(x, 2).hp > mon(x, 2).max / 2, 'dry-skin: water heals');
+    x = await hit('motor-drive', '전기쇼크', { dobj: { moves: ['칼춤'].map((n) => n) } });
+    ok(mon(x, 2).stg?.spe === 1 && dmgTo(L(x), 2) === 0, 'motor-drive: electric → speed +1', mon(x, 2).stg);
+    x = await hit('lightning-rod', '전기쇼크');
+    ok(mon(x, 2).stg?.spa === 1, 'lightning-rod: electric → sp.atk +1');
+    x = await hit('storm-drain', '물대포');
+    ok(mon(x, 2).stg?.spa === 1, 'storm-drain: water → sp.atk +1');
+    x = await hit('sap-sipper', '덩굴채찍');
+    ok(mon(x, 2).stg?.atk === 1, 'sap-sipper: grass → attack +1');
+    x = await hit('flash-fire', '불꽃세례');
+    ok(dmgTo(L(x), 2) === 0 && mon(x, 2).ff === true && /불꽃의 위력이 올라갔다/.test(msgs(L(x))), 'flash-fire: fire absorbed, own fire moves powered up', msgs(L(x)));
+    x = await hit('wonder-guard', '사이코키네시스', { def: 292 });
+    const x2 = await hit('wonder-guard', '섀도볼', { def: 292 });
+    ok(dmgTo(L(x), 2) === 0 && dmgTo(L(x2), 2) > 0, 'wonder-guard: only super-effective moves hit (껍질몬 vs 섀도볼)', [dmgTo(L(x), 2), dmgTo(L(x2), 2)]);
+    x = await sim([M(151, { ab: 'scrappy', moves: ['몸통박치기'] })], [M(92, { lv: 100 })]);
+    const x3 = await sim([M(151, { moves: ['몸통박치기'] })], [M(92, { lv: 100 })]);
+    ok(dmgTo(L(x), 2) > 0 && dmgTo(L(x3), 2) === 0, 'scrappy: normal move hits a ghost', [dmgTo(L(x), 2), dmgTo(L(x3), 2)]);
+  }
+  // 4) 접촉 (r = 0 → 반드시 발동)
+  {
+    const C = async (dab, move = '막치기') => sim([M(151, { moves: [move] })], [M(113, { lv: 100, ab: dab })], { sim: { r: 0 } });
+    let x = await C('static'); ok(mon(x, 0).st === 'par' && pops(L(x)).includes('static'), 'static: contact → attacker paralyzed', mon(x, 0).st);
+    x = await C('poison-point'); ok(mon(x, 0).st === 'psn', 'poison-point: contact → poisoned');
+    x = await C('flame-body'); ok(mon(x, 0).st === 'brn', 'flame-body: contact → burned');
+    x = await C('effect-spore'); ok(['psn', 'par', 'slp'].includes(mon(x, 0).st), 'effect-spore: contact → psn/par/slp', mon(x, 0).st);
+    x = await C('static', '사이코키네시스'); ok(!mon(x, 0).st, 'static: special (no contact) → nothing');
+    x = await C('rough-skin'); ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 8), 'rough-skin: attacker loses 1/8', [mon(x, 0).hp, mon(x, 0).max]);
+    x = await C('iron-barbs'); ok(mon(x, 0).hp < mon(x, 0).max, 'iron-barbs: attacker loses 1/8');
+    x = await sim([M(151, { ab: 'magic-guard', moves: ['막치기'] })], [M(113, { lv: 100, ab: 'rough-skin' })]);
+    ok(mon(x, 0).hp === mon(x, 0).max, 'magic-guard: no rough-skin damage');
+  }
+  // 5) 버티기 · 탈
+  {
+    let x = await sim([M(151, { lv: 100, moves: ['사이코키네시스'] })], [M(10, { lv: 5, ab: 'sturdy' })]);
+    ok(mon(x, 2).hp === 1 && pops(L(x)).includes('sturdy') && /버텼다/.test(msgs(L(x))), 'sturdy: survives a OHKO from full HP with 1 HP', mon(x, 2).hp);
+    x = await sim([M(151, { lv: 100, moves: ['사이코키네시스'] })], [M(10, { lv: 5, ab: 'sturdy', hpfrac: 0.9 })]);
+    ok(mon(x, 2).hp === 0, 'sturdy: not at full HP → faints');
+    x = await sim([M(151, { moves: ['사이코키네시스'] })], [M(778, { lv: 50, ab: 'disguise' })], { turns: [A(), A()] });
+    ok(dmgTo(L(x, 0), 2) === 0 && /탈이 벗겨졌다/.test(msgs(L(x, 0))) && dmgTo(L(x, 1), 2) > 0, 'disguise: first hit blocked, then busted', msgs(L(x, 0)));
+  }
+  // 6) 등장 특성
+  {
+    let x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100 })]);
+    ok(mon(x, 2).stg?.atk === -1 && pops(x.intro).includes('intimidate'), 'intimidate: foe attack −1 on entry', mon(x, 2).stg);
+    for (const k of ['clear-body', 'white-smoke', 'hyper-cutter', 'full-metal-body']) {
+      x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100, ab: k })]);
+      ok(!mon(x, 2).stg?.atk && /떨어지지 않는다/.test(msgs(x.intro)), `${k}: blocks intimidate`, msgs(x.intro));
+    }
+    x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100, ab: 'defiant' })]);
+    ok(mon(x, 2).stg?.atk === 1, 'defiant: −1 then +2 = +1', mon(x, 2).stg);
+    x = await sim([M(130, { ab: 'intimidate' })], [M(113, { lv: 100, ab: 'competitive' })]);
+    ok(mon(x, 2).stg?.atk === -1 && mon(x, 2).stg?.spa === 2, 'competitive: sp.atk +2 after a drop', mon(x, 2).stg);
+    x = await sim([M(151, { moves: ['모래뿌리기'] })], [M(113, { lv: 100, ab: 'keen-eye' })]);
+    ok(!mon(x, 2).stg?.acc, 'keen-eye: accuracy drop blocked');
+    x = await sim([M(151, { moves: ['꼬리흔들기'] })], [M(113, { lv: 100, ab: 'big-pecks' })]);
+    ok(!mon(x, 2).stg?.def, 'big-pecks: defense drop blocked');
+    for (const [k, w] of [['drought', 'sun'], ['drizzle', 'rain'], ['sand-stream', 'sand'], ['snow-warning', 'hail']]) {
+      x = await sim([M(151, { ab: k })], [M(113, { lv: 100 })]);
+      ok(x?.st?.wx?.k === w && pops(x.intro).includes(k) && x.intro.some((e) => e.wx === w), `${k}: ${w} on entry (5 turns)`, x?.st?.wx);
+    }
+    for (const t of ['electric', 'grassy', 'misty', 'psychic']) {
+      x = await sim([M(151, { ab: `${t}-surge` })], [M(113, { lv: 100 })]);
+      ok(x?.st?.ter?.k === t && x.intro.some((e) => e.ter === t), `${t}-surge: ${t} terrain on entry`, x?.st?.ter);
+    }
+    x = await sim([M(151, { moves: ['막치기'] })], [M(113, { lv: 100, ab: 'pressure' })]);
+    ok(/프레셔를 발산/.test(msgs(x.intro)) && mon(x, 0).moves[0].pp === mvRows.find((m) => m.name === '막치기').pp - 2, 'pressure: entry message + PP −2', mon(x, 0).moves);
+    x = await sim([M(151, { lv: 100, moves: ['물대포'] })], [M(113, { lv: 100, ab: 'cloud-nine' })], { p: { wx: 'sun' } });
+    const x0 = await sim([M(151, { lv: 100, moves: ['물대포'] })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(dmgTo(L(x), 2) > dmgTo(L(x0), 2) * 1.8, 'cloud-nine: sun does not halve water', [dmgTo(L(x), 2), dmgTo(L(x0), 2)]);
+    x = await sim([M(132, { ab: 'imposter' })], [M(151)]);
+    ok(mon(x, 0).tf === true && mon(x, 0).tsp === SP[151] && x.intro.some((e) => e.tf), 'imposter: 메타몽 transforms on entry', mon(x, 0));
+  }
+  // 7) 상태 이상 막기
+  {
+    const S1 = async (dab, move, o = {}) => sim([M(151, { moves: [move] })], [M(113, { lv: 100, ab: dab })], { sim: { r: 0, ...(o.s || {}) }, p: o.p || {} });
+    for (const [k, mvn, st] of [['limber', '전기자석파', 'par'], ['insomnia', '버섯포자', 'slp'], ['vital-spirit', '버섯포자', 'slp'], ['sweet-veil', '버섯포자', 'slp'],
+      ['immunity', '맹독', 'psn'], ['water-veil', '도깨비불', 'brn'], ['comatose', '버섯포자', 'slp']]) {
+      const x = await S1(k, mvn);
+      ok(!mon(x, 2).st && pops(L(x)).includes(k), `${k}: ${mvn} does not ${st}`, msgs(L(x)));
+    }
+    let x = await S1('magma-armor', '눈싸라기'); ok(!mon(x, 2).st, 'magma-armor: never frozen');
+    x = await S1('own-tempo', '이상한빛'); ok(!(mon(x, 2).cnf > 0) && pops(L(x)).includes('own-tempo'), 'own-tempo: no confusion');
+    x = await S1('leaf-guard', '버섯포자', { p: { wx: 'sun' } }); ok(!mon(x, 2).st, 'leaf-guard: no status in sun');
+    x = await S1(null, '버섯포자'); ok(mon(x, 2).st === 'slp', '(control) no ability → asleep');
+    x = await S1('shield-dust', '누르기'); ok(!mon(x, 2).st, 'shield-dust: no secondary paralysis');
+    x = await sim([M(151, { moves: ['누르기'] })], [M(113, { lv: 100 })], { sim: { r: 0.45 } });
+    const y = await sim([M(151, { ab: 'serene-grace', moves: ['누르기'] })], [M(113, { lv: 100 })], { sim: { r: 0.45 } });
+    ok(!mon(x, 2).st && mon(y, 2).st === 'par', 'serene-grace: 30% → 60% (roll 45)', [mon(x, 2).st, mon(y, 2).st]);
+  }
+  // 8) 명중 · 급소 · 여러 번
+  {
+    const acc = async (ab, dab, move, r, p = {}) => dmgTo(L(await sim([M(151, { ab, moves: [move] })], [M(113, { lv: 100, ab: dab })], { sim: { r }, p })), 2) > 0;
+    ok(!(await acc(null, null, '눈보라', 0.8)) && (await acc('compound-eyes', null, '눈보라', 0.8)), 'compound-eyes: 70% move hits at roll 80');
+    ok(!(await acc('hustle', null, '막치기', 0.85)) && (await acc(null, null, '막치기', 0.85)), 'hustle: physical accuracy ×0.8');
+    ok((await acc('no-guard', null, '눈보라', 0.95)) && (await acc(null, 'no-guard', '눈보라', 0.95)), 'no-guard: always hits (both ways)');
+    ok(!(await acc(null, 'sand-veil', '막치기', 0.85, { wx: 'sand' })) && (await acc(null, 'sand-veil', '막치기', 0.85)), 'sand-veil: evasion in sand');
+    ok(!(await acc(null, 'snow-cloak', '막치기', 0.85, { wx: 'hail' })), 'snow-cloak: evasion in hail');
+    const cr = async (ab, dab, s) => /급소/.test(msgs(L(await sim([M(151, { ab, moves: ['막치기'] })], [M(113, { lv: 100, ab: dab })], { sim: { crit: undefined, ...s } }))));
+    ok(!(await cr(null, null, { crit_r: 0.1 })) && (await cr('super-luck', null, { crit_r: 0.1 })), 'super-luck: crit stage +1 (1/16 → 1/8)');
+    ok(!(await cr(null, 'battle-armor', { crit: true })) && !(await cr(null, 'shell-armor', { crit: true })) && (await cr(null, null, { crit: true })), 'battle-armor · shell-armor: no critical hits');
+    const x = await sim([M(151, { ab: 'skill-link', moves: ['마구찌르기'] })], [M(113, { lv: 100 })]);
+    ok(/5번 맞았다/.test(msgs(L(x))), 'skill-link: multi-hit always 5', msgs(L(x)));
+  }
+  // 9) 쓰러뜨림 · 맞음 · 반동 · 풀죽음
+  {
+    let x = await sim([M(151, { lv: 100, ab: 'moxie', moves: ['사이코키네시스'] })], [M(10, { lv: 5 })]);
+    ok(mon(x, 0).stg?.atk === 1, 'moxie: KO → attack +1', mon(x, 0).stg);
+    x = await sim([M(151, { lv: 100, ab: 'beast-boost', moves: ['사이코키네시스'] })], [M(10, { lv: 5 })]);
+    ok(Object.values(mon(x, 0).stg || {}).includes(1), 'beast-boost: KO → highest stat +1', mon(x, 0).stg);
+    x = await sim([M(151, { moves: ['악의파동'] })], [M(113, { lv: 100, ab: 'justified' })]);
+    ok(mon(x, 2).stg?.atk === 1, 'justified: hit by dark → attack +1');
+    x = await sim([M(151, { ab: 'rock-head', moves: ['이판사판태클'] })], [M(113, { lv: 100 })]);
+    const y = await sim([M(151, { moves: ['이판사판태클'] })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).hp === mon(x, 0).max && mon(y, 0).hp < mon(y, 0).max, 'rock-head: no recoil (control: recoil)');
+    x = await sim([M(151, { ab: 'magic-guard', moves: ['이판사판태클'] })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).hp === mon(x, 0).max, 'magic-guard: no recoil');
+    x = await sim([M(151, { lv: 100, moves: ['속이기'] })], [M(208, { lv: 50, ab: 'inner-focus', moves: ['칼춤'] })], { sim: { r: 0 } });
+    ok(L(x).filter((e) => e.use).length === 2, 'inner-focus: no flinch (both moved)');
+    x = await sim([M(151, { lv: 100, moves: ['속이기'] })], [M(208, { lv: 50, ab: 'steadfast', moves: ['칼춤'] })], { sim: { r: 0 } });
+    ok(mon(x, 2).stg?.spe === 1 && /풀이 죽어/.test(msgs(L(x))), 'steadfast: flinched → speed +1', mon(x, 2).stg);
+  }
+  // 10) 스피드 · 턴 끝
+  {
+    const first = async (ab, wx, st, foeDex = 151) => {
+      const x = await sim([M(113, { lv: 50, ab, st, moves: ['칼춤'] })], [M(foeDex, { lv: 50, moves: ['칼춤'] })], { p: wx ? { wx } : {} });
+      return L(x).find((e) => e.use)?.use?.[0] === 0;
+    };
+    for (const [k, w] of [['chlorophyll', 'sun'], ['swift-swim', 'rain'], ['sand-rush', 'sand'], ['slush-rush', 'hail']]) {
+      ok(!(await first(null, w)) && (await first(k, w)) && !(await first(k, null)), `${k}: speed ×2 in ${w} (moves first)`);
+    }
+    ok(!(await first(null, null, 'psn', 54)) && (await first('quick-feet', null, 'psn', 54)), 'quick-feet: speed ×1.5 when statused');
+    let x = await sim([M(151, { ab: 'speed-boost', moves: ['칼춤'] })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).stg?.spe === 1 && pops(L(x)).includes('speed-boost'), 'speed-boost: speed +1 at end of turn');
+    x = await sim([M(151, { ab: 'shed-skin', st: 'psn' })], [M(113, { lv: 100 })], { sim: { r: 0 } });
+    ok(!mon(x, 0).st, 'shed-skin: status cured at end of turn (30%)');
+    x = await sim([M(151, { ab: 'hydration', st: 'psn' })], [M(113, { lv: 100 })], { p: { wx: 'rain' } });
+    ok(!mon(x, 0).st, 'hydration: status cured in rain');
+    x = await sim([M(151, { ab: 'poison-heal', st: 'psn', hpfrac: 0.5 })], [M(113, { lv: 100 })]);
+    ok(mon(x, 0).hp > Math.floor(mon(x, 0).max / 2), 'poison-heal: poison heals 1/8');
+    x = await sim([M(151, { ab: 'magic-guard', st: 'psn' })], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+    ok(mon(x, 0).hp === mon(x, 0).max, 'magic-guard: no poison / sandstorm damage');
+    for (const [k, w] of [['rain-dish', 'rain'], ['ice-body', 'hail'], ['dry-skin', 'rain']]) {
+      x = await sim([M(151, { ab: k, hpfrac: 0.5 })], [M(113, { lv: 100 })], { p: { wx: w } });
+      ok(mon(x, 0).hp > Math.floor(mon(x, 0).max / 2), `${k}: heals in ${w}`, [mon(x, 0).hp, mon(x, 0).max]);
+    }
+    x = await sim([M(151, { ab: 'dry-skin' })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 8), 'dry-skin: loses 1/8 in sun');
+    x = await sim([M(151, { ab: 'solar-power' })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(mon(x, 0).hp < mon(x, 0).max, 'solar-power: loses 1/8 in sun');
+    for (const k of ['sand-veil', 'overcoat']) {
+      x = await sim([M(151, { ab: k })], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+      ok(mon(x, 0).hp === mon(x, 0).max, `${k}: no sandstorm damage`);
+    }
+    x = await sim([M(151, { moves: ['칼춤', '칼춤'] })], [M(287, { lv: 50, ab: 'truant', moves: ['몸통박치기'] })], { turns: [A(), A()] });
+    ok(L(x, 0).some((e) => e.use?.[0] === 2) && /게으름/.test(msgs(L(x, 1))), 'truant: acts, then loafs the next turn', msgs(L(x, 1)));
+    const sl = async (ab) => { const z = await sim([M(151, { ab, st: 'slp' })], [M(113, { lv: 100 })], { turns: [A(), A()] }); return L(z, 1).some((e) => e.use?.[0] === 0); };
+    ok(!(await sl(null)) && (await sl('early-bird')), 'early-bird: wakes up twice as fast');
+  }
+  // 11) 교체
+  {
+    const sw = { 0: [{ switch: 1 }], 1: [{ move: 1, target: 0 }] };
+    let x = await sim([M(151, { ab: 'natural-cure', st: 'psn' }), M(113)], [M(113, { lv: 100 })], { turns: [sw] });
+    ok(!x?.st?.sides?.[0]?.mons?.[0]?.st, 'natural-cure: status cured on switch-out');
+    x = await sim([M(151, { ab: 'regenerator', hpfrac: 0.3 }), M(113)], [M(113, { lv: 100 })], { turns: [sw] });
+    const m0 = x?.st?.sides?.[0]?.mons?.[0];
+    ok(m0 && m0.hp >= Math.floor(m0.max * 0.3) + Math.floor(m0.max / 3) - 1, 'regenerator: heals 1/3 on switch-out', m0 && [m0.hp, m0.max]);
+    x = await sim([M(151), M(130, { ab: 'intimidate' })], [M(113, { lv: 100 })], { turns: [sw] });
+    ok(mon(x, 2).stg?.atk === -1 && pops(L(x)).includes('intimidate'), 'switch-in: entry ability fires (intimidate)');
+  }
+  // 12) 날씨 · 필드 배율 · 턴 끝 데미지 · 끝남
+  {
+    const W = async (move, wx, o = {}) => { const q = await ratio(null, move, { p: { wx }, ...o }); return q; };
+    const dm = async (move, p) => dmgTo(L(await sim([M(151, { lv: 100, moves: [move] })], [M(113, { lv: 100 })], { p })), 2);
+    const base = { fire: await dm('불꽃세례', {}), water: await dm('물대포', {}), psy: await dm('사이코키네시스', {}), grass: await dm('덩굴채찍', {}), elec: await dm('전기쇼크', {}) };
+    ok(near((await dm('불꽃세례', { wx: 'sun' })) / base.fire, 1.5, 0.1) && near((await dm('물대포', { wx: 'sun' })) / base.water, 0.5, 0.1), 'sun: fire ×1.5 · water ×0.5');
+    ok(near((await dm('물대포', { wx: 'rain' })) / base.water, 1.5, 0.1) && near((await dm('불꽃세례', { wx: 'rain' })) / base.fire, 0.5, 0.1), 'rain: water ×1.5 · fire ×0.5');
+    const rk = async (wx) => dmgTo(L(await sim([M(151, { moves: ['사이코키네시스'] })], [M(74, { lv: 100 })], { p: wx ? { wx } : {} })), 2);
+    ok(near((await rk('sand')) / (await rk(null)), 0.667, 0.06), 'sand: rock-type sp.def ×1.5');
+    let x = await sim([M(151)], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+    ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 16) && /모래바람이 .*덮쳤다/.test(msgs(L(x))), 'sand: 1/16 to non rock/ground/steel', msgs(L(x)));
+    x = await sim([M(74)], [M(113, { lv: 100 })], { p: { wx: 'sand' } });
+    ok(mon(x, 0).hp === mon(x, 0).max, 'sand: rock type takes no damage');
+    x = await sim([M(151)], [M(124, { lv: 100 })], { p: { wx: 'hail' } });
+    ok(mon(x, 0).hp === mon(x, 0).max - Math.floor(mon(x, 0).max / 16) && mon(x, 2).hp === mon(x, 2).max && /싸라기눈이/.test(msgs(L(x))), 'hail: 1/16 to non-ice (ice 루주라 safe)');
+    ok(near((await dm('전기쇼크', { ter: 'electric' })) / base.elec, 1.3, 0.1), 'electric terrain: electric ×1.3 (grounded)');
+    const fly = async (ter) => dmgTo(L(await sim([M(145, { moves: ['전기쇼크'] })], [M(113, { lv: 100 })], { p: ter ? { ter } : {} })), 2);
+    ok(near((await fly('electric')) / (await fly(null)), 1, 0.05), 'electric terrain: flying attacker not boosted');
+    x = await sim([M(151, { moves: ['버섯포자'] })], [M(113, { lv: 100 })], { sim: { r: 0 }, p: { ter: 'electric' } });
+    ok(!mon(x, 2).st && /일렉트릭필드/.test(msgs(L(x))), 'electric terrain: no sleep');
+    ok(near((await dm('덩굴채찍', { ter: 'grassy' })) / base.grass, 1.3, 0.1), 'grassy terrain: grass ×1.3');
+    x = await sim([M(151, { hpfrac: 0.5 })], [M(113, { lv: 100 })], { p: { ter: 'grassy' } });
+    ok(mon(x, 0).hp === Math.floor(mon(x, 0).max * 0.5) + Math.floor(mon(x, 0).max / 16), 'grassy terrain: heals 1/16', [mon(x, 0).hp, mon(x, 0).max]);
+    const dr = async (ter) => dmgTo(L(await sim([M(151, { moves: ['용의파동'] })], [M(113, { lv: 100 })], { p: ter ? { ter } : {} })), 2);
+    ok(near((await dr('misty')) / (await dr(null)), 0.5, 0.06), 'misty terrain: dragon ×0.5');
+    x = await sim([M(151, { moves: ['도깨비불'] })], [M(113, { lv: 100 })], { sim: { r: 0 }, p: { ter: 'misty' } });
+    ok(!mon(x, 2).st && /미스트필드/.test(msgs(L(x))), 'misty terrain: no status');
+    ok(near((await dm('사이코키네시스', { ter: 'psychic' })) / base.psy, 1.3, 0.1), 'psychic terrain: psychic ×1.3');
+    x = await sim([M(151, { moves: ['전광석화'] })], [M(113, { lv: 100 })], { p: { ter: 'psychic' } });
+    ok(dmgTo(L(x), 2) === 0 && /사이코필드에 보호/.test(msgs(L(x))), 'psychic terrain: priority moves blocked');
+    // 5턴 뒤 끝남 → 시간표 바탕 날씨로
+    x = await SIMR({ sides: [[M(151, { ab: 'drizzle' })], [M(113, { lv: 100 })]], env: 'sun', sim: BASE, turns: [A(), A(), A(), A(), A()] });
+    ok(x?.intro?.some((e) => e.wx === 'rain') && /비가 그쳤다/.test(msgs(L(x, 4))) && /햇살이 강해졌다/.test(msgs(L(x, 4))) && x.st.wx.k === 'sun' && x.st.wx.n == null,
+      'drizzle over a sunny timetable slot: rain 5 turns → back to sun', x?.st?.wx);
+    // 날씨 기술
+    for (const [mvn, w] of [['쾌청', 'sun'], ['비바라기', 'rain'], ['모래바람', 'sand'], ['싸라기눈', 'hail']]) {
+      x = await sim([M(151, { moves: [mvn] })], [M(113, { lv: 100 })]);
+      ok(x?.st?.wx?.k === w && x.st.wx.n === 4 && L(x).some((e) => e.wx === w), `${mvn}: ${w} for 5 turns`, x?.st?.wx);
+    }
+    x = await sim([M(151, { moves: ['쾌청'] })], [M(113, { lv: 100 })], { p: { wx: 'sun' } });
+    ok(/실패/.test(msgs(L(x))), 'weather move fails when that weather is already up');
+  }
+  // 13) 변신 (메타몽)
+  {
+    const foe = M(151, { moves: ['칼춤', '사이코키네시스'], ab: 'synchronize' });
+    const x = await sim([M(132, { moves: ['변신'] }), M(113)], [foe], { turns: [A(), { 0: [{ switch: 1 }], 1: [{ move: 1, target: 0 }] }] });
+    const tf = (L(x, 0).find((e) => e.tf) || {});
+    const d0 = x?.st?.sides?.[0]?.mons?.[0];
+    ok(tf.tf?.[1] === SP[151] && /메타몽.* 변신했다!/.test(msgs(L(x, 0))), 'Transform: "메타몽은 … 변신했다!" + tf event with target sprite', msgs(L(x, 0)));
+    const first = await sim([M(132, { moves: ['변신'] })], [foe]);
+    const t = mon(first, 0); const f = mon(first, 2);
+    ok(t?.tf && t.type === f.type && t.atk === f.atk && t.spa === f.spa && t.spe === f.spe && t.hp === t.max && t.max !== f.max && t.ab === 'synchronize'
+       && t.moves.length === 2 && t.moves.every((m) => m.pp === 5) && t.moves[0].id === MV['칼춤'] && t.stg?.atk === 2,
+    'Transform: copies types · stats (not HP) · stat stages · ability · moves with PP 5', t);
+    ok(d0 && !d0.tf && !d0.tsp && d0.type === '노말' && d0.moves?.[0]?.id === MV['변신'], 'Transform: reverts on switch-out', d0);
+    const twice = await sim([M(132, { moves: ['변신'] })], [M(132, { moves: ['변신'] })]);
+    ok(/실패/.test(msgs(L(twice))), 'Transform: fails on an already transformed target', msgs(L(twice)));
+    const dm = (await admin.select(`species_moves?species_id=eq.${SP[132]}&select=move_id`)).data || [];
+    ok(dm.length === 1 && dm[0].move_id === MV['변신'], '메타몽 default moves = 변신 only', dm);
+    const ls = (await admin.select(`learnset?move_id=eq.${MV['변신']}&select=line_id,lv,how`)).data || [];
+    const lineOfDex = (d) => spRows.find((r) => r.dex === d)?.line_id;
+    ok(ls.some((r) => r.line_id === lineOfDex(132) && r.lv === 1) && ls.some((r) => r.line_id === lineOfDex(151)) && ls.length === 2, '변신 learnset: 메타몽 (Lv.1) + 뮤 only (PokeAPI)', ls);
+  }
+  // 14) 시간표 칸 → 날씨 · 필드 (실제 배틀), 운영자만 고침
+  {
+    const seed = BF_ORIG || [];
+    ok(Array.isArray(seed) && seed.length >= 6 && seed.every((x) => x.env && !x.types), 'battle_fields: every slot has an env (no type lists)', seed);
+    const envs = Object.fromEntries((seed || []).map((x) => [x.name, x.env]));
+    ok(envs['아침 조회'] === 'sun' && envs['점심시간'] === 'grassy' && envs['야간 자율학습'] === 'misty', 'slot mapping: 아침 조회 = 쾌청 · 점심 = 그래스필드 · 야자 = 미스트필드', envs);
+    const X = S[0];
+    const mine = (await myMons(X)).slice(0, 1).map((m) => m.id);
+    for (const [env, kind] of [['rain', 'wx'], ['psychic', 'ter']]) {
+      await setS('battle_fields', [{ from: '00:00', to: '23:59', name: '시험 칸', env }]);
+      const b = (await X.rpc('battle_start_cpu', { p_mons: mine, p_format: 'single', p_fair: false })).data;
+      const moved = (b?.log || []).some((e) => kind in e || ['cloud-nine', 'air-lock'].includes(e.ab?.[1]));   // 상대 특성이 날씨를 바꿨으면 (드묾)
+      ok(b?.field?.env === env && (b?.[kind] === env || moved), `cpu battle in a '${env}' slot starts with ${kind} = ${env}`, { field: b?.field, wx: b?.wx, ter: b?.ter });
+      ok(b?.sides?.[b.me]?.mons?.every((m) => 'ab' in m), 'my side: every mon carries its ability (ab)');
+      if (b?.id) await X.rpc('battle_forfeit', { p_id: b.id });
+    }
+    const st = await fetch(`${URL_}/rest/v1/settings?key=eq.battle_fields`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${STOK}`, Prefer: 'return=representation' }, body: JSON.stringify({ value: [] }) });
+    const stBody = await st.json().catch(() => null);
+    ok(!Array.isArray(stBody) || stBody.length === 0, 'a student cannot change battle_fields', stBody);
+    await setS('battle_fields', BF_ORIG);
+    ok(JSON.stringify((await admin.select('settings?key=eq.battle_fields')).data?.[0]?.value) === JSON.stringify(BF_ORIG), 'admin can edit + restore battle_fields');
+    await setS('battle_fields', []);   // 시험 동안은 날씨 없이 (끝에서 되돌림)
+  }
+  // 15) 잡을 때 특성 · 내 특성 · 예전 포켓몬
+  {
+    const H0c = (await admin.select('settings?key=eq.ability_hidden_chance')).data?.[0]?.value ?? 0.05;
+    await setS('ability_hidden_chance', 1);
+    await admin.rpc('admin_grant_monster', { p_student_id: '022903', p_line: 1, p_stage: 1 });
+    const c3 = S[2];
+    let ms = (await c3.select('collection?select=id,species_id,ability,ability_slot&released_at=is.null&order=id.desc&limit=1')).data || [];
+    const sp1 = spRows.find((r) => r.id === ms[0]?.species_id);
+    ok(ms[0]?.ability_slot === 2 && ms[0]?.ability === sp1?.hidden_ability, 'catch with hidden chance 100% → hidden ability', [ms[0], sp1?.hidden_ability]);
+    await setS('ability_hidden_chance', 0);
+    await admin.rpc('admin_grant_monster', { p_student_id: '022903', p_line: 1, p_stage: 1 });
+    ms = (await c3.select('collection?select=id,species_id,ability,ability_slot&released_at=is.null&order=id.desc&limit=1')).data || [];
+    const sp2 = spRows.find((r) => r.id === ms[0]?.species_id);
+    ok(ms[0]?.ability_slot < 2 && sp2?.abilities?.includes(ms[0]?.ability), 'catch with 0% → one of the normal abilities', [ms[0], sp2?.abilities]);
+    await setS('ability_hidden_chance', H0c);
+    const mine = (await c3.rpc('my_abilities')).data;
+    ok(mine && Object.keys(mine).length > 0 && mine[ms[0].id] === ms[0].ability, 'my_abilities: {mon id: ability}', mine && Object.keys(mine).length);
+    const nulls = (await admin.select('collection?select=id&ability=is.null&limit=5')).data || [];
+    ok(nulls.length === 0, 'every existing mon has an ability (backfilled)', nulls);
+    const anonTry = await anon.rpc('admin_bt_sim', { p: {} });
+    const stuTry = await c3.rpc('admin_bt_sim', { p: {} });
+    ok(!!anonTry.error && !!stuTry.error, 'admin_bt_sim: admins only', [anonTry.error, stuTry.error]);
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);
+await patchSetting('battle_fields', BF_ORIG);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

@@ -86,7 +86,7 @@ export async function boot() {
   }
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
-  if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog))) S.catalog = null;   // 0032·0034·0037 전 목록은 버리고 새로 받음
+  if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog))) S.catalog = null;   // 0032·0034·0037·0039 전 목록은 버리고 새로 받음
   if (S.catalog?.lines) { sortDex(S.catalog); aliasSprites(S.catalog.species); }
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
@@ -166,15 +166,16 @@ export function renderRetry(msg) {
 }
 
 export async function loadCatalog() {
-  const [lines, species, qrs, moves, speciesMoves, typeChart, items, evolutions] = await Promise.all([
+  const [lines, species, qrs, moves, speciesMoves, typeChart, items, evolutions, abilities] = await Promise.all([
     selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic', (q) => q.order('id')),
-    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item', (q) => q.order('id')),
+    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item,abilities,hidden_ability', (q) => q.order('id')),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
     selectAll('species_moves', 'species_id,slot,move_id', (q) => q.order('species_id').order('slot')),
     sb.from('type_chart').select('atk,def,mult'),
     sb.from('items').select('key,name,pocket,description,effect,move_id,sort').order('sort'),
     selectAll('evolutions', 'from_species,to_species,how,lv,sort', (q) => q.order('from_species').order('sort')),   // 0037 갈래 진화
+    selectAll('abilities', 'key,name,description', (q) => q.order('key')),   // 0039 특성
   ]);
   if (lines.error || species.error || qrs.error) {
     if (S.catalog) return;
@@ -182,7 +183,8 @@ export async function loadCatalog() {
   }
   S.catalog = { lines: lines.data, species: species.data, qrs: qrs.data, at: new Date().toISOString(),
                 moves: moves.data || [], speciesMoves: speciesMoves.data || [], typeChart: typeChart.data || [], items: items.data || [],
-                evolutions: evolutions.error ? null : evolutions.data || [] };   // null = 예전 서버 (계열의 다음 단계로 진화)
+                evolutions: evolutions.error ? null : evolutions.data || [],   // null = 예전 서버 (계열의 다음 단계로 진화)
+                abilities: abilities.error ? [] : abilities.data || [] };
   sortDex(S.catalog);
   aliasSprites(S.catalog.species);
   await kv.set('catalog', S.catalog);

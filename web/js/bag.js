@@ -7,7 +7,7 @@ import { sfx } from './sfx.js';
 import { h, josa, toast, pix } from './ui.js';
 import { S, mons, speciesOf, dexOf } from './state.js';
 import { overlay, sheet, closeOverlay, openBag, sync } from './app.js';
-import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES, evoSheet, evoOpts } from './dex.js';
+import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES, evoSheet, evoOpts, abilityBox } from './dex.js';
 import { moveOf } from './battle.js';
 import { eggPocket, loadEggs, TIER } from './eggs.js';
 
@@ -53,7 +53,10 @@ export async function loadBag({ notify = true } = {}) {
   loading ||= (async () => {
     let seen = 0;
     try { seen = Number(localStorage.getItem('bagSeen') || 0); } catch { /* private mode */ }
-    const r = await rpc('bag_state', { p_since: seen }, { retries: 0 });
+    const [r, abil] = await Promise.all([rpc('bag_state', { p_since: seen }, { retries: 0 }),
+      rpc('my_abilities', {}, { retries: 0 }).catch(() => ({}))]);   // 0039: 포켓몬마다 특성 {id: key}
+    for (const m of r.box || []) m.ability = abil?.[m.id] ?? null;
+    S.monAb = abil || {};
     S.bag = r;
     if (notify && seen > 0) {
       for (const e of r.log || []) {
@@ -324,6 +327,7 @@ function monState(m, sp, reopen) {
     h('div.exp-row', h('span', 'EXP'), h('span.stat-bar.exp', h('i', { style: { width: `${m.need ? (m.exp / m.need) * 100 : 100}%` } })),
       h('small', m.level >= 100 ? 'MAX' : `${m.exp}/${m.need}`)),
     h('small.sum-where', boxLabel(m.pos)),
+    m.ability ? h('div.sum-ab', h('small', '특성'), abilityBox([m.ability], null, m.ability)) : null,
     h('div.bag-item.slim', held ? itemIcon(m.held, 24) : h('i.item-ico.none'), h('span', h('small', '지닌 물건'), h('br'), h('b', held ? held.name : '없음')),
       held ? h('button.btn.small', { onclick: async () => {
         try { await rpc('bag_set_held', { p_mon: m.id, p_item: null }, { retries: 0 }); toast(`${josa(held.name, '을', '를')} 가방에 넣었다.`); await loadBag({ notify: false }); reopen(); }
