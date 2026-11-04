@@ -2282,7 +2282,7 @@ function showRaidQr(r) {
 // admin_emails · booth_emails 도 뺌 (기본값 [] 로 되돌리면 구글로 등록한 운영진이 모두 지워짐 → 운영진 탭에서 관리).
 const DEFAULTS = {
   // supabase/migrations/0001_init.sql
-  email_domains: ['test.local'], email_regex: '^([0-9]{5,6})@',
+  email_domains: ['hafs.hs.kr'], email_regex: '^([0-9]{5,6})@',
   stage_points: [0, 1, 3, 6], rarity_bonus: { common: 0, rare: 2, legendary: 10 },
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
