@@ -5,7 +5,7 @@
 // 맵은 그림이 오면 한 번 큰 캔버스 2장(물·꽃 움직임 2장)에 미리 그려 두고, 매 프레임 카메라 부분만 옮겨 그림. 화면은 기기 픽셀 정수 배.
 // 화면은 한 번 만들고 계속 씀 (sync 가 지도 탭을 다시 그려도 걷던 자리·애니메이션이 이어지게).
 import { rpc, errorText } from './sb.js';
-import { sfx } from './sfx.js';
+import { sfx, bgmPush, bgmReady, bgmBeat, bgmPreload } from './sfx.js';
 import { h } from './ui.js';
 import { S } from './state.js';
 import { catchEncounter } from './app.js';
@@ -144,6 +144,7 @@ export function viewSafari() {
   if (!V) V = build();
   V.start();
   V.refresh();
+  bgmPreload('wild');   // 풀숲 만남 때 바로 나오게 야생 곡을 미리 풀어 둠
   return V.root;
 }
 
@@ -159,7 +160,7 @@ function build() {
   const stage = h('div.sf-stage', cv, msg, cover);
   const ballsEl = h('b.sf-num', '-');
   const encEl = h('span.sf-sub', '');
-  const pendBtn = h('button.btn.small.primary.sf-pend', { hidden: true, onclick: () => { sfx.select(); const e = st?.pending; if (e) startCatch(e); } }, '기다리는 포켓몬 잡기');
+  const pendBtn = h('button.btn.small.primary.sf-pend', { hidden: true, onclick: () => { if (busy) return; sfx.select(); const e = st?.pending; if (e) startCatch(e); } }, '기다리는 포켓몬 잡기');   // 만남 연출 중에 눌러도 두 번 열리지 않게
   let ballIco = h('span.sf-ball');
   import('./catch.js').then((m) => { const c = m.ballCanvas('safari', 2); ballIco.replaceWith(c); ballIco = c; }).catch(() => {});
   const held = new Map();       // pointerId → 방향 (손가락 여러 개)
@@ -227,21 +228,27 @@ function build() {
     if (r.encounter) encounter(r.encounter);
 
   }
+  // 만남: 야생 곡을 먼저 틀고, 곡의 첫 타격에 '!' · 2박 뒤 화면 번쩍 (음악이 꺼져 있으면 예전처럼 효과음 + 정해진 시간)
   async function encounter(e) {
     busy = true; held.clear(); keys.length = 0;
     pad.querySelectorAll('.on').forEach((x) => x.classList.remove('on'));
-    sfx.scan();
-    bubbleT = performance.now(); flashT = bubbleT + 450;
-    await new Promise((res) => setTimeout(res, 1300));
+    const music = bgmPush('wild');
+    const on = await bgmReady('wild', 1200);
+    const hit = on ? bgmBeat('wild') : null;
+    const now = performance.now();
+    if (hit == null) { sfx.scan(); bubbleT = now; flashT = now + 450; }
+    else { bubbleT = now + hit; flashT = now + (bgmBeat('wild', hit + 1) ?? hit + 325) + 325; }   // 타격 다음 박 + 1박 = 2박 뒤
+    await new Promise((res) => setTimeout(res, flashT - now + 850));
     flashT = -1; bubbleT = -1;
-    await startCatch(e);
+    await startCatch(e, music);
   }
-  async function startCatch(e) {
+  async function startCatch(e, music = null) {
     busy = true;
     try {
       const r = await catchEncounter({ ...e, kind: 'safari', flee: st?.settings?.flee });
       if (r?.safari) st = r.safari;
     } finally {
+      music?.pop();
       busy = false;
       await refresh();
       if (!closed()) say('풀숲을 더 걸어 볼까요?', 2500);
@@ -317,7 +324,7 @@ function build() {
     const gx = Math.round(P.fx), gy = Math.round(P.fy);
     if (tileAt(gx, gy) === ',') g.drawImage(map, gx * TS, gy * TS + 10, TS, 6, gx * TS - camX, gy * TS - camY + 10, TS, 6);
     // 만남: 머리 위 '!' → 화면 번쩍
-    if (bubbleT > 0) {
+    if (bubbleT > 0 && now >= bubbleT) {
       const bx = hx + 5, by = hy - 8;
       g.fillStyle = '#283040'; g.fillRect(bx - 1, by - 1, 8, 11);
       g.fillStyle = '#ffffff'; g.fillRect(bx, by, 6, 9);

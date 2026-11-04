@@ -10,7 +10,7 @@
 // 배경: img/catch/{day,sunset,night}.png (CC0, tools/draw_catch_bg.py). 공·별·반짝이는 이 파일에서 도트로 그림.
 // 공은 3D 로 날아감: x 좌우 · y 높이 · z 깊이, 중력 + 약한 공기 저항 + 커브볼 회전(마그누스 힘), 원근으로 화면에 그림.
 // Phaser 를 못 불러오거나 무엇이든 실패하면 바로 { grade:'none', skipped:true } 로 끝냄 → 축하 화면을 절대 막지 않음.
-import { sfx } from './sfx.js';
+import { sfx, bgmPush, bgmBeat, bgmReady } from './sfx.js';
 import { josa, reducedMotion } from './ui.js';
 import { loadPhaser } from './games/common.js';
 import { atlasURL, monAnim } from './sprites.js';
@@ -206,8 +206,12 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
   const on = (el, ev, fn, opt) => { el.addEventListener(ev, fn, opt); listeners.push([el, ev, fn, opt]); };
 
   let layer, area, box, skipBtn, allBtn;
+  // 배경 음악: 잡기 장면 동안 야생 곡 (레이드 보스 = HAFS 볼이면 배틀 곡), 끝나면 원래 곡으로
+  const TRACK = style === 'hafs' ? 'battle' : 'wild';
+  const music = bgmPush(TRACK);
   const cleanup = () => {
     dead = true;
+    music.pop();
     clearTimeout(bootTimer);
     ro?.disconnect();
     for (const [el, ev, fn, opt] of listeners) el.removeEventListener(ev, fn, opt);
@@ -293,7 +297,8 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
     const fonts = document.fonts?.load
       ? Promise.race([Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}), new Promise((r) => setTimeout(r, 1500))])
       : Promise.resolve();
-    const [Phaser, SHEET] = await Promise.all([loadPhaser(), atlasURL([dex]), fonts]);
+    // 곡이 나오기 시작할 때까지도 기다림 (최대 1.5초) → 포켓몬 등장을 곡의 박에 맞출 수 있게
+    const [Phaser, SHEET] = await Promise.all([loadPhaser(), atlasURL([dex]), fonts, bgmReady(TRACK, 1500)]);
     const ATLAS_URL = SHEET.url;     // 이 포켓몬 한 칸짜리 그림판 (sprites.js)
     if (dead) return out;
 
@@ -313,7 +318,8 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         create() {
           try { setup(this); sceneReady = true; clearTimeout(bootTimer); } catch (e) { console.warn('[catch] setup', e); bail(); }
         },
-        update(t, d) { try { tick(Math.min(0.05, d / 1000)); } catch (e) { console.warn('[catch] tick', e); bail(); } },
+        // 물리는 1/240초 고정 걸음이라 프레임이 길어도 같은 궤적 → 0.1초까지는 그대로 (느린 폰 10~20fps 에서 공이 느려지지 않게)
+        update(t, d) { try { tick(Math.min(0.1, d / 1000)); } catch (e) { console.warn('[catch] tick', e); bail(); } },
       },
     });
     if (game.canvas) { game.canvas.style.imageRendering = 'pixelated'; box.insertBefore(game.canvas, btns); }
@@ -948,9 +954,12 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
 
       // ─────── 시작: 나타났다! ─────── (레이드 = HAFS 볼일 때만 '레이드 보스'. 야생도 공을 다 쓰면 도망가지만 레이드가 아님)
       run(async (c) => {
+        // 곡이 나오고 있으면 다음 박 (야생 곡 첫 타격 전이면 그 타격) 에 나타남 — 그땐 8비트 '짠' 효과음은 안 냄 (겹치지 않게)
+        const beat = bgmBeat(TRACK, 120);
+        if (beat != null && beat < 2500) await new Promise((res, rej) => setTimeout(() => (c.alive() ? res() : rej(CANCEL)), beat));
         say(style === 'hafs' ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
         monW.setAlpha(1);
-        play('scan');
+        if (beat == null) play('scan');
         await c.tw({ targets: [mon, monW], scaleX: MON_K, scaleY: MON_K, duration: 320, ease: 'Back.easeOut' });
         await c.tw({ targets: monW, alpha: 0, duration: 200 });
         resetMon(); B.free = true;

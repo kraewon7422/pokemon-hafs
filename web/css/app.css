@@ -65,6 +65,10 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .gear:active { transform: translateY(2px); }
 .setting-name { display: grid; gap: 8px; border-color: var(--red); }
 .setting-name .seg button { font-size: var(--fs-m); padding: 6px; }
+.setting-sound { display: grid; grid-template-columns: max-content minmax(0, 150px); justify-content: space-between; align-items: center; gap: 8px; }
+.sound-row { display: contents; }   /* 두 줄이 같은 칸을 써서 켜기/끄기 폭이 같게 */
+.sound-lbl { display: flex; align-items: center; gap: 6px; min-width: 0; word-break: keep-all; white-space: nowrap; }
+.sound-row .seg button { font-size: var(--fs-m); min-height: 40px; }
 
 .next-action { justify-content: flex-start; text-align: left; gap: 12px; font-size: var(--fs-m); }
 .next-action span { font-size: var(--fs-xl); }
@@ -480,6 +484,8 @@ details.box > summary::after { content: ' ▾'; }
 details.box[open] > summary::after { content: ' ▴'; }
 
 .battle-overlay { background: #182030; }
+/* 배틀 화면: 글자를 길게 누르거나 빨리 눌러도 파랗게 선택되지 않게 (HP 숫자 등) */
+.battle-overlay .bt-stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .bt-stage { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 480px; margin: 0 auto; padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); box-sizing: border-box; }
 .bt-top { display: flex; justify-content: space-between; align-items: center; color: #fff; }
 .bt-timer { font-weight: bold; color: #fff; }
@@ -545,7 +551,13 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bt-boxes { position: absolute; z-index: 2; display: grid; gap: 3px; }
 .bt-boxes.foe { left: 2.5%; top: 3%; width: 50%; }
 .bt-boxes.me { right: 2.5%; top: 60%; width: 52%; }
-.bt-field.dbl .bt-boxes.me { top: auto; bottom: 3%; width: 48%; }   /* 2 대 2: 아래에서 맞춰야 좁은 폰에서 두 번째 상자가 화면 밖으로 잘리지 않음 */
+.bt-field.dbl .bt-boxes.me { top: auto; bottom: 3%; width: 48%; }
+/* 2 대 2: 상자 4개가 포켓몬을 덜 가리게 조금 작게 (3·4세대 더블 배틀처럼 위 왼쪽 = 상대, 아래 오른쪽 = 나) */
+.bt-field.dbl .bt-boxes { gap: 2px; }
+.bt-field.dbl .bt-box { padding: 2px 6px; font-size: 12px; border-width: 2px; }
+.bt-field.dbl .bt-box .hpbar { height: 7px; margin: 1px 0; }
+.bt-field.dbl .bt-boxes.foe { width: 46%; }
+.bt-field.dbl .bt-balls i { width: 7px; height: 7px; }   /* 2 대 2: 아래에서 맞춰야 좁은 폰에서 두 번째 상자가 화면 밖으로 잘리지 않음 */
 .bt-box { padding: 3px 7px; background: #f8f8e8; border: 3px solid #384050; border-radius: 10px 3px 10px 3px; box-shadow: 2px 2px 0 #0c101850; font-size: 13px; min-width: 0; }
 .bt-box[hidden] { display: none; }
 .bt-nm { display: flex; align-items: baseline; gap: 3px; white-space: nowrap; overflow: hidden; }

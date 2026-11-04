@@ -2,9 +2,9 @@
 import { rpc, errorText } from './sb.js';
 import { drawQR } from './qrfmt.js';
 import { spriteCanvas } from './sprites.js';
-import { sfx, unlockAudio, startBgm, stopBgm } from './sfx.js';
+import { sfx, unlockAudio, bgmPush } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, collection, isWithdrawn, vibrate } from './state.js';
+import { S, collection, isWithdrawn, speciesOf, vibrate } from './state.js';
 import { closeOverlay, eggTap, openScanner, overlay, renderTab, say, sheet, sync } from './app.js';
 import { typeChips, typeMult, TYPES } from './dex.js';
 import { curSpecies } from './raid.js';
@@ -18,6 +18,27 @@ const stText = (m) => [m?.st ? ST_LABEL[m.st] : '', m?.cnf > 0 ? '혼란' : ''].
 // 상성 (서버 _bt_tm 과 같음): 방어 타입이 두 개면 곱 (×4 · ×¼ 도 있음)
 export const effOf = (atk, def) => typeMult(atk, def);
 export const effTag = (mult) => (mult > 1 ? h('span.eff.up', '효과가 굉장하다!') : mult === 0 ? h('span.eff.zero', '효과가 없다') : mult < 1 ? h('span.eff.down', '효과가 별로인 듯하다') : null);
+// 0032 (진짜 포켓몬) 전에 시작한 배틀은 서버 기록(battles.state · log)에 옛 몬스터 이름이 남아 있음
+// → 화면에는 언제나 지금 도감의 이름 (species id 기준). map = 옛 이름 → 새 이름 (메시지 안의 이름·조사도 바꿈)
+const JOSA = [['으로', '로'], ['은', '는'], ['이', '가'], ['을', '를'], ['과', '와']];
+export const spName = (sp, fallback) => (sp != null && speciesOf(sp)?.name) || fallback || '???';
+function renameBattle(b, map) {
+  for (const sd of b?.sides || []) for (const m of sd?.mons || []) {
+    if (!m || m.sp == null) continue;
+    const now = speciesOf(m.sp)?.name;
+    if (now && m.name !== now) { if (m.name) map.set(m.name, now); m.name = now; }
+  }
+}
+function fixNames(s, map) {
+  if (!s || !map.size) return s;
+  const esc = (x) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const olds = [...map.keys()].sort((a, b) => b.length - a.length).map(esc);
+  return String(s).replace(new RegExp(`(${olds.join('|')})(으로|은|는|이|가|을|를|과|와|로)?`, 'g'), (_, old, p) => {
+    const nw = map.get(old); const pair = p && JOSA.find((x) => x.includes(p));
+    return pair ? josa(nw, pair[0], pair[1]) : nw + (p || '');
+  });
+}
+const SYN = { atk: '공격이', def: '방어가', spa: '특수공격이', spd: '특수방어가', spe: '스피드가' };
 const FX_ROW = { par: 0, brn: 1, psn: 2, frz: 3, heal: 4, slp: 5, cnf: 6, flinch: 7 };   // web/img/fx/status.png 줄 순서 (tools/draw_fx.py)
 
 export const FMT = { single: { n: 3, label: '1 대 1', long: '1 대 1 (3마리)' }, double: { n: 4, label: '2 대 2', long: '2 대 2 (4마리)' } };
@@ -273,6 +294,10 @@ export const BALL_SVG = '<svg viewBox="0 0 8 8" width="16" height="16" shape-ren
 export function openBattle(b0) {
   unlockAudio();
   loadBag({ notify: false }).catch(() => {});
+  const ren = new Map();          // 옛 이름 → 지금 이름
+  renameBattle(b0, ren);
+  // 배경 음악: 배틀 중 = 배틀 곡, 끝나면 조용히 (승리 효과음), 닫으면 원래 곡. 신청 대기 · 끝난 배틀 보기 = 원래 곡 그대로
+  const music = bgmPush(b0.status === 'active' ? 'battle' : undefined);
   let b = b0;
   let shownSeq = b.status === 'active' && b.seq === 0 ? -1 : b.seq;   // -1 → 첫 화면에 등장 연출
   let playing = false; let busy = false; let closed = false; let finished = false;
@@ -300,7 +325,7 @@ export function openBattle(b0) {
   const view = { act: [null, null, null, null], hp: [0, 0, 0, 0] };
   const el = { text: h('div.bt-text'), arrow: h('i.bt-arrow'), menu: h('div.bt-menu'), timer: h('span.bt-timer'), field: null };
   const foeName = () => (b.mode === 'cpu' ? '연습 상대' : b.names?.[fo()] || '상대');
-  const tok = (s) => s.replace(/@([01])/g, (_, x) => (Number(x) === me() ? '' : '상대 '));
+  const tok = (s) => fixNames(s, ren).replace(/@([01])/g, (_, x) => (Number(x) === me() ? '' : '상대 '));
   const side = (s) => b.sides?.[s];
   const nAct = (s) => side(s)?.act?.length || 0;
   const monAt = (s, i) => side(s)?.mons?.[i];
@@ -326,10 +351,11 @@ export function openBattle(b0) {
     view.act[u] = idx;
     const s = u >> 1; const m = monAt(s, idx) || {};
     const x = SL[u];
-    const spId = sp ?? m.sp;
+    // 그림: 서버가 준 species id. 없으면 (아주 옛 배틀) 내 포켓몬은 계열의 지금 모습으로 → 자리가 빈 칸으로 남지 않게
+    const spId = sp ?? m.sp ?? (s === me() && m.line ? curSpecies(m.line)?.id : null);
     x.spr.classList.remove('faint', 'hit', 'atk', 'gone');
     if (spId && x.bob.dataset.sp !== String(spId)) { x.bob.dataset.sp = spId; x.bob.replaceChildren(spriteCanvas(spId, 128)); }
-    x.name.textContent = name || m.name || '???';
+    x.name.textContent = spName(spId, name || m.name);
     x.lv.textContent = ` Lv${lv ?? m.lv ?? 50}`;
     setHp(u, hp ?? m.hp ?? 0, max ?? m.max);
   };
@@ -391,20 +417,30 @@ export function openBattle(b0) {
     setTimeout(() => fx.remove(), reducedMotion() ? 400 : 1100);
   };
 
+  // 교체해 들어올 때 서버 글은 '○○의 △△ 시너지!' 로 끝남 → 첫 등장처럼 어떤 능력이 올랐는지 붙임
+  const synFull = (m) => {
+    const r = /^(@[01])?(.+)의 .+ 시너지!$/.exec(m);
+    if (!r) return m;
+    const s = r[1] ? Number(r[1][1]) : null;
+    const mon = (b.sides || []).flatMap((sd, i) => (s == null || s === i ? sd.mons || [] : [])).find((x) => x?.name === fixNames(r[2], ren) && x.syn);
+    return mon && SYN[mon.syn] ? `${m} ${SYN[mon.syn]} 올라갔다!` : m;
+  };
   const play = async (log, prev) => {
     playing = true; el.menu.replaceChildren();
     for (const e of log || []) {
       if (closed) return;
       const mineSide = (u) => (u >> 1) === me();
       if (e.back != null) {
-        await say2(mineSide(e.back) ? `${e.name}, 돌아와!` : `${josa(foeName(), '은', '는')} ${josa(e.name, '을', '를')} 들여보냈다!`, 300);
+        const bn = SL[e.back].name.textContent || fixNames(e.name, ren);
+        await say2(mineSide(e.back) ? `${bn}, 돌아와!` : `${josa(foeName(), '은', '는')} ${josa(bn, '을', '를')} 들여보냈다!`, 300);
         SL[e.back].spr.classList.add('hide');
         continue;
       }
       if (e.sw) {
         const [u, i] = e.sw;
-        showMon(u, i, { hp: prev?.sides?.[u >> 1]?.mons?.[i]?.hp, sp: e.sp, name: e.name, max: prev?.sides?.[u >> 1]?.mons?.[i]?.max, lv: e.lv });
-        await say2(mineSide(u) ? `가랏! ${e.name}!` : `${josa(foeName(), '은', '는')} ${josa(e.name, '을', '를')} 내보냈다!`, 100);
+        const nm = spName(e.sp ?? monAt(u >> 1, i)?.sp, fixNames(e.name, ren));
+        showMon(u, i, { hp: prev?.sides?.[u >> 1]?.mons?.[i]?.hp, sp: e.sp, name: nm, max: prev?.sides?.[u >> 1]?.mons?.[i]?.max, lv: e.lv });
+        await say2(mineSide(u) ? `가랏! ${nm}!` : `${josa(foeName(), '은', '는')} ${josa(nm, '을', '를')} 내보냈다!`, 100);
         await throwBall(u);
         continue;
       }
@@ -422,7 +458,7 @@ export function openBattle(b0) {
       if (e.item) { sfx.select(); statusFx(e.item[0], 'heal'); }
       if (e.stat) statFx(e.stat[0], e.stat[1]);
       if (e.faint != null) { SL[e.faint].spr.classList.add('faint'); sfx.faint(); }
-      if (e.m) await say2(tok(e.m));
+      if (e.m) await say2(tok(synFull(e.m)));
       else await sleep(reducedMotion() ? 60 : 320);
     }
     playing = false;
@@ -432,7 +468,7 @@ export function openBattle(b0) {
     if (finished) return;
     finished = true;
     clearInterval(S.btPoll);
-    stopBgm();
+    music.set(null);
     const won = b.winner === me(); const rw = b.reward || {};
     if (won) { sfx.catch(); vibrate([80, 60, 200]); } else sfx.fail();
     if (b.winner == null) await say2('무승부!');
@@ -451,8 +487,9 @@ export function openBattle(b0) {
     // 경험치 (나온 포켓몬마다) · 레벨 업 · 주운 물건 (0020)
     for (const x of rw.exp?.[me()] || []) {
       if (closed) return;
-      await say2(`${josa(x.name, '은', '는')} ${x.exp} 경험치를 얻었다!`, 300);
-      if (x.up > 0) { sfx.catch(); await say2(`${x.name}의 레벨이 ${josa(x.lv, '으로', '로')} 올랐다!`); }
+      const xn = fixNames(x.name, ren);
+      await say2(`${josa(xn, '은', '는')} ${x.exp} 경험치를 얻었다!`, 300);
+      if (x.up > 0) { sfx.catch(); await say2(`${xn}의 레벨이 ${josa(x.lv, '으로', '로')} 올랐다!`); }
     }
     const got = rw.item?.[me()];
     if (got && itemOf(got)) { sfx.catch(); await say2(`${josa(itemOf(got).name, '을', '를')} 주웠다!`); }
@@ -620,7 +657,9 @@ export function openBattle(b0) {
 
   const apply = async (nb) => {
     if (!nb || closed) return;
+    renameBattle(nb, ren);
     const prev = b; b = nb;
+    if (b.status === 'active' && !finished) music.set('battle');   // 신청을 친구가 수락함
     if (b.seq !== shownSeq && b.seq > 0) { shownSeq = b.seq; await play(b.log, prev); }
     drawStatic();
     if (!b.chosen) startPicks();
@@ -660,7 +699,7 @@ export function openBattle(b0) {
     h('div.bt-textbox', el.text, el.arrow), el.menu), 'full');
   ov.classList.add('battle-overlay');
   el.arrow.hidden = true;
-  ov.onclose = () => { closed = true; stopBgm(); clearInterval(S.btPoll); clearInterval(S.btTick); pollInbox(true); };
+  ov.onclose = () => { closed = true; music.pop(); clearInterval(S.btPoll); clearInterval(S.btTick); pollInbox(true); };
   clearInterval(S.btPoll); clearInterval(S.btTick);
   // 실시간 대전·신청 대기 중에는 2초마다 상태 확인 (턴이 풀렸는지, 수락했는지)
   S.btPoll = setInterval(async () => {
@@ -670,7 +709,6 @@ export function openBattle(b0) {
   }, 2000);
   S.btTick = setInterval(tick, 500);
   drawStatic(); tick();
-  if (b.status === 'active' || b.status === 'over') startBgm();
   if (b.status === 'active' && shownSeq === -1) {
     shownSeq = b.seq;
     (async () => {
@@ -689,7 +727,6 @@ export function openBattle(b0) {
       await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
       for (const x of mySlotsEl) await throwBall(x.u);
       // 같은 과 시너지 (0020): 나온 포켓몬의 능력 +1
-      const SYN = { atk: '공격이', def: '방어가', spa: '특수공격이', spd: '특수방어가', spe: '스피드가' };
       for (const x of [...foeSlots, ...mySlotsEl]) {
         const m = monAt(x.u >> 1, side(x.u >> 1).act[x.u & 1]);
         if (m?.syn) { statFx(x.u, 1); await say2(tok(`@${x.u >> 1}${m.name}의 ${m.synname} 시너지! ${SYN[m.syn]} 올라갔다!`), 300); }
@@ -698,6 +735,6 @@ export function openBattle(b0) {
     })();
   } else {
     startPicks(); renderMenu();
-    if (b.status === 'over') { finished = true; el.text.textContent = b.winner === me() ? '이긴 배틀이에요.' : '끝난 배틀이에요.'; el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기')); stopBgm(); }
+    if (b.status === 'over') { finished = true; el.text.textContent = b.winner === me() ? '이긴 배틀이에요.' : '끝난 배틀이에요.'; el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기')); }
   }
 }
