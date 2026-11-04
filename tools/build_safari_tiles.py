@@ -12,13 +12,16 @@
   rock sign post bridge        바위 · 표지판 · 입구 기둥 · 나무 다리
   tree                         나무 16×24 (칸 위로 8px 솟음)
   cfloor<0-1>                  동굴 바닥 (2가지 반점)
-  cwall<0-15>  mwall<0-15>     동굴 바위벽 · 바깥 산 바위 (숫자 = 이웃도 벽인 쪽, 아래가 열리면 벽면)
+  cwall<0-15>_<0-2>  mwall..    동굴 바위벽 · 바깥 산 바위 (숫자 = 이웃도 벽인 쪽, 아래가 열리면 벽면 · _v = 무늬 변형 3가지)
   crock cboulder chole         동굴 작은 바위 · 큰 바위 · 떨어지는 구멍
   cladderD cladderU cexit      내려가는/올라가는 사다리 · 밖으로 나가는 밝은 칸
   cbraille mouth               벽면 점자 (덧그림) · 바깥 바위벽 동굴 입구 (덧그림)
   uvoid<0-1> uplat<0-15>       울트라 스페이스 빈 우주 (별 반짝 2장) · 떠 있는 발판 (숫자 = 이웃도 발판)
   upath ucrystalA ucrystalB    밝은 빛의 길 (덧그림) · 빛나는 수정 (청록 / 분홍)
   worm<0-3>                    울트라 워프홀 소용돌이 32×32 (4장 돌기)
+  sfloor<0-1> saltar sstairs<L|R|C>  제단 방 돌바닥 · 흰 대리석 제단 · 돌계단 (난간 쪽)
+  pwall<0-15>_<0-2> spillar    제단 방 분홍빛 갈색 절벽 · 부서진 돌기둥 16×32
+  tallR<0-1>                   풀숲을 밟을 때 흔들리는 잎 2장
 주인공 safari-hero.png · 사육사 safari-keeper.png: 16×24 칸, 줄 = 아래·위·왼쪽·오른쪽, 칸 = 서기·걸음1·걸음2.
 """
 import json
@@ -395,9 +398,9 @@ def bridge():
 # 벽 이름 cwall<0-15> (동굴) · mwall<0-15> (바깥 산 바위, 동굴 입구 둘레) — 숫자 = 이웃도 벽인 쪽 (N1 E2 S4 W8).
 # 아래(S)가 벽이 아니면 '벽면' (앞에서 본 바위 줄무늬), 아니면 '윗면' (위에서 본 거친 바위 + 열린 쪽 테두리).
 CAVE = {
-    'c': dict(top0='#5c4838', top1='#4a3a2c', top2='#6e5846', rim0='#d8c0a0', rim1='#a08468',
+    'c': dict(top0='#5c4838', top1='#4a3a2c', top2='#76604c', top3='#33261a', rim0='#d8c0a0', rim1='#a08468',
               face0='#8c6c54', face1='#a8866a', face2='#6c5040', face3='#40301f'),
-    'm': dict(top0='#9c8c74', top1='#887860', top2='#b4a488', rim0='#ece0c4', rim1='#b8a88c',
+    'm': dict(top0='#9c8c74', top1='#887860', top2='#b8a88c', top3='#5c4c40', rim0='#ece0c4', rim1='#b8a88c',
               face0='#a08c74', face1='#c0ac90', face2='#7c6c58', face3='#4c4034'),
 }
 CF = dict(f0='#c4a47e', f1='#ac8c68', f2='#d8bc96', f3='#94785a')
@@ -416,51 +419,111 @@ def cfloor(v):
     return t
 
 
-def wall(kind, mask):
-    P = {k: hx(v) for k, v in CAVE[kind].items()}
+def _lump_field(v, wrap_y):
+    """둥근 바위 덩어리 무늬 (보로노이). 좌우 끝 점은 모든 변형이 같이 씀 → 변형끼리 나란히 놓아도 이음매가 맞음.
+    돌려줌 f(x, y) → (d1, d2, rx, ry): 가장 가까운 점까지 거리 · 둘째 거리 · 그 점에서 본 위치."""
+    edge = [(0.0, 2.5), (0.0, 8.0), (0.0, 13.0)]
+    inner = [
+        [(5, 1.5), (10, 4), (6, 7.5), (11, 10), (5, 12.5), (9, 14.5)],
+        [(7, 2), (4.5, 5.5), (11, 6), (8, 10), (5, 14), (11, 13.5)],
+        [(9, 1), (5, 4.5), (8.5, 7.5), (4.5, 10), (11, 11), (7.5, 14.5)],
+    ][v]
+    pts = []
+    for (px, py) in edge + inner:
+        for ox in (-16, 0, 16):
+            for oy in ((-16, 0, 16) if wrap_y else (0,)):
+                pts.append((px + ox, py + oy))
+
+    def f(x, y):
+        best = []
+        for (px, py) in pts:
+            d = ((x - px) ** 2 + ((y - py) * 1.15) ** 2) ** 0.5     # 살짝 가로로 넓은 덩어리
+            best.append((d, px, py))
+        best.sort()
+        (d1, px, py), (d2, _, _) = best[0], best[1]
+        return d1, d2, x - px, y - py
+    return f
+
+
+RIM_OFF = [1, 1, 0, 0, 1, 2, 2, 1, 0, 0, 1, 1, 2, 1, 0, 1]     # 위 턱의 울퉁불퉁한 높이 (모든 변형이 같음 → 이음매 맞음)
+
+
+def wall(kind, mask, v=0):
+    """v = 무늬 변형 (0-2). 벽면 = 둥근 바위 덩어리 (왼쪽 위 밝음 · 가운데 · 오른쪽 아래 어두움 · 틈은 진하게).
+    윗면 = 위에서 본 같은 덩어리 (어둡고 대비 낮게, 상하좌우로 이어짐)."""
+    P = {k: hx(val) for k, val in CAVE[kind].items()}
     t = Tile()
     N, E, S, W = mask & 1, mask & 2, mask & 4, mask & 8
+    topf = _lump_field(0, True)
+
     def top_px(x, y):
-        v = (x * 5 + y * 11 + (x * y) % 7) % 13
-        return P['top1'] if v < 3 else P['top2'] if v == 12 else P['top0']
+        d1, d2, rx, ry = topf(x, y)
+        gap, sd = d2 - d1, rx + ry
+        if gap < 0.8:
+            return P['top3']
+        if sd < -2.0 and gap > 1.4:
+            return P['top2']
+        if sd > 1.6 or gap < 1.5:
+            return P['top1']
+        return P['top0']
+
+    def lump_px(x, y, f):
+        d1, d2, rx, ry = f(x, y)
+        gap = d2 - d1
+        if gap < 0.85:
+            return P['face3']
+        s = rx + ry
+        if s < -1.6 and gap > 1.6:
+            return P['rim0'] if s < -3.2 else P['face1']
+        if s > 1.8 or (gap < 1.7 and s > 0):
+            return P['face2']
+        return P['face0']
+
     if S:   # 윗면
         for y in range(16):
             for x in range(16):
                 t.px(x, y, top_px(x, y))
         if not N:
             for x in range(16):
-                t.px(x, 0, P['face3']); t.px(x, 1, P['rim1'])
+                t.px(x, 0, P['face3']); t.px(x, 1, P['rim0']); t.px(x, 2, P['rim1'])
         if not W:
             for y in range(16):
-                t.px(0, y, P['rim0']); t.px(1, y, P['rim1'])
+                if N or y > 0:
+                    t.px(0, y, P['face3']); t.px(1, y, P['rim0'] if (N or y > 1) else t.get(1, y)); t.px(2, y, P['rim1'] if (N or y > 2) else t.get(2, y))
         if not E:
             for y in range(16):
-                t.px(15, y, P['face3']); t.px(14, y, P['rim1'])
+                if N or y > 0:
+                    t.px(15, y, P['face3']); t.px(14, y, P['rim1'] if (N or y > 1) else t.get(14, y))
         return t
-    # 벽면: 위쪽 lip + 바위 줄무늬 + 바닥과 만나는 그림자
-    y0 = 0
-    if N:
-        for y in range(3):
-            for x in range(16):
-                t.px(x, y, top_px(x, y))
-        y0 = 3
+    # 벽면
+    f = _lump_field(v, False)
+    y0 = 3 if N else 0
     for x in range(16):
-        t.px(x, y0, P['rim0']); t.px(x, y0 + 1, P['rim1'])
-    for y in range(y0 + 2, 16):
-        for x in range(16):
-            band = (y - y0 + (x // 4) % 2) % 5
-            c = P['face1'] if band == 0 else P['face2'] if band == 3 else P['face0']
-            if band == 3 and (x * 7 + y) % 6 == 0:
+        ry = y0 + RIM_OFF[x]
+        for y in range(16):
+            if y < ry:
+                if N:
+                    t.px(x, y, top_px(x, y))      # 위 칸 윗면이 이어짐 (아니면 투명 → 아래에 깐 바닥이 보임)
+                continue
+            if y == ry:
                 c = P['face3']
+            elif y == ry + 1:
+                c = P['rim0']
+            elif y == ry + 2:
+                c = P['rim1'] if (x + v) % 3 else P['rim0']
+            elif y == 15:
+                c = P['face3']
+            else:
+                c = lump_px(x, y, f)
             t.px(x, y, c)
-    for x in range(16):
-        t.px(x, 15, P['face3'])
     if not W:
-        for y in range(y0, 16):
-            t.px(0, y, P['face3']); t.px(1, y, P['face2'])
+        for y in range(16):
+            if y >= y0 + RIM_OFF[0]:
+                t.px(0, y, P['face3']); t.px(1, y, P['face2'] if y > y0 + RIM_OFF[1] + 1 else t.get(1, y))
     if not E:
-        for y in range(y0, 16):
-            t.px(15, y, P['face3']); t.px(14, y, P['face2'])
+        for y in range(16):
+            if y >= y0 + RIM_OFF[15]:
+                t.px(15, y, P['face3']); t.px(14, y, P['face2'] if y > y0 + RIM_OFF[14] + 1 else t.get(14, y))
     return t
 
 
@@ -575,13 +638,57 @@ def mouth():
     return t
 
 
+def wall_corner(kind, corner):
+    P = {k: hx(v) for k, v in CAVE[kind].items()}
+    t = Tile()
+    pts = {(0, 0): 'face3', (1, 0): 'rim0', (0, 1): 'rim0', (1, 1): 'rim0', (2, 0): 'rim1', (0, 2): 'rim1', (2, 1): 'rim1', (1, 2): 'rim1'}
+    for (x, y), c in pts.items():
+        X = x if 'w' in corner else 15 - x
+        Y = y if 'n' in corner else 15 - y
+        if 'e' in corner and c == 'rim0':
+            c = 'rim1'
+        t.px(X, Y, P[c])
+    return t
+
+
+def rock_art(w, h, kind='c'):
+    """둥근 바위 (동굴 벽과 같은 색 · 빛은 왼쪽 위 · 1px 진한 테두리 · 바닥 그림자)."""
+    P = {k: hx(v) for k, v in CAVE[kind].items()}
+    t = Tile()
+    cx, cy = 7.5, 15 - h / 2 - 1
+    rx, ry = w / 2, h / 2
+    inside = lambda x, y: ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1
+    for y in range(16):
+        for x in range(16):
+            if not inside(x, y):
+                continue
+            nx, ny = (x - cx) / rx, (y - cy) / ry
+            lit = -(nx + ny)                                   # 왼쪽 위가 밝음
+            c = 'rim0' if lit > 0.9 else 'face1' if lit > 0.25 else 'face0' if lit > -0.55 else 'face2'
+            if (x * 5 + y * 3) % 11 == 0 and c in ('face0', 'face1'):
+                c = 'face2'                                    # 작은 홈
+            t.px(x, y, P[c])
+    for y in range(16):
+        for x in range(16):
+            if not inside(x, y) and any(inside(x + dx, y + dy) for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                t.px(x, y, P['face3'])
+    by = int(cy + ry) + 1                                      # 바닥 그림자
+    for x in range(int(cx - rx) + 2, int(cx + rx)):
+        if 0 <= by + 1 < 16 and t.get(x, by + 1)[3] == 0:
+            t.px(x, by + 1, hx(CF['f3']))
+    return t
+
+
 def cave_tiles():
     out = [('cfloor0', cfloor(0)), ('cfloor1', cfloor(1))]
     for kind in 'cm':
         for m in range(16):
-            out.append((f'{kind}wall{m}', wall(kind, m)))
-    for name, rows in (('crock', CROCK), ('cboulder', CBOULDER)):
-        t = Tile(); t.art(rows, {k: hx(v) for k, v in CROCK_PAL.items()}); out.append((name, t))
+            for v in range(3):
+                out.append((f'{kind}wall{m}_{v}', wall(kind, m, v)))
+    out += [('crock', rock_art(9, 7)), ('cboulder', rock_art(14, 12))]
+    for kind in 'cmp':
+        for c in ('nw', 'ne', 'sw', 'se'):
+            out.append((f'{kind}wallc{c}', wall_corner(kind, c)))
     out += [('chole', hole()), ('cladderD', ladder(True)), ('cladderU', ladder(False)), ('cexit', exit_mat()),
             ('cbraille', braille()), ('mouth', mouth())]
     return out
@@ -670,28 +777,41 @@ def ucrystal(alt):
     return t
 
 
+WORM = {k: hx(v) for k, v in dict(o='#24104c', d='#5028a0', v='#8858e0', l='#c4a8f8', w='#ffffff').items()}
+
+
 def wormhole(f):
-    """32×32 소용돌이 (4장 돌기): 바깥 보라 → 안쪽 흰 빛, 팔 3개가 돌아감."""
+    """32×32 (그림은 28×20 납작한 타원) 소용돌이, 4장 돌기. 색 5개 · 단단한 테두리 · 경계만 바둑판 섞기 (흐림·반투명 없음)."""
     import math
     t = Tile(32, 32)
+    cx, cy, rx, ry = 15.5, 17.5, 13.5, 9.5
+    inside = [[((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1 for x in range(32)] for y in range(32)]
     for y in range(32):
         for x in range(32):
-            dx, dy = x - 15.5, (y - 15.5) * 1.25        # 살짝 납작 (바닥에 열린 구멍처럼)
-            r = math.hypot(dx, dy)
-            if r > 15:
+            if not inside[y][x]:
                 continue
-            a = math.atan2(dy, dx)
-            arm = math.sin(3 * a + r * 0.55 - f * math.pi / 2)
-            if r < 3.2:
-                c = UP['c2']
-            elif r < 6:
-                c = UP['pE'] if arm > -0.2 else UP['w1']
-            elif r < 11:
-                c = UP['pE'] if arm > 0.45 else UP['pe'] if arm > -0.3 else UP['w2']
+            r = (((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2) ** 0.5
+            a = math.atan2((y - cy) / ry, (x - cx) / rx)
+            s = (a * 3 / (2 * math.pi) + r * 1.6 - f / 4) % 1.0      # 팔 3개가 안쪽으로 감김
+            arm = s < 0.42
+            edge = abs(s - 0.42) < 0.06 or s < 0.04
+            if edge and (x + y) % 2:
+                arm = not arm                                          # 경계만 바둑판 섞기
+            if r < 0.2:
+                c = 'w'
+            elif r < 0.5:
+                c = 'w' if arm else 'l'
+            elif r < 0.8:
+                c = 'l' if arm else 'v'
             else:
-                c = UP['pe'] if arm > 0.3 else UP['p1'] if arm > -0.4 else None
-            if c:
-                t.px(x, y, c)
+                c = 'v' if arm else 'd'
+            t.px(x, y, WORM[c])
+    for y in range(32):          # 1px 진한 테두리
+        for x in range(32):
+            if inside[y][x]:
+                continue
+            if any(0 <= x + dx < 32 and 0 <= y + dy < 32 and inside[y + dy][x + dx] for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1))):
+                t.px(x, y, WORM['o'])
     return t
 
 
@@ -703,9 +823,124 @@ def ultra_tiles():
     return out
 
 
+# ─────────── 전설의 제단 (돌기둥 유적 방: 황토색 돌바닥 · 분홍빛 갈색 절벽 · 부서진 돌기둥 · 돌계단 · 흰 대리석 제단) ───────────
+CAVE['p'] = dict(top0='#a87068', top1='#905850', top2='#c89088', top3='#583838', rim0='#f0d0c0', rim1='#c8a098',
+                 face0='#b8807a', face1='#d8a8a0', face2='#906058', face3='#583838')
+SH = {k: hx(v) for k, v in dict(
+    f0='#e0d4a0', f1='#ccbf88', f2='#f0e8c0', fg='#b4a470', fc='#a09060',
+    a0='#f6f6f2', a1='#dcdce4', a2='#c4c4d0', a3='#ffffff',
+    t0='#d0d0d8', t1='#a0a0b0', t2='#787888', t3='#e8e8f0',
+    c0='#b8ae98', c1='#d8d0bc', c2='#8c8270', c3='#5c5444', cs='#c0b484',
+).items()}
+
+
+def sfloor(v):
+    """돌판 바닥: 8×8 돌판 4장 · 줄눈 · 돌판마다 밝은 위쪽 · 몇 군데 금."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            gx, gy = x % 8, y % 8
+            off = 4 if (y // 8) % 2 else 0          # 줄마다 반 칸 어긋남 (벽돌 쌓기)
+            gx = (x + off) % 8
+            if gy == 7 or gx == 7:
+                c = SH['fg']
+            elif gy == 0 or gx == 0:
+                c = SH['f2']
+            else:
+                c = SH['f1'] if (x * 3 + y * 5) % 11 == 0 else SH['f0']
+            t.px(x, y, c)
+    if v:
+        for (x, y) in [(3, 2), (4, 3), (4, 4), (5, 5), (11, 10), (12, 11), (12, 12)]:
+            t.px(x, y, SH['fc'])
+    return t
+
+
+def saltar():
+    """흰 대리석 제단 바닥: 큰 판 + 연한 결 + 테두리 줄."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            c = SH['a0']
+            if x == 15 or y == 15:
+                c = SH['a2']
+            elif x == 0 or y == 0:
+                c = SH['a3']
+            elif (x + 2 * y) % 13 == 0 or (2 * x - y) % 17 == 0:
+                c = SH['a1']
+            t.px(x, y, c)
+    return t
+
+
+def sstairs(rail):
+    """돌계단 (위아래로 오름): 4px 마다 디딤판 · 턱 그늘. rail = 'L' | 'R' | 'C' (난간 쪽)."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            k = y % 4
+            c = SH['t3'] if k == 0 else SH['t0'] if k < 3 else SH['t1']
+            t.px(x, y, c)
+    for y in range(16):
+        if rail == 'L':
+            t.px(0, y, SH['t2']); t.px(1, y, SH['t1'])
+        if rail == 'R':
+            t.px(15, y, SH['t2']); t.px(14, y, SH['t1'])
+    return t
+
+
+def spillar():
+    """16×32 부서진 돌기둥: 받침 + 기둥 (왼쪽 밝음 · 오른쪽 어두움) + 뾰족하게 부서진 머리 + 오른쪽 아래 그림자."""
+    t = Tile(16, 32)
+    top = [9, 7, 6, 5, 6, 8, 7, 9, 10, 11]          # 기둥 열 (x 3..12) 마다 부서진 높이
+    for i, x in enumerate(range(3, 13)):
+        for y in range(top[i], 27):
+            if x == 3 or x == 12:
+                c = SH['c3']
+            elif x <= 5:
+                c = SH['c1']
+            elif x >= 10:
+                c = SH['c2']
+            else:
+                c = SH['c0']
+            if y == top[i]:
+                c = SH['c3'] if x in (3, 12) else SH['c1']
+            if x == 7 and y > top[i] + 2 and y % 6 == 0:
+                c = SH['c2']                         # 기둥 홈
+            t.px(x, y, c)
+        t.px(x, top[i] - 1, SH['c3'])                # 머리 테두리
+    for y in range(26, 31):                          # 받침
+        for x in range(1, 15):
+            edge = x in (1, 14) or y in (26, 30)
+            t.px(x, y, SH['c3'] if edge else SH['c1'] if y == 27 else SH['c0'] if x < 11 else SH['c2'])
+    for x in range(3, 16):                           # 그림자 (오른쪽 아래)
+        t.px(x, 31, SH['cs'])
+    for y in range(18, 31):
+        t.px(15, y, SH['cs'])
+    return t
+
+
+def shrine_tiles():
+    out = [('sfloor0', sfloor(0)), ('sfloor1', sfloor(1)), ('saltar', saltar())]
+    for r in 'LRC':
+        out.append((f'sstairs{r}', sstairs(r)))
+    for m in range(16):
+        for v in range(3):
+            out.append((f'pwall{m}_{v}', wall('p', m, v)))
+    return out
+
+
+def grass_rustle(f):
+    """풀숲을 밟을 때 잎이 흔들리는 2장: 위쪽 잎 끝이 좌우로 1px."""
+    t = Tile()
+    rows = [(r[1:] + '.') if (i < 8 and f == 0) else ('.' + r[:-1]) if (i < 8 and f == 1) else r for i, r in enumerate(TALL)]
+    t.art(rows, TALL_PAL)
+    return t
+
+
 # ─────────── 주인공: HAFS 교복 (남색 재킷 + 금색 테두리) · 사육사 ───────────
-# v2 (2026-11-05): 참고 그림(3세대 남자아이 539ae2d8…jpg)에 맞춰 모자를 낮고 작게 (챙 1px), 옆모습 몸 두께 9px,
-#                  작고 둥근 신발 · 아래로 갈수록 가늘어지는 다리. 예전 그림은 git 기록 (606b6a2) 에 있음.
+# v3 (2026-11-05): 참고 그림 (3세대 FRLG 남자아이 3×4 · 16장 시트) 처럼 큰 머리 (키의 절반쯤) · 짧은 몸,
+#   눈 = 1칸 폭 × 2칸 높이, 둘 사이 2칸 (코 위 가운데), 모자 챙 바로 아래 · 양옆 머리카락.
+#   걸음: 서기 → 왼발 → 서기 → 오른발, 걸음 장면은 몸이 1px 위로 (들썩임) · 디딘 다리가 길고 든 다리는 1px 위 · 팔 흔들기.
+#   예전 그림: v2 = git d9c02c6, v1 = 606b6a2.
 HP = {
     'k': '#181820', 'R': '#e04838', 'r': '#a82830', 'O': '#f88860', 'D': '#701c24',
     'h': '#282838', 'H': '#444460', 's': '#f8d0a8', 'S': '#d89868', 'e': '#202028',
@@ -716,29 +951,29 @@ HP = {
 # 사육사: 카키 셔츠 · 초록 스카프 · 국방색 바지 · 갈색 장화 · 챙 넓은 카키 모자 (보통 크기)
 KP = dict(HP)
 KP.update({
-    'A': '#e0c888', 'a': '#b09858', 'G': '#4c7a34',             # 모자 (밝은 카키 · 그늘 · 초록 띠)
-    'h': '#6c4828', 'H': '#8c6038',                              # 갈색 머리
-    'B': '#c8b070', 'b': '#9c8448', 'd': '#7c6838',              # 카키 셔츠
-    'Y': '#7c6038', 'y': '#5c4428',                              # 주머니 덮개 · 허리띠 (갈색)
-    'w': '#f0e8c8', 'T': '#4c8a3c', 't': '#78b860',              # 속셔츠 · 초록 스카프
-    'P': '#5c6034', 'p': '#40441f', 'Z': '#6c4424', 'z': '#9c6c3c',  # 바지 · 장화
+    'A': '#e0c888', 'a': '#b09858', 'G': '#4c7a34',
+    'h': '#6c4828', 'H': '#8c6038',
+    'B': '#c8b070', 'b': '#9c8448', 'd': '#7c6838',
+    'Y': '#7c6038', 'y': '#5c4428',
+    'w': '#f0e8c8', 'T': '#4c8a3c', 't': '#78b860',
+    'P': '#5c6034', 'p': '#40441f', 'Z': '#6c4424', 'z': '#9c6c3c',
     'm': '#6c4828',
 })
-DARK = {'B': 'b', 'R': 'r', 'O': 'R', 'P': 'p', 'Y': 'y', 'b': 'd', 'Z': 'Z', 'A': 'a', 'T': 'T'}
-BODY_ROW = 10        # 이 줄부터 몸 (오른쪽 절반을 그늘색으로)
+DARK = {'B': 'b', 'R': 'r', 'O': 'R', 'P': 'p', 'Y': 'y', 'b': 'd', 'A': 'a'}
+HEAD_DARK = {k: v for k, v in DARK.items() if k in 'ROA'}
 
-# 앞모습 왼쪽 절반 7칸 → 거울. 모자 0-4 (챙 = 4번 줄 1px) · 머리·얼굴 5-9 · 교복 10-15 · 다리 16-19
+# 앞·뒤 = 왼쪽 절반 7칸 (오른쪽은 거울 + 그늘색). 머리 0-9 (모자 0-4 · 머리카락 5 · 눈 6-7) · 몸 10-14 · 다리 15-17
 HEAD_FRONT = [
     '....kkk',
     '..kkROO',
     '.kRROOw',
     '.kRRRww',
     '.kDDDDD',
-    '.khhhhh',
+    'khhssss',
+    'khhsses',
+    'khhsses',
     '.khssss',
-    '.khsess',
-    '.khsess',
-    '..kSsss',
+    '..kkSss',
 ]
 HEAD_BACK = [
     '....kkk',
@@ -746,23 +981,23 @@ HEAD_BACK = [
     '.kRROOO',
     '.kRRRRR',
     '.kDDDDD',
+    'khhhhhh',
+    'khhhhhh',
+    'khhHhhh',
     '.khhhhh',
-    '.khhhhh',
-    '.khHhhh',
-    '.khhhhh',
-    '..khhhh',
+    '..kkhhh',
 ]
-HAT_FRONT = [   # 사육사 모자: 낮은 머리 + 양옆으로 1칸 나온 챙
+HAT_FRONT = [
     '.......',
     '...kkkk',
     '..kAAAA',
     '..kGGGG',
     'kAAAAAa',
-    '.khhhhh',
+    'khhssss',
+    'khhsses',
+    'khhsses',
     '.khssss',
-    '.khsess',
-    '.khsess',
-    '..kssmm',
+    '..kksmm',
 ]
 HAT_BACK = [
     '.......',
@@ -770,49 +1005,43 @@ HAT_BACK = [
     '..kAAAA',
     '..kGGGG',
     'kAAAAAA',
+    'khhhhhh',
+    'khhhhhh',
+    'khhHhhh',
     '.khhhhh',
-    '.khhhhh',
-    '.khHhhh',
-    '.khhhhh',
-    '..khhhh',
+    '..kkhhh',
 ]
-BODY_FRONT = [   # 목 (살색) 줄 → 어깨 높이에서 작은 흰 V (얼굴에 흰 칸이 닿지 않게) · 남색 깃 · 넥타이
-    '..kBBSS',
-    '.kBkYwT',
+BODY_FRONT = [   # 어깨 → 작은 흰 V (턱에 닿지 않게) · 남색 깃 + 금색 테두리 · 넥타이 · 소매 끝 · 손 + 재킷 아랫단
+    '.kkBBYT',
+    'kBkBYwT',
     'kBkBBYT',
-    'kBkBBBY',
-    'kYkBBBB',
+    'kYkBBBY',
     'kskYYYY',
-    '..kPPPk',
-    '..kPPPk',
-    '...kPPk',
-    '...kZzk',
 ]
 BODY_BACK = [
-    '..kBBBB',
-    '.kBkBBB',
+    '.kkBBBB',
     'kBkBBBB',
     'kBkBBBB',
     'kYkBBBB',
     'kskYYYY',
-    '..kPPPk',
-    '..kPPPk',
-    '...kPPk',
-    '...kZZk',
 ]
+HAND_BACK = 'kkkYYYY'          # 걸을 때 팔이 뒤로 → 손이 안 보임
+LEG_STAND = ['..kPPPk', '..kZZzk', '...kkk.']
+LEG_PLANT = ['..kPPPk', '..kPPPk', '..kZZzk', '...kkk.']    # 디딘 다리 (몸이 1px 올라가서 1칸 길어짐)
+LEG_LIFT = ['..kPPPk', '..kZZzk', '...kkk.', '.......']     # 든 다리 (발이 1px 위)
 
-# 옆모습 (왼쪽을 봄), 14칸. 머리 9칸 · 몸 9칸 (앞가슴 · 팔 · 등)
+# 옆모습 (왼쪽을 봄), 14칸. 머리 9칸 · 몸 9칸 (앞가슴 · 팔 · 등) · 눈은 얼굴 앞쪽 1×2
 SIDE_HEAD = [
     '.....kkkk.....',
     '....kOOORk....',
     '...kwOORRrk...',
     '...kwwRRRrk...',
     '.kDDDDDrrrrk..',
-    '...khhhhhhhk..',
-    '...kssshhhhk..',
-    '...ksesShhhk..',
-    '...ksesShhhk..',
-    '....ksssShk...',
+    '..khhhhhhhhk..',
+    '..ksssshhhhk..',
+    '..ksessShhhk..',
+    '..ksessShhhk..',
+    '...kssssShk...',
 ]
 SIDE_HAT = [
     '..............',
@@ -820,64 +1049,50 @@ SIDE_HAT = [
     '....kAAAAak...',
     '....kGGGGGk...',
     '.kAAAAAAAAAak.',
-    '...khhhhhhhk..',
-    '...kssshhhhk..',
-    '...ksesShhhk..',
-    '...ksesShhhk..',
-    '....kmsSShk...',
+    '..khhhhhhhhk..',
+    '..ksssshhhhk..',
+    '..ksessShhhk..',
+    '..ksessShhhk..',
+    '...kmmssShk...',
 ]
 SIDE_BODY = [
     '...kwTYBBBbk..',
     '...kTYkBBkbk..',
     '...kBYkBBkbk..',
-    '...kBBkBBkbk..',
     '...kBBkYYkbk..',
     '...kYYksskYk..',
 ]
-SIDE_LEGS = [   # 서기 · 걸음1 (다리 벌림) · 걸음2 (반대 다리)
-    ['....kPPPpk....',
-     '....kPPPpk....',
-     '.....kPPpk....',
-     '....kZZzk.....'],
-    ['....kPPPpk....',
-     '...kPPkkPpk...',
-     '...kPk..kPk...',
-     '..kZzk.kZzk...'],
-    ['....kpPPPk....',
-     '...kppkkPPk...',
-     '...kpk..kPk...',
-     '..kZzk.kZzk...'],
+SIDE_HAND = [None, '...kYsskkbYk..', '...kYYkbsskk..']     # 서기 · 팔 앞으로 · 팔 뒤로
+SIDE_LEGS = [
+    ['....kPPPpk....', '....kZZzk.....', '.....kkk......'],
+    ['....kPPPpk....', '...kPpkkPpk...', '..kZzk.kZzk...', '...kk...kk....'],
+    ['....kpPPPk....', '...kppkkPPk...', '..kZzk.kZzk...', '...kk...kk....'],
 ]
-SIDE_FEET = [['.....kkk......'], ['...kk...kk....'], ['...kk...kk....']]
 
 
-def mirror(half):
-    out = []
-    for y, r in enumerate(half):
-        dark = DARK if y >= BODY_ROW else {k: v for k, v in DARK.items() if k in 'RODA'}
-        out.append(r + ''.join(dark.get(c, c) for c in reversed(r)))
-    return out
+def pair(left, right, dark):
+    """왼쪽 절반 + (오른쪽 절반을 거울로 뒤집고 그늘색)."""
+    return left + ''.join(dark.get(c, c) for c in reversed(right))
 
 
 def front_frames(head, body):
-    rows = mirror(head + body) + ['....kk..kk....']
-    stand = rows
-    def step(left):
-        rs = [list(r) for r in rows]
-        cols = range(0, 7) if left else range(7, 14)
-        n = len(rs)
-        for x in cols:          # 들린 다리: 신발·테두리를 한 칸 위로
-            for y in (n - 3, n - 2):
-                rs[y][x] = rs[y + 1][x]
-            rs[n - 1][x] = '.'
-        return [''.join(r) for r in rs]
-    return [stand, step(True), step(False)]
+    hd = [pair(r, r, HEAD_DARK) for r in head]
+    def frame(lb, rb, ll, rl):
+        return hd + [pair(a, b, DARK) for a, b in zip(lb, rb)] + [pair(a, b, DARK) for a, b in zip(ll, rl)]
+    stand = frame(body, body, LEG_STAND, LEG_STAND)
+    swung = body[:-1] + [HAND_BACK]
+    step_l = frame(body, swung, LEG_LIFT, LEG_PLANT)     # 왼발 들고 · 반대 (오른) 팔 뒤로
+    step_r = frame(swung, body, LEG_PLANT, LEG_LIFT)
+    return [stand, step_l, step_r]
 
 
 def side_frames(head):
     out = []
-    for legs, feet in zip(SIDE_LEGS, SIDE_FEET):
-        out.append(head + SIDE_BODY + legs + feet)
+    for i, legs in enumerate(SIDE_LEGS):
+        body = list(SIDE_BODY)
+        if SIDE_HAND[i]:
+            body[-1] = SIDE_HAND[i]
+        out.append(head + body + legs)
     return out
 
 
@@ -887,7 +1102,7 @@ def char_sheet(pal, head_f, head_b, head_s):
     im = Image.new('RGBA', (16 * 3, 24 * 4), CLEAR)
     for j, frames in enumerate(dirs):
         for i, rows in enumerate(frames):
-            oy = 24 - len(rows)        # 발이 칸 맨 아래
+            oy = 24 - len(rows)        # 발이 칸 맨 아래 (걸음 장면은 1줄 길어서 머리가 1px 위)
             for y, r in enumerate(rows):
                 for x, ch in enumerate(r):
                     if ch in pal:
@@ -927,6 +1142,8 @@ def build():
     tiles.append(('bridge', bridge()))
     tiles += cave_tiles()
     tiles += ultra_tiles()
+    tiles += shrine_tiles()
+    tiles += [('tallR0', grass_rustle(0)), ('tallR1', grass_rustle(1))]
     tree = Tile(16, 24); tree.art(TREE, TREE_PAL)
 
     cols = 16
@@ -942,6 +1159,8 @@ def build():
     for f in range(4):      # 울트라 워프홀 32×32 · 4장
         sheet.paste(wormhole(f).im, (16 + f * 32, rows * TS))
         idx[f'worm{f}'] = [16 + f * 32, rows * TS, 32, 32]
+    sheet.paste(spillar().im, (144, rows * TS))          # 돌기둥 16×32
+    idx['spillar'] = [144, rows * TS, 16, 32]
     return sheet, idx
 
 

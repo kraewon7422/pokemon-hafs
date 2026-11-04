@@ -1168,11 +1168,22 @@ export async function catchEncounter(enc) {
     const cfg = await catchConfig();
     const prev = new Set(collection().map((c) => c.line_id));
     let c = null;
+    // 사파리: 앞서 던진 볼 (앱을 닫았다 열었거나 새로 고침) · 보내지 못한 결과 (인터넷 끊김) 를 이어서 (safari-sync.js)
+    const ss = safari ? await import('./safari-sync.js') : null;
+    const prior = ss ? await ss.priorThrows(enc.id) : 0;
+    const lent = Number(enc.balls) || 1;
+    const queued = ss ? await ss.queuedResult() : null;
+    if (ss && (queued?.p_id === enc.id || prior >= lent)) {
+      // 결과를 이미 적어 둔 만남 / 볼을 다 던진 뒤 닫은 만남 → 다시 던지지 않고 결과만 보냄
+      c = queued?.p_id === enc.id ? { throws: queued.p_throws - prior, fled: !queued.p_caught, grade: queued.p_grade, curve: queued.p_curve, resend: true }
+        : { throws: 0, fled: true, grade: 'none', curve: false, resend: true, ran: true };
+    }
     try {
       const { catchScene } = await import('./catch.js');
+      if (c) { /* 이어서 보내기만 */ } else
       c = safari
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Number(enc.balls) || 1,
-          fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true })
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior),
+          fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true, onThrow: (n) => ss.noteThrows(enc.id, prior + n) })
         : wild
         ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
@@ -1181,10 +1192,15 @@ export async function catchEncounter(enc) {
     // 장면을 못 띄웠으면 (레이드엔 바로 잡기 버튼이 없으니 skipped = 실패) 결과를 보내지 않음 → 기회는 그대로 남음
     if (!c || c.skipped) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
     let r;
-    try {
-      r = safari
-        ? await rpc('safari_result', { p_id: enc.id, p_throws: c.throws || 0, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 })
-        : await rpc('encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
+    if (safari) {
+      // 먼저 기기에 적고 보냄: 끊기면 남겨 두었다가 다시 연결되면 보냄 · 같은 만남은 한 번만 (서버도 끝난 만남은 NOT_FOUND)
+      const f = await ss.sendResult({ p_id: enc.id, p_throws: prior + (c.throws || 0), p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve });
+      if (f?.queued) { toast('인터넷이 끊겨서 결과를 기기에 적어 두었어요. 연결되면 바로 보낼게요.', { kind: 'error' }); return { queued: true }; }
+      if (f?.kept) { toast(errorText(f.error.message), { kind: 'error' }); return; }
+      if (f?.gone) { toast(errorText(f.error.message)); (S.encDone ||= new Set()).add(enc.id); return; }
+      r = f?.r;
+    } else try {
+      r = await rpc('encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
     } catch (e) {
       if (e.offline) toast('결과를 보내지 못했어요. 인터넷이 연결되면 홈에서 다시 도전할 수 있어요.', { kind: 'error' });
       else { toast(errorText(e.message)); if (e.message !== 'BOX_FULL') (S.encDone ||= new Set()).add(enc.id); }

@@ -4,32 +4,36 @@
 //            M 산 바위 · C 동굴 입구 (밟으면 이동) · L 전설 포켓몬 자리
 // 동굴 글자: W 바위벽 · . 바닥 · r 작은 바위 · O 큰 바위 · ~ 물 · B 점자 벽 · U 올라가는 사다리 · V 내려가는 사다리
 //            o 구멍 (떨어짐) · E 나가는 곳 · L 전설 포켓몬 자리 · Q 울트라 워프홀 (밟으면 울트라 스페이스로)
+// 제단 글자 (kind 'shrine'): P 절벽 · B 점자 절벽 · . 돌바닥 · I 부서진 돌기둥 · = 돌계단 · A 흰 대리석 제단 · r 돌
+//            E 나가는 계단 · U 올라가는 사다리 · L 전설 포켓몬 자리 (만남 칸 없음)
 // 울트라 스페이스 글자 (kind 'ultra'): X 빈 우주 · . 떠 있는 발판 · = 밝은 빛의 길 · K 빛나는 수정 · Q 울트라 워프홀
 // zone (만남 구역): 'grass' 사파리존 풀숲 · 'cave' 동굴 바닥 · 'deep' 깊은 바깥 구역 풀숲 · 'ultra' 울트라 스페이스
 // warps: 'x,y' → [지도, x, y, 보는 쪽, 'warp'?]  (그 칸에 들어서면 화면이 어두워지며 옮겨 감. 'warp' = 워프홀 연출)
 // 참고: 3세대 여울의 동굴 (물웅덩이·바위) · 미혹의 동굴 (갈림길 미로·점자·구멍) 느낌으로 새로 그린 지도 (원본 지도를 베끼지 않음)
 
 // ─────────────────────── 전설 포켓몬 힌트 (사육사가 알려 줌) ───────────────────────
-// ⚠ 자리표시 (PLACEHOLDER): where/cond 글과 ok 값은 임시. 나중에 서버 기능 (전설 조건, 0038 예정) 이
+// ⚠ 자리표시 (PLACEHOLDER): where/cond/teaser 글과 ok 값은 임시. teaser = 아직 도감에서 못 본 전설일 때 메뉴에 ??? 와 함께 보이는 귀띔. 나중에 서버 기능 (전설 조건, 0038 예정) 이
 //    setLegendHints([{ dex, ok, cond? }]) 로 ok (= 조건을 채움) 와 조건 글을 채워 넣음. 지금은 모두 ok: false.
+import { CAVES, CAVE_PORTS } from './safari-caves.js';
+
 export const LEGEND_HINTS = [
   // 레지 셋 = 점자 동굴 → 셋을 모두 잡으면 레지기가스 (자리표시 조건)
-  { dex: 377, name: '레지락', where: '미혹의 동굴 1층, 왼쪽 위 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
-  { dex: 378, name: '레지아이스', where: '여울의 동굴 지하, 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
-  { dex: 379, name: '레지스틸', where: '미혹의 동굴 깊은 곳, 오른쪽 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
-  { dex: 486, name: '레지기가스', where: '미혹의 동굴 깊은 곳, 점자 벽 셋이 있는 가운데 방', cond: '레지락·레지아이스·레지스틸을 모두 잡아야 한대', ok: false },
-  { dex: 249, name: '루기아', where: '여울의 동굴 지하, 깊은 물가 끝', cond: '(임시) 아직 아무도 모른대', ok: false },
-  { dex: 382, name: '가이오가', where: '깊은 연못 (여울의 동굴 위쪽 출구)', cond: '(임시) 아직 아무도 모른대', ok: false },
-  { dex: 383, name: '그란돈', where: '깊은 동굴, 오른쪽 위 방', cond: '(임시) 아직 아무도 모른대', ok: false },
-  { dex: 250, name: '칠색조', where: '하늘 언덕 (깊은 동굴 위쪽 출구)', cond: '(임시) 아직 아무도 모른대', ok: false },
-  { dex: 384, name: '레쿠쟈', where: '하늘 언덕 꼭대기', cond: '가이오가와 그란돈을 모두 잡아야 한대', ok: false },
+  { dex: 377, teaser: '바위로 된 거인', name: '레지락', where: '미혹의 동굴 지하 2층, 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
+  { dex: 378, teaser: '얼음으로 된 거인', name: '레지아이스', where: '여울의 동굴 지하 2층, 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
+  { dex: 379, teaser: '강철로 된 거인', name: '레지스틸', where: '미혹의 동굴 지하 3층, 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
+  { dex: 486, teaser: '거인들의 왕', name: '레지기가스', where: '미혹의 동굴 지하 3층 사다리 아래 거인의 제단', cond: '레지락·레지아이스·레지스틸을 모두 잡아야 한대', ok: false },
+  { dex: 249, teaser: '깊은 바다의 수호신', name: '루기아', where: '여울의 동굴 지하 3층, 깊은 물가', cond: '(임시) 아직 아무도 모른대', ok: false },
+  { dex: 382, teaser: '바다를 넓힌 포켓몬', name: '가이오가', where: '깊은 연못 (여울의 동굴 지하 2층 출구 너머)', cond: '(임시) 아직 아무도 모른대', ok: false },
+  { dex: 383, teaser: '땅을 넓힌 포켓몬', name: '그란돈', where: '깊은 동굴 지하 2층', cond: '(임시) 아직 아무도 모른대', ok: false },
+  { dex: 250, teaser: '무지개 날개의 새', name: '칠색조', where: '하늘 언덕 (깊은 동굴 지하 2층 출구 너머)', cond: '(임시) 아직 아무도 모른대', ok: false },
+  { dex: 384, teaser: '하늘 높이 사는 용', name: '레쿠쟈', where: '하늘 언덕 꼭대기 동굴 너머 하늘의 제단', cond: '가이오가와 그란돈을 모두 잡아야 한대', ok: false },
 ];
 
 // 울트라비스트: 울트라 스페이스 (zone 'ultra') 에서만 나오게 할 포켓몬 (전국도감 번호). 서버 (0038 예정) 가 p_zone 으로 골라 줄 것.
 export const ULTRA_BEASTS = [793, 794, 795, 796, 797, 798, 799, 803, 804, 805, 806];
 // 구역 힌트 (사육사가 전설 힌트 다음에 알려 줌). ⚠ 자리표시 글.
 export const ZONE_HINTS = [
-  { zone: 'ultra', name: '울트라 워프홀', where: '깊은 동굴 왼쪽 아래 방', cond: '그 너머 울트라 스페이스에서만 울트라비스트가 나온대', more: '텅비드·매시붕·페로코체·전수목·철화구야·종이신도·악식킹·베베놈·아고용·차곡차곡·두파팡… 모두 다른 세계에서 온 포켓몬이란다.' },
+  { zone: 'ultra', name: '울트라 워프홀', where: '깊은 동굴 지하 2층 어딘가', cond: '그 너머 울트라 스페이스에서만 울트라비스트가 나온대', more: '텅비드·매시붕·페로코체·전수목·철화구야·종이신도·악식킹·베베놈·아고용·차곡차곡·두파팡… 모두 다른 세계에서 온 포켓몬이란다.' },
 ];
 
 const BRAILLE = '벽에 점자가 새겨져 있다… "깊은 곳에 잠든 거인을 깨우려면 세 개의 돌을 모아라."';
@@ -91,7 +95,7 @@ export const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT##TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT##TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     ],
-    warps: { '8,2': ['shoal1', 12, 16, 'up'], '54,2': ['maze1', 13, 18, 'up'], '32,17': ['deep1', 11, 16, 'up'] },
+    warps: { '8,2': 'shoal.in', '54,2': 'maze.in', '32,17': 'deep.in' },
     signs: {
       '34,45': '사파리존에 어서 와요! 키 큰 풀숲을 걸으면 야생 포켓몬이 나와요. 궁금한 건 옆의 사육사에게 물어보세요.',
       '29,24': '↖ 연못 구역 · 여울의 동굴   ↗ 바위 구역 · 미혹의 동굴   ↑ 깊은 동굴   ↓ 입구',
@@ -104,56 +108,6 @@ export const MAPS = {
     legends: [],
   },
 
-  // 여울의 동굴: 물웅덩이와 바위 사이 길. 아래 = 사파리존, 위 = 깊은 연못, 왼쪽 위 사다리 = 지하
-  shoal1: {
-    name: '여울의 동굴', kind: 'cave', zone: 'cave',
-    rows: [
-      'WWWWWWWWWWWWWWWWWWWWEWWW',
-      'WWWWWWWWWWWWWWWWWWW...WW',
-      'WW....WWWWWW~~~~WW.....W',
-      'WWV...r.WWW~~~~~~W..r..W',
-      'WW.....~~~.~~~~~~W.....W',
-      'WWWW..~~~~...~~~...WWW.W',
-      'WWWW..~~~~.r....O..WWW.W',
-      'W.....~~~......WWW.....W',
-      'W.WWWW.....WW..WWW..r..W',
-      'W.WWWW..r..WW........WWW',
-      'W....W.....WWWW~~~...WWW',
-      'WW...WWW..r.WWW~~~~...WW',
-      'WW.......~~~....~~~....W',
-      'WWWWW...~~~~~.r...WW...W',
-      'WWWWW.......~~...WWW..WW',
-      'WWWWWWWW....O....WWWWWWW',
-      'WWWWWWWWWWW...WWWWWWWWWW',
-      'WWWWWWWWWWWWEWWWWWWWWWWW',
-    ],
-    warps: { '12,17': ['safari', 8, 3, 'down'], '20,0': ['deepPond', 4, 3, 'down'], '2,3': ['shoal2', 2, 6, 'right'] },
-    signs: {}, npcs: [], legends: [],
-  },
-  shoal2: {
-    name: '여울의 동굴 지하', kind: 'cave', zone: 'cave',
-    rows: [
-      'WWWWWWWWWWWWWWWWWWWWWW',
-      'WWWWWBWWWWWWWWWWWWWWWW',
-      'WWWWW.....WWW~~~~~~~WW',
-      'WWWWW...L.WW~~~~~~~~~W',
-      'WWWWW.....WW~~~~~~~~~W',
-      'WWWWWWW.WWWW~~~...~~~W',
-      'WU...W...WWW~~~.L.~~~W',
-      'W....W.r.WWW~~~...~~~W',
-      'W..r.....WWW~~~...~~~W',
-      'W....WW............WWW',
-      'WWW..WWW..~~~.....~WWW',
-      'WWW.......~~~~...~~WWW',
-      'WWWWW..r..~~~~~.~~~WWW',
-      'WWWWWW....~~~~~~~~WWWW',
-      'WWWWWWWW.....WWWWWWWWW',
-      'WWWWWWWWWWWWWWWWWWWWWW',
-    ],
-    warps: { '1,6': ['shoal1', 3, 3, 'right'] },
-    signs: { '5,1': BRAILLE }, npcs: [],
-    legends: [{ dex: 378, x: 8, y: 3 }, { dex: 249, x: 16, y: 6 }],
-  },
   deepPond: {
     name: '깊은 연못', kind: 'out', zone: 'deep',
     rows: [
@@ -174,103 +128,22 @@ export const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTT',
       'TTTTTTTTTTTTTTTTTTTTTT',
     ],
-    warps: { '4,2': ['shoal1', 20, 1, 'down'] },
+    warps: { '4,2': 'shoal3.out' },
     signs: {}, npcs: [], legends: [{ dex: 382, x: 12, y: 10 }],
   },
 
-  // 미혹의 동굴: 갈림길이 많은 미로. 구멍 둘 → 깊은 곳 (사다리로 돌아옴)
-  maze1: {
-    name: '미혹의 동굴', kind: 'cave', zone: 'cave',
-    rows: [
-      'WWWWWWWWWWWWWWWWWWWWWWWWWW',
-      'WWWWBWWWWWWWWWWWWWWWWWWWWW',
-      'WW.....WWW......WWW.....WW',
-      'WW.....WWW.WWWW.WWW.WWW.WW',
-      'WW..L..WWW.W..W.....W.o.WW',
-      'WWW...WWWW.W..WWWWWWW...WW',
-      'WWWW.WWWWW.W..........WWWW',
-      'WW...........WWWWWW.W..WWW',
-      'WW.WWWWWWWWW.W....W.WW.WWW',
-      'WW.W.......W.W.WW.W.WW..WW',
-      'WW.W.WWWWW.W...W..W..WW.WW',
-      'WW...W...W.WWWWW.WWW..W.WW',
-      'WWWW.W.o.W.....W...WW...WW',
-      'WW...W...WWWWW.WWW..W.WWWW',
-      'WW.WWWW.WWW....r..W.W....W',
-      'WW.......W..WWWWW.W.WWWW.W',
-      'WWWWWW.W.W..W...W...W....W',
-      'WWWWWW.W....W.W.WWWWW.WWWW',
-      'WWWWWW.WWWWWW.W.......WWWW',
-      'WWWWWWWWWWWWWEWWWWWWWWWWWW',
-    ],
-    warps: { '13,19': ['safari', 54, 3, 'down'], '22,4': ['maze2', 19, 6, 'down'], '7,12': ['maze2', 4, 3, 'down'] },
-    signs: { '4,1': BRAILLE }, npcs: [], legends: [{ dex: 377, x: 4, y: 4 }],
-  },
-  maze2: {
-    name: '미혹의 동굴 깊은 곳', kind: 'cave', zone: 'cave',
-    rows: [
-      'WWWWWWWWWWWWWWWWWWWWWWWW',
-      'WWWWWWWWWBWWWBWWWWWBWWWW',
-      'WW.....WW.....WWWW...WWW',
-      'WW.....WW.....WWWW...WWW',
-      'WW.....WW..L..WWWW.L.WWW',
-      'WW..r..WW.....WWWW...WWW',
-      'WW.....WWWW.WWWWWWW.WWWW',
-      'WWW.WWWWWWW.WWWWWWW.WWWW',
-      'WWW..................WWW',
-      'WWWWWW.WWWWWWWWW.WWW.WWW',
-      'WW.....W....O...W..r..WW',
-      'WW.WWW.W.WWWWWW.W.WWW.WW',
-      'WW.W...W.W....W...W...WW',
-      'WWUW.WWW...WW...W...W.WW',
-      'WWWWWWWWWWWWWWWWWWWWWWWW',
-      'WWWWWWWWWWWWWWWWWWWWWWWW',
-    ],
-    warps: { '2,13': ['maze1', 13, 18, 'up'] },
-    signs: {
-      '9,1': '점자가 새겨져 있다… "바위의 거인."', '13,1': '점자가 새겨져 있다… "얼음의 거인. 강철의 거인."',
-      '19,1': BRAILLE,
-    },
-    npcs: [], legends: [{ dex: 486, x: 11, y: 4 }, { dex: 379, x: 19, y: 4 }],
-  },
 
-  // 깊은 동굴: 가운데 숲 속 바위 → 오른쪽 위 방 (그란돈) · 위 = 하늘 언덕
-  deep1: {
-    name: '깊은 동굴', kind: 'cave', zone: 'cave',
-    rows: [
-      'WWWWWWWWWWWEWWWWWWWWWW',
-      'WWWWWWWWWW...WWWWWWWWW',
-      'WWWWWWWWWW...WWW.....W',
-      'WW....WWWWW.WWWW.....W',
-      'WW.r...WWWW.WWWW..L..W',
-      'WW.....WWWW......r...W',
-      'WWW..WWWWWW.WWWWWWWWWW',
-      'WWW..........WWWWWWWWW',
-      'WWWWWWW.WWWW.WWW~~~WWW',
-      'WW.....O...W....~~~.WW',
-      'WW.WWWWWWW.WW......WWW',
-      'WW.Q..r....WW.WW....WW',
-      'WWWWWWWWW.WW..WW.r..WW',
-      'WWWWWWWWW......W....WW',
-      'WWWWWWWWWWWW.WWWWW.WWW',
-      'WWWWWWWWWW.......WWWWW',
-      'WWWWWWWWWWW...WWWWWWWW',
-      'WWWWWWWWWWWEWWWWWWWWWW',
-    ],
-    warps: { '11,17': ['safari', 32, 18, 'down'], '11,0': ['skyHill', 11, 13, 'down'], '3,11': ['ultra', 11, 12, 'up', 'warp'] },
-    signs: {}, npcs: [], legends: [{ dex: 383, x: 18, y: 4 }],
-  },
   skyHill: {
     name: '하늘 언덕', kind: 'out', zone: 'deep',
     rows: [
       'TTTTTTTTTTTTTTTTTTTTTT',
-      'TTTTTTTT......TTTTTTTT',
-      'TTTTTTT........TTTTTTT',
+      'TTTTTTTTMMMMMTTTTTTTTT',
+      'TTTTTTT.MMCMM..TTTTTTT',
       'TTTTTT..........TTTTTT',
-      'TTTT....,,L,,.....TTTT',
+      'TTTT....,,,,,.....TTTT',
       'TTT..,,,,,,,,,,.....TT',
-      'TT..,,,,ff,,,,,,..L.TT',
-      'TT...,,,,,,,,,,.....TT',
+      'TT..,,,,ff,,,,,,....TT',
+      'TT...,,,,,,,,,,.L...TT',
       'TT.....,,,,,,.......TT',
       'TT....f.....f.....,,TT',
       'TT..,,,..MMMMM...,,,TT',
@@ -280,8 +153,61 @@ export const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTT',
       'TTTTTTTTTTTTTTTTTTTTTT',
     ],
-    warps: { '11,12': ['deep1', 11, 1, 'down'] },
-    signs: {}, npcs: [], legends: [{ dex: 384, x: 10, y: 4 }, { dex: 250, x: 18, y: 6 }],
+    warps: { '11,12': 'deep3.out', '10,2': ['skyShrine', 9, 19, 'up'] },
+    signs: {}, npcs: [], legends: [{ dex: 250, x: 16, y: 7 }],
+  },
+
+  // 전설의 제단 (참고: 3세대 유적 방 — 돌기둥 줄 · 가운데 긴 돌계단 · 위쪽 흰 대리석 제단). 하늘 = 레쿠쟈, 거인 = 레지기가스 (점자 벽)
+  skyShrine: {
+    name: '하늘의 제단', kind: 'shrine', zone: 'deep',
+    rows: [
+      'PPPPPPPPPPPPPPPPPPPP',
+      'PPPPPPPPPPPPPPPPPPPP',
+      'PP.I............I.PP',
+      'PP....I......I....PP',
+      'PPI..............IPP',
+      'PP.....AAAAAA.....PP',
+      'PP..I..AAAAAA..I..PP',
+      'PP.....AAALAA.....PP',
+      'PP..I..AAAAAA..I..PP',
+      'PP.......==.......PP',
+      'PP.I..I..==..I..I.PP',
+      'PP.......==.......PP',
+      'PPI...I..==..I...IPP',
+      'PP...r...==...r...PP',
+      'PP.I..I..==..I..I.PP',
+      'PP.......==.......PP',
+      'PPI...I..==..I...IPP',
+      'PP.......==.......PP',
+      'PPPPPPPP.==.PPPPPPPP',
+      'PPPPPPPP.==.PPPPPPPP',
+      'PPPPPPPPPEEPPPPPPPPP',
+    ],
+    warps: { '9,20': ['skyHill', 10, 3, 'down'], '10,20': ['skyHill', 10, 3, 'down'] },
+    signs: {}, npcs: [], legends: [{ dex: 384, x: 10, y: 7 }],
+  },
+  regiShrine: {
+    name: '거인의 제단', kind: 'shrine', zone: 'deep',
+    rows: [
+      'PPPPPPPPPPPPPPPPPP',
+      'PPPBPPPPPPPPPPBPPP',
+      'PP..............PP',
+      'PP....I....I....PP',
+      'PP..I..AAAA..I..PP',
+      'PP.....AAAA.....PP',
+      'PP.....ALAA.....PP',
+      'PP..I..AAAA..I..PP',
+      'PP......==......PP',
+      'PP..I..r==...I..PP',
+      'PP......==......PP',
+      'PP..I...==...I..PP',
+      'PP......==......PP',
+      'PPPPPPP.==.PPPPPPP',
+      'PPPPPPPPUPPPPPPPPP',
+    ],
+    warps: { '8,14': 'maze4.down' },
+    signs: { '3,1': '점자가 새겨져 있다… "바위 · 얼음 · 강철의 거인이 모이면 왕이 깨어난다."', '14,1': BRAILLE },
+    npcs: [], legends: [{ dex: 486, x: 8, y: 6 }],
   },
 
   // 울트라 스페이스: 깊은 동굴의 울트라 워프홀 너머. 발판·빛의 길 모두 만남 칸 (울트라비스트 전용 구역)
@@ -305,12 +231,23 @@ export const MAPS = {
       'XXXXXXXXXX....XXXXXXXXXX',
       'XXXXXXXXXXXXXXXXXXXXXXXX',
     ],
-    warps: { '11,13': ['deep1', 4, 11, 'right', 'warp'] },
+    warps: { '11,13': ['deep3.worm', 'warp'] },
     signs: {}, npcs: [], legends: [],
   },
 };
 
+// 바깥 지도로 들어오는 칸 (동굴 쪽 warps 의 [지도, 'in'] 이 여기로)
+const OUT_PORTS = { 'deepPond.in': [4, 3, 'down'], 'skyHill.in': [11, 13, 'down'], 'regiShrine.in': [8, 13, 'up'], 'ultra.in': [11, 12, 'up'] };
+Object.assign(MAPS, CAVES);
+for (const m of Object.values(MAPS)) {
+  for (const [k, w] of Object.entries(m.warps)) {
+    if (typeof w === 'string') m.warps[k] = [...CAVE_PORTS[w]];                                   // 'shoal.in' → [지도, x, y, 쪽]
+    else if (typeof w[0] === 'string' && CAVE_PORTS[w[0]]) m.warps[k] = [...CAVE_PORTS[w[0]], ...w.slice(1)];
+    else if (typeof w[1] === 'string' && w[1] !== 'warp') m.warps[k] = [w[0], ...OUT_PORTS[`${w[0]}.${w[1]}`], ...w.slice(2)];
+  }
+}
+
 // 이 글자가 막힌 칸인지 (사람·전설 포켓몬 자리는 safari.js 가 따로 막음)
-export const SOLID = { out: new Set(['T', '~', 'F', 'R', 'S', 'G', 'M', 'L']), cave: new Set(['W', '~', 'r', 'O', 'B', 'L']), ultra: new Set(['X', 'K']) };
+export const SOLID = { out: new Set(['T', '~', 'F', 'R', 'S', 'G', 'M', 'L']), cave: new Set(['W', '~', 'r', 'O', 'B', 'L', 'S']), ultra: new Set(['X', 'K']), shrine: new Set(['P', 'B', 'I', 'r', 'L']) };
 // 야생 포켓몬이 나오는 칸
-export const ENC = { out: new Set([',']), cave: new Set(['.']), ultra: new Set(['.', '=']) };
+export const ENC = { out: new Set([',']), cave: new Set(['.']), ultra: new Set(['.', '=']), shrine: new Set() };

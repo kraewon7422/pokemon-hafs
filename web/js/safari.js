@@ -14,15 +14,17 @@ import { sfx, bgmPush, bgmReady, bgmBeat, bgmPreload } from './sfx.js';
 import { h, josa } from './ui.js';
 import { S } from './state.js';
 import { catchEncounter } from './app.js';
-import { monCell } from './sprites.js';
+import { monCell, spriteCanvas } from './sprites.js';
 import TI from '../img/safari-tiles.js';
 import { MAPS, SOLID, ENC, LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS } from './safari-maps.js';
+import { flushResult, queuedResult, savePos, loadPos } from './safari-sync.js';
 
 export { LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS };
 
 const TS = 16;
 const START = { map: 'safari', x: MAPS.safari.start[0], y: MAPS.safari.start[1], dir: MAPS.safari.start[2] };
-const STEP_MS = 200;               // 한 칸 걷는 시간 (서버 걸음 속도 제한 6걸음/초 안쪽)
+const STEP_MS = 267;               // 한 칸 걷는 시간 = 3세대처럼 16프레임 (60fps) ≈ 267ms (서버 걸음 속도 제한 6걸음/초 안쪽)
+const TURN_MS = 120;               // 새 방향을 짧게 누르면 제자리에서 돌기만 · 이보다 오래 누르면 걷기 시작
 const SEND_EVERY = 3;              // 만남 칸 걸음을 몇 걸음마다 서버로 보낼지
 
 // ─────────────────────── 전설 포켓몬 (서버와 이을 곳) ───────────────────────
@@ -32,6 +34,43 @@ const hintOf = (dex) => LEGEND_HINTS.find((l) => l.dex === Number(dex));
 // 전국도감 번호 → 앱 species.id (그림판 칸 번호는 species.id). 도감 목록 (S.catalog) 이 있으면 그것,
 // 없으면 (불러오기 전·미리보기) 아래 표 — tools/pokemon_sprites.json 에서 잰 값
 const SPECIES_FALLBACK = { 377: 667, 378: 670, 379: 673, 486: 826, 249: 493, 382: 682, 383: 685, 250: 496, 384: 688 };
+// 전설 포켓몬 지도 그림: 도감 그림 (64칸) 을 지도 도트 크기 (32px, 큰 전설 48px) 로 줄이고 1px 진한 테두리.
+// 줄일 때는 칸마다 가장 많은 색 (번지지 않게), 칸의 반 이상이 비면 투명. 한 번 만들면 다시 씀.
+const LEG_SIZE = { 249: 48, 382: 48, 383: 48, 384: 48, 486: 40, 250: 40 };
+const LEG_ART = new Map();
+function legendArt(dex) {
+  if (LEG_ART.has(dex)) return LEG_ART.get(dex);
+  const cell = monCell(speciesIdOf(dex)); if (!cell) return null;          // 그림판을 받는 중 → 다음 프레임에
+  const d = cell.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, cell.width, cell.height).data, CW = cell.width;
+  let x0 = CW, y0 = CW, x1 = -1, y1 = -1;
+  for (let y = 0; y < cell.height; y++) for (let x = 0; x < CW; x++) if (d[(y * CW + x) * 4 + 3] > 64) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+  const T = LEG_SIZE[dex] || 32;
+  const out = document.createElement('canvas'); out.width = out.height = T;
+  if (x1 < 0) { LEG_ART.set(dex, out); return out; }
+  const w = x1 - x0 + 1, hh = y1 - y0 + 1, k = Math.min(1, (T - 2) / Math.max(w, hh));
+  const tw = Math.max(1, Math.round(w * k)), th = Math.max(1, Math.round(hh * k));
+  const og = out.getContext('2d'); const img = og.createImageData(T, T); const o = img.data;
+  const ox = Math.floor((T - tw) / 2), oy = T - 1 - th;
+  for (let ty = 0; ty < th; ty++) for (let tx = 0; tx < tw; tx++) {
+    const bx0 = x0 + Math.floor((tx * w) / tw), bx1 = Math.max(bx0 + 1, x0 + Math.floor(((tx + 1) * w) / tw));
+    const by0 = y0 + Math.floor((ty * hh) / th), by1 = Math.max(by0 + 1, y0 + Math.floor(((ty + 1) * hh) / th));
+    const cnt = new Map(); let n = 0, best = -1, bc = 0;
+    for (let y = by0; y < by1; y++) for (let x = bx0; x < bx1; x++) {
+      const i = (y * CW + x) * 4; if (d[i + 3] <= 64) continue; n++;
+      const key = ((d[i] >> 3) << 10) | ((d[i + 1] >> 3) << 5) | (d[i + 2] >> 3);
+      const c = (cnt.get(key) || 0) + 1; cnt.set(key, c); if (c > best) { best = c; bc = i; }
+    }
+    if (n * 2 < (bx1 - bx0) * (by1 - by0)) continue;
+    const j = ((oy + ty) * T + ox + tx) * 4; o[j] = d[bc]; o[j + 1] = d[bc + 1]; o[j + 2] = d[bc + 2]; o[j + 3] = 255;
+  }
+  const solid = (x, y) => x >= 0 && y >= 0 && x < T && y < T && o[(y * T + x) * 4 + 3] === 255;
+  const edge = [];
+  for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) if (!solid(x, y) && (solid(x + 1, y) || solid(x - 1, y) || solid(x, y + 1) || solid(x, y - 1))) edge.push((y * T + x) * 4);
+  for (const j of edge) { o[j] = 0x18; o[j + 1] = 0x18; o[j + 2] = 0x20; o[j + 3] = 255; }
+  og.putImageData(img, 0, 0);
+  LEG_ART.set(dex, out);
+  return out;
+}
 const speciesIdOf = (dex) => S.catalog?.species?.find((sp) => sp.dex === dex)?.id || SPECIES_FALLBACK[dex];
 // 서버가 조건을 알려 주면 부름: setLegendHints([{ dex, ok, cond?, where?, caught? }])
 export function setLegendHints(list) {
@@ -60,6 +99,8 @@ const isWater = (c) => c === '~' || c === 'b';
 const isFence = (c) => c === 'F';
 const isRock = (c) => c === 'M' || c === 'C';
 const isCWall = (c) => c === 'W' || c === 'B';
+const isPWall = (c) => c === 'P' || c === 'B';
+const isStair = (c) => c === '=' || c === 'E';
 function prerender(sheet, f, m) {
   const R = m.rows, W = R[0].length, H = R.length, cave = m.kind === 'cave';
   // 이웃 비트 N1 E2 S4 W8 (이웃도 같은 땅이면 1). 맵 밖 = out
@@ -91,11 +132,33 @@ function prerender(sheet, f, m) {
         else if (c === 'K') put(`ucrystal${(x + y) & 1 ? 'B' : 'A'}`, X, Y);
         continue;
       }
+      if (m.kind === 'shrine') {     // 전설의 제단: 돌바닥 · 절벽 · 돌계단 · 대리석 제단 (돌기둥은 아래에서 따로)
+        const v = (x * 7 + y * 13) % 3;
+        if (c === 'P' || c === 'B') {
+          const mk = maskOf(x, y, isPWall, true);
+          put('sfloor0', X, Y); put(`pwall${mk}_${v}`, X, Y);
+          if (mk & 4) for (const k of corners(x, y, mk, isPWall, true)) put(`pwallc${k}`, X, Y);
+          if (c === 'B') put('cbraille', X, Y);
+          continue;
+        }
+        if (c === '=' || c === 'E') { const l = same(x - 1, y, isStair, false), r = same(x + 1, y, isStair, false); put(`sstairs${l && r ? 'C' : r ? 'L' : l ? 'R' : 'C'}`, X, Y); continue; }
+        if (c === 'A' || c === 'L') { put('saltar', X, Y); continue; }
+        if (c === 'U') { put('cladderU', X, Y); continue; }
+        put(`sfloor${(x * 5 + y * 3) % 7 === 0 ? 1 : 0}`, X, Y);
+        if (c === 'r') put('crock', X, Y);
+        continue;
+      }
       if (cave) {
-        if (isCWall(c)) { put(`cwall${maskOf(x, y, isCWall, true)}`, X, Y); if (c === 'B') put('cbraille', X, Y); continue; }
+        if (isCWall(c)) {          // 벽 밑에 바닥을 먼저 (울퉁불퉁한 위 턱 사이로 보임) · 무늬 변형 3가지를 섞어 줄무늬처럼 안 보이게
+          const mk = maskOf(x, y, isCWall, true);
+          put('cfloor0', X, Y); put(`cwall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
+          if (mk & 4) for (const k of corners(x, y, mk, isCWall, true)) put(`cwallc${k}`, X, Y);   // 윗면 안쪽 모서리
+          if (c === 'B') put('cbraille', X, Y);
+          continue;
+        }
         if (c === '~') { water(x, y, X, Y); continue; }
         put(`cfloor${(x * 7 + y * 3) % 3 === 0 ? 1 : 0}`, X, Y);
-        const o = { r: 'crock', O: 'cboulder', o: 'chole', U: 'cladderU', V: 'cladderD', E: 'cexit' }[c];
+        const o = { r: 'crock', O: 'cboulder', o: 'chole', U: 'cladderU', V: 'cladderD', E: 'cexit', S: 'sign' }[c];
         if (o) put(o, X, Y);
         continue;
       }
@@ -105,7 +168,13 @@ function prerender(sheet, f, m) {
         continue;
       }
       if (isWater(c)) { water(x, y, X, Y); if (c === 'b') put('bridge', X, Y); continue; }
-      if (isRock(c)) { put(`mwall${maskOf(x, y, isRock)}`, X, Y); if (c === 'C') put('mouth', X, Y); continue; }
+      if (isRock(c)) {
+        const mk = maskOf(x, y, isRock);
+        put('ground', X, Y); put(`mwall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
+        if (mk & 4) for (const k of corners(x, y, mk, isRock)) put(`mwallc${k}`, X, Y);
+        if (c === 'C') put('mouth', X, Y);
+        continue;
+      }
       put('ground', X, Y);
       if (c === ',') put('tall', X, Y);
       else if (c === 'f') put(`flower${(x + y) & 1 ? 'B' : 'A'}${(f + x) & 1}`, X, Y);
@@ -116,7 +185,8 @@ function prerender(sheet, f, m) {
     }
   }
   // 나무는 위 줄부터: 뾰족한 머리가 윗칸으로 8px 솟아 윗나무 밑동을 덮음 (숲이 빽빽해 보임)
-  if (!cave) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('tree', x * TS, y * TS);
+  if (m.kind === 'out') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('tree', x * TS, y * TS);
+  if (m.kind === 'shrine') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'I') put('spillar', x * TS, y * TS);   // 16×32, 윗칸으로 솟음
   return cv;
 }
 const HW = 16, HH = 24;              // 사람 한 칸 (발 = 칸 아래쪽, 머리는 윗칸으로 8px)
@@ -129,7 +199,7 @@ let V = null;            // 화면 · 상태
 const P = { x: START.x, y: START.y, dir: START.dir, fx: START.x, fy: START.y, moving: false, t0: 0, from: null, stepN: 0 };
 let mapId = START.map, M = MAPS[mapId];
 const MW = () => M.rows[0].length, MH = () => M.rows.length;
-const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW() || y >= MH() ? ({ cave: 'W', ultra: 'X' }[M.kind] || 'T') : M.rows[y][x]);
+const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW() || y >= MH() ? ({ cave: 'W', ultra: 'X', shrine: 'P' }[M.kind] || 'T') : M.rows[y][x]);
 // 이 칸의 만남 구역: 'grass' | 'cave' | 'deep' | 'ultra' (만남 칸이 아니면 null)
 export function zoneAt(x, y) { return ENC[M.kind].has(tileAt(x, y)) ? M.zone : null; }
 export const currentZone = () => M.zone;
@@ -172,7 +242,8 @@ function build() {
   const talkTx = h('span.sf-tt');
   const talkMore = h('span.sf-more', '▼');
   const talkEl = h('div.box.sf-talk', { hidden: true, 'aria-live': 'polite' }, talkTx, talkMore);   // 3세대 글 상자
-  const stage = h('div.sf-stage', cv, place, msg, talkEl, cover);
+  const menuEl = h('div.box.sf-menu', { hidden: true });           // 사육사 고르기 메뉴
+  const stage = h('div.sf-stage', cv, place, msg, talkEl, menuEl, cover);
   const ballsEl = h('b.sf-num', '-');
   const encEl = h('span.sf-sub', '');
   const pendBtn = h('button.btn.small.primary.sf-pend', { hidden: true, onclick: () => { if (busy) return; sfx.select(); const e = st?.pending; if (e) startCatch(e); } }, '기다리는 포켓몬 잡기');   // 만남 연출 중에 눌러도 두 번 열리지 않게
@@ -189,24 +260,33 @@ function build() {
     b.addEventListener('contextmenu', (e) => e.preventDefault());
     return b;
   }));
-  const aBtn = h('button.sf-a', { type: 'button', 'aria-label': 'A 버튼: 말 걸기 · 글 넘기기' }, 'A');
-  aBtn.addEventListener('pointerdown', (e) => { e.preventDefault(); pressA(); });
-  aBtn.addEventListener('contextmenu', (e) => e.preventDefault());
-  pad.append(aBtn);
+  const faceBtn = (cls, label, aria, fn) => {
+    const b = h(`button.${cls}`, { type: 'button', 'aria-label': aria }, label);
+    b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
+    b.addEventListener('contextmenu', (e) => e.preventDefault());
+    return b;
+  };
+  const aBtn = faceBtn('sf-a', 'A', 'A 버튼: 말 걸기 · 고르기 · 글 넘기기', () => pressA());
+  const bBtn = faceBtn('sf-b', 'B', 'B 버튼: 그만두기 · 글 넘기기', () => pressB());
+  const abWrap = h('div.sf-ab', { role: 'group', 'aria-label': 'A B 버튼' }, bBtn, aBtn);
   const up = (e) => { if (held.delete(e.pointerId)) pad.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); };
   window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
   const info = h('div.sf-info', h('div.sf-balls', ballIco, h('span.sf-bl', h('small', '사파리볼'), ballsEl)), encEl, pendBtn);
-  const ctl = h('div.sf-ctl', pad, info);
+  const ctl = h('div.sf-ctl', info, h('div.sf-btns', pad, abWrap));
   const root = h('div.sf', stage, ctl);
 
   const KEY = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
-  const A_KEYS = new Set(['Enter', ' ', 'z', 'Z', 'x', 'X']);
+  const A_KEYS = new Set(['Enter', ' ', 'z', 'Z']);
+  const B_KEYS = new Set(['x', 'X', 'Escape', 'Backspace']);
   const active = () => root.isConnected && S.tab === 'map' && !S.overlay && !document.querySelector('.cz-layer');
   window.addEventListener('keydown', (e) => {
     if (!active() || e.target?.closest?.('input,textarea,select')) return;
     if (A_KEYS.has(e.key)) { e.preventDefault(); if (!e.repeat) pressA(); return; }
+    if (B_KEYS.has(e.key)) { e.preventDefault(); if (!e.repeat) pressB(); return; }
     const d = KEY[e.key]; if (!d) return;
-    e.preventDefault(); if (talkQ) return;
+    e.preventDefault();
+    if (menuQ) { menuMove(d); return; }
+    if (talkQ) return;
     if (!keys.includes(d)) keys.push(d); kick(d);
   });
   window.addEventListener('keyup', (e) => { const d = KEY[e.key]; if (d) { const i = keys.indexOf(d); if (i >= 0) keys.splice(i, 1); } });
@@ -216,6 +296,7 @@ function build() {
   // ── 서버 상태 ──
   let st = null, loading = false, inflight = false, pend = { n: 0, zone: null }, busy = false, seq = false, flashT = -1, bubbleT = -1, lastSign = '';
   let bang = null;              // 전설 포켓몬 머리 위 '!' { x, y }
+  let rustle = null;            // 흔들리는 풀숲 { x, y, t0 } (2장 · 0.27초)
   let sayTimer = 0;
   const say = (t, ms = 4500) => {
     msg.textContent = t || ''; msg.classList.toggle('on', !!t);
@@ -223,19 +304,32 @@ function build() {
   };
   let placeTimer = 0;
   const showPlace = (name) => { place.textContent = name; place.classList.add('on'); clearTimeout(placeTimer); placeTimer = setTimeout(() => place.classList.remove('on'), 1800); };
-  setTimeout(() => { if (!closed() && !talkQ && M.kind === 'out') say('키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!'); }, 900);
+  const HINT = { out: '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!', cave: '동굴 바닥을 걸으면 야생 포켓몬이 나와요!', ultra: '울트라 스페이스를 걸으면 울트라비스트가 나와요!', shrine: '전설의 포켓몬이 잠든 제단이다…' };
+  let hintKind = '';
+  const sayHint = () => { if (!closed() && !talkQ && hintKind !== M.kind) { hintKind = M.kind; say(HINT[M.kind]); } };
+  setTimeout(sayHint, 900);
+  let queued = null;            // 보내지 못한 잡기 결과 (safari-sync) — 있으면 '결과 보내기'
   const refresh = async () => {
-    if (loading || !S.online) { paintInfo(); return; }
+    if (loading || !S.online) { queued = await queuedResult(); paintInfo(); return; }
     loading = true;
-    try { st = await rpc('safari_state', {}); } catch (e) { if (!e.offline) say(errorText(e.message)); }
+    try {
+      if (await queuedResult()) {           // 인터넷이 끊겨 남겨 둔 결과부터 보냄 (만남 id 로 한 번만)
+        const f = await flushResult();
+        if (f?.ok) say(f.r?.caught ? '남겨 둔 잡기 결과를 보냈어요!' : '남겨 둔 결과를 보냈어요.', 3000);
+      }
+      queued = await queuedResult();
+      st = await rpc('safari_state', {});
+    } catch (e) { if (!e.offline) say(errorText(e.message)); }
     loading = false; paintInfo();
   };
+  window.addEventListener('online', () => { if (root.isConnected) refresh(); });
   const closed = () => !st ? null : st.pending ? null : st.balls_left <= 0 ? 'balls' : st.encounters_today >= st.max_encounters ? 'max' : null;
   function paintInfo() {
     ballsEl.textContent = st ? `${st.balls_left}/${st.balls_daily}` : '-';
     encEl.textContent = !S.online ? '인터넷이 연결되면 포켓몬이 나와요' : st ? `오늘 만난 포켓몬 ${st.encounters_today}/${st.max_encounters}` : '불러오는 중…';
     encEl.title = '키 큰 풀숲과 동굴 바닥을 걸으면 야생 포켓몬이 나와요';
     pendBtn.hidden = !st?.pending;
+    pendBtn.textContent = queued && queued.p_id === st?.pending?.id ? '잡기 결과 보내기' : '기다리는 포켓몬 잡기';
     const why = closed();
     cover.hidden = !why || seq;          // 볼을 다 쓴 장면 (seq) 중에는 글 상자가 보이게 가리지 않음
     if (why) cover.replaceChildren(h('b', why === 'balls' ? '오늘 사파리볼을 다 썼어요' : '오늘은 포켓몬이 모두 숨었어요'),
@@ -334,7 +428,8 @@ function build() {
     mapId = id; M = MAPS[id];
     P.x = P.fx = x; P.y = P.fy = y; P.dir = dir; P.moving = false; P.from = null;
     mapsOf(id);
-    if (banner) showPlace(M.name);
+    savePos({ map: id, x, y, dir });
+    if (banner) { showPlace(M.name); setTimeout(sayHint, 700); }   // 바깥 → 동굴 → 울트라 스페이스처럼 땅이 바뀌면 그 땅의 안내
   }
   async function go([id, x, y, dir, fx]) {
     busy = true; clearPad();
@@ -354,17 +449,84 @@ function build() {
   }
 
   // ── 말 걸기 · 조사하기 ──
+  // 사육사: "어떤 포켓몬에 대한 이야기를 듣고 싶니?" → 고르기 메뉴 (LEGEND_HINTS + ZONE_HINTS + 그만두기) → 설명 → 다시 메뉴
   async function talkKeeper(n) {
     n.dir = BACK[P.dir];
     busy = true;
-    const ready = LEGEND_HINTS.filter((l) => legendReady(l.dex) && !l.caught);
-    await talk([
-      '나는 사파리존 사육사란다. 이 사파리존 깊은 곳 동굴에는 전설의 포켓몬이 산다는 이야기가 있지.',
-      ...LEGEND_HINTS.map((l) => `${l.name}${l.caught ? ' (이미 잡았구나!)' : ''}: ${l.where}에 있대. ${legendReady(l.dex) ? '지금이라면 만날 수 있을 거야!' : l.cond}`),
-      ...ZONE_HINTS.flatMap((z) => [`${z.name}: ${z.where}에 있대. ${z.cond}.`, z.more]),
-      ready.length ? `지금 만날 수 있는 전설 포켓몬: ${ready.map((l) => l.name).join(', ')}. 행운을 빌게!` : '조건을 채우면 전설 포켓몬이 너를 기다릴 거야. 동굴 바닥에서도 야생 포켓몬이 나오니 조심하렴!',
-    ]);
-    busy = false;
+    try {
+      await talk(['나는 사파리존 사육사란다. 이 사파리존 깊은 곳에는 전설의 포켓몬이 산다는 이야기가 있지.']);
+      let first = true;
+      for (;;) {
+        const items = [
+          ...LEGEND_HINTS.map((l) => {
+            const seen = seenLegend(l);
+            return { kind: 'legend', l, seen, name: seen ? l.name : '???', sub: seen ? '' : l.teaser, mark: l.caught ? '✔' : legendReady(l.dex) ? '!' : '',
+              icon: () => spriteCanvas(speciesIdOf(l.dex), 32, seen ? 'normal' : 'silhouette') };
+          }),
+          ...ZONE_HINTS.map((z) => ({ kind: 'zone', z, name: z.name, sub: '', mark: '', icon: wormIcon })),
+          { kind: 'quit', name: '그만두기', sub: '', mark: '' },
+        ];
+        const i = await choose(first ? '어떤 포켓몬에 대한 이야기를 듣고 싶니?' : '또 궁금한 게 있니?', items);
+        first = false;
+        const it = items[i];
+        if (!it || it.kind === 'quit') { await talk(['조심해서 다녀오렴! 동굴 바닥에서도 야생 포켓몬이 나온단다.']); break; }
+        if (it.kind === 'zone') { await talk([`${josa(it.z.name, "은", "는")} ${it.z.where}에 있다는구나.`, `${it.z.cond}.`, it.z.more]); continue; }
+        const l = it.l, nm = it.seen ? l.name : '그 포켓몬';
+        await talk([
+          it.seen ? `${l.name}…` : `${l.teaser}… 아직 아무도 제대로 본 적이 없다는 포켓몬이란다.`,
+          `${josa(nm, '은', '는')} ${l.where}에 있다는구나.`,
+          l.caught ? '✔ 이미 잡았구나! 정말 대단해.' : legendReady(l.dex) ? '✔ 조건을 모두 채웠어! 지금이라면 만날 수 있을 거야.' : `필요한 것: ${l.cond}`,
+        ]);
+      }
+    } finally { busy = false; }
+  }
+  // 도감에서 본 적이 있는지: 서버가 setLegendHints({ seen }) 로 알려 주면 그것, 아니면 내 도감 (S.snap.collection) 에 그 계열이 그 단계까지 있는지
+  function seenLegend(l) {
+    if (l.seen != null) return !!l.seen;
+    if (l.caught) return true;
+    const sp = S.catalog?.species?.find((x) => x.dex === l.dex);
+    return !!(sp && (S.snap?.collection || []).some((c) => c.line_id === sp.line_id && c.stage >= sp.stage));
+  }
+  function wormIcon() {
+    const c = document.createElement('canvas'); c.width = c.height = 32; c.className = 'sf-wi';
+    const t = TI.worm0; if (sheet && t) { const gg = c.getContext('2d'); gg.imageSmoothingEnabled = false; gg.drawImage(sheet, t[0], t[1], 32, 32, 0, 0, 32, 32); }
+    return c;
+  }
+  // ── 고르기 메뉴 (3세대 오른쪽 위 상자 · ▶ 커서 · 위아래 + A, 눌러서 고르기, B = 그만두기) ──
+  let menuQ = null;           // { items, i, res, rows }
+  function choose(prompt, items) {
+    return new Promise((res) => {
+      clearPad(); say('');
+      talkEl.hidden = false; talkTx.textContent = prompt; talkMore.style.visibility = 'hidden';
+      const rows = items.map((it, i) => {
+        const r = h('li.sf-mi', { role: 'option', onpointerdown: (e) => { e.preventDefault(); e.stopPropagation(); if (menuQ) { menuQ.i = i; paintMenu(); pickMenu(); } } },
+          h('span.sf-cur', '▶'), it.icon ? h('span.sf-ic', it.icon()) : h('span.sf-ic'),
+          h('span.sf-mt', h('b', it.name), it.sub ? h('small', it.sub) : null), it.mark ? h('span.sf-mk', it.mark) : null);
+        return r;
+      });
+      menuEl.replaceChildren(h('ul', { role: 'listbox', 'aria-label': prompt }, rows));
+      menuEl.hidden = false;
+      menuQ = { items, i: 0, res, rows };
+      paintMenu();
+    });
+  }
+  function paintMenu() {
+    const q = menuQ; if (!q) return;
+    q.rows.forEach((r, i) => { r.classList.toggle('on', i === q.i); r.setAttribute('aria-selected', String(i === q.i)); });
+    q.rows[q.i]?.scrollIntoView?.({ block: 'nearest' });
+  }
+  function menuMove(d) {
+    const q = menuQ; if (!q || (d !== 'up' && d !== 'down')) return;
+    q.i = (q.i + (d === 'down' ? 1 : -1) + q.items.length) % q.items.length; sfx.blip(); paintMenu();
+  }
+  function closeMenu(i) {
+    const q = menuQ; if (!q) return;
+    menuQ = null; menuEl.hidden = true; talkEl.hidden = true; q.res(i);
+  }
+  function pickMenu() { sfx.select(); closeMenu(menuQ.i); }
+  function pressB() {
+    if (menuQ) { sfx.blip(); closeMenu(-1); return; }
+    advance();
   }
   async function meetLegend(l) {
     const t = hintOf(l.dex); if (!t) return;
@@ -393,6 +555,7 @@ function build() {
     return true;
   }
   function pressA() {
+    if (menuQ) { pickMenu(); return; }
     if (advance()) return;
     if (busy || P.moving || !active()) return;
     const [dx, dy] = DIRS[P.dir];
@@ -401,6 +564,7 @@ function build() {
   }
   // 지도에서 사람·전설 포켓몬을 누름 → 그쪽을 보고 말 걸기 (가까이 있을 때만)
   stage.addEventListener('pointerdown', (e) => {
+    if (menuQ) return;                        // 메뉴는 줄을 눌러 고름 (그 밖을 눌러도 아무 일 없음)
     if (talkQ) { e.preventDefault(); advance(); return; }
     if (busy || P.moving || !active() || e.target !== cv) return;
     const r = cv.getBoundingClientRect(); if (!r.width) return;
@@ -415,7 +579,13 @@ function build() {
   });
 
   // ── 걷기 ──
-  function kick(d) { if (!P.moving && !busy && !talkQ) tryMove(d, performance.now()); }
+  // 새로 누름: 메뉴면 커서 · 다른 방향이면 제자리에서 돌기만 (3세대처럼) · 같은 방향이면 걷기
+  function kick(d) {
+    if (menuQ) { menuMove(d); return; }
+    if (P.moving || busy || talkQ) return;
+    if (P.dir !== d && !closed()) { P.dir = d; P.turnT = performance.now(); return; }
+    tryMove(d, performance.now());
+  }
   function tryMove(d, now) {
     if (busy || talkQ) return;
     if (closed()) { P.dir = d; return; }
@@ -428,9 +598,11 @@ function build() {
     }
     lastSign = '';
     P.from = { x: P.x, y: P.y }; P.x = nx; P.y = ny; P.moving = true; P.t0 = now; P.stepN++;
+    if (M.kind === 'out' && tileAt(nx, ny) === ',') rustle = { x: nx, y: ny, t0: now };   // 풀숲에 들어서면 잎이 흔들림
   }
   function arrive() {
     P.moving = false; P.fx = P.x; P.fy = P.y;
+    savePos({ map: mapId, x: P.x, y: P.y, dir: P.dir });
     const w = M.warps[`${P.x},${P.y}`];
     if (w) { go(w); return; }
     const z = zoneAt(P.x, P.y);
@@ -442,10 +614,12 @@ function build() {
   }
 
   // ── 그리기 ──
-  let VW = 160, VH = 128, raf = 0, camX = 0, camY = 0;
+  let VW = 160, VH = 128, raf = 0, camX = 0, camY = 0, fitW = 0, fitDpr = 0;
   const fit = () => {
     if (!root.isConnected) return;
-    const w = Math.min(560, stage.clientWidth || root.clientWidth || 320);
+    let w = Math.min(560, stage.clientWidth || root.clientWidth || 320);
+    // 세로 스크롤바가 생겼다 없어졌다 하며 폭이 몇 px 씩 오가면 (PC 작은 창) 캔버스가 계속 다시 만들어져 깜빡임 → 20px 안쪽 변화는 무시
+    if (fitW && Math.abs(w - fitW) <= 20 && fitDpr === (window.devicePixelRatio || 1)) w = fitW; else { fitW = w; fitDpr = window.devicePixelRatio || 1; }
     const dpr = window.devicePixelRatio || 1; const dev = Math.floor(w * dpr);
     const kd = Math.max(1, Math.round(dev / 176));       // 화면에 나무 11칸쯤
     VW = Math.floor(dev / kd);
@@ -474,10 +648,14 @@ function build() {
       const k = Math.min(1, (now - P.t0) / STEP_MS);
       P.fx = P.from.x + (P.x - P.from.x) * k; P.fy = P.from.y + (P.y - P.from.y) * k;
       if (k >= 1) { arrive(); const d = active() && wantDir(); if (d) tryMove(d, now); }
-    } else if (!busy && !talkQ && active()) { const d = wantDir(); if (d) tryMove(d, now); }
+    } else if (!busy && !talkQ && !menuQ && active()) {
+      const d = wantDir();
+      if (d && d !== P.dir && !closed()) { P.dir = d; P.turnT = now; }            // 누르고 있는 방향으로 돌고
+      else if (d && now - (P.turnT || 0) >= TURN_MS) tryMove(d, now);             // 잠깐 뒤 걷기 시작
+    }
     draw(now);
   }
-  const shadow = (cx, by, w) => { g.fillStyle = { cave: 'rgba(30,16,8,.3)', ultra: 'rgba(8,0,24,.4)' }[M.kind] || 'rgba(20,60,40,.25)'; g.fillRect(cx - w / 2, by - 2, w, 2); g.fillRect(cx - w / 2 + 1, by - 1, w - 2, 1); };
+  const shadow = (cx, by, w) => { g.fillStyle = { cave: 'rgba(30,16,8,.3)', ultra: 'rgba(8,0,24,.4)', shrine: 'rgba(90,70,30,.3)' }[M.kind] || 'rgba(20,60,40,.25)'; g.fillRect(cx - w / 2, by - 2, w, 2); g.fillRect(cx - w / 2 + 1, by - 1, w - 2, 1); };
   const drawBang = (bx, by) => {
     g.fillStyle = '#283040'; g.fillRect(bx - 1, by - 1, 8, 11);
     g.fillStyle = '#ffffff'; g.fillRect(bx, by, 6, 9);
@@ -490,12 +668,23 @@ function build() {
     camX = mw <= VW ? -Math.floor((VW - mw) / 2) : Math.max(0, Math.min(mw - VW, px - Math.floor(VW / 2)));
     camY = mh <= VH ? -Math.floor((VH - mh) / 2) : Math.max(0, Math.min(mh - VH, py - Math.floor(VH / 2)));
     const maps = mapsOf(mapId);
-    if (!maps || !hero) { g.fillStyle = { cave: '#2c2018', ultra: '#120a24' }[M.kind] || '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
+    if (!maps || !hero) { g.fillStyle = { cave: '#2c2018', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
     const map = maps[af];
-    if (mw < VW || mh < VH) { g.fillStyle = { cave: '#140c08', ultra: '#120a24' }[M.kind] || '#1c5420'; g.fillRect(0, 0, VW, VH); }
+    if (mw < VW || mh < VH) { g.fillStyle = { cave: '#140c08', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#1c5420'; g.fillRect(0, 0, VW, VH); }
     const sx = Math.max(0, camX), sy = Math.max(0, camY);
     const cw = Math.min(mw - sx, VW - (sx - camX)), ch = Math.min(mh - sy, VH - (sy - camY));
     g.drawImage(map, sx, sy, cw, ch, sx - camX, sy - camY, cw, ch);
+    // 풀숲 칸 그리기 (흔들리는 중이면 흔들린 잎, 아니면 미리 그린 맵) — sy0 줄부터 아래만
+    const RUSTLE_MS = 270;
+    const grass = (gx, gy, sy0) => {
+      const X = gx * TS - camX, Y = gy * TS - camY;
+      if (rustle && rustle.x === gx && rustle.y === gy && now - rustle.t0 < RUSTLE_MS) {
+        const t = TI[`tallR${Math.floor((now - rustle.t0) / (RUSTLE_MS / 2)) % 2}`], gr = TI.ground;
+        g.drawImage(sheet, gr[0], gr[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
+        g.drawImage(sheet, t[0], t[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
+      } else g.drawImage(map, gx * TS, gy * TS + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
+    };
+    if (rustle && now - rustle.t0 < RUSTLE_MS) grass(rustle.x, rustle.y, 0);
     // 그릴 것 (아래쪽에 있는 것이 앞): 주인공 · 사람 · 전설 포켓몬
     const list = [];
     list.push([P.fy, () => {
@@ -507,7 +696,7 @@ function build() {
       g.drawImage(hero, fi * HW, DIR_ROW[dir] * HH, HW, HH, hx, hy, HW, HH);
       // 풀숲 안이면 다리를 풀잎이 가림 (미리 그린 맵의 그 칸 아랫부분을 다시 덮음)
       const gx = Math.round(P.fx), gy = Math.round(P.fy);
-      if (M.kind === 'out' && tileAt(gx, gy) === ',') g.drawImage(map, gx * TS, gy * TS + 10, TS, 6, gx * TS - camX, gy * TS - camY + 10, TS, 6);
+      if (M.kind === 'out' && tileAt(gx, gy) === ',') grass(gx, gy, 9);      // 3세대처럼 허리 아래 (다리 · 재킷 아랫단 7px) 를 앞쪽 풀잎이 가림
       if (bubbleT > 0 && now >= bubbleT) drawBang(hx + 5, hy - 8);
     }]);
     const wt = Math.floor(now / 110) % 4;      // 울트라 워프홀: 32×32 소용돌이 4장
@@ -525,14 +714,15 @@ function build() {
     }
     for (const l of M.legends || []) {
       if (hintOf(l.dex)?.caught) continue;
-      const cell = monCell(speciesIdOf(l.dex));       // 64×64 칸 (가운데·아래 맞춤). 그림판을 받는 중이면 null → 다음 프레임에
-      if (!cell) continue;
+      const art = legendArt(l.dex);       // 지도 도트 크기 그림 (32 · 40 · 48px). 그림판을 받는 중이면 null → 다음 프레임에
+      if (!art) continue;
+      const T = art.width;
       list.push([l.y, () => {
         const bob = Math.round(Math.sin(now / 420 + l.x) * 1.4);       // 위아래로 둥실 (정수 px)
-        const lx = l.x * TS + TS / 2 - 32 - camX, ly = (l.y + 1) * TS - 64 - camY - 3 + bob;
-        shadow(l.x * TS + 8 - camX, (l.y + 1) * TS - camY - 1, 22);
-        g.drawImage(cell, lx, ly);
-        if (bang && bang.x === l.x && bang.y === l.y) drawBang(l.x * TS + 5 - camX, (l.y - 2) * TS - camY);
+        const lx = l.x * TS + TS / 2 - T / 2 - camX, ly = (l.y + 1) * TS - T - camY - 2 + bob;
+        shadow(l.x * TS + 8 - camX, (l.y + 1) * TS - camY - 1, Math.round(T * 0.5));
+        g.drawImage(art, lx, ly);
+        if (bang && bang.x === l.x && bang.y === l.y) drawBang(l.x * TS + 5 - camX, ly - 10);
       }]);
     }
     list.sort((a, b) => a[0] - b[0]).forEach((e) => e[1]());
@@ -544,10 +734,20 @@ function build() {
     }
     if (fade.a > 0) { g.fillStyle = `rgba(${fade.col},${fade.a.toFixed(3)})`; g.fillRect(0, 0, VW, VH); }
   }
+  // 새로 고침 · 앱을 다시 열면 걷던 지도 · 자리에서 이어서 (그 칸을 걸을 수 있을 때만)
+  loadPos().then((pp) => {
+    const m = pp && MAPS[pp.map];
+    if (!m || P.moving || busy || P.stepN || mapId !== START.map || P.x !== START.x || P.y !== START.y) return;   // 이미 다른 곳으로 옮겼으면 그대로
+    const c = m.rows[pp.y]?.[pp.x];
+    if (c == null || SOLID[m.kind].has(c) || m.warps[`${pp.x},${pp.y}`]) return;
+    enterMap(pp.map, pp.x, pp.y, DIRS[pp.dir] ? pp.dir : 'down', pp.map !== START.map);
+  }).catch(() => {});
   const start = () => { requestAnimationFrame(() => { fit(); if (!raf && root.isConnected) raf = requestAnimationFrame(frame); }); };
   // 시험용
   window.__safari = {
-    P, maps: () => mapsOf(mapId), state: () => st, tile: tileAt, map: () => M.rows, move: (d) => kick(d), busy: () => busy, view: () => ({ VW, VH }),
+    P, maps: () => mapsOf(mapId), state: () => st, tile: tileAt, map: () => M.rows, busy: () => busy, view: () => ({ VW, VH }),
+    move: (d) => { if (!P.moving && !busy && !talkQ && !menuQ) { P.dir = d; tryMove(d, performance.now()); } },   // 시험: 돌면서 바로 걷기
+    tap: (d) => kick(d), b: () => pressB(), menu: () => (menuQ ? { i: menuQ.i, n: menuQ.items.length } : null),
     mapId: () => mapId, goto: (id, x, y, dir = 'down') => enterMap(id, x, y, dir), a: () => pressA(), talking: () => !!talkQ,
     zone: () => zoneAt(P.x, P.y), pend: () => ({ ...pend }), ballsOut: () => ballsOut(), setState: (s) => { st = { ...st, ...s }; paintInfo(); }, fade: () => fade.a,
   };
