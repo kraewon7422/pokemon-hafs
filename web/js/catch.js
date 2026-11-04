@@ -185,7 +185,8 @@ const SMOKE = rowsPx(['..sss..', '.swwws.', 'swwwwws', 'swwwwss', 'swwwss.', '.s
 const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..kwk..', '..kwk..', '..kkk..'], { k: '#182030', w: '#ffffff' });
 
 // ═════════════════════════════ 장면 ═════════════════════════════
-export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false } = {}) {
+// onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
+export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null } = {}) {
   const tod = EDGE[time] ? time : defaultTime();
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
@@ -710,6 +711,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       const throwBall = (rel, dx, dy, css, curve) => {
         phase = 'flight'; hinted = true;
         result.throws++; ballsLeft--; showHud(true);
+        try { onThrow?.(result.throws); } catch { /* 적지 못해도 던지기는 계속 */ }
         frozen = ratio();
         const relRatio = frozen;
         play('ballThrow'); vibrate(10);
