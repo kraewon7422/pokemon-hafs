@@ -63,6 +63,9 @@ const patchSetting = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { m
 // 0032: QR 에서 야생 포켓몬이 나올 확률 — 예전 시험은 정해 둔 포켓몬을 기대하므로 시험 동안 0 (끝에서 되돌림)
 const WILD0 = (await admin.select('settings?key=eq.wild_chance')).data?.[0]?.value ?? 0.4;
 await patchSetting('wild_chance', 0);
+// 0034: 진화의돌은 퀴즈·배틀에서 확률로 — 예전 시험은 늘 받는다고 보므로 시험 동안 100% (끝에서 되돌림)
+const STONE0 = Object.fromEntries((await admin.select('settings?key=in.(quiz_stone_chance,battle_stone_chance)&select=key,value')).data.map((x) => [x.key, x.value]));
+await patchSetting('quiz_stone_chance', 1); await patchSetting('battle_stone_chance', 1);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -950,7 +953,7 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   const startLv = async (line) => {
     const top = (await A.c.select(`lines?id=eq.${line}&select=max_stage`)).data[0].max_stage;
     const ev = (await A.c.select(`species?line_id=eq.${line}&stage=eq.${top}&select=evo_lv`)).data[0]?.evo_lv;
-    return Math.max(5, ev || 5);
+    return Math.max(5, ev || (top === 2 ? 20 : top >= 3 ? 35 : 5));   // 돌 진화 (evo_lv 없음) = 단계 기본 레벨 (서버 _collection_growth 와 같게)
   };
   const L12 = await startLv(12), L13 = await startLv(13), L5 = await startLv(5);
   ok(m12()?.level === L12 && m12().need === 8 * L12 && m12().moves.length === 4 && m12().known.length >= 4, `new final-stage catch starts at its evolution level (Lv.${L12}) with 4 moves`, m12());
@@ -1595,7 +1598,18 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
      && (await admin.select('quizzes?line_id=eq.83&select=id')).data.length === q3, 'teacher + quizzes move to the new Pokémon line, old line becomes wild', l3);
   ok((await admin.rpc('admin_assign_teacher', { p_from: 83, p_to: 3 })).data?.ok
      && (await admin.select('lines?id=eq.3&select=subject')).data[0].subject !== '야생', 'and back again (restored)');
-  // 6) 색이 다른 그림 목록
+  // 6) 돌 진화 (0034): 피카츄 → 라이츄 는 레벨로 안 됨, 진화의돌 1개로 100%
+  const rai = (await admin.select('species?line_id=eq.12&stage=eq.3&select=name,evo_lv,evo_item')).data[0];
+  ok(rai?.name === '라이츄' && rai.evo_item === true && rai.evo_lv === null, '라이츄 = stone evolution (no level)', rai);
+  await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 12, p_stage: 2 });
+  await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 12, p_level: 80 });
+  ok((await P.rpc('evolve', { p_line: 12 })).error === 'NO_TICKET', 'stone evolution needs a 진화의돌 even at high level');
+  await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: 1 });
+  await patchSetting('evo_prob', [0, 0, 0]);   // 확률 0 이어도 돌 진화는 100%
+  const ev12 = (await P.rpc('evolve', { p_line: 12 })).data;
+  await patchSetting('evo_prob', [0, 0.7, 0.35]);
+  ok(ev12?.success === true && ev12.by_item === true && ev12.stage === 3 && ev12.evo_tickets === 0, 'with a 진화의돌 → evolves 100% (uses the stone)', ev12);
+  // 7) 색이 다른 그림 목록
   const ov = (await anon.rpc('sprite_overrides')).data || {};
   ok(Object.keys(ov).length >= 800 && /\|/.test(ov['1'] || ''), 'sprite list has a shiny picture for each Pokémon', [Object.keys(ov).length, ov['1']]);
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
@@ -1603,5 +1617,6 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
 
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
+await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

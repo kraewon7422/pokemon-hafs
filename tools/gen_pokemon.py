@@ -86,15 +86,19 @@ for r in rd('pokemon_evolution'):
     e = int(r['evolved_species_id'])
     if e <= MAXDEX and r['evolution_trigger_id'] == '1' and r['minimum_level']:
         EVO_MIN[e] = min(EVO_MIN.get(e, 999), int(r['minimum_level']))
+# 진화의돌(아이템)로 진화하는 포켓몬 (예: 라이츄 · 픽시 · 샤미드): 레벨로는 진화하지 않고 진화의돌 1개로 100% 진화 (0034)
+EVO_ITEM = {int(r['evolved_species_id']) for r in rd('pokemon_evolution')
+            if r['evolution_trigger_id'] == '3' and int(r['evolved_species_id']) <= MAXDEX} - set(EVO_MIN)
 
 
 def evo_levels(path):
-    """[None, 2단계 진화 레벨, 3단계 진화 레벨]"""
+    """[None, 2단계 진화 레벨, 3단계 진화 레벨] — 진화의돌로 진화하는 단계는 None (레벨로 진화 안 함).
+    교환 · 친밀도 · 시간 진화는 이 게임에 없으므로 단계에 맞춘 레벨 (2단계 25 · 3단계 40 근처)로 바꿈."""
     out, prev = [None], 5
     for st, sid in enumerate(path[1:], start=2):
         lv = EVO_MIN.get(sid) or max(prev + 10, {2: 25, 3: 40}[st])
         lv = max(lv, prev + 1)
-        out.append(lv)
+        out.append(None if sid in EVO_ITEM else lv)
         prev = lv
     return out
 
@@ -416,7 +420,7 @@ def main():
         evl = evo_levels(p)
         for st, sid in enumerate(p, start=1):
             h, w = hw(sid)
-            species_rows.append((sp_id(l, st), l, st, NAME[sid], GENUS[sid], flavor(sid), h, w, '/'.join(types_of(sid)), stats_of(sid), sid, evl[st - 1]))
+            species_rows.append((sp_id(l, st), l, st, NAME[sid], GENUS[sid], flavor(sid), h, w, '/'.join(types_of(sid)), stats_of(sid), sid, evl[st - 1], sid in EVO_ITEM))
             mv4 = pick4(sid, st, n)
             assert len(set(mv4)) == 4, (sid, mv4)
             for k, x in enumerate(mv4):
@@ -454,19 +458,19 @@ def main():
     S.append('update public.lines l set max_stage = v.n, rarity = v.r, btype = v.bt from (values ' + ', '.join(
         f'({l}, {n}, {q(r)}, {q(bt)})' for l, n, r, bt, wild in lines_sql if not wild) + ') v(id, n, r, bt) where l.id = v.id;')
     S.append(f'delete from public.lines where id > {max(line_ids)};')
-    S.append('insert into public.species (id, line_id, stage, name, category, flavor, height, weight, btype, hp, atk, def, spa, spd, spe, dex, evo_lv) values')
-    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {dex}, {ev if ev else 'null'})"
-                        for i, l, st, nm, cat, fl, h, w, bt, v, dex, ev in species_rows))
+    S.append('insert into public.species (id, line_id, stage, name, category, flavor, height, weight, btype, hp, atk, def, spa, spd, spe, dex, evo_lv, evo_item) values')
+    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {dex}, {ev if ev else 'null'}, {'true' if it else 'false'})"
+                        for i, l, st, nm, cat, fl, h, w, bt, v, dex, ev, it in species_rows))
     S.append('on conflict (id) do update set line_id = excluded.line_id, stage = excluded.stage, name = excluded.name, category = excluded.category, '
              'flavor = excluded.flavor, height = excluded.height, weight = excluded.weight, btype = excluded.btype, hp = excluded.hp, atk = excluded.atk, '
-             'def = excluded.def, spa = excluded.spa, spd = excluded.spd, spe = excluded.spe, dex = excluded.dex, evo_lv = excluded.evo_lv;')
+             'def = excluded.def, spa = excluded.spa, spd = excluded.spd, spe = excluded.spe, dex = excluded.dex, evo_lv = excluded.evo_lv, evo_item = excluded.evo_item;')
     S.append('-- 단계가 줄어든 계열: 남는 단계 줄은 (기록이 가리키지 않으면) 지우고, 가리키면 마지막 단계와 똑같이')
     S.append('delete from public.species s using public.lines l where l.id = s.line_id and s.stage > l.max_stage'
              ' and not exists (select 1 from public.tickets t where t.result_species = s.id or t.fixed_species = s.id)'
              ' and not exists (select 1 from public.raids r where r.species_id = s.id)'
              ' and not exists (select 1 from public.raid_encounters e where e.species_id = s.id);')
     S.append('update public.species s set name = x.name, category = x.category, flavor = x.flavor, height = x.height, weight = x.weight, '
-             'btype = x.btype, hp = x.hp, atk = x.atk, def = x.def, spa = x.spa, spd = x.spd, spe = x.spe, dex = x.dex, evo_lv = x.evo_lv, sprite = x.sprite, sprite_shiny = x.sprite_shiny '
+             'btype = x.btype, hp = x.hp, atk = x.atk, def = x.def, spa = x.spa, spd = x.spd, spe = x.spe, dex = x.dex, evo_lv = x.evo_lv, evo_item = x.evo_item, sprite = x.sprite, sprite_shiny = x.sprite_shiny '
              'from public.lines l, public.species x where l.id = s.line_id and s.stage > l.max_stage and x.line_id = s.line_id and x.stage = l.max_stage;')
     S.append('-- 단계가 줄어든 계열: 이미 잡은 것은 마지막 단계로')
     S.append('update public.collection c set stage = l.max_stage from public.lines l where l.id = c.line_id and c.stage > l.max_stage;')

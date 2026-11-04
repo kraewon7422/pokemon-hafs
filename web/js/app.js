@@ -84,7 +84,7 @@ export async function boot() {
   }
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
-  if (S.catalog && !S.catalog.species?.some((x) => x.dex)) S.catalog = null;   // 0032 전 (몬스터) 목록은 버리고 새로 받음
+  if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})))) S.catalog = null;   // 0032·0034 전 목록은 버리고 새로 받음
   if (S.catalog?.lines) sortDex(S.catalog);
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
@@ -166,7 +166,7 @@ export function renderRetry(msg) {
 export async function loadCatalog() {
   const [lines, species, qrs, moves, speciesMoves, typeChart, items] = await Promise.all([
     selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic', (q) => q.order('id')),
-    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv', (q) => q.order('id')),
+    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item', (q) => q.order('id')),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
     selectAll('species_moves', 'species_id,slot,move_id', (q) => q.order('species_id').order('slot')),
@@ -355,7 +355,7 @@ export function nextAction() {
   const quizzes = S.snap.quizzes || [];
   const items = bag();
   const p = S.snap.profile;
-  if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 진화의돌 100%`, 'gold', () => openQuiz()];
+  if (quizzes.length) return [pix('memo', 'l'), `퀴즈 ${quizzes.length}개! 맞히면 가끔 진화의돌`, 'gold', () => openQuiz()];
   if (items.length) return [pix('ticket', 'l'), `티켓 ${items.length}장! 메인 부스로 가요`, 'primary', openBag];
   const ev = evolvable();
   if (p.evo_tickets > 0 && ev.length) {
@@ -1221,7 +1221,7 @@ export function openQuiz() {
     await kv.set('snap', S.snap);
     if (r.correct) { sfx.correct(); vibrate(60); } else sfx.wrong();
     result.replaceChildren(h('div.box', r.correct
-      ? (r.granted ? '정답! 진화의돌을 1개 얻었다! (도감에서 포켓몬을 눌러 진화시켜요)' : '정답! (오늘 받을 수 있는 진화의돌을 다 받았어요)')
+      ? (r.granted ? '정답! 진화의돌을 1개 얻었다! (돌로 진화하는 포켓몬이나, 진화 레벨 전에 쓸 수 있어요)' : '정답! (이번엔 진화의돌이 없었어요)')
       : `아쉬워요! ${josa(sp?.name || '포켓몬', '이', '가')} 고개를 젓는다…`));
     decide.textContent = S.snap.quizzes.length ? '다음 퀴즈' : '닫기';
     decide.disabled = false;

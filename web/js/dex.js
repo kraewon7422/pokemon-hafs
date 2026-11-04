@@ -127,6 +127,8 @@ export function viewDex() {
 // 진화 레벨: 다음 단계 포켓몬의 evo_lv (그 레벨이 되면 진화의돌 없이 100% 진화)
 export const evoLevel = (c) => speciesOf(dexOf(c.line_id, c.stage + 1))?.evo_lv || null;
 export const canLevelEvolve = (c) => !!c && c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id) && !!evoLevel(c) && (c.level || 0) >= evoLevel(c);
+// 돌 진화 (0034, 라이츄 · 픽시 · 샤미드 …): 레벨로는 진화 안 함, 진화의돌 1개로 100%
+export const evoByItem = (c) => !!c && !!speciesOf(dexOf(c.line_id, c.stage + 1))?.evo_item;
 
 export function evoChance(c) {
   const R = rules();
@@ -140,12 +142,20 @@ const isLegendLine = (line) => lineOf(line)?.rarity === 'legendary';
 function evoPanel(c, chance, p) {
   const need = evoLevel(c);
   const byLevel = canLevelEvolve(c);
+  const byItem = evoByItem(c);
   const off = !S.online ? '진화는 인터넷이 필요해요' : !S.snap.festival_open ? '지금은 진화할 수 없어요' : null;
   if (byLevel) {
     return h('div.box.evo-panel',
       h('div.banner', h('span', `Lv.${c.level}`), h('b.prob', pix('spark'), `Lv.${need} 진화 레벨 도달!`)),
       h('button.btn.big.gold', { disabled: !!off, onclick: () => doEvolve(c) }, off || '진화시키기!'),
       h('small', '진화 레벨이 되어서 진화의돌 없이 반드시 진화해요.'));
+  }
+  if (byItem) {
+    return h('div.box.evo-panel',
+      h('div.banner', h('span', '진화의돌로 진화하는 포켓몬'), h('span', h('i.ticket-icon'), ` 진화의돌 × ${p.evo_tickets}`)),
+      h('button.btn.big.gold', { disabled: !p.evo_tickets || !!off, onclick: () => doEvolve(c) },
+        off || (!p.evo_tickets ? '진화의돌이 필요해요 (퀴즈·배틀·룰렛에서 가끔 받아요)' : '진화의돌로 진화 (100%)')),
+      h('small', '이 포켓몬은 레벨로는 진화하지 않아요. 진화의돌 1개면 반드시 진화해요.'));
   }
   return h('div.box.evo-panel',
     h('div.banner', h('span', need ? `Lv.${c.level || 1} → Lv.${need}에 진화` : `Lv.${c.level || 1}`),
@@ -341,6 +351,7 @@ export async function doEvolve(c) {
   const col = owned(c.line_id);
   Object.assign(col, { stage: res.stage, evo_fails: res.evo_fails });
   if (res.by_level) toast('진화 레벨이 되어서 진화의돌을 쓰지 않았어요.', 2500);
+  else if (res.by_item) toast('진화의돌을 써서 진화했어요.', 2500);
   await kv.set('snap', S.snap);
   await evolutionScene(before, res.success ? res.species_id : before + 1, res.success, col);
   sync({ force: true });

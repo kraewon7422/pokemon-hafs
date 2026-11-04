@@ -6,7 +6,7 @@ import { sb, rpc, errorText, selectAll } from './sb.js';
 import { h, $, toast, timeAgo, josa } from './ui.js';
 import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
-import { spriteCanvas, previewCanvas, decodeSprite, fitCell, refreshSprites, spritesReady } from './sprites.js';
+import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady } from './sprites.js';
 
 const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '외국어', '정보', '한국사', '음악', '체육', '전설'];
 const RARITY = { common: '일반', rare: '희귀', legendary: '전설' };
@@ -1048,7 +1048,7 @@ function picPreview(rec, dex) {
   const cell = (label, el) => h('figure.pv', h('div.pv-pic', el), h('figcaption', label));
   const mini = document.createElement('canvas');
   mini.width = mini.height = 64; mini.className = 'sprite';
-  mini.getContext('2d').drawImage(fitCell(rec.frames[0], rec.w, rec.h), 0, 0);
+  { const n = normRec(rec); mini.getContext('2d').drawImage(fitCell(n.cv, n.w, n.h), 0, 0); }
   mini.style.width = mini.style.height = '64px'; mini.style.imageRendering = 'pixelated';
   return h('div.pv-grid',
     cell('가방·목록', previewCanvas(rec, 40, 'normal', dex)),
@@ -1062,7 +1062,7 @@ function picPreview(rec, dex) {
 async function uploadPic(dex, redraw) {
   const sp = S.spById.get(dex);
   const input = h('input.inp', { type: 'file', accept: 'image/png,image/gif,image/webp' });
-  const info = h('p.small-txt.muted', '도트 그림 파일을 고르세요. 움직이는 GIF 도 돼요.');
+  const info = h('p.small-txt.muted', '도트 그림 파일을 고르세요. GIF 는 첫 장면만 써요.');
   const pv = h('div');
   let picked = null;
   input.onchange = async () => {
@@ -1071,7 +1071,7 @@ async function uploadPic(dex, redraw) {
       picked = await readPic(input.files[0]);
       if (!picked) return;
       const r = picked.rec;
-      info.textContent = `${r.w}×${r.h}` + (r.frames.length > 1 ? ` · 움직이는 그림 ${r.frames.length}장 · 한 바퀴 ${(r.total / 1000).toFixed(1)}초` : ' · 멈춘 그림')
+      info.textContent = `${r.w}×${r.h}` + (r.frames.length > 1 ? ` · GIF ${r.frames.length}장 중 첫 장면만 씀` : ' · 멈춘 그림')
         + ` · ${Math.max(1, Math.round(picked.file.size / 1024))}KB`;
       info.className = 'small-txt';
       pv.replaceChildren(picPreview(r, dex),
@@ -1081,7 +1081,7 @@ async function uploadPic(dex, redraw) {
   const body = h('div.stack',
     h('p', `${sp?.name || `#${dex}`}의 그림을 바꿔요. 올리면 학생 앱 · 부스 · 대형 화면 · 미니게임에 모두 쓰여요.`),
     h('ul.small-txt.muted.tight',
-      h('li', 'PNG · WebP (멈춘 그림) 또는 GIF (움직이는 그림), 1MB · 한 변 256픽셀까지'),
+      h('li', 'PNG · WebP · GIF (첫 장면만), 1MB · 한 변 256픽셀까지. 공식 그림과 같은 96×96 칸에 맞춰 도트로 정리돼요'),
       h('li', '배경은 투명하게, 포켓몬 발이 그림 아래쪽에 닿게 (원래 그림처럼 정사각형 + 둘레에 조금 여백)'),
       h('li', '올린 뒤에도 "원래 그림으로" 단추로 언제든 되돌릴 수 있어요')),
     field('그림 파일', input), info, pv);

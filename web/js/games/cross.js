@@ -1166,7 +1166,9 @@ export default {
 
     const fontsReady = (document.fonts?.load ? Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}) : Promise.resolve());
     const pDex = Math.max(1, Number(api.partner?.()) || 1);
-    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex])]).then(([Phaser, , SHEET]) => {
+    let SHEET = { url: '', frame: () => 0 };
+    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex])]).then(([Phaser, , sh]) => {
+      SHEET = sh;   // setup() 이 씀 (예전엔 여기 안에서만 보여서 내 포켓몬 대신 대체 그림이 나왔음)
       const ATLAS_URL = SHEET.url;
       if (dead) return;
       wrap.textContent = '';
