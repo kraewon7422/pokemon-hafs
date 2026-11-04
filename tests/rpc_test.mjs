@@ -1601,6 +1601,73 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
+console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 만남 · 사파리볼 하루 개수 · 잡기/도망');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  await setS('safari_balls_daily', 10); await setS('safari_min_steps', 8); await setS('safari_daily_max_encounters', 15); await setS('safari_steps_per_sec', 6);
+  await setS('safari_encounter_rate', 1);              // 시험: 8걸음이 지나면 바로 만남
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sf1234' })).error);
+  const F = client(await pwLogin(`${sid}@code.local`, 'sf1234'));
+  await F.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '사파리' });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  ok((await anon.rpc('safari_state')).error, 'anon cannot call safari_state');
+  ok((await anon.rpc('safari_encounter', { p_steps: 5 })).error, 'anon cannot call safari_encounter');
+  const s0 = (await F.rpc('safari_state')).data;
+  ok(s0?.balls_left === 10 && s0.balls_daily === 10 && s0.encounters_today === 0 && s0.pending === null && s0.settings?.min_steps === 8,
+     'safari_state: 10 balls, no encounter yet', s0);
+  ok((await F.rpc('safari_encounter', { p_steps: -1 })).error === 'BAD_STEPS' && (await F.rpc('safari_encounter', { p_steps: 5000 })).error === 'BAD_STEPS', 'bad step counts rejected');
+  const a1 = (await F.rpc('safari_encounter', { p_steps: 5 })).data;
+  ok(a1?.encounter === null && a1.accepted === 5, 'before safari_min_steps → no encounter (rate 100%)', a1);
+  const a2 = (await F.rpc('safari_encounter', { p_steps: 500 })).data;
+  ok(a2?.encounter === null && a2.accepted <= 3, 'claiming 500 steps right away → speed limit accepts only a few, no encounter', a2);
+  ok((await F.rpc('sync')).data.state.encounters.length === 0, 'nothing appears on the home banner');
+  await wait(1500);
+  const a3 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+  const e1 = a3?.encounter;
+  ok(e1?.kind === 'safari' && e1.balls === 10 && a3.encounters_today === 1, 'enough plausible grass steps → a safari encounter with 10 balls', a3);
+  const encSp = e1 && (await admin.select(`species?id=eq.${e1.species_id}&select=line_id,stage`)).data[0];
+  ok(encSp?.stage === 1, 'first-stage wild Pokémon', encSp);
+  const a4 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+  ok(a4?.encounter?.id === e1?.id && a4.reason === 'pending', 'while one is pending, the same encounter comes back (no second loan of balls)', a4);
+  ok(!(await F.rpc('sync')).data.state.encounters.some((x) => x.kind === 'safari'), 'safari encounters stay off the home banner');
+  // 잡기: 3개 던짐 → 7개 남음, 도감에 들어감
+  const c1 = (await F.rpc('safari_result', { p_id: e1?.id, p_throws: 3, p_caught: true, p_grade: 'nice' })).data;
+  ok(c1?.caught === true && c1.line === encSp?.line_id && c1.safari?.balls_left === 7, 'catch with 3 throws → in the collection, 7 balls left', c1);
+  ok((await F.rpc('sync')).data.state.collection.some((x) => x.line_id === encSp?.line_id), 'the Pokémon is in my collection');
+  const tk = c1?.nonce && (await admin.select(`tickets?nonce=eq.${c1.nonce}&select=special,qr_id,status`)).data[0];
+  ok(tk?.special === 'safari' && tk.qr_id === 'SAFARI' && tk.status === 'redeemed', 'recorded as a SAFARI special ticket', tk);
+  ok((await F.rpc('safari_result', { p_id: e1?.id, p_throws: 1, p_caught: true })).error === 'NOT_FOUND', 'an encounter can be used once');
+  // 0 개 던졌다고 해도 잡으면 1개는 씀
+  await wait(1500);
+  const e2 = (await F.rpc('safari_encounter', { p_steps: 8 })).data?.encounter;
+  ok(e2?.balls === 7, 'next encounter borrows the 7 balls left', e2);
+  const c2 = (await F.rpc('safari_result', { p_id: e2?.id, p_throws: 0, p_caught: true })).data;
+  ok(c2?.caught && c2.safari?.balls_left === 6, 'catching always costs at least one ball (claiming 0 throws)', c2?.safari);
+  // 도망: 던진 수만큼 씀
+  await wait(1500);
+  const e3 = (await F.rpc('safari_encounter', { p_steps: 8 })).data?.encounter;
+  const c3 = (await F.rpc('safari_result', { p_id: e3?.id, p_throws: 2, p_caught: false })).data;
+  ok(c3?.fled === true && c3.caught === false && c3.safari?.balls_left === 4, 'missing → it flees, 2 thrown balls used', c3);
+  // encounter_result 를 바로 부르면 빌린 볼 모두 씀 → 0 → 오늘은 끝
+  await wait(1500);
+  const e4 = (await F.rpc('safari_encounter', { p_steps: 8 })).data?.encounter;
+  const c4 = (await F.rpc('encounter_result', { p_id: e4?.id, p_caught: true })).data;
+  const s4 = (await F.rpc('safari_state')).data;
+  ok(c4?.caught && e4?.balls === 4 && s4?.balls_left === 0, 'encounter_result without a throw count spends every borrowed ball', [e4, s4]);
+  await wait(1500);
+  const a5 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+  ok(a5?.encounter === null && a5.reason === 'no_balls' && a5.balls_left === 0, 'daily ball cap: no balls left → no more encounters today', a5);
+  // 하루 최대 만남
+  await setS('safari_balls_daily', 30); await setS('safari_daily_max_encounters', 4);
+  await wait(1500);
+  const a6 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;
+  ok(a6?.encounter === null && a6.reason === 'max' && a6.balls_left === 20, 'daily encounter cap reached → no encounter', a6);
+  for (const k of keys) await setS(k, old[k]);
+  await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 console.log(`\n${pass} passed, ${fail} failed`);

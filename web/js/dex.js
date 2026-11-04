@@ -9,7 +9,22 @@ import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab
 
 // ───────────────────────── 지도 ─────────────────────────
 
+// 지도 탭 맨 위: QR 지도 | 사파리존 (사파리존 = safari.js, 처음 열 때만 불러옴)
+let safariMod = null;
 export function viewMap() {
+  const mode = S.mapMode === 'safari' ? 'safari' : 'qr';
+  const setMode = (m) => { if (m === mode) return; sfx.blip(); S.mapMode = m; renderTab(); };
+  const bar = h('div.seg.map-modes', { role: 'group', 'aria-label': '지도 종류' },
+    h('button', { 'aria-pressed': String(mode === 'qr'), onclick: () => setMode('qr') }, 'QR 지도'),
+    h('button', { 'aria-pressed': String(mode === 'safari'), onclick: () => setMode('safari') }, '사파리존'));
+  if (mode === 'qr') return [bar, ...viewQrMap()];
+  if (safariMod) return [bar, safariMod.viewSafari()];
+  import('./safari.js').then((m) => { safariMod = m; if (S.tab === 'map' && S.mapMode === 'safari') renderTab(); })
+    .catch(() => toast('사파리존을 불러오지 못했어요. 인터넷을 확인해 주세요.', { kind: 'error' }));
+  return [bar, h('div.box', '사파리존을 불러오는 중…')];
+}
+
+function viewQrMap() {
   const today = S.snap.today || {};
   const inBag = new Set(bag().map((t) => t.qr_id));
   const capOf = (q) => q.daily_cap || rules().qr_daily_cap;

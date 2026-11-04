@@ -1140,10 +1140,12 @@ export async function celebrate(tickets, prevLines) {
 // ───────── 레이드 보스 잡기 (0030 raid_mode 'catch'): HAFS 볼 N개, 다 빗나가면 도망 · 걸어서 만난 야생 포켓몬 (0032): 몬스터볼 N개 ─────────
 export const encounters = () => (S.snap?.encounters || []).filter((e) => !S.encDone?.has(e.id));
 let encBusy = false;
+// 사파리존 (0033): kind 'safari' = 사파리볼 enc.balls 개 (그날 남은 볼), 놓칠 때마다 enc.flee 확률로 도망, '도망가기' 버튼.
+//   결과는 safari_result (던진 볼 수를 서버가 셈). 돌려줌 = 서버 결과 (r.safari = 바뀐 사파리 상태) 또는 undefined
 export async function catchEncounter(enc) {
   if (!enc || encBusy || celebrating) return;
-  const wild = enc.kind === 'wild';
-  if (!S.online) return say(`${wild ? '야생 포켓몬' : '레이드 보스'}를 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
+  const wild = enc.kind === 'wild'; const safari = enc.kind === 'safari';
+  if (!S.online) return say(`${safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스'}를 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
   const sp = speciesOf(enc.species_id);
   if (!sp) return;
   encBusy = true; celebrating = true;
@@ -1154,7 +1156,10 @@ export async function catchEncounter(enc) {
     let c = null;
     try {
       const { catchScene } = await import('./catch.js');
-      c = wild
+      c = safari
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Number(enc.balls) || 1,
+          fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true })
+        : wild
         ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
           balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false });
@@ -1163,7 +1168,9 @@ export async function catchEncounter(enc) {
     if (!c || c.skipped) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
     let r;
     try {
-      r = await rpc('encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
+      r = safari
+        ? await rpc('safari_result', { p_id: enc.id, p_throws: c.throws || 0, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 })
+        : await rpc('encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
     } catch (e) {
       if (e.offline) toast('결과를 보내지 못했어요. 인터넷이 연결되면 홈에서 다시 도전할 수 있어요.', { kind: 'error' });
       else { toast(errorText(e.message)); (S.encDone ||= new Set()).add(enc.id); }
@@ -1174,10 +1181,12 @@ export async function catchEncounter(enc) {
     if (r?.nonce) { S.celebrated.add(r.nonce); await kv.set('celebrated', [...S.celebrated]); }
     const sp2 = speciesOf(r?.species_id) || sp;
     const fled = r ? !!r.fled || r.caught === false : !!c.fled;
-    const sub = wild ? '야생 포켓몬' : enc.raid_title || '레이드 보스';
-    const ov = fled ? await showFled(sp2, sub, wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
+    const sub = safari ? '사파리존' : wild ? '야생 포켓몬' : enc.raid_title || '레이드 보스';
+    if (fled && c.ran) return r;      // 사파리존에서 스스로 도망 → 알림 없이 맵으로
+    const ov = fled ? await showFled(sp2, sub, safari ? '풀숲을 걷다 보면 또 만날 수 있어요!' : wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
       : await showCatch(sp2, { isNew: r?.new ?? !prev.has(sp2.line_id), sub, bonus: r?.exp > 0 ? { ...r, grade: c.grade } : null });
     await tapToContinue(ov); closeOverlay();
+    return r;
   } finally {
     encBusy = false; celebrating = false;
     await sync({ force: true }).catch(() => {});
