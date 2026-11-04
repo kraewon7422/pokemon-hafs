@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0037 순서대로 실행 (0034 다음에 `supabase/seed_pokemon.sql` 실행 — 0037 을 넣은 뒤에도 한 번 더 실행: 갈래 진화 종 20마리 + `evolutions` 표가 seed 에 들어 있음 → `node tools/upload_pokemon_sprites.mjs` 로 포켓몬 그림 올리기 (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD 를 줌, 파일 맨 위 설명) — 사람이 없을 때) → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
+1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0038 순서대로 실행 (0034 다음에 `supabase/seed_pokemon.sql` 실행 — 0037 을 넣은 뒤에도 한 번 더 실행: 갈래 진화 종 20마리 + `evolutions` 표가 seed 에 들어 있음 → `node tools/upload_pokemon_sprites.mjs` 로 포켓몬 그림 올리기 (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD 를 줌, 파일 맨 위 설명) — 사람이 없을 때) → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
@@ -68,6 +68,12 @@ python tools/build_atlas.py                                                   # 
 4. Supabase → Authentication → URL Configuration: Site URL / Redirect URLs에 그 주소 추가
 5. 앱 파일을 바꿀 때마다 `web/sw.js`의 `VERSION`을 올려야 학생 폰이 새 버전을 받는다
    (오래된 폰에 "업데이트" 배너를 띄우려면 `web/js/config.js`의 `VERSION`과 설정 `min_client_version`을 함께 올림)
+
+## 0038 전설 · 소포 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [45] (알림 · 퀘스트 · 방랑 · 소포 · 울트라비스트 · 메타몽 · 사파리 정리). 시험 동안 `ditto_disguise_chance` 는 0 (끝에서 되돌림).
+- 화면: `cd web && python -m http.server 8138` → `node .work/pokemon/ui_prep38.mjs` (임시 학생 0205xx · 레지 셋 · 소포 코드) → `C:/dev/tools/pw-webkit` 의 `ui38.mjs <sid> <se|w375|pc> "<코드>" [legend]` · `ditto38.mjs <sid>` · `admin38.mjs`
+  → 끝나면 `node .work/pokemon/ui_prep38.mjs --clean <sid>` (임시 학생 · ui38 소포 지움).
+- 실전: 0038 을 넣은 뒤 운영자 '전설·소포' 탭에서 소포 코드를 만들고, 퀘스트 숫자 · 메타몽 (0.5%) · 방랑 전설 (30%) 을 확인.
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.

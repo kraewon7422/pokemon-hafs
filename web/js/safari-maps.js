@@ -12,24 +12,24 @@
 // 참고: 3세대 여울의 동굴 (물웅덩이·바위) · 미혹의 동굴 (갈림길 미로·점자·구멍) 느낌으로 새로 그린 지도 (원본 지도를 베끼지 않음)
 
 // ─────────────────────── 전설 포켓몬 힌트 (사육사가 알려 줌) ───────────────────────
-// ⚠ 자리표시 (PLACEHOLDER): where/cond/teaser 글과 ok 값은 임시. teaser = 아직 도감에서 못 본 전설일 때 메뉴에 ??? 와 함께 보이는 귀띔. 나중에 서버 기능 (전설 조건, 0038 예정) 이
-//    setLegendHints([{ dex, ok, cond? }]) 로 ok (= 조건을 채움) 와 조건 글을 채워 넣음. 지금은 모두 ok: false.
+// teaser = 아직 도감에서 못 본 전설일 때 메뉴에 ??? 와 함께 보이는 귀띔. cond = 기본 조건 글 (0038 settings.legend_quests 기본값과 같음).
+//    서버 (0038 safari_state · sync 의 legends) 가 hintsFromServer → setLegendHints 로 ok · caught · seen · 조건 글 + 진행 (예: '물 타입 4/20') 을 채움.
 import { CAVES, CAVE_PORTS } from './safari-caves.js';
 
 export const LEGEND_HINTS = [
-  // 레지 셋 = 점자 동굴 → 셋을 모두 잡으면 레지기가스 (자리표시 조건)
-  { dex: 377, teaser: '바위로 된 거인', name: '레지락', where: '미혹의 동굴 지하 2층, 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
-  { dex: 378, teaser: '얼음으로 된 거인', name: '레지아이스', where: '여울의 동굴 지하 2층, 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
-  { dex: 379, teaser: '강철로 된 거인', name: '레지스틸', where: '미혹의 동굴 지하 3층, 점자 벽 아래 방', cond: '(임시) 사파리존 점자 벽을 모두 읽어야 한대', ok: false },
+  // 레지 셋 = 점자 동굴 (바위 · 얼음 · 강철 타입을 잡으면 깨어남) → 셋을 모두 잡으면 레지기가스
+  { dex: 377, teaser: '바위로 된 거인', name: '레지락', where: '미혹의 동굴 지하 2층, 점자 벽 아래 방', cond: '바위 타입 포켓몬을 8마리 잡아야 한대', ok: false },
+  { dex: 378, teaser: '얼음으로 된 거인', name: '레지아이스', where: '여울의 동굴 지하 2층, 점자 벽 아래 방', cond: '얼음 타입 포켓몬을 5마리 잡아야 한대', ok: false },
+  { dex: 379, teaser: '강철로 된 거인', name: '레지스틸', where: '미혹의 동굴 지하 3층, 점자 벽 아래 방', cond: '강철 타입 포켓몬을 8마리 잡아야 한대', ok: false },
   { dex: 486, teaser: '거인들의 왕', name: '레지기가스', where: '미혹의 동굴 지하 3층 사다리 아래 거인의 제단', cond: '레지락·레지아이스·레지스틸을 모두 잡아야 한대', ok: false },
-  { dex: 249, teaser: '깊은 바다의 수호신', name: '루기아', where: '여울의 동굴 지하 3층, 깊은 물가', cond: '(임시) 아직 아무도 모른대', ok: false },
-  { dex: 382, teaser: '바다를 넓힌 포켓몬', name: '가이오가', where: '깊은 연못 (여울의 동굴 지하 2층 출구 너머)', cond: '(임시) 아직 아무도 모른대', ok: false },
-  { dex: 383, teaser: '땅을 넓힌 포켓몬', name: '그란돈', where: '깊은 동굴 지하 2층', cond: '(임시) 아직 아무도 모른대', ok: false },
-  { dex: 250, teaser: '무지개 날개의 새', name: '칠색조', where: '하늘 언덕 (깊은 동굴 지하 2층 출구 너머)', cond: '(임시) 아직 아무도 모른대', ok: false },
+  { dex: 249, teaser: '깊은 바다의 수호신', name: '루기아', where: '여울의 동굴 지하 3층, 깊은 물가', cond: '물 타입 포켓몬을 20마리 잡아야 한대', ok: false },
+  { dex: 382, teaser: '바다를 넓힌 포켓몬', name: '가이오가', where: '깊은 연못 (여울의 동굴 지하 2층 출구 너머)', cond: '사파리존에서 포켓몬을 15마리 잡아야 한대', ok: false },
+  { dex: 383, teaser: '땅을 넓힌 포켓몬', name: '그란돈', where: '깊은 동굴 지하 2층', cond: '땅 타입 포켓몬을 15마리 잡아야 한대', ok: false },
+  { dex: 250, teaser: '무지개 날개의 새', name: '칠색조', where: '하늘 언덕 (깊은 동굴 지하 2층 출구 너머)', cond: '불꽃·비행 타입 포켓몬을 20마리 잡아야 한대', ok: false },
   { dex: 384, teaser: '하늘 높이 사는 용', name: '레쿠쟈', where: '하늘 언덕 꼭대기 동굴 너머 하늘의 제단', cond: '가이오가와 그란돈을 모두 잡아야 한대', ok: false },
 ];
 
-// 울트라비스트: 울트라 스페이스 (zone 'ultra') 에서만 나오게 할 포켓몬 (전국도감 번호). 서버 (0038 예정) 가 p_zone 으로 골라 줄 것.
+// 울트라비스트: 울트라 스페이스 (zone 'ultra') 에서만 나오는 포켓몬 (전국도감 번호). 서버 (0038 lines.ultra) 가 p_zone 으로 고름.
 export const ULTRA_BEASTS = [793, 794, 795, 796, 797, 798, 799, 803, 804, 805, 806];
 // 구역 힌트 (사육사가 전설 힌트 다음에 알려 줌). ⚠ 자리표시 글.
 export const ZONE_HINTS = [

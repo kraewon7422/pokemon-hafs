@@ -204,6 +204,34 @@
   `safari_days` 는 충전 구간 시작 (`period_start`) 마다 한 줄 — 볼은 만난 때의 구간에서 뺌. `safari_state` = `balls` · `max_balls` · `reset_hours` · `period_start` · `next_reset_at` (앱: '다음 충전 15:00').
 - 도감 화면: 전국도감 번호 순 60칸씩 쪽 (◀ 1/14 ▶ + 번호 범위, 위·아래), 지방 바로 가기 (관동 1 · 성도 152 · 호연 252 · 신오 387 · 하나 494 · 칼로스 650 · 알로라 722). 범위 · 타입을 바꾸면 첫 쪽.
 
+## 6-9. 전설 · 알림 · 퀘스트 · 방랑 전설 · 이상한 소포 · 울트라비스트 · 메타몽 (0038)
+- **알림 (`notices`)**: 특별한 보상마다 한 줄 (user_id, kind, species_id, title, body, data, seen_at). 특별 티켓 (도감 50/100% · 레이드 · 숨은 선물 · 소포 · 전설 · 방랑 · 사파리/야생 전설) 이 생기면
+  트랜잭션 끝 (deferred constraint trigger `tickets_notice`) 에 그 티켓의 지금 상태로 글을 씀 — 바로 박스로 갔으면 "박스에 들어갔어요", 남았으면 "티켓 주머니 … 부스에서".
+  퀘스트 티켓 · '깨어났다' · 물건 소포는 함수가 바로 씀 (같은 sync 에서 보이게). `sync.state.notices` = 안 본 것 20개, 앱 `legends.js playNotices()` 가 하나씩
+  전체 화면 연출 (어두움 → ! → 그림자 → 번쩍 · 색 · 반짝이 + `sfx.fanfare`, 배경 음악은 잠깐 조용히, 효과음 스위치를 따름) → `notice_seen(ids)`. 기기에도 본 id 를 적어 두어 다시 틀지 않음.
+  다른 화면 (잡기 · 축하 · 시트) 이 떠 있으면 끝난 뒤에. 연출 뒤 관계있는 탭 (티켓 주머니 = 홈, 깨어남 = 지도, 그 밖 = 도감) 에 ★ → 그 탭을 열면 사라짐.
+- **퀘스트 전설**: `settings.legend_quests` (운영자 '전설·소포' 탭에서 숫자). kind = quiz_streak (가장 긴 연속 정답) · battle_wins · catches (잡은 포켓몬, 알 제외) · raid_slots (참가한 레이드의 서로 다른 시작 시각)
+  · qr_all (지도에 보이는 장소 QR 모두) · type_catch (types 중 하나라도 맞는 타입, 놓아준 것 포함) · safari_catches · caught_all (of 의 전설을 모두 잡음).
+  기본: 유크시 퀴즈 10연속 · 엠라이트 배틀 10승 · 아그놈 30마리 · 디아루가 시간대 레이드 3 · 펄기아 모든 장소 QR → 특별 티켓 (special 'quest', 부스에서) ·
+  레지락 바위 8 · 레지아이스 얼음 5 · 레지스틸 강철 8 · 레지기가스 셋 모두 · 루기아 물 20 · 칠색조 불꽃/비행 20 · 가이오가 사파리존 15마리 · 그란돈 땅 15 · 레쿠쟈 가이오가+그란돈 → 사파리존 지도 자리.
+  한 번 채우면 `legend_quest_done` (숫자를 올려도, 연속이 끊겨도 그대로). 진행 = `sync.legends` · `safari_state.legends` (cond · prog "퀴즈 연속 정답 7/10" · ok · caught · seen) → 사육사 · 전설 자리 (`hintsFromServer`).
+  이 줄들 (lines.legend_src quest/safari/roam/gift) 과 울트라비스트 (lines.ultra) 는 보통 야생 · QR · 걸음 · 사파리 풀숲에 안 나옴.
+- **사파리존 전설 만남** = `legend_encounter(p_dex)` (조건 확인 `NOT_READY`, 이미 잡음 `ALREADY_CAUGHT`, 하루 `legend_daily_tries` 번 `NO_TRIES`, 30분 안의 같은 만남은 이어서) →
+  raid_encounters kind 'legend' (HAFS 볼 `legend_balls`, 포켓몬 GO 처럼 다 빗나가면 도망 — 자리에 남아 다시 도전) → `legend_result` (끝난 만남은 적어 둔 결과 = replay). 홈 배너에는 안 나옴.
+- **방랑 전설** (라이코 · 앤테이 · 스이쿤): `_roam_spot(dex, 시각)` = 지도에 보이는 장소 QR 중 md5(`roam_seed` · 번호 · 서울 시각의 시) 가 가장 작은 곳 — 같은 시간이면 늘 같은 곳, 학생은 모름.
+  새로 찍은 장소 QR 이 그곳이면 (sync) `roam_chance` (30%) 로 kind 'roam' 만남 (홈 배너, 몬스터볼 `roam_balls`). 그 전설을 잡았으면 다시 안 나옴, 한 시간에 한 번 기회.
+  `sync.roamers` 소문 = 건물 (P홀 · D홀 … 근처) 또는 지도 쪽 ("지도 가운데 어딘가") — QR 지도 위에 '소문' 상자. 운영자: `admin_roam_spots(p_at)`.
+- **이상한 소포**: `gift_codes` (code = 띄어쓰기 빼고 소문자, 포켓몬 (도감 번호, 1~6마리) 또는 물건 (items.key · 'evo_stone' = 진화의 돌, 1~99), 시작 · 끝, 최대 받는 사람, 켜기/끄기), `gift_claims` (한 사람 한 번).
+  학생: 위 막대 설정 단추 왼쪽의 소포 단추 (받을 수 있는 소포가 있으면 ★ — `sync.gifts_open` 은 수만) → 코드 → `gift_claim(p_code)` → `{ ok, … }` 또는 `{ ok:false, error }`
+  (BAD_GIFT · GIFT_EXPIRED · GIFT_NOT_YET · GIFT_CLAIMED · GIFT_GONE · TRY_LATER = 10분에 `gift_fail_limit` 번 틀림). 포켓몬은 special 'gift' 티켓을 바로 바꿈 (박스가 꽉 차면 티켓 주머니에 남음), 잡기 장면 없이 알림 연출.
+  환상의 포켓몬 13종 (지라치 · 테오키스 · 쉐이미 · 비크티니 · 다크라이 · 케르디오 · 게노세크트 · 디안시 · 후파 · 마기아나 · 마샤도 · 제라오라 · 멜탄) = 소포로만.
+- **울트라비스트 · 구역**: `safari_encounter(p_steps, p_zone)` — 앱이 걸은 칸의 구역 (`zoneAt`) 을 보냄. 'ultra' = 울트라비스트만, 'cave' · 'deep' = 바위 · 땅 · 고스트 · 악 · 강철 · 물 타입 × `safari_cave_type_mult` (4),
+  'grass' · 모르는 값 = 보통 야생. 구역은 앱 말을 믿는 것이지만 울트라비스트는 ultra 에서만 (다른 구역에서는 절대 안 나옴).
+- **메타몽 변신**: 야생 (걸음) · QR 야생 · 사파리 잡기에서 `ditto_disguise_chance` (기본 0.5%) → 메타몽 (dex 132) 으로 들어옴, `tickets.disguised_as` = 원래 종.
+  결과 `{ ditto: true, disguised_as }` · QR 은 `sync.disguised[nonce]` → 앱: 변신한 모습으로 잡기 → "……?" → 도트가 흩어지며 메타몽 → "OO는 사실 메타몽이었다!". 전설 · 선생님 · 특별 티켓 · 레이드 · 소포에는 없음.
+- **사파리 고침**: 지난 충전 구간의 끝나지 않은 만남은 `safari_state` · `safari_encounter` 때 도망으로 정리 (볼 = 던진 수 `throws` 만, 그 옛 구간 몫). 앱은 던질 때마다 `safari_throws(p_id, p_n)` (줄지 않음).
+  `safari_result` · `legend_result` 를 끝난 만남에 다시 보내면 `raid_encounters.result` 에 적어 둔 결과 + `replay: true` (볼을 더 쓰지 않음). 시험용 `admin_encounter_age(p_id, p_minutes)`.
+
 ## 7. 운영 체크리스트 (요약)
 - 학교 전산 담당: 교육용 구글 Workspace에서 이 앱(OAuth 클라이언트) 허용 받기 — **가장 먼저**.
 - 조례 시간 반별 사전 로그인 + 예비 로그인 코드 쪽지(운영자 → 로그인 코드).

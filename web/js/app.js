@@ -15,6 +15,7 @@ import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
 import { loadBag, openBagScreen } from './bag.js';
 import { minigameButton } from './games/hub.js';
+import { playNotices, giftButton, noticeTabs, clearNoticeTab, dittoReveal } from './legends.js';
 import { loadAchievements, openAchievements, startSteps } from './eggs.js';
 import { clearGoogleIntents, linkIntent, maskName, maybeOnboard, renderConsent, renderInApp, renderLogin, renderRegister, showOnboarding, withEye } from './login.js';
 
@@ -232,7 +233,7 @@ export function sync(opts = {}) {
       loadBag().catch(() => {});                   // 장소 QR·퀴즈·배틀에서 주운 물건 알림 (0020)
 
       // new redemptions → celebrate
-      const fresh = S.snap.tickets.filter((t) => t.status === 'redeemed' && t.species_id && !S.celebrated.has(t.nonce));
+      const fresh = S.snap.tickets.filter((t) => t.status === 'redeemed' && t.species_id && !S.celebrated.has(t.nonce) && t.qr_id !== 'GIFT');   // 0038: 소포는 잡기 장면 없이 알림 연출로
       if (S.celebrated.has('__init__')) {
         fresh.forEach((t) => S.celebrated.add(t.nonce));
         S.celebrated.delete('__init__');
@@ -247,6 +248,7 @@ export function sync(opts = {}) {
     } finally {
       S.syncing = null;
       if ($('nav.tabs')) { renderStatus(); if (!S.overlay) renderTab(); }
+      if ($('nav.tabs') && S.snap?.notices?.length) setTimeout(() => playNotices().catch(() => {}), 400);   // 0038: 특별한 보상 알림 (전체 화면 연출, 안 본 것만)
     }
   })();
   return S.syncing;
@@ -279,6 +281,7 @@ export function renderShell() {
     h('header.topbar', h('h1', { onclick: logoTap }, CONFIG.GAME_TITLE),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         h('div.status#status', { role: 'status' }),
+        h('span#gift-slot', giftButton()),
         h('button.gear', { 'aria-label': '설정', onclick: openSettings, html: ICON.gear }))),
     h('main#main', { tabindex: -1 }),
     h('nav.tabs', { 'aria-label': '메뉴' }, TABS.map(([id, label]) => id === 'scan'
@@ -315,6 +318,7 @@ export function logoTap() {
 export function go(tab, { push = true } = {}) {
   if (push && tab !== S.tab) history.pushState({ tab }, '');
   S.tab = tab;
+  clearNoticeTab(tab);
   document.querySelectorAll('nav.tabs button[data-tab]').forEach((b) => b.setAttribute('aria-current', b.dataset.tab === tab ? 'page' : 'false'));
   renderTab();
   window.scrollTo(0, 0);
@@ -340,6 +344,14 @@ export function renderStatus() {
   homeBtn?.querySelector('.badge')?.remove();
   const n = (S.snap?.quizzes?.length || 0) + bag().length;
   if (homeBtn && n) homeBtn.append(h('span.badge', n));
+  // 0038: 새 알림이 있던 탭에 ★ (그 탭을 열면 사라짐) · 소포 단추의 ★
+  const stars = noticeTabs();
+  document.querySelectorAll('nav.tabs button[data-tab]').forEach((b) => {
+    b.querySelector('.badge.star')?.remove();
+    if (stars.has(b.dataset.tab) && b.dataset.tab !== S.tab && !b.querySelector('.badge')) b.append(h('span.badge.star', { 'aria-label': '새 소식' }, '★'));
+  });
+  const gs = $('#gift-slot');
+  if (gs) gs.replaceChildren(giftButton());
 }
 
 export function renderTab() {
@@ -447,7 +459,7 @@ export function viewHome() {
       h('div.banner', h('b', `티켓 주머니 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
         h('span', { style: { fontSize: '13px' } }, items.length ? '부스에서 포켓몬으로 바꿔요' : 'QR을 찍으면 들어와요')),
       items.length ? h('div.bag-row', items.map((t) => (t.special
-        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성', egg: '숨은 선물' }[t.special.special] || ''}`))
+        ? h('span.chip.special', pix('spark'), speciesOf(t.special.species_id)?.name || '특별', h('small', ` ${{ raid: '레이드', dex50: '도감 50%', dex100: '도감 완성', egg: '숨은 선물', quest: '전설 퀘스트', gift: '이상한 소포', legend: '전설', roam: '방랑 전설' }[t.special.special] || ''}`))
         : h(`span.chip${t.synced ? '' : '.local'}`, pix(t.synced ? 'ticket' : 'wait'), t.name)))) : null,
       h('button.btn.big' + (items.length ? '.primary' : ''), { onclick: openBag }, '티켓 QR 보여주기'),
       R.self_redeem === true && items.some((t) => t.synced) && h('button.btn.big.gold', { style: { marginTop: '8px' }, onclick: selfRedeem },
@@ -1110,12 +1122,15 @@ export async function celebrate(tickets, prevLines) {
   const done = async (t) => { S.celebrated.add(t.nonce); await kv.set('celebrated', [...S.celebrated]); };
   for (let i = 0; i < list.length; i++) {
     const t = list[i]; const sp = speciesOf(t.species_id);
+    // 0038: QR 에서 나온 야생 포켓몬이 사실 메타몽 → 잡기 장면에는 변신한 모습
+    const disg = speciesOf(S.snap?.disguised?.[t.nonce]);
+    const seen = disg || sp;
     // 0028/0030: 먼저 몬스터볼로 잡기 (공 3개 다 빗나가면 아주 가끔 도망). 장면을 못 띄우면 바로 축하로
     let c = null;
     try {
       cfg ||= S.online ? await catchConfig() : { flee: 0 };
       const { catchScene } = await import('./catch.js');
-      c = await catchScene({ dex: sp.id, name: sp.name, rarity: rarityFor(sp), ball: 'red', balls: 3,
+      c = await catchScene({ dex: seen.id, name: seen.name, rarity: rarityFor(seen), ball: 'red', balls: 3,
         fleeChance: S.online && cfg.ok ? Number(cfg.flee) || 0 : 0, remaining: list.length - 1 - i });
     } catch { /* 잡기 장면 없이 */ }
     if (c?.fled) {
@@ -1140,6 +1155,7 @@ export async function celebrate(tickets, prevLines) {
     const isNew = !prevLines.has(sp.line_id);
     prevLines.add(sp.line_id);
     const bonus = c ? await reportCatch(t, c, false) : null;
+    if (disg) await dittoReveal(disg.id, sp.id);
     const ov = await showCatch(sp, { isNew, sub: t.qr_name, bonus });
     await done(t);
     await tapToContinue(ov);
@@ -1153,6 +1169,7 @@ export async function celebrate(tickets, prevLines) {
 }
 
 // ───────── 레이드 보스 잡기 (0030 raid_mode 'catch'): HAFS 볼 N개, 다 빗나가면 도망 · 걸어서 만난 야생 포켓몬 (0032): 몬스터볼 N개 ─────────
+export const isBusy = () => !!(celebrating || encBusy || S.overlay || S.bagOpen);
 export const encounters = () => (S.snap?.encounters || []).filter((e) => !S.encDone?.has(e.id));
 let encBusy = false;
 // 사파리존 (0033): kind 'safari' = 사파리볼 enc.balls 개 (그날 남은 볼), '도망가기' 버튼.
@@ -1160,8 +1177,9 @@ let encBusy = false;
 //   결과는 safari_result (던진 볼 수를 서버가 셈). 돌려줌 = 서버 결과 (r.safari = 바뀐 사파리 상태) 또는 undefined
 export async function catchEncounter(enc) {
   if (!enc || encBusy || celebrating) return;
-  const wild = enc.kind === 'wild'; const safari = enc.kind === 'safari';
-  if (!S.online) return say(`${josa(safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스', '을', '를')} 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
+  const roam = enc.kind === 'roam'; const legend = enc.kind === 'legend';   // 0038: 방랑 전설 (QR) · 사파리존 전설 (GO 방식)
+  const wild = enc.kind === 'wild' || roam; const safari = enc.kind === 'safari';
+  if (!S.online) return say(`${josa(legend || roam ? '전설의 포켓몬' : safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스', '을', '를')} 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
   const sp = speciesOf(enc.species_id);
   if (!sp) return;
   // 0036: 박스가 꽉 차면 잡을 수 없음 (만남은 그대로 남음 → 놓아준 뒤 다시)
@@ -1189,9 +1207,16 @@ export async function catchEncounter(enc) {
       if (c) { /* 이어서 보내기만 */ } else
       c = safari
         ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior),
-          fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true, onThrow: (n) => ss.noteThrows(enc.id, prior + n), onMiss })
+          fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true,
+          onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss })
+        : legend
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true,
+          intro: `전설의 포켓몬 ${josa(sp.name, '이', '가')} 나타났다!
+공 {n}개로 잡아 보자!` })
         : wild
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true })
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true,
+          intro: roam ? `방랑 전설 ${josa(sp.name, '이', '가')} 나타났다!
+공 {n}개로 잡아 보자!` : null })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
           balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false });
     } catch { /* */ }
@@ -1208,7 +1233,7 @@ export async function catchEncounter(enc) {
       if (f?.gone) { toast(errorText(f.error.message)); (S.encDone ||= new Set()).add(enc.id); return; }
       r = f?.r;
     } else try {
-      r = await rpc('encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
+      r = await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
     } catch (e) {
       if (e.offline) toast('결과를 보내지 못했어요. 인터넷이 연결되면 홈에서 다시 도전할 수 있어요.', { kind: 'error' });
       else { toast(errorText(e.message)); if (e.message !== 'BOX_FULL') (S.encDone ||= new Set()).add(enc.id); }
@@ -1219,9 +1244,11 @@ export async function catchEncounter(enc) {
     if (r?.nonce) { S.celebrated.add(r.nonce); await kv.set('celebrated', [...S.celebrated]); }
     const sp2 = speciesOf(r?.species_id) || sp;
     const fled = r ? !!r.fled || r.caught === false : !!c.fled;
-    const sub = safari ? '사파리존' : wild ? '야생 포켓몬' : enc.raid_title || '레이드 보스';
+    const sub = legend ? '전설의 포켓몬' : roam ? '방랑 전설' : safari ? '사파리존' : wild ? '야생 포켓몬' : enc.raid_title || '레이드 보스';
     if (fled && c.ran) return r;      // 사파리존에서 스스로 도망 → 알림 없이 맵으로
-    const ov = fled ? await showFled(sp2, sub, safari ? '풀숲을 걷다 보면 또 만날 수 있어요!' : wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
+    if (!fled && r?.ditto && r.disguised_as) await dittoReveal(r.disguised_as, r.species_id);   // 0038: 메타몽이었다!
+    const ov = fled ? await showFled(sp2, sub, legend ? '아직 그 자리에 있어요. 다시 말을 걸면 또 도전할 수 있어요!' : roam ? '방랑 전설은 다음 시간에 또 다른 곳으로 옮겨 간대요.'
+      : safari ? '풀숲을 걷다 보면 또 만날 수 있어요!' : wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
       : await showCatch(sp2, { isNew: r?.new ?? !prev.has(sp2.line_id), sub, bonus: r?.exp > 0 ? { ...r, grade: c.grade } : null });
     await tapToContinue(ov); closeOverlay();
     return r;

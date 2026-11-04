@@ -187,7 +187,7 @@ const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..
 
 // ═════════════════════════════ 장면 ═════════════════════════════
 // onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
-export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null } = {}) {
+export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수)
   const tod = EDGE[time] ? time : defaultTime();
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
@@ -964,7 +964,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         // 곡이 나오고 있으면 다음 박 (야생 곡 첫 타격 전이면 그 타격) 에 나타남 — 그땐 8비트 '짠' 효과음은 안 냄 (겹치지 않게)
         const beat = bgmBeat(TRACK, 120);
         if (beat != null && beat < 2500) await new Promise((res, rej) => setTimeout(() => (c.alive() ? res() : rej(CANCEL)), beat));
-        say(style === 'hafs' ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
+        say(intro ? intro.replace('{n}', String(BALLS)) : style === 'hafs' ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
         monW.setAlpha(1);
         if (beat == null) play('scan');
         await c.tw({ targets: [mon, monW], scaleX: MON_K, scaleY: MON_K, duration: 320, ease: 'Back.easeOut' });
