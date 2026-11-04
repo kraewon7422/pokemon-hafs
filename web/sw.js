@@ -1,7 +1,7 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v54';
+const VERSION = 'hafsmon-v55';
 // 운영자가 올린 포켓몬 그림 (Supabase Storage, 0031): 파일 이름이 올릴 때마다 바뀌므로 한 번 받으면 계속 씀 (버전과 따로 보관)
 const SPRITES = 'hafsmon-sprites';
 // 설치할 때 바로 받는 것 = 첫 화면(로그인·홈)에 필요한 것만 (약 1MB)
@@ -19,7 +19,7 @@ const CORE = [
 const EXTRA = [
   // 포켓몬 그림판 (보통 4장 먼저, 다음 색이 다른 4장 — 장 수를 바꾸면 여기도)
   ...['n', 's'].flatMap((k) => [0, 1, 2, 3].map((i) => `sprites/pk-${k}${i}.webp`)),
-  'vendor/jsQR.js', 'img/map.webp', 'img/eggs.png', 'js/catch.js', 'js/safari.js', 'img/catch/day.png', 'img/catch/sunset.png', 'img/catch/night.png', 'img/fx/status.png',
+  'vendor/jsQR.js', 'img/map.webp', 'img/eggs.png', 'js/catch.js', 'js/safari.js', 'img/safari-tiles.png', 'img/safari-tiles.js', 'img/safari-hero.png', 'img/catch/day.png', 'img/catch/sunset.png', 'img/catch/night.png', 'img/fx/status.png',
   ...['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'].map((n) => `img/battle/${n}.png`),
   'js/games/surf.js', 'js/games/dodge.js', 'js/games/maze.js', 'js/games/land.js', 'js/games/cross.js', 'img/games/cross/cross-props.png',
   'vendor/phaser.min.js', 'img/games/dodge/dodge-bg.png', 'img/games/surf/surf-props.png',
