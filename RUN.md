@@ -71,7 +71,7 @@ python tools/build_atlas.py                                                   # 
 
 ## 0038 전설 · 소포 확인 (스테이징)
 - 서버: `node tests/rpc_test.mjs` → [45] (알림 · 퀘스트 · 방랑 · 소포 · 울트라비스트 · 메타몽 · 사파리 정리). 시험 동안 `ditto_disguise_chance` 는 0 (끝에서 되돌림).
-- 화면: `cd web && python -m http.server 8138` → `node .work/pokemon/ui_prep38.mjs` (임시 학생 0205xx · 레지 셋 · 소포 코드) → `C:/dev/tools/pw-webkit` 의 `ui38.mjs <sid> <se|w375|pc> "<코드>" [legend]` · `ditto38.mjs <sid>` · `admin38.mjs`
+- 화면: `cd web && python -m http.server 8138` → 임시 학생(0205xx)으로 로그인해 소포 코드 · 전설 · 메타몽 화면을 폰(375) · 320 · PC 크기에서 확인
   → 끝나면 `node .work/pokemon/ui_prep38.mjs --clean <sid>` (임시 학생 · ui38 소포 지움).
 - 실전: 0038 을 넣은 뒤 운영자 '전설·소포' 탭에서 소포 코드를 만들고, 퀘스트 숫자 · 메타몽 (0.5%) · 방랑 전설 (30%) 을 확인.
 
