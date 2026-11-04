@@ -1,12 +1,13 @@
 // 가방 (0020): 포켓몬 박스 · 도구 · 회복약 · 기술머신 · 티켓. 3·4세대 가방처럼 주머니 탭 → 목록 → 아래 설명·버튼.
-// 포켓몬을 누르면 상태(레벨·경험치·지닌 물건) / 능력치 / 기술(잊고 배우기) / 도감.
-import { sb, rpc, errorText, selectAll } from './sb.js';
+// 포켓몬 주머니 = 3세대(에메랄드) PC 박스 (0036): ◀ BOX n ▶ · 6열 × 5줄 = 30칸 · 30박스 (같은 포켓몬도 여러 마리).
+// 포켓몬을 누르면 요약: 상태(레벨·경험치·지닌 물건) / 능력치 / 기술(잊고 배우기) / 도감 + 카드 · 진화 · 옮기기 · 놓아주기.
+import { rpc, errorText, selectAll } from './sb.js';
 import { spriteCanvas, monSprite } from './sprites.js';
 import { sfx } from './sfx.js';
 import { h, josa, toast, pix } from './ui.js';
-import { S, collection, speciesOf, dexOf, owned } from './state.js';
-import { overlay, sheet, closeOverlay, openBag } from './app.js';
-import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES } from './dex.js';
+import { S, mons, speciesOf, dexOf, maxStage, isWithdrawn } from './state.js';
+import { overlay, sheet, closeOverlay, openBag, sync } from './app.js';
+import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES, evoSheet } from './dex.js';
 import { moveOf } from './battle.js';
 import { eggPocket, loadEggs, TIER } from './eggs.js';
 
@@ -15,9 +16,15 @@ const ICONS = [...Array.from({ length: 18 }, (_, i) => `boost${String(i + 1).pad
   'glasses', 'lucky', 'choco', 'cushion', 'clock', 'mask', 'hotpack', 'bandage', 'ointment', 'iv', 'mint', 'energy', 'firstaid', 'candy', 'evo',
   ...TYPES.map((t) => `tm:${t}`)];
 export const itemOf = (key) => (S.catalog.items || []).find((x) => x.key === key);
-const qty = (key) => (S.bag?.items || []).find((x) => x.key === key)?.qty || 0;
-const boxOf = (line) => (S.bag?.box || []).find((x) => x.line === line);
+const boxOf = (id) => (S.bag?.box || []).find((x) => x.id === id);
+const spOf = (m) => speciesOf(dexOf(m.line, m.stage));
 export const statl = (b, hp, lv) => Math.floor(((2 * (b || 50) + 31) * lv) / 100) + (hp ? lv + 10 : 5);
+
+// PC 박스: 30칸 × 30박스 (pos 0~899 → BOX pos/30+1, 칸 pos%30)
+const PER = 30; const BOXES = 30;
+export const boxLabel = (pos) => (pos == null ? '' : `BOX ${Math.floor(pos / PER) + 1} · ${(pos % PER) + 1}번 칸`);
+let pcBox = 0;          // 지금 보는 박스 (0부터)
+let moving = null;      // 옮기는 중인 포켓몬 번호
 
 export function itemIcon(key, size = 32) {
   const it = itemOf(key);
@@ -29,7 +36,7 @@ export function itemIcon(key, size = 32) {
 // 기술 배우기 표: 내 포켓몬 계열 것만 (전체는 1만 줄이 넘음). 새 계열을 잡으면 다시 받음
 let learnRows = null; let learnKey = '';
 async function learnset() {
-  const lines = [...new Set(collection().map((c) => c.line_id))].sort((a, b) => a - b);
+  const lines = [...new Set([...mons().map((c) => c.line_id), ...(S.bag?.box || []).map((m) => m.line)])].sort((a, b) => a - b);
   const key = lines.join(',');
   if (!learnRows || learnKey !== key) {
     const r = await selectAll('learnset', 'line_id,move_id,lv,how', (q) => q.in('line_id', lines.length ? lines : [0]).order('line_id').order('move_id'));
@@ -77,6 +84,7 @@ export async function openBagScreen(pocket = 'box', selected = null) {
   const panel = h('div.bag-panel');
   const draw = () => {
     last = { pocket: cur, sel };
+    if (cur !== 'box') moving = null;
     tabs.replaceChildren(...POCKETS.map(([k, t]) => h('button', { role: 'tab', 'aria-selected': String(k === cur), onclick: () => { sfx.blip(); cur = k; sel = null; draw(); } }, t)));
     list.replaceChildren(...pocketList(cur, sel, (k) => { sfx.blip(); sel = k; draw(); }, draw).filter(Boolean));
     panel.replaceChildren(...pocketPanel(cur, sel, draw).filter(Boolean));
@@ -92,15 +100,7 @@ export async function openBagScreen(pocket = 'box', selected = null) {
 
 function pocketList(cur, sel, pick, redraw) {
   if (cur === 'egg') return eggPocket(redraw);
-  if (cur === 'box') {
-    const box = [...(S.bag?.box || [])].sort((a, b) => b.level - a.level || a.line - b.line);
-    if (!box.length) return [h('p.muted', '아직 포켓몬이 없어요. QR을 찍어 모아요!')];
-    return [h('div.box-grid', box.map((m) => {
-      const sp = speciesOf(dexOf(m.line, m.stage));
-      return h('button.box-cell', { onclick: () => openMon(m.line) },
-        monSprite(sp.id, 48, owned(m.line)), h('small', `Lv.${m.level}`), m.held ? h('span.box-held', itemIcon(m.held, 16)) : null);
-    })), h('small.muted', '포켓몬을 누르면 상태 · 능력치 · 기술 · 도감을 볼 수 있어요.')];
-  }
+  if (cur === 'box') return pcView(redraw);
   if (cur === 'key') {
     const p = S.snap?.profile || {};
     return [h('div.stack',
@@ -129,6 +129,54 @@ function pocketList(cur, sel, pick, redraw) {
   });
 }
 
+// ── PC 박스 (3세대 에메랄드): ◀ BOX n ▶ + 풀숲 벽지 6 × 5 ──
+function pcView(redraw) {
+  const box = S.bag?.box || [];
+  if (!box.length) return [h('p.muted', '아직 포켓몬이 없어요. QR을 찍어 모아요!')];
+  const max = S.bag?.box_max || 900;
+  const at = new Map(box.map((m) => [m.pos, m]));
+  const inBox = box.filter((m) => Math.floor(m.pos / PER) === pcBox).length;
+  const go = (d) => { sfx.blip(); pcBox = (pcBox + d + BOXES) % BOXES; redraw(); };
+  const mv = moving != null ? boxOf(moving) : null;
+  if (moving != null && !mv) moving = null;
+  const team = new Set(S.bag?.saved_team || []);
+  const slots = Array.from({ length: PER }, (_, i) => {
+    const pos = pcBox * PER + i; const m = at.get(pos);
+    const sp = m && spOf(m);
+    return h(`button.pc-slot${m ? '' : '.empty'}${m && m.id === moving ? '.moving' : ''}`, {
+      type: 'button',
+      'aria-label': m ? `${sp?.name || '포켓몬'} Lv.${m.level}` : `빈 칸 ${i + 1}`,
+      disabled: !m && moving == null,
+      onclick: () => (moving != null ? moveTo(pos, redraw) : m && openMon(m.id)),
+    },
+    m && sp ? monSprite(sp.id, 40, m) : null,
+    m?.held ? h('span.pc-held', itemIcon(m.held, 12)) : null,
+    m && (S.bag?.partner === m.id || team.has(m.id)) ? h('span.pc-mark', S.bag?.partner === m.id ? '카드' : '팀') : null);
+  });
+  return [h('div.pc',
+    h('div.pc-head',
+      h('button.pc-arrow', { type: 'button', 'aria-label': '이전 박스', onclick: () => go(-1) }, '◀'),
+      h('div.pc-name', h('b', `BOX ${pcBox + 1}`), h('small', `${pcBox * PER + 1}~${pcBox * PER + PER} · ${inBox}/${PER}마리`)),
+      h('button.pc-arrow', { type: 'button', 'aria-label': '다음 박스', onclick: () => go(1) }, '▶')),
+    mv ? h('div.pc-moving', h('span', `${josa(spOf(mv)?.name || '포켓몬', '을', '를')} 옮길 칸을 누르세요`),
+      h('button.btn.small', { onclick: () => { sfx.blip(); moving = null; redraw(); } }, '취소')) : null,
+    h('div.pc-grid', slots),
+    h('div.pc-foot', h('span', `포켓몬 ${box.length} / ${max}마리`),
+      h('small.muted', moving != null ? '다른 박스로 옮기려면 ◀ ▶ 로 박스를 바꿔요. 포켓몬이 있는 칸이면 서로 바꿔요.' : '포켓몬을 누르면 요약 · 진화 · 옮기기 · 놓아주기')))];
+}
+
+async function moveTo(pos, redraw) {
+  const id = moving; moving = null;
+  const m = boxOf(id);
+  if (!m || m.pos === pos) { redraw(); return; }
+  try {
+    await rpc('box_move', { p_mon: id, p_pos: pos }, { retries: 0 });
+    sfx.select(); toast(`${josa(spOf(m)?.name || '포켓몬', '을', '를')} ${boxLabel(pos)}에 옮겼다.`);
+    await loadBag({ notify: false }); sync({ force: true });
+  } catch (e) { toast(errorText(e.message)); }
+  redraw();
+}
+
 function pocketPanel(cur, sel, redraw) {
   const it = itemOf(sel);
   if (!it) return [];
@@ -136,18 +184,18 @@ function pocketPanel(cur, sel, redraw) {
   if (it.pocket === 'med') return [h('div.bag-pi', itemIcon(it.key, 48), desc), h('small.muted', '배틀 중에 "가방"을 눌러 써요. 한 배틀에 2개까지 (공정 모드에서는 못 써요).')];
   if (it.pocket === 'hold') {
     return [h('div.bag-pi', itemIcon(it.key, 48), desc),
-      h('button.btn.big.primary', { onclick: () => pickMon(`${josa(it.name, '을', '를')} 누구에게 줄까?`, () => '', async (line) => {
-        try { await rpc('bag_set_held', { p_line: line, p_item: it.key }, { retries: 0 }); sfx.select(); toast(`${josa(it.name, '을', '를')} 지니게 했다!`); }
+      h('button.btn.big.primary', { onclick: () => pickMon(`${josa(it.name, '을', '를')} 누구에게 줄까?`, () => '', async (m) => {
+        try { await rpc('bag_set_held', { p_mon: m.id, p_item: it.key }, { retries: 0 }); sfx.select(); toast(`${josa(it.name, '을', '를')} 지니게 했다!`); }
         catch (e) { toast(errorText(e.message)); }
         backToBag();
       }) }, '포켓몬에게 지니게 하기')];
   }
   if (it.pocket === 'tool') {
     return [h('div.bag-pi', itemIcon(it.key, 48), desc),
-      h('button.btn.big.primary', { onclick: () => pickMon(`${josa(it.name, '을', '를')} 누구에게 쓸까?`, (m) => (m.level >= 100 ? 'Lv.100' : ''), async (line) => {
+      h('button.btn.big.primary', { onclick: () => pickMon(`${josa(it.name, '을', '를')} 누구에게 쓸까?`, (m) => (m.level >= 100 ? 'Lv.100' : ''), async (m) => {
         try {
-          const r = await rpc('bag_use', { p_item: it.key, p_line: line }, { retries: 0 });
-          sfx.catch(); toast(`${speciesOf(dexOf(line, boxOf(line).stage)).name}의 레벨이 ${josa(r.level, '으로', '로')} 올랐다!`, 3500);
+          const r = await rpc('bag_use', { p_item: it.key, p_mon: m.id }, { retries: 0 });
+          sfx.catch(); toast(`${spOf(m).name}의 레벨이 ${josa(r.level, '으로', '로')} 올랐다!`, 3500);
         } catch (e) { toast(errorText(e.message)); }
         backToBag();
       }) }, '사용')];
@@ -160,16 +208,17 @@ function pocketPanel(cur, sel, redraw) {
     strip.replaceChildren(...(S.bag?.box || []).map((m) => {
       const known = m.known.includes(it.move_id);
       const tag = known ? '배움' : can.has(m.line) ? '가능' : '불가';
-      const sp = speciesOf(dexOf(m.line, m.stage));
+      const sp = spOf(m);
       return h(`button.box-cell.tm-${tag === '가능' ? 'ok' : tag === '배움' ? 'known' : 'no'}`, {
         disabled: tag !== '가능',
         onclick: () => sheet(h('div.stack',
           h('b', `${josa(sp.name, '에게', '에게')} ${josa(mv.name, '을', '를')} 가르칠까?`),
+          h('small', `Lv.${m.level} · ${boxLabel(m.pos)}`),
           h('small', it.effect?.permanent ? '영구 기술머신은 써도 없어지지 않아요. 다른 포켓몬에게도 또 가르칠 수 있어요.'
             : '기술머신은 한 번 쓰면 없어져요. 배운 기술은 포켓몬의 기술 목록에 계속 남아서 언제든 바꿔 쓸 수 있어요.'),
           h('button.btn.big.primary', { onclick: async () => {
             try {
-              await rpc('bag_use', { p_item: it.key, p_line: m.line }, { retries: 0 });
+              await rpc('bag_use', { p_item: it.key, p_mon: m.id }, { retries: 0 });
               sfx.catch(); toast(`${josa(sp.name, '은', '는')} ${josa(mv.name, '을', '를')} 배웠다!`, 3500);
             } catch (e) { toast(errorText(e.message)); }
             backToBag();
@@ -184,22 +233,25 @@ function pocketPanel(cur, sel, redraw) {
   h('small.muted', '가능한 포켓몬을 눌러 가르쳐요.'), strip];
 }
 
-// 포켓몬 고르기 시트. tag(m) 이 글자를 돌려주면 그 포켓몬은 못 고름
+// 포켓몬 고르기 시트. tag(m) 이 글자를 돌려주면 그 포켓몬은 못 고름. done(m) = 박스의 그 한 마리
 function pickMon(title, tag, done) {
   sfx.blip();
   sheet(h('div.stack', h('b', title),
     h('div.box-grid', (S.bag?.box || []).map((m) => {
-      const t = tag(m); const sp = speciesOf(dexOf(m.line, m.stage));
-      return h('button.box-cell', { disabled: !!t, onclick: () => done(m.line) }, spriteCanvas(sp.id, 40), h('small', t || `Lv.${m.level}`));
+      const t = tag(m); const sp = spOf(m);
+      return h('button.box-cell', { disabled: !!t, onclick: () => done(m) }, monSprite(sp.id, 40, m), h('small', t || `Lv.${m.level}`),
+        m.held ? h('span.box-held', itemIcon(m.held, 16)) : null);
     })),
     h('button.btn', { onclick: backToBag }, '취소')));
 }
 
-// ── 포켓몬 보기: 상태 / 능력치 / 기술 / 도감 ──
-export async function openMon(line, page = 0) {
-  const m = boxOf(line);
-  if (!m) return;
-  const sp = speciesOf(dexOf(line, m.stage)); const type = typeOf(sp);
+// ── 포켓몬 요약: 상태 / 능력치 / 기술 / 도감 + 카드 · 진화 · 옮기기 · 놓아주기 ──
+// id = 박스의 포켓몬 번호 (0036). 가방 목록을 아직 안 받았으면 먼저 받음
+export async function openMon(id, page = 0) {
+  if (!boxOf(id)) { try { await loadBag({ notify: false }); } catch (e) { toast(errorText(e.message)); return; } }
+  const m = boxOf(id);
+  if (!m) { toast('박스에 없는 포켓몬이에요.'); return; }
+  const sp = spOf(m); const type = typeOf(sp);
   const PAGES = ['상태', '능력치', '기술', '도감'];
   const body = h('div.sum-body');
   const tabs = h('div.sum-tabs', PAGES.map((t, i) => h('button', { type: 'button', 'aria-pressed': String(i === page), onclick: () => show(i) }, t)));
@@ -209,17 +261,60 @@ export async function openMon(line, page = 0) {
     tabs.querySelectorAll('button').forEach((b, k) => b.setAttribute('aria-pressed', String(k === page)));
     sfx.blip();
     // replaceChildren 은 null 을 글자 "null" 로 그림 → 빈 칸(지닌 물건 없음 등)은 빼고 넣음
-    body.replaceChildren(...[monState, monStats, monMoves][page](boxOf(line), sp, () => openMon(line, page)).filter(Boolean));
+    body.replaceChildren(...[monState, monStats, monMoves][page](boxOf(id), sp, () => openMon(id, page)).filter(Boolean));
   };
+  const isPartner = S.bag?.partner === id;
+  const canEvo = m.stage < maxStage(m.line) && !isWithdrawn(m.line);
   const ov = sheet([
     h('div.summary',
       h('div.sum-top', h('span', sp.name), h('span.types', typeChips(type)), h('span.sum-lv', `Lv.${m.level}`)),
-      h('div.sum-main', h(`div.sum-pic.t-bg-${type.split('/')[0]}`, monSprite(sp.id, 112, owned(line)),
-        owned(line)?.from_egg && h('span.egg-born', { title: '알에서 태어남' }, '알에서 태어남')), h('div.sum-right', tabs, body))),
-    h('button.btn', { onclick: backToBag }, '가방으로'),
+      h('div.sum-main', h(`div.sum-pic.t-bg-${type.split('/')[0]}`, monSprite(sp.id, 112, m),
+        m.from_egg && h('span.egg-born', { title: '알에서 태어남' }, '알에서 태어남')), h('div.sum-right', tabs, body))),
+    h('div.sum-acts',
+      h('button.btn', { disabled: isPartner, onclick: () => setPartner(m) }, isPartner ? '카드 포켓몬' : '카드에 올리기'),
+      canEvo ? h('button.btn.gold', { onclick: () => evoSheet({ ...m, line_id: m.line }) }, '진화') : null,
+      h('button.btn', { onclick: () => { sfx.blip(); moving = id; pcBox = Math.floor(m.pos / PER); last = { pocket: 'box', sel: null }; backToBag(); } }, '옮기기'),
+      h('button.btn.danger', { onclick: () => releaseMon(m) }, '놓아주기')),
+    h('button.btn', { onclick: backToBag }, '박스로'),
   ]);
   ov.classList.add('sum-overlay', 'mon-view');
   show(page);
+}
+
+async function setPartner(m) {
+  try {
+    const prof = await rpc('set_partner', { p_mon: m.id }, { retries: 0 });
+    if (S.snap) S.snap.profile = { ...S.snap.profile, ...prof };
+    if (S.bag) S.bag.partner = m.id;
+    sfx.select(); toast(`${josa(spOf(m).name, '을', '를')} 트레이너 카드에 올렸다!`);
+    sync({ force: true });
+    openMon(m.id);
+  } catch (e) { toast(errorText(e.message)); }
+}
+
+// 놓아주기: 확인 → 서버 (마지막 1마리 · 카드 · 저장한 배틀 팀 · 배틀/레이드 중인 포켓몬은 안 됨)
+function releaseMon(m) {
+  sfx.blip();
+  const sp = spOf(m); const held = m.held && itemOf(m.held);
+  const why = (S.bag?.box || []).length <= 1 ? '마지막 한 마리는 놓아줄 수 없어요.'
+    : S.bag?.partner === m.id ? '트레이너 카드 포켓몬이에요. 카드를 다른 포켓몬으로 바꾼 뒤에 놓아줄 수 있어요.'
+      : (S.bag?.saved_team || []).includes(m.id) ? '배틀 팀에 있는 포켓몬이에요. 배틀 탭 → 팀 바꾸기에서 빼고 놓아줄 수 있어요.' : null;
+  if (why) { toast(why, 3500); return; }
+  sheet(h('div.stack',
+    h('b', `정말 ${josa(sp.name, '을', '를')} 놓아줄까요?`),
+    h('div.release-mon', monSprite(sp.id, 64, m), h('span', h('b', sp.name), h('br'), h('small', `Lv.${m.level} · ${boxLabel(m.pos)}`))),
+    h('small', '놓아준 포켓몬은 다시 돌아오지 않아요.'),
+    h('small', held ? `지니고 있던 ${josa(held.name, '은', '는')} 가방으로 돌아와요.` : '지닌 물건은 없어요.'),
+    h('small.muted', '도감 기록 (잡은 적 있음) · 점수는 그대로 남아요.'),
+    h('button.btn.big.danger', { onclick: async () => {
+      try {
+        await rpc('mon_release', { p_mon: m.id }, { retries: 0 });
+        sfx.select(); toast(`${josa(sp.name, '을', '를')} 놓아주었다. 잘 가, ${sp.name}!`, 3500);
+        await loadBag({ notify: false }); sync({ force: true });
+      } catch (e) { toast(errorText(e.message), 3500); }
+      backToBag();
+    } }, '놓아주기'),
+    h('button.btn', { onclick: () => openMon(m.id) }, '그만두기')));
 }
 
 function monState(m, sp, reopen) {
@@ -228,32 +323,49 @@ function monState(m, sp, reopen) {
   return [
     h('div.exp-row', h('span', 'EXP'), h('span.stat-bar.exp', h('i', { style: { width: `${m.need ? (m.exp / m.need) * 100 : 100}%` } })),
       h('small', m.level >= 100 ? 'MAX' : `${m.exp}/${m.need}`)),
+    h('small.sum-where', boxLabel(m.pos)),
     h('div.bag-item.slim', held ? itemIcon(m.held, 24) : h('i.item-ico.none'), h('span', h('small', '지닌 물건'), h('br'), h('b', held ? held.name : '없음')),
       held ? h('button.btn.small', { onclick: async () => {
-        try { await rpc('bag_set_held', { p_line: m.line, p_item: null }, { retries: 0 }); toast(`${josa(held.name, '을', '를')} 가방에 넣었다.`); await loadBag({ notify: false }); reopen(); }
+        try { await rpc('bag_set_held', { p_mon: m.id, p_item: null }, { retries: 0 }); toast(`${josa(held.name, '을', '를')} 가방에 넣었다.`); await loadBag({ notify: false }); reopen(); }
         catch (e) { toast(errorText(e.message)); }
-      } }, '빼기') : null),
+      } }, '빼기') : h('button.btn.small', { onclick: () => holdPicker(m, reopen) }, '주기')),
     held && h('small.muted', held.description),
-    shinyRow(m.line, reopen),
+    shinyRow(m, reopen),
     h('b', '레벨 올리는 법'),
     h('ul.lv-src',
       src.battle !== false && h('li', '배틀 (이기면 더 많이, 실시간 배틀은 1.5배)'),
       src.raid !== false && h('li', '레이드에 참가해서 이 포켓몬으로 탭하기'),
       src.places !== false && h('li', `오늘 다른 장소 QR ${src.places_n || 3}곳마다 → 배틀 팀 모두 +1`),
-      src.catch !== false && h('li', '같은 선생님 포켓몬을 또 잡기 +1'),
       h('li', '이상한사탕 +1 (가방 → 도구)')),
   ];
 }
 
-// 반짝 색 (알에서 반짝으로 태어난 포켓몬만): 켜고 끄기
-function shinyRow(line, reopen) {
-  const c = owned(line);
-  if (!c?.shiny) return null;
-  return h('div.bag-item.slim.shiny-row', h('i.shiny-ico', pix('spark')), h('span', h('small', '반짝이는 색'), h('br'), h('b', c.shiny_on ? '켜짐' : '꺼짐')),
-    h('button.btn.small', { onclick: async () => {
-      try { await rpc('set_shiny', { p_line: line, p_on: !c.shiny_on }, { retries: 0 }); c.shiny_on = !c.shiny_on; sfx.blip(); reopen(); }
+// 요약 → 지닌 물건 주기: 가방의 지니는 물건 중에서
+function holdPicker(m, reopen) {
+  const rows = (S.bag?.items || []).map((x) => ({ ...x, it: itemOf(x.key) })).filter((x) => x.it?.pocket === 'hold').sort((a, b) => a.it.sort - b.it.sort);
+  if (!rows.length) { toast('지니게 할 물건이 없어요. 장소 QR · 배틀에서 가끔 주워요.', 3000); return; }
+  sfx.blip();
+  sheet(h('div.stack', h('b', `${josa(spOf(m).name, '에게', '에게')} 무엇을 지니게 할까?`),
+    h('div.stack', rows.map((x) => h('button.bag-item', { onclick: async () => {
+      try { await rpc('bag_set_held', { p_mon: m.id, p_item: x.key }, { retries: 0 }); sfx.select(); toast(`${josa(x.it.name, '을', '를')} 지니게 했다!`); await loadBag({ notify: false }); }
       catch (e) { toast(errorText(e.message)); }
-    } }, c.shiny_on ? '보통 색으로' : '반짝 색으로'));
+      reopen();
+    } }, itemIcon(x.key), h('span', h('b', x.it.name), h('br'), h('small', x.it.description)), h('b.qty', `×${x.qty}`)))),
+    h('button.btn', { onclick: reopen }, '그만두기')));
+}
+
+// 반짝 색 (알에서 반짝으로 태어난 포켓몬만): 켜고 끄기
+function shinyRow(m, reopen) {
+  if (!m?.shiny) return null;
+  return h('div.bag-item.slim.shiny-row', h('i.shiny-ico', pix('spark')), h('span', h('small', '반짝이는 색'), h('br'), h('b', m.shiny_on ? '켜짐' : '꺼짐')),
+    h('button.btn.small', { onclick: async () => {
+      try {
+        await rpc('set_shiny', { p_mon: m.id, p_on: !m.shiny_on }, { retries: 0 });
+        m.shiny_on = !m.shiny_on;
+        const sm = mons().find((x) => x.id === m.id); if (sm) sm.shiny_on = m.shiny_on;
+        sfx.blip(); reopen();
+      } catch (e) { toast(errorText(e.message)); }
+    } }, m.shiny_on ? '보통 색으로' : '반짝 색으로'));
 }
 
 function monStats(m, sp) {
@@ -281,12 +393,11 @@ function moveInfo(mv) {
 // 기술: 지금 4개 → 하나를 누르고 "바꾸기" → 아는 기술 중에서 고름 (3·4세대 "기술을 잊고 배우기")
 function monMoves(m, sp, reopen) {
   const detail = h('div');
-  let pickIdx = null;
   const learned = new Set(m.learned || []);
   const curRows = m.moves.map((id, i) => {
     const mv = moveOf(id) || { name: '?', type: '보통', kind: 'attack', pp: 0 };
     const row = moveRow(mv, null, () => {
-      sfx.blip(); pickIdx = i;
+      sfx.blip();
       curRows.forEach((r, k) => r.setAttribute('aria-pressed', String(k === i)));
       detail.replaceChildren(moveInfo(mv), h('button.btn.primary', { onclick: () => chooseNew(i) }, `${josa(mv.name, '을', '를')} 잊고 다른 기술 배우기`));
     });
@@ -301,7 +412,7 @@ function monMoves(m, sp, reopen) {
       h('div.move-list', others.map((mv) => moveRow(mv, learned.has(mv.id) ? h('span.kind.k-new', '기술머신') : null, async () => {
         const next = [...m.moves]; next[i] = mv.id;
         try {
-          await rpc('bag_set_moves', { p_line: m.line, p_moves: next }, { retries: 0 });
+          await rpc('bag_set_moves', { p_mon: m.id, p_moves: next }, { retries: 0 });
           sfx.catch();
           toast(`1, 2 그리고… 짠! ${josa(sp.name, '은', '는')} ${josa(old.name, '을', '를')} 깨끗이 잊었다! 그리고 ${josa(mv.name, '을', '를')} 배웠다!`, 4500);
           await loadBag({ notify: false }); reopen();

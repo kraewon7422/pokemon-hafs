@@ -79,6 +79,7 @@
 | DEV_LOGIN_OFF / BAD_EMAIL | 개발용 로그인 꺼짐 / 이메일 형식 |
 | FESTIVAL_CLOSED / SELF_REDEEM_OFF | 운영 시간 아님 / 셀프 지급 꺼짐 |
 | NO_TICKET / MAX_STAGE / NOT_OWNED | 진화권 없음 / 최종 진화 / 미보유 |
+| BOX_FULL / LAST_MON / MON_PARTNER / MON_IN_TEAM / MON_BUSY / BAD_POS | (0036) 박스 꽉 참 / 마지막 한 마리 / 카드 포켓몬 / 저장한 배틀 팀 / 배틀·레이드 중 / 없는 칸 |
 | NOT_STAFF / NOT_ADMIN / NO_STUDENT / BAD_PAYLOAD | 부스·운영자 권한 / 학번 없음 / 가방 QR 아님 |
 | 스캔 ack: invalid_token, already_pending, daily_cap, bag_full, locked, closed, bad_format | 앱이 토스트로 안내 |
 
@@ -176,6 +177,15 @@
 - 3차 다듬기: 땅따먹기 = 아무 데나 누르고 끄는 조이스틱 (대각선은 계단처럼 고르게 → 꼬리는 늘 이어짐), 잘렸을 때 한 줄 안내 + 다시 출발 카운트, 결과 표, 부딪힘 규칙 25가지 확인 (`.work/land_unit.mjs`). 서핑 = 탭하는 순간 방향 바뀜 (두 번 톡 부스트 없앰, 번개 단추만), 파도 점프대 크게·1초 비행, 난이도 천천히 (1000m 에서 예전 500m 난이도), 문어는 500~700m · 1500~1700m … 에만. 폭탄 피하기 = 분열 폭탄 (반쯤 떨어지면 둘로), 약 10% 어렵게, 모든 몬스터 같은 크기 (2:1). 미로 = 컴퓨터에서 버튼이 판 바로 아래.
 - 오프라인: 앱이 처음 뜰 때는 첫 화면에 필요한 파일만 (약 0.9MB) 받고, 첫 화면이 뜬 뒤 나머지 (Phaser·게임·지도·QR 카메라, 약 2.1MB) 를 뒤에서 받음 (`sw.js` CORE / EXTRA, 앱이 'warm' 메시지). 인터넷 없이 한 판은 폰에 저장 → 연결되면 자동으로 올림 (`hub.js` mgPending).
 - 그림·라이브러리: Phaser 3.90 (MIT). 폭탄 피하기 배경 = Luis Zuno "Country Side Platform Tiles" + FabinhoSC "Background Clouds And Mountains Parallax" (OpenGameArt, CC0). 서핑 소품 = ArMM1998 "Zelda-like tilesets and sprites" + ChikenwingJJA "Beach tileset" (OpenGameArt, CC0). 파일별 출처는 `web/img/games/*/CREDITS.txt`. 나머지는 코드로 직접 그림.
+
+## 6-7. PC 박스 (0036)
+- `collection` 한 줄 = 포켓몬 한 마리 (`id`). 같은 종도 여러 마리, 각자 레벨·경험치·기술·배운 기술·지닌 물건·반짝·진화 실패 수.
+- 박스 = `pos` 0~899 → BOX `pos/30+1` (1~30), 칸 `pos%30` (6열 × 5줄). 새 포켓몬은 빈 칸 중 맨 앞. `box_move(p_mon, p_pos)` 로 옮김 (차 있으면 서로 바꿈).
+- 최대 `box_max` 마리 (설정, 기본·최대 900). 꽉 차면 부스는 그 티켓을 쓰지 않고 `box_full` (티켓 그대로) · 야생/사파리/레이드 잡기 · 알 부화 · 운영자 지급은 `BOX_FULL` (만남·알도 그대로) → 놓아준 뒤 다시.
+- 놓아주기 `mon_release(p_mon)`: 줄은 지우지 않고 `released_at` 만 적음 (박스·배틀·레이드에서는 안 보임). **도감 '잡은 적 있음' · 점수 · 도감 50/100% 보상 · 도전과제는 그대로** (점수 = 계열마다 가장 높은 단계 하나 — 같은 종을 많이 잡아도, 놓아줘도 같음). 지닌 물건은 가방으로. 마지막 1마리 · 카드 포켓몬 (`partner_mon`) · 저장한 배틀 팀 (`team_mons`) · 진행 중인 배틀(신청 포함)/레이드의 포켓몬은 안 됨.
+- 중복 잡기: 그 계열을 잡은 횟수 (`catch_count` 합, 놓아준 것 포함) 가 `dup_bonus_every` 의 배수가 되면 진화의돌 (예전과 같음). '또 잡으면 그 포켓몬 레벨 +1' 은 없어짐 (새 한 마리가 생기므로).
+- sync: `collection` = 도감 (계열마다 한 줄: 가장 높은 단계 · 잡은 횟수 합 · 지금 가진 수 `count`), `mons` = 박스의 포켓몬 (`id, line_id, stage, level, pos, held, shiny, shiny_on, from_egg, evo_fails, caught_at`). `rules.box_max`.
+- 함수 인자 = 포켓몬 번호: `evolve(p_mon)`, `bag_set_held(p_mon, p_item)`, `bag_set_moves(p_mon, p_moves)`, `bag_use(p_item, p_mon)`, `set_partner(p_mon)`, `set_shiny(p_mon, p_on)`, `battle_set_team / battle_start_cpu / battle_start_team / battle_challenge / battle_accept (p_mons bigint[])` (같은 종 두 마리도 한 팀, 같은 한 마리 두 번은 안 됨), `raid_join / raid_join_open / raid_attack (p_mon)`. 운영자 `admin_grant_monster` = 새 한 마리, `admin_set_level` = 그 계열 모두. 배틀 상태의 포켓몬에 `mon`, 레이드 참가자 `mon_id`.
 
 ## 7. 운영 체크리스트 (요약)
 - 학교 전산 담당: 교육용 구글 Workspace에서 이 앱(OAuth 클라이언트) 허용 받기 — **가장 먼저**.

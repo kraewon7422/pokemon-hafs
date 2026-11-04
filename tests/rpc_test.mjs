@@ -73,6 +73,10 @@ for (const e of ['022901', '022902', '022903', '021904']) await client(null).rpc
 const STOK = await login('022901@test.local');
 for (const e of ['022901', '022902', '022903', '021904']) S.push(client(e === '022901' ? STOK : await login(`${e}@test.local`)));
 const anon = client(null);
+// 0036: 포켓몬 번호 (박스의 한 마리). 같은 계열이 여러 마리면 먼저 잡은 것. 없는 계열 = -계열 (서버가 거절)
+const myMons = async (c) => { const r = await c.select('collection?select=id,line_id,stage,level,pos,held,catch_count&released_at=is.null&order=id'); return Array.isArray(r.data) ? r.data : []; };
+const monId = async (c, line) => (line == null ? null : (await myMons(c)).find((m) => m.line_id === line)?.id ?? -line);
+const monIds = async (c, lines) => { const ms = await myMons(c); return lines.map((l) => ms.find((m) => m.line_id === l)?.id ?? -l); };
 
 console.log('\n[0] setup');
 await admin.rpc('ensure_profile'); await booth.rpc('ensure_profile');
@@ -106,7 +110,7 @@ ok((await S[0].rpc('admin_stats')).error === 'NOT_ADMIN', 'student cannot call a
 ok((await anon.rpc('sync', { p_scans: [] })).error, 'anon cannot call sync');
 for (const fn of ['admin_relink', 'admin_export_ranking', 'admin_grant_monster', 'ensure_profile', 'get_ranking', 'screen_feed', 'spin_roulette', 'register_profile', 'admin_invite_staff', 'admin_list_staff', 'link_number', 'send_inquiry', 'admin_list_requests', 'admin_decide_reset'])
   ok((await anon.rpc(fn, {})).error, `anon cannot call ${fn}`);
-for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name', '_attach_google', '_kick_number', '_set_number_account', '_number_owner', '_school_sid'])
+for (const fn of ['_is_open', '_admit', '_redeem_pending', '_state', '_setting', '_rand', '_new_secret', '_roulette_json', '_state_base', '_create_password_user', '_mask_name', '_attach_google', '_kick_number', '_set_number_account', '_number_owner', '_school_sid', '_mon_new', '_box_count', '_box_max', '_ticket_mon', '_team_mons'])
   ok((await S[0].rpc(fn, {})).error, `student cannot call internal ${fn}`);
 
 console.log('\n[2] scan / sync / lock');
@@ -196,7 +200,8 @@ const three8 = new Set((await admin.select('lines?select=id&max_stage=eq.3')).da
 const line = (st.collection.find((c) => c.stage === 1 && three8.has(c.line_id) && c.level < 15) || st.collection[0]).line_id;
 const have = (await S[0].rpc('sync')).data.state.profile.evo_tickets;
 if (have !== 1) await admin.rpc('admin_adjust_tickets', { p_student_id: '022901', p_delta: 1 - have });   // exactly 1 ticket for the race
-const evs = await Promise.all(Array.from({ length: 5 }, () => S[0].rpc('evolve', { p_line: line })));
+const mon8 = await monId(S[0], line);
+const evs = await Promise.all(Array.from({ length: 5 }, () => S[0].rpc('evolve', { p_mon: mon8 })));
 const spent = evs.filter(e => e.data);
 ok(spent.length === 1 && evs.filter(e => e.error === 'NO_TICKET').length === 4, 'exactly one evolve consumed the ticket', evs.map(e => e.error || 'ok'));
 
@@ -207,11 +212,11 @@ await patchSetting('evo_prob', [0, 0, 0]);
 // 3단계 계열 (0032: 실제 포켓몬은 1~3단계) + 아직 진화 레벨 전 (레벨이 되면 진화의돌 없이 진화하므로)
 const three = new Set((await admin.select('lines?select=id&max_stage=eq.3')).data.map((l) => l.id));
 const line2 = (await S[1].rpc('sync')).data.state.collection.find(c => c.stage === 1 && three.has(c.line_id) && c.level < 15).line_id;
-const e1 = await S[1].rpc('evolve', { p_line: line2 });
-const e2 = await S[1].rpc('evolve', { p_line: line2 });
+const e1 = await S[1].rpc('evolve', { p_mon: await monId(S[1], line2) });
+const e2 = await S[1].rpc('evolve', { p_mon: await monId(S[1], line2) });
 ok(e1.data?.success === false && e2.data?.success === true && e2.data.stage === 2, 'fail at 0% then guaranteed success', [e1.data?.success, e2.data?.success]);
 await patchSetting('evo_prob', [0, 0.7, 0.35]);
-ok((await S[1].rpc('evolve', { p_line: line2 })).error === 'NO_TICKET', 'no tickets left → NO_TICKET');
+ok((await S[1].rpc('evolve', { p_mon: await monId(S[1], line2) })).error === 'NO_TICKET', 'no tickets left → NO_TICKET');
 
 console.log('\n[10] rotating legendary QR');
 // legendary QRs start switched off; an operator puts one on the TV (admin 현황판 → 전설 출현)
@@ -232,7 +237,7 @@ r = await S[3].rpc('sync', { p_scans: [{ n: nonce(), q: 'L01', t: rt2.data.token
 ok(r.data?.acks?.[0]?.status === 'daily_cap', 'legendary QR: once per day', r.data?.acks);
 const leg = (await S[3].rpc('sync')).data.state.collection.find(c => c.line_id >= 35);
 await admin.rpc('admin_adjust_tickets', { p_student_id: '021904', p_delta: 1 });
-ok(leg && (await S[3].rpc('evolve', { p_line: leg.line_id })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
+ok(leg && (await S[3].rpc('evolve', { p_mon: await monId(S[3], leg.line_id) })).error === 'MAX_STAGE', 'legendary cannot evolve (1 stage)');
 await admin.rpc('admin_adjust_tickets', { p_student_id: '021904', p_delta: -1 });
 ok((await booth.rpc('screen_feed')).data?.rotating?.some(x => x.id === 'L01'), 'TV shows the legendary QR while it is on');
 await legendOn(false);
@@ -599,9 +604,9 @@ console.log('\n[24] raids + special tickets');
   const rd = (await admin.rpc('admin_create_raid', { p_species: 3, p_hp: 300, p_minutes: 5, p_tv: false })).data;
   ok(rd?.q === `R${rd.id}` && rd.t && rd.hp === 300 && rd.status === 'active', 'admin opens a printable raid (static QR)', rd);
   ok((await A.c.rpc('raid_join', { p_q: rd.q, p_t: 'deadbeef00' })).error === 'RAID_BAD_TOKEN', 'wrong raid token refused');
-  let r = await A.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t, p_line: 32 });
+  let r = await A.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t, p_mon: await monId(A.c, 32) });
   ok(r.data?.players === 1 && r.data.me?.line_id === 32 && r.data.me.per_tap > 3, 'join with my 체육 monster (better per-tap damage)', r.data?.me);
-  r = await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 1000, p_line: 32 });
+  r = await A.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 1000, p_mon: await monId(A.c, 32) });
   ok(r.data?.accepted <= 20 && r.data.dealt === r.data.accepted * r.data.me.per_tap, 'tap cap: 1000 taps sent → only ~8/s accepted', { accepted: r.data?.accepted, dealt: r.data?.dealt });
   ok((await B.c.rpc('raid_attack', { p_raid: rd.id, p_taps: 5 })).error === 'RAID_NOT_JOINED', 'must join before attacking');
   await B.c.rpc('raid_join', { p_q: rd.q, p_t: rd.t });
@@ -691,10 +696,10 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: 4, p_stage: 1 });
   for (const fn of ['_bt_move', '_bt_turn', '_bt_finish', '_bt_resolve', '_bt_ai', '_bt_new'])
     ok((await A.c.rpc(fn, {})).error, `student cannot call internal ${fn}`);
-  ok((await anon.rpc('battle_start_cpu', { p_lines: [32] })).error, 'anon cannot battle');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [4] })).error === 'BAD_TEAM', 'team must be my own monsters');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 32] })).error === 'BAD_TEAM', 'no duplicates in a team');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 1] })).error === 'BAD_TEAM', 'at most 3');
+  ok((await anon.rpc('battle_start_cpu', { p_mons: await monIds(anon, [32]) })).error, 'anon cannot battle');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [4]) })).error === 'BAD_TEAM', 'team must be my own monsters');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 32]) })).error === 'BAD_TEAM', 'no duplicates in a team');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 1]) })).error === 'BAD_TEAM', 'at most 3');
 
   // play until the end: move 1 each turn, pick the next monster when one faints
   const play = async (c, b, pick = () => ({ move: 1 })) => {
@@ -709,7 +714,7 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   };
 
   // CPU practice
-  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61] })).data;
+  let b = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61]) })).data;
   const foe = b?.sides?.[1];
   ok(b?.mode === 'cpu' && b.status === 'active' && b.sides[0].mons.length === 3 && foe?.mons?.length === 3, 'CPU practice starts 3 vs 3', b);
   ok(b?.sides[0].mons[0].moves?.length === 4 && b.sides[0].mons[0].hp === b.sides[0].mons[0].max && b.sides[0].mons[0].max > 100, 'my monsters: L50 HP + 4 moves');
@@ -726,12 +731,12 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   // friend team vs AI (B's team = strongest monsters since no team saved)
   const codeB = (await B.c.rpc('battle_code')).data;
   ok(/^[a-z2-9]{8}$/.test(codeB || '') && (await B.c.rpc('battle_code')).data === codeB, 'battle QR code (stable)', codeB);
-  ok((await B.c.rpc('battle_start_team', { p_code: codeB, p_lines: [4] })).error === 'BATTLE_SELF', 'cannot battle myself');
-  ok((await A.c.rpc('battle_start_team', { p_code: 'zzzzzzzz', p_lines: [32] })).error === 'BATTLE_CODE_NOT_FOUND', 'unknown code');
+  ok((await B.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(B.c, [4]) })).error === 'BATTLE_SELF', 'cannot battle myself');
+  ok((await A.c.rpc('battle_start_team', { p_code: 'zzzzzzzz', p_mons: await monIds(A.c, [32]) })).error === 'BATTLE_CODE_NOT_FOUND', 'unknown code');
   const t0 = (await A.c.rpc('sync')).data.state.profile.evo_tickets;
   let won = null;
   for (let tries = 0; tries < 4 && !won; tries++) {
-    b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+    b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
     if (tries === 0) ok(b?.mode === 'team' && b.sides[1].mons.length === 1 && b.names[1], 'friend team vs AI starts (friend has 1 monster)', b?.sides?.[1]);
     b = await play(A.c, b);
     if (b?.winner === 0) won = b;
@@ -741,21 +746,21 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok(st1.evo_tickets === t0 + 1, 'evo ticket +1', [t0, st1.evo_tickets]);
   const rkA = (await A.c.rpc('get_ranking_by', { p_kind: 'battle' })).data;
   ok(rkA?.me?.value === 1, 'battle win counts in the ranking', rkA?.me);
-  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
   b = await play(A.c, b);
   ok(b?.winner !== 0 || b.reward?.why === 'same_opp', 'same friend again today → no 2nd ticket', b?.reward);
 
   // live PvP: invite → home inbox → accept → both choose (hidden from each other)
   await setS('battle_turn_sec', 3);
   const codeA = (await A.c.rpc('battle_code')).data;
-  let inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
+  let inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_mons: await monIds(B.c, [4]) })).data;
   ok(inv?.status === 'invite' && inv.mode === 'pvp', 'B sends a live battle request', inv);
   let box = (await A.c.rpc('battle_inbox')).data;
   ok(box?.invites?.some(x => x.id === inv.id && x.from), 'A sees "배틀 신청!" in the inbox', box);
-  ok((await S[0].rpc('battle_accept', { p_id: inv.id, p_lines: [1] })).error, 'only the invited friend can accept');
-  let pa = (await A.c.rpc('battle_accept', { p_id: inv.id, p_lines: [32, 17] })).data;
+  ok((await S[0].rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(S[0], [1]) })).error, 'only the invited friend can accept');
+  let pa = (await A.c.rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(A.c, [32, 17]) })).data;
   ok(pa?.status === 'active' && pa.me === 1 && pa.sides[1].mons.length === 2 && pa.sides[0].mons.length === 1, 'A accepts → battle starts (A is side 1)', pa);
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32] })).error === 'IN_PVP_BATTLE' && (await B.c.rpc('battle_start_cpu', { p_lines: [4] })).error === 'IN_PVP_BATTLE', 'cannot start another battle during a live one (no silent forfeit)');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32]) })).error === 'IN_PVP_BATTLE' && (await B.c.rpc('battle_start_cpu', { p_mons: await monIds(B.c, [4]) })).error === 'IN_PVP_BATTLE', 'cannot start another battle during a live one (no silent forfeit)');
   r = await B.c.rpc('battle_act', { p_id: inv.id, p_action: { move: 1 } });
   ok(r.data?.chosen === true && r.data.turn === 0, 'B chose; waits for A');
   const pa2 = (await A.c.rpc('battle_state', { p_id: inv.id })).data;
@@ -766,8 +771,8 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok(pa3?.turn === 1 || pa3?.status === 'over', 'time up → AI chooses for A, the turn is played', pa3?.turn);
   await setS('battle_turn_sec', 45);
   await A.c.rpc('battle_forfeit', { p_id: inv.id });
-  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
-  await A.c.rpc('battle_accept', { p_id: inv.id, p_lines: [32] });
+  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_mons: await monIds(B.c, [4]) })).data;
+  await A.c.rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(A.c, [32]) });
   const tB = (await B.c.rpc('sync')).data.state.profile.evo_tickets;
   r = await A.c.rpc('battle_forfeit', { p_id: inv.id });
   ok(r.data?.status === 'over' && r.data.winner === 0, 'A gives up → B wins', r.data?.winner);
@@ -776,11 +781,12 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   // 이 친구한테서 오늘 이미 받았으면 (앞의 배틀 결과는 능력치·주사위에 따라 다름) same_opp 가 맞는 결과
   ok((rb?.reward?.ticket === true && tB2 === tB + 1) || (rb?.reward?.why === 'same_opp' && tB2 === tB), 'B gets the 진화권 (once per friend per day)', rb?.reward);
 
-  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_lines: [4] })).data;
+  inv = (await B.c.rpc('battle_challenge', { p_code: codeA, p_mons: await monIds(B.c, [4]) })).data;
   await A.c.rpc('battle_decline', { p_id: inv.id });
   ok((await B.c.rpc('battle_state', { p_id: inv.id })).data?.status === 'declined', 'declined request shows as declined');
-  ok((await A.c.rpc('battle_set_team', { p_lines: [61, 17] })).data?.ok && (await A.c.rpc('battle_today')).data?.team?.join() === '61,17', 'save my battle team');
-  ok((await A.c.rpc('battle_set_team', { p_lines: [99] })).error === 'BAD_TEAM', 'cannot save monsters I do not have');
+  const t6117 = await monIds(A.c, [61, 17]);
+  ok((await A.c.rpc('battle_set_team', { p_mons: t6117 })).data?.ok && (await A.c.rpc('battle_today')).data?.team?.join() === t6117.join(), 'save my battle team (Pokémon numbers)');
+  ok((await A.c.rpc('battle_set_team', { p_mons: await monIds(A.c, [99]) })).error === 'BAD_TEAM', 'cannot save monsters I do not have');
   ok((await A.c.rpc('battle_today')).data?.wins === 1, 'today: 1 rewarded win of 3');
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
 }
@@ -796,9 +802,9 @@ console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)')
   const A = await mk('더블에이'), B = await mk('더블비');
   for (const l of [32, 17, 61, 44]) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 3 });
   for (const l of [4, 5]) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 1 });
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44] })).error === 'BAD_TEAM', '1 vs 1 takes at most 3');
-  ok((await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44], p_format: 'triple' })).error === 'BAD_FORMAT', 'unknown format refused');
-  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [32, 17, 61, 44], p_format: 'double' })).data;
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]) })).error === 'BAD_TEAM', '1 vs 1 takes at most 3');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]), p_format: 'triple' })).error === 'BAD_FORMAT', 'unknown format refused');
+  let b = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]), p_format: 'double' })).data;
   ok(b?.format === 'double' && b.sides[0].act?.length === 2 && b.sides[1].act?.length === 2 && b.sides[0].mons.length === 4 && b.sides[1].mons.length === 4,
     '2 vs 2 practice: 4 monsters each, 2 on the field', { f: b?.format, act: b?.sides?.map(x => x.act) });
   const foe = b?.sides?.[1];
@@ -827,12 +833,12 @@ console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)')
   ok((await B.c.rpc('battle_today')).data?.format === 'double', 'QR owner chose 2 vs 2');
   const pk = (await A.c.rpc('battle_peek', { p_code: codeB })).data;
   ok(pk?.format === 'double' && pk.name, 'scanner sees the format before starting', pk);
-  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61, 44] })).data;
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61, 44]) })).data;
   ok(b?.format === 'double' && b.sides[1].mons.length === 2 && b.sides[1].act.length === 2, 'friend team vs AI uses the friend\'s 2 vs 2 (friend has 2 monsters)', b?.sides?.[1]);
   await A.c.rpc('battle_forfeit', { p_id: b.id });
   await B.c.rpc('battle_code', { p_format: 'single' });
   ok((await B.c.rpc('battle_code', { p_format: 'x' })).error === 'BAD_FORMAT', 'bad format refused');
-  ok((await A.c.rpc('battle_set_team', { p_lines: [44, 61, 17, 32] })).data?.ok, 'a battle team can hold 4 (first 3 used for 1 vs 1)');
+  ok((await A.c.rpc('battle_set_team', { p_mons: await monIds(A.c, [44, 61, 17, 32]) })).data?.ok, 'a battle team can hold 4 (first 3 used for 1 vs 1)');
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
 }
 
@@ -927,7 +933,7 @@ console.log('\n[30] 운영 다듬기 (0019): 가입 제한 · 최근 배틀 상�
   await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: 4, p_stage: 1 });
   ok(Array.isArray((await A.c.rpc('battle_recent')).data) && (await A.c.rpc('battle_recent')).data.length === 0, 'no recent opponents yet');
   const codeB = (await B.c.rpc('battle_code')).data;
-  const b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [32, 17, 61] })).data;
+  const b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
   await A.c.rpc('battle_forfeit', { p_id: b.id });
   const rec = (await A.c.rpc('battle_recent')).data;
   ok(rec?.length === 1 && rec[0].code === codeB && rec[0].mode === 'team' && rec[0].won === false && rec[0].name, 'recent opponent listed with their battle code (rematch without the QR)', rec);
@@ -961,12 +967,14 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   ok(m12()?.level === L12 && m12().need === 8 * L12 && m12().moves.length === 4 && m12().known.length >= 4, `new final-stage catch starts at its evolution level (Lv.${L12}) with 4 moves`, m12());
   await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: 12, p_stage: 3 });
   bag = (await A.c.rpc('bag_state')).data;
-  ok(m12().level === L12 + 1, 'catching the same teacher again: +1 level', m12()?.level);
+  const twelves = bag.box.filter((x) => x.line === 12);
+  ok(twelves.length === 2 && twelves[0].id !== twelves[1].id && twelves.every((x) => x.level === L12) && twelves[0].pos !== twelves[1].pos,
+     '0036: catching the same Pokémon again = a second one in the box (own level, own slot)', twelves.map((x) => [x.id, x.level, x.pos]));
   // 이상한사탕
-  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 12 })).error === 'NO_ITEM', 'cannot use an item you do not have');
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_mon: await monId(A.c, 12) })).error === 'NO_ITEM', 'cannot use an item you do not have');
   ok((await A.c.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 1 })).error === 'NOT_ADMIN', 'students cannot give items');
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 2 });
-  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 12 })).data?.level === L12 + 2, 'rare candy: +1 level');
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_mon: await monId(A.c, 12) })).data?.level === L12 + 1, 'rare candy: +1 level (only that one)');
   // 기술머신: 맞는 몬스터만, 한 번 배우면 끝
   const tms = (await A.c.select('items?pocket=eq.tm&select=key,move_id')).data;
   const ok12 = new Set((await A.c.select('learnset?line_id=eq.12&how=eq.tm&select=move_id')).data.map((x) => x.move_id));
@@ -975,31 +983,31 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: tmOk.key, p_qty: 2 });
   if (tmNo) {
     await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: tmNo.key, p_qty: 1 });
-    ok((await A.c.rpc('bag_use', { p_item: tmNo.key, p_line: 12 })).error === 'TM_NOT_COMPATIBLE', 'TM the monster cannot learn is refused');
+    ok((await A.c.rpc('bag_use', { p_item: tmNo.key, p_mon: await monId(A.c, 12) })).error === 'TM_NOT_COMPATIBLE', 'TM the monster cannot learn is refused');
   }
-  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_line: 12 })).data?.learned === tmOk.move_id, 'TM teaches the move (kept in the monster\'s move list)');
-  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_line: 12 })).error === 'ALREADY_KNOWN', 'cannot learn the same move twice');
+  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_mon: await monId(A.c, 12) })).data?.learned === tmOk.move_id, 'TM teaches the move (kept in the monster\'s move list)');
+  ok((await A.c.rpc('bag_use', { p_item: tmOk.key, p_mon: await monId(A.c, 12) })).error === 'ALREADY_KNOWN', 'cannot learn the same move twice');
   bag = (await A.c.rpc('bag_state')).data;
   ok(bag.items.find((x) => x.key === tmOk.key)?.qty === 1, 'TM is one-use (second copy still in the bag)');
   // 기술 고르기
   const cur = m12().moves;
-  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [cur[0], cur[0]] })).error === 'BAD_MOVES', 'duplicate moves refused');
-  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [999999] })).error === 'MOVE_NOT_KNOWN', 'unknown move refused');
-  ok((await A.c.rpc('bag_set_moves', { p_line: 12, p_moves: [tmOk.move_id, cur[0], cur[1], cur[2]] })).data?.moves?.[0] === tmOk.move_id, 'forget a move and use the TM move instead');
+  ok((await A.c.rpc('bag_set_moves', { p_mon: await monId(A.c, 12), p_moves: [cur[0], cur[0]] })).error === 'BAD_MOVES', 'duplicate moves refused');
+  ok((await A.c.rpc('bag_set_moves', { p_mon: await monId(A.c, 12), p_moves: [999999] })).error === 'MOVE_NOT_KNOWN', 'unknown move refused');
+  ok((await A.c.rpc('bag_set_moves', { p_mon: await monId(A.c, 12), p_moves: [tmOk.move_id, cur[0], cur[1], cur[2]] })).data?.moves?.[0] === tmOk.move_id, 'forget a move and use the TM move instead');
   // 지닌 물건
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'cushion', p_qty: 1 });
-  ok((await A.c.rpc('bag_set_held', { p_line: 13, p_item: 'cushion' })).data?.held === 'cushion', 'give a held item');
+  ok((await A.c.rpc('bag_set_held', { p_mon: await monId(A.c, 13), p_item: 'cushion' })).data?.held === 'cushion', 'give a held item');
   bag = (await A.c.rpc('bag_state')).data;
   ok(!bag.items.find((x) => x.key === 'cushion') && bag.box.find((x) => x.line === 13).held === 'cushion', 'held item leaves the bag');
-  ok((await A.c.rpc('bag_set_held', { p_line: 13, p_item: 'bandage' })).error === 'BAD_ITEM', 'medicine cannot be held');
+  ok((await A.c.rpc('bag_set_held', { p_mon: await monId(A.c, 13), p_item: 'bandage' })).error === 'BAD_ITEM', 'medicine cannot be held');
   // 회복약: 배틀 중에만
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'bandage', p_qty: 3 });
-  ok((await A.c.rpc('bag_use', { p_item: 'bandage', p_line: 12 })).error === 'BATTLE_ONLY', 'medicine only in battle');
+  ok((await A.c.rpc('bag_use', { p_item: 'bandage', p_mon: await monId(A.c, 12) })).error === 'BATTLE_ONLY', 'medicine only in battle');
   // 연습 배틀: 상대 레벨 = 내 팀 평균, 내 기술·지닌 물건·시너지가 들어감
-  let b = (await A.c.rpc('battle_start_cpu', { p_lines: [12, 13, 5], p_format: 'single' })).data;
+  let b = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [12, 13, 5]), p_format: 'single' })).data;
   const me = b.sides[0], foe = b.sides[1];
-  ok(me.mons[0].lv === L12 + 2 && me.mons[0].moves[0].id === tmOk.move_id, 'battle uses my level and my chosen moves', me.mons[0].lv);
-  ok(me.mons[1].held === 'cushion' && foe.mons[0].lv === Math.round((L12 + 2 + L13 + L5) / 3), 'held item in battle; practice foe level = my team average', foe.mons[0].lv);
+  ok(me.mons[0].lv === L12 + 1 && me.mons[0].moves[0].id === tmOk.move_id && me.mons.every((m) => m.mon > 0), 'battle uses my level and my chosen moves', me.mons[0].lv);
+  ok(me.mons[1].held === 'cushion' && foe.mons[0].lv === Math.round((L12 + 1 + L13 + L5) / 3), 'held item in battle; practice foe level = my team average', foe.mons[0].lv);
   // 0032 시너지 = 실제 타입 그룹: 라이츄(전기) · 자포코일(전기/강철) = '질풍' (스피드 +1), 질뻐기(독) 는 혼자
   ok(me.mons[0].syn === 'spe' && me.mons[2].syn === 'spe' && !me.mons[1].syn && me.mons[0].stg?.spe === 1, 'same type-group synergy (2 electric): speed +1 on entry', [me.mons.map((m) => m.syn), me.mons[0].stg]);
   ok(b.items_left === 2 && 'field' in b, 'battle shows items left and the timetable field', b.field);
@@ -1032,7 +1040,7 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   // 공정 모드: QR 보여주는 사람이 정함 → 모두 Lv.50, 회복약 금지
   const codeB = (await B.c.rpc('battle_code', { p_format: 'single', p_fair: true })).data;
   ok((await A.c.rpc('battle_peek', { p_code: codeB })).data?.fair === true, 'friend QR says fair mode');
-  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_lines: [12, 13, 5] })).data;
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [12, 13, 5]) })).data;
   ok(b.fair && b.sides[0].mons.every((m) => m.lv === 50) && b.sides[1].mons.filter((m) => m.seen).every((m) => m.lv === 50) && b.items_left === 0, 'fair mode: everyone Lv.50, no medicine', { fair: b.fair, me: b.sides?.[0]?.mons?.map((m) => m.lv), foe: b.sides?.[1]?.mons?.map((m) => m.lv), left: b.items_left });
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { item: 'bandage', target: 0 } })).error === 'NO_ITEMS_FAIR', 'medicine refused in fair mode');
   await A.c.rpc('battle_forfeit', { p_id: b.id });
@@ -1040,7 +1048,7 @@ console.log('\n[31] 성장 (0020): 레벨 · 가방 · 기술머신 · 지닌 �
   // 운영자: 레벨 정하기
   ok((await admin.rpc('admin_set_level', { p_student_id: A.sid, p_line: 5, p_level: 100 })).data?.level === 100, 'admin sets a level');
   await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'candy', p_qty: 1 });
-  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_line: 5 })).error === 'MAX_LEVEL', 'Lv.100 is the cap');
+  ok((await A.c.rpc('bag_use', { p_item: 'candy', p_mon: await monId(A.c, 5) })).error === 'MAX_LEVEL', 'Lv.100 is the cap');
   await admin.rpc('admin_delete_students', { p_student_ids: [A.sid, B.sid], p_confirm: '삭제' });
 }
 
@@ -1061,14 +1069,14 @@ console.log('\n[32] 배틀 끝 (0021): 새 배틀이면 하던 배틀 취소 · 
     if (b.status === 'active') await C.rpc('battle_forfeit', { p_id: b.id });
     return (await C.rpc('battle_state', { p_id: b.id })).data;
   };
-  const b1 = (await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data;
-  const b2 = (await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data;
+  const b1 = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [12, 13, 5]) })).data;
+  const b2 = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [12, 13, 5]) })).data;
   const old = (await C.rpc('battle_state', { p_id: b1.id })).data;
   ok(old.status === 'cancelled' && old.reward?.why === 'replaced' && old.winner == null, 'starting a new practice battle cancels the old one (no loss)', old.status);
   ok(await admin.patch('settings?key=eq.practice_exp_daily', { value: 1 }) < 300, 'admin sets the practice EXP limit');
   const e1 = await play2(b2);
   ok(e1.reward?.practice_counted === true && e1.reward?.practice_left === 0, 'first practice battle of the day counts for EXP', e1.reward);
-  const e2 = await play2((await C.rpc('battle_start_cpu', { p_lines: [12, 13, 5] })).data);
+  const e2 = await play2((await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [12, 13, 5]) })).data);
   ok(e2.reward?.exp_why === 'practice_max' && !e2.reward?.exp, 'over the daily limit: practice gives no EXP', e2.reward);
   await admin.patch('settings?key=eq.practice_exp_daily', { value: 10 });
   // 영구 기술머신: 써도 그대로
@@ -1078,8 +1086,8 @@ console.log('\n[32] 배틀 끝 (0021): 새 배틀이면 하던 배틀 취소 · 
   const pm = pms.map((x) => ({ ...x, lines: box.filter((m) => !m.known.includes(x.move_id)).map((m) => m.line) })).find((x) => x.lines.length >= 2) || pms[0];
   const pmMove = pm.move_id; const lines = pm.lines || [];
   await admin.rpc('admin_give_item', { p_student_id: sid, p_item: pm.key, p_qty: 1 });
-  ok(lines.length >= 2 && (await C.rpc('bag_use', { p_item: pm.key, p_line: lines[0] })).data?.learned === pmMove
-     && (await C.rpc('bag_use', { p_item: pm.key, p_line: lines[1] })).data?.learned === pmMove, 'permanent TM teaches two Pokémon', [pm.key, lines]);
+  ok(lines.length >= 2 && (await C.rpc('bag_use', { p_item: pm.key, p_mon: await monId(C, lines[0]) })).data?.learned === pmMove
+     && (await C.rpc('bag_use', { p_item: pm.key, p_mon: await monId(C, lines[1]) })).data?.learned === pmMove, 'permanent TM teaches two Pokémon', [pm.key, lines]);
   ok((await C.rpc('bag_state')).data.items.find((x) => x.key === pm.key)?.qty === 1, 'permanent TM stays in the bag');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
@@ -1147,9 +1155,10 @@ console.log('\n[34] 미니게임 (0023) · 야자 전설 · 환상 이스터에�
   const sp = (await C.rpc('sync')).data.state.special || [];
   ok(sp.filter((x) => x.special === 'egg').map((x) => x.species_id).sort().join() === '238,241,244', 'three egg tickets in the pouch', sp);
   // 트레이너 카드 몬스터 고르기
-  ok((await C.rpc('set_partner', { p_line: 30 })).error === 'NOT_OWNED', 'cannot pick a monster I do not own as card partner');
-  ok((await C.rpc('set_partner', { p_line: 5 })).data?.partner === 5 && (await C.rpc('sync')).data.state.profile.partner === 5, 'pick card partner (saved on the server)');
-  ok((await C.rpc('set_partner', { p_line: null })).data?.partner === null, 'back to automatic partner');
+  ok((await C.rpc('set_partner', { p_mon: await monId(C, 30) })).error === 'NOT_OWNED', 'cannot pick a monster I do not own as card partner');
+  const p5 = await monId(C, 5);
+  ok(p5 > 0 && (await C.rpc('set_partner', { p_mon: p5 })).data?.partner === p5 && (await C.rpc('sync')).data.state.profile.partner === p5, 'pick card partner (saved on the server, Pokémon number)');
+  ok((await C.rpc('set_partner', { p_mon: null })).data?.partner === null, 'back to automatic partner');
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
 
@@ -1176,10 +1185,10 @@ console.log('\n[35] 미니게임 운영 · 연습 배틀 공정 모드 (0025)');
   ok((await admin.rpc('admin_reset_minigame', { p_game: 'dodge', p_confirm: '삭제' })).error === 'CONFIRM_MISMATCH', 'reset needs the word 초기화');
   ok((await C.rpc('admin_reset_minigame', { p_game: 'dodge', p_confirm: '초기화' })).error === 'NOT_ADMIN', 'students cannot reset');
   // 연습 배틀 공정 모드
-  const bf = (await C.rpc('battle_start_cpu', { p_lines: [1, 2, 3], p_fair: true })).data;
+  const bf = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [1, 2, 3]), p_fair: true })).data;
   ok(bf?.fair === true && bf.items_left === 0, 'practice battle in fair mode (Lv.50, no items)', { fair: bf?.fair, items: bf?.items_left });
   ok((bf?.sides?.[0]?.mons || []).every((m) => m.lv === 50 || m.level === 50 || m.lv == null), 'my monsters are Lv.50 in fair mode', bf?.sides?.[0]?.mons?.map((m) => m.lv ?? m.level));
-  const bn = (await C.rpc('battle_start_cpu', { p_lines: [1, 2, 3] })).data;
+  const bn = (await C.rpc('battle_start_cpu', { p_mons: await monIds(C, [1, 2, 3]) })).data;
   ok(bn?.fair === false, 'practice battle default stays normal', bn?.fair);
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
@@ -1232,11 +1241,11 @@ console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
   ok(col?.from_egg === true && typeof col.shiny === 'boolean' && typeof col.shiny_on === 'boolean', 'collection row from_egg (+ shiny flags in sync)', col);
   ok(s1.profile.score >= 1 && s1.profile.dex_count === 1, 'score / dex updated like a catch', s1.profile);
   ok((await C.rpc('egg_hatch', { p_egg: ids[0] })).error === 'NOT_FOUND', 'an egg hatches only once');
-  ok((await C.rpc('set_shiny', { p_line: 99, p_on: true })).error === 'NOT_OWNED', 'set_shiny: not owned');
+  ok((await C.rpc('set_shiny', { p_mon: await monId(C, 99), p_on: true })).error === 'NOT_OWNED', 'set_shiny: not owned');
   const other = h.line === 1 ? 2 : 1;
   await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: other, p_stage: 1 });
-  ok((await C.rpc('set_shiny', { p_line: other, p_on: true })).error === 'SHINY_LOCKED', 'set_shiny refused while the shiny colour is locked');
-  if (col?.shiny) ok((await C.rpc('set_shiny', { p_line: h.line, p_on: false })).data?.on === false, 'shiny unlocked → can turn it off');
+  ok((await C.rpc('set_shiny', { p_mon: await monId(C, other), p_on: true })).error === 'SHINY_LOCKED', 'set_shiny refused while the shiny colour is locked');
+  if (col?.shiny) ok((await C.rpc('set_shiny', { p_mon: await monId(C, h.line), p_on: false })).data?.on === false, 'shiny unlocked → can turn it off');
   await C.rpc('egg_hatch', { p_egg: ids[1] }); await C.rpc('egg_hatch', { p_egg: ids[2] });
   // 노랑·보라 (짧은 걸음으로 만들어서) + 처음 가 보는 장소 QR = 보너스 걸음 · 알
   await patchSetting('egg_steps', { green: 1000, yellow: 300, purple: 300 });
@@ -1260,7 +1269,7 @@ console.log('\n[37] 알 · 반 랭킹 · 도전과제 (0027)');
   const st4 = (await C.rpc('egg_state')).data;
   ok(st4.eggs.find((e) => e.id === ids[3])?.steps === 300, 'same place again: no bonus steps', sc2?.acks);
   const hy = (await C.rpc('egg_hatch', { p_egg: yid })).data;
-  const box = (await C.rpc('bag_state', { p_since: 0 })).data.box.find((b) => b.line === hy?.line);
+  const box = (await C.rpc('bag_state', { p_since: 0 })).data.box.find((b) => b.id === hy?.mon);
   ok(hy?.tier === 'yellow' && hy.rarity === 'rare' && Number.isInteger(hy.egg_move) && box?.learned.includes(hy.egg_move) && box.moves.includes(hy.egg_move),
      'yellow egg → rare monster + egg move learned and in the 4 moves', { hy, box });
   const hp = (await C.rpc('egg_hatch', { p_egg: pid })).data;
@@ -1390,7 +1399,8 @@ console.log('\n[39] 잡기 도망 · 레이드 보스 잡기 · 반 이름 (0030
   const box3b = (await A.c.rpc('bag_state')).data.box;
   const before3 = s3a.collection.find((c) => c.line_id === res3?.line_id), after3 = s3b.collection.find((c) => c.line_id === res3?.line_id);
   ok(r3?.fled === true && r3.removed === false && after3 && after3.catch_count === before3.catch_count, 'flee on a duplicate → row kept, catch_count back', { r3, before3, after3 });
-  ok(box3b.find((m) => m.line === res3?.line_id)?.level === box3a.find((m) => m.line === res3?.line_id)?.level, 'dup-catch level +1 taken back');
+  ok(box3b.length === box3a.length && box3b.find((m) => m.line === res3?.line_id)?.level === box3a.find((m) => m.line === res3?.line_id)?.level,
+     '0036: the duplicate that fled is gone from the box (the first one unchanged)', [box3a.length, box3b.length]);
   ok(s3b.profile.dex_count === s3a.profile.dex_count && s3b.profile.score === s3a.profile.score && s3b.profile.evo_tickets === s3a.profile.evo_tickets,
      'dex / score / evo tickets same as before the catch', { a: [s3a.profile.dex_count, s3a.profile.score, s3a.profile.evo_tickets], b: [s3b.profile.dex_count, s3b.profile.score, s3b.profile.evo_tickets] });
   // 4) 옛 앱의 catch_bonus 도 그대로
@@ -1576,9 +1586,9 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
   const ev20 = (await admin.select('species?line_id=eq.20&stage=eq.2&select=evo_lv,name')).data[0];
   ok(ev20?.evo_lv === 16 && ev20.name === '이상해풀', 'real evolution level: 이상해씨 → 이상해풀 at Lv.16', ev20);
   await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 21, p_level: 15 });
-  ok((await P.rpc('evolve', { p_line: 21 })).error === 'NO_TICKET', 'below the evolution level and no 진화의돌 → NO_TICKET');
+  ok((await P.rpc('evolve', { p_mon: await monId(P, 21) })).error === 'NO_TICKET', 'below the evolution level and no 진화의돌 → NO_TICKET');
   await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 20, p_level: 16 });
-  const ev = (await P.rpc('evolve', { p_line: 20 })).data;
+  const ev = (await P.rpc('evolve', { p_mon: await monId(P, 20) })).data;
   ok(ev?.success === true && ev.by_level === true && ev.stage === 2 && ev.evo_tickets === 0, 'at the evolution level → evolves for free, always', ev);
   const st = (await P.rpc('sync')).data.state;
   ok(st.collection.find((c) => c.line_id === 20)?.level === 16, 'sync sends my Pokémon level (for the dex evolution panel)');
@@ -1605,10 +1615,10 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
   ok(rai?.name === '라이츄' && rai.evo_item === true && rai.evo_lv === null, '라이츄 = stone evolution (no level)', rai);
   await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 12, p_stage: 2 });
   await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 12, p_level: 80 });
-  ok((await P.rpc('evolve', { p_line: 12 })).error === 'NO_TICKET', 'stone evolution needs a 진화의돌 even at high level');
+  ok((await P.rpc('evolve', { p_mon: await monId(P, 12) })).error === 'NO_TICKET', 'stone evolution needs a 진화의돌 even at high level');
   await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: 1 });
   await patchSetting('evo_prob', [0, 0, 0]);   // 확률 0 이어도 돌 진화는 100%
-  const ev12 = (await P.rpc('evolve', { p_line: 12 })).data;
+  const ev12 = (await P.rpc('evolve', { p_mon: await monId(P, 12) })).data;
   await patchSetting('evo_prob', [0, 0.7, 0.35]);
   ok(ev12?.success === true && ev12.by_item === true && ev12.stage === 3 && ev12.evo_tickets === 0, 'with a 진화의돌 → evolves 100% (uses the stone)', ev12);
   // 7) 색이 다른 그림 목록
@@ -1685,6 +1695,123 @@ console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 �
   ok(a6?.encounter === null && a6.reason === 'max' && a6.balls_left === 20, 'daily encounter cap reached → no encounter', a6);
   for (const k of keys) await setS(k, old[k]);
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+}
+
+console.log('\n[43] PC 박스 (0036): 같은 포켓몬 여러 마리 · 진화의돌 (중복) · 카드/팀 = 포켓몬 번호 · 놓아주기 · 옮기기 · 900 마리');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'box123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'box123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const X = await mk('박스테스트');
+  const st = async () => (await X.c.rpc('sync')).data.state;
+  // 1) 같은 포켓몬 세 마리 = 세 줄 (따로 번호 · 칸), 도감·점수는 계열 하나
+  for (let i = 0; i < 3; i++) await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 7, p_stage: 1 });
+  let s1 = await st();
+  const sevens = s1.mons.filter((m) => m.line_id === 7);
+  ok(sevens.length === 3 && new Set(sevens.map((m) => m.id)).size === 3 && sevens.map((m) => m.pos).join() === '0,1,2',
+     'three of the same Pokémon → three box entries (own id, slots 1~3 of BOX 1)', sevens);
+  const c7 = s1.collection.find((c) => c.line_id === 7);
+  ok(c7?.count === 3 && c7.catch_count === 3 && s1.profile.dex_count === 1 && s1.rules.box_max === 900,
+     'dex row: count 3, catches 3, dex counts the species once; box_max 900', { c7, dex: s1.profile.dex_count });
+  const score1 = s1.profile.score;
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 7, p_stage: 1 });
+  s1 = await st();
+  ok(s1.profile.score === score1 && s1.mons.length === 4, 'another duplicate does not raise the score', [score1, s1.profile.score]);
+  const [m1, m2, m3, m4] = s1.mons.filter((m) => m.line_id === 7).map((m) => m.id);
+  // 2) 중복 잡기 = dup_bonus_every 번째마다 진화의돌 (예전 규칙 그대로)
+  const every0 = (await admin.select('settings?key=eq.dup_bonus_every')).data?.[0]?.value ?? 3;
+  await patchSetting('dup_bonus_every', 5);                      // 지금 4번 잡음 → 부스에서 5번째 = 진화의돌
+  const pool18 = (await admin.select('qr_rewards?qr_id=eq.A18&select=line_id,weight')).data;
+  await fetch(`${URL_}/rest/v1/qr_rewards?qr_id=eq.A18`, { method: 'DELETE', headers: H0 });
+  await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: JSON.stringify([{ qr_id: 'A18', line_id: 7, weight: 1 }]) });
+  await patchSetting('wild_chance', 0);
+  const t0 = s1.profile.evo_tickets;
+  const n5 = nonce();
+  await X.c.rpc('sync', { p_scans: [{ n: n5, q: 'A18', t: T.A18.token }] });
+  const r5 = (await booth.rpc('booth_redeem', { p_payload: X.sid })).data?.results?.find((x) => x.nonce === n5);
+  await fetch(`${URL_}/rest/v1/qr_rewards?qr_id=eq.A18`, { method: 'DELETE', headers: H0 });
+  await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: JSON.stringify(pool18.map((x) => ({ qr_id: 'A18', ...x }))) });
+  await patchSetting('dup_bonus_every', every0);
+  s1 = await st();
+  ok(r5?.is_new === false && r5.bonus_ticket === true && r5.mon_id > m4 && s1.profile.evo_tickets === t0 + 1 && s1.mons.filter((m) => m.line_id === 7).length === 5,
+     'duplicate booth catch: new 5th one in the box + 진화의돌 on the Nth catch', { r5, t: [t0, s1.profile.evo_tickets] });
+  const m5 = r5?.mon_id;
+  // 3) 진화 = 그 한 마리만
+  await admin.rpc('admin_adjust_tickets', { p_student_id: X.sid, p_delta: 2 });
+  await patchSetting('evo_prob', [0, 1, 1]);
+  const ev = (await X.c.rpc('evolve', { p_mon: m2 })).data;
+  await patchSetting('evo_prob', [0, 0.7, 0.35]);
+  s1 = await st();
+  ok(ev?.success === true && ev.mon === m2 && s1.mons.find((m) => m.id === m2)?.stage === 2 && s1.mons.find((m) => m.id === m1)?.stage === 1,
+     'evolve(p_mon) evolves only that one', s1.mons.filter((m) => m.line_id === 7).map((m) => [m.id, m.stage]));
+  ok(s1.collection.find((c) => c.line_id === 7)?.stage === 2, 'dex row shows the highest stage reached');
+  // 4) 카드 · 배틀 팀 = 포켓몬 번호 (같은 종 두 마리도 한 팀)
+  ok((await X.c.rpc('set_partner', { p_mon: m3 })).data?.partner === m3, 'card partner = one particular Pokémon');
+  ok((await X.c.rpc('battle_set_team', { p_mons: [m1, m4] })).data?.ok, 'battle team may hold two of the same species');
+  ok((await X.c.rpc('battle_set_team', { p_mons: [m1, m1] })).error === 'BAD_TEAM', 'but not the same one twice');
+  const bt = (await X.c.rpc('battle_start_cpu', { p_mons: [m1, m4] })).data;
+  ok(bt?.sides?.[0]?.mons?.map((m) => m.mon).join() === `${m1},${m4}`, 'battle state carries the Pokémon numbers', bt?.sides?.[0]?.mons?.map((m) => m.mon));
+  // 5) 놓아주기 규칙
+  ok((await X.c.rpc('mon_release', { p_mon: m3 })).error === 'MON_PARTNER', 'cannot release the card partner');
+  ok((await X.c.rpc('mon_release', { p_mon: m1 })).error === 'MON_IN_TEAM', 'cannot release a saved battle-team member');
+  await X.c.rpc('battle_forfeit', { p_id: bt?.id });
+  const bt2 = (await X.c.rpc('battle_start_cpu', { p_mons: [m5] })).data;
+  ok((await X.c.rpc('mon_release', { p_mon: m5 })).error === 'MON_BUSY', 'cannot release a Pokémon in an active battle');
+  await X.c.rpc('battle_forfeit', { p_id: bt2?.id });
+  ok((await anon.rpc('mon_release', { p_mon: m5 })).error, 'anon cannot release');
+  ok((await S[0].rpc('mon_release', { p_mon: m5 })).error === 'NO_MONSTER', 'cannot release someone else\'s Pokémon');
+  await admin.rpc('admin_give_item', { p_student_id: X.sid, p_item: 'cushion', p_qty: 1 });
+  await X.c.rpc('bag_set_held', { p_mon: m5, p_item: 'cushion' });
+  const sA = await st();
+  const rel = (await X.c.rpc('mon_release', { p_mon: m5 })).data;
+  const sB = await st();
+  const bagB = (await X.c.rpc('bag_state')).data;
+  ok(rel?.ok && rel.held_back === 'cushion' && bagB.items.find((x) => x.key === 'cushion')?.qty === 1 && !bagB.box.some((m) => m.id === m5),
+     'release → gone from the box, held item back in the bag', rel);
+  ok(sB.mons.length === sA.mons.length - 1 && sB.profile.dex_count === sA.profile.dex_count && sB.profile.score === sA.profile.score
+     && sB.collection.find((c) => c.line_id === 7)?.catch_count === sA.collection.find((c) => c.line_id === 7)?.catch_count,
+     'dex / score / catch count stay after releasing', { a: [sA.mons.length, sA.profile.dex_count, sA.profile.score], b: [sB.mons.length, sB.profile.dex_count, sB.profile.score] });
+  ok((await X.c.rpc('mon_release', { p_mon: m5 })).error === 'NO_MONSTER', 'a released Pokémon cannot be released again');
+  ok((await X.c.rpc('evolve', { p_mon: m5 })).error === 'NOT_OWNED' && (await X.c.rpc('battle_set_team', { p_mons: [m5] })).error === 'BAD_TEAM',
+     'a released Pokémon cannot evolve or battle');
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 8, p_stage: 1 });
+  const m8 = await monId(X.c, 8);
+  const d8a = (await st()).profile.dex_count;
+  await X.c.rpc('mon_release', { p_mon: m8 });
+  const s8 = await st();
+  ok(s8.collection.find((c) => c.line_id === 8)?.count === 0 && s8.profile.dex_count === d8a,
+     'releasing the only one of a species: dex keeps it as caught (count 0)', s8.collection.find((c) => c.line_id === 8));
+  // 6) 옮기기 (그 칸에 있으면 서로 바꿈)
+  ok((await X.c.rpc('box_move', { p_mon: m1, p_pos: 35 })).data?.pos === 35, 'move to BOX 2 slot 6');
+  const sw = (await X.c.rpc('box_move', { p_mon: m4, p_pos: 35 })).data;
+  const s9 = await st();
+  ok(sw?.swap === m1 && s9.mons.find((m) => m.id === m4)?.pos === 35 && s9.mons.find((m) => m.id === m1)?.pos === sw.swap_pos,
+     'moving onto a filled slot swaps the two', sw);
+  ok((await X.c.rpc('box_move', { p_mon: m1, p_pos: 900 })).error === 'BAD_POS' && (await X.c.rpc('box_move', { p_mon: m5, p_pos: 3 })).error === 'NO_MONSTER',
+     'bad slot / released Pokémon refused');
+  // 7) 꽉 참: box_max (시험용으로 지금 마리 수) → 지급·부스 모두 거절, 티켓은 그대로
+  const nowN = s9.mons.length;
+  await patchSetting('box_max', nowN);
+  try {
+    ok((await X.c.rpc('sync')).data.state.rules.box_max === nowN, 'box_max setting reaches the app');
+    ok((await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: 9, p_stage: 1 })).error === 'BOX_FULL', 'full box: admin grant refused (BOX_FULL)');
+    const nf = nonce(); const qf = Object.keys(T).find((k) => /^A\d+$/.test(k) && k !== 'A18');
+    await X.c.rpc('sync', { p_scans: [{ n: nf, q: qf, t: T[qf].token }] });
+    const rf = (await booth.rpc('booth_redeem', { p_payload: X.sid })).data?.results?.find((x) => x.nonce === nf);
+    const tf = (await st()).tickets.find((t) => t.nonce === nf);
+    ok(rf?.error === 'box_full' && tf?.status === 'pending', 'full box: booth does not use the ticket (still pending)', { rf, tf });
+    await patchSetting('box_max', 900);
+    const rg = (await booth.rpc('booth_redeem', { p_payload: X.sid })).data?.results?.find((x) => x.nonce === nf);
+    ok(rg?.species_id && rg.mon_id > 0 && (await st()).mons.length === nowN + 1, 'after making room the same ticket works', rg);
+  } finally { await patchSetting('box_max', 900); }
+  // 8) 마지막 한 마리
+  const Y = await mk('박스한마리');
+  await admin.rpc('admin_grant_monster', { p_student_id: Y.sid, p_line: 7, p_stage: 1 });
+  ok((await Y.c.rpc('mon_release', { p_mon: await monId(Y.c, 7) })).error === 'LAST_MON', 'cannot release the last Pokémon');
+  await admin.rpc('admin_delete_students', { p_student_ids: [X.sid, Y.sid], p_confirm: '삭제' });
 }
 
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리

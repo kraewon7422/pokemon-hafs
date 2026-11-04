@@ -1472,7 +1472,7 @@ async function studentDetail(sid, reload) {
   if (!p) return [h('div.box', h('p.muted', '이 학생을 찾지 못했어요 (연결 해제됐을 수 있어요).'))];
   const [tickets, coll, events] = await Promise.all([
     tq(sb.from('tickets').select('id,nonce,qr_id,status,created_at,redeemed_at,result_species').eq('user_id', p.user_id).order('created_at', { ascending: false }).limit(100)),
-    tq(sb.from('collection').select('line_id,stage,catch_count,evo_fails,first_caught_at').eq('user_id', p.user_id).order('line_id')),
+    tq(sb.from('collection').select('id,line_id,stage,catch_count,evo_fails,first_caught_at,level,released_at').eq('user_id', p.user_id).order('line_id')),
     tq(sb.from('events').select('at,kind,data').eq('user_id', p.user_id).order('at', { ascending: false }).limit(30)),
   ]);
 
@@ -1582,7 +1582,7 @@ async function studentDetail(sid, reload) {
     const dex = (line - 1) * 3 + stage;
     const ok = await confirmBox('포켓몬 직접 지급', [
       `${sid}에게 ${S.spById.get(dex)?.name || `#${dex}`} (${lineName(line)}, ${stage}단계)을(를) 줄까요?`,
-      '이미 가진 계열이면 잡은 횟수가 +1 되고, 단계는 더 높은 쪽으로 맞춰져요. 기록에 남아요.',
+      '같은 포켓몬을 이미 가지고 있어도 박스에 새로 한 마리가 더 생겨요 (박스가 꽉 차면 안 돼요). 기록에 남아요.',
     ], { ok: '지급' });
     if (!ok) return;
     busy(grantBtn, async () => {
@@ -1615,12 +1615,21 @@ async function studentDetail(sid, reload) {
           h('td', t.status === 'pending' ? h('button.btn.small', { onclick: cancel(t) }, '취소') : null));
       })))) : h('p.muted', '티켓이 없어요.'));
 
+  // 0036: collection 한 줄 = 한 마리 → 계열마다 묶어서 (가장 높은 단계 · 잡은 횟수 합 · 지금 박스에 있는 수)
+  const byLine = [...coll.reduce((mp, c) => {
+    const g = mp.get(c.line_id) || { line_id: c.line_id, stage: 0, catch_count: 0, now: 0, maxlv: 0, evo_fails: 0 };
+    g.stage = Math.max(g.stage, c.stage); g.catch_count += c.catch_count || 0;
+    if (!c.released_at) { g.now++; g.maxlv = Math.max(g.maxlv, c.level || 0); g.evo_fails = Math.max(g.evo_fails, c.evo_fails || 0); }
+    return mp.set(c.line_id, g);
+  }, new Map()).values()];
+  const inBox = coll.filter((c) => !c.released_at).length;
   const cBox = h('div.box',
-    h('h3', `도감 (${coll.length}계열)`),
-    coll.length ? h('div.coll-grid', coll.map((c) => {
+    h('h3', `도감 (${byLine.length}계열 · 박스 ${inBox}마리)`),
+    byLine.length ? h('div.coll-grid', byLine.map((c) => {
       const dex = (c.line_id - 1) * 3 + c.stage;
       return h('div', sprite(dex, 64), h('div', h('b', S.spById.get(dex)?.name || `#${dex}`)),
-        h('div', `${c.stage}단계 · ${c.catch_count}회`), c.evo_fails ? h('div.muted', `진화 실패 ${c.evo_fails}`) : null);
+        h('div', `${c.stage}단계 · ${c.catch_count}회`), h('div.muted', c.now ? `박스 ${c.now}마리 · 최고 Lv.${c.maxlv}` : '놓아줌 (도감만 남음)'),
+        c.evo_fails ? h('div.muted', `진화 실패 ${c.evo_fails}`) : null);
     })) : h('p.muted', '아직 잡은 포켓몬이 없어요.'));
 
   const eBox = h('div.box',
@@ -1647,8 +1656,8 @@ async function studentDetail(sid, reload) {
   const lvInp = h('input.inp', { type: 'number', min: 1, max: 100, value: 50, style: { width: '72px' }, 'aria-label': '레벨' });
   const lvBtn = h('button.btn', '레벨 정하기');
   lvBtn.onclick = () => busy(lvBtn, async () => {
-    await rpc('admin_set_level', { p_student_id: sid, p_line: Number(lvLine.value), p_level: Number(lvInp.value) });
-    toast('레벨을 바꿨어요.');
+    const r = await rpc('admin_set_level', { p_student_id: sid, p_line: Number(lvLine.value), p_level: Number(lvInp.value) });
+    toast(`레벨을 바꿨어요. (그 계열 ${r?.mons ?? 1}마리 모두)`);
   });
   const growBox = h('div.box.stack',
     h('h3', '가방 물건 주기 · 레벨 정하기'),
@@ -1699,12 +1708,13 @@ async function studentDetail(sid, reload) {
   return [info, grantBox, growBox, eggBox, tBox, cBox, eBox, relinkBox, dangerBox];
 }
 
-const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자' };
+const EVENT_KIND = { quiz: '퀴즈', evolve: '진화', redeem: '부스 지급', admin: '운영자', release: '놓아주기' };
 function eventText(e) {
   const d = e.data || {};
   if (e.kind === 'quiz') return d.correct ? '정답' : '오답';
   if (e.kind === 'evolve') return `${lineName(d.line)} 진화 ${d.success ? '성공' : '실패'} (지금 ${d.stage}단계)`;
   if (e.kind === 'redeem') return `포켓몬 ${d.n ?? '?'}건 처리`;
+  if (e.kind === 'release') return `${lineName(d.line)} ${d.stage}단계 Lv.${d.level} 놓아줌${d.held ? ' (지닌 물건은 가방으로)' : ''}`;
   return JSON.stringify(d);
 }
 
