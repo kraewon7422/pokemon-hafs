@@ -304,7 +304,7 @@ export function logoTap() {
   const runner = h('div.parade', { 'aria-hidden': 'true' }, spriteCanvas(dex, 96, pick ? 'normal' : 'silhouette'));
   document.body.append(runner);
   sfx.catch(); vibrate([30, 40, 30, 40, 30]);
-  toast(pick ? `${speciesOf(dex)?.name || '포켓몬'}이(가) 신나서 달려간다!` : '정체를 알 수 없는 그림자가 지나갔다…!');
+  toast(pick ? `${josa(speciesOf(dex)?.name || '포켓몬', '이', '가')} 신나서 달려간다!` : '정체를 알 수 없는 그림자가 지나갔다…!');
   setTimeout(() => runner.remove(), 3200);
 }
 
@@ -624,7 +624,7 @@ export function passwordSheet({ recover = false } = {}) {
         if (error) { err.textContent = '바꾸지 못했어요. 잠시 후 다시 해 주세요.'; save.disabled = false; return; }
         try { await sb.auth.signOut({ scope: 'others' }); } catch { /* best effort */ }
         closeOverlay();
-        toast(`비밀번호를 바꿨어요. 다른 기기의 로그인은 끊겼어요. 다음부터 ${what}와 새 비밀번호로 들어와요.`, 5000);
+        toast(`비밀번호를 바꿨어요. 다른 기기의 로그인은 끊겼어요. 다음부터 ${josa(what, '과', '와')} 새 비밀번호로 들어와요.`, 5000);
       },
     }, h('small', recover ? `구글로 내 계정(${what})을 찾았어요. 새 비밀번호를 정해 주세요.` : `${what}의 비밀번호예요.`), withEye(pw), withEye(pw2), err, save)]);
 }
@@ -679,7 +679,7 @@ export async function setPublic(show) {
     const prof = await rpc('set_prefs', { p_show: show, p_avatar: null });
     S.snap.profile = { ...S.snap.profile, ...prof };
     await kv.set('snap', S.snap);
-    toast(prof.show_on_board ? `랭킹에 "${prof.display}"(으)로 보여요.` : '랭킹에 "익명 트레이너"로 보여요.');
+    toast(prof.show_on_board ? `랭킹에 "${prof.display}"${josa(prof.display, '으로', '로').slice(String(prof.display).length)} 보여요.` : '랭킹에 "익명 트레이너"로 보여요.');
     closeOverlay();
     openSettings();
   } catch (e) { toast(errorText(e.message)); }
@@ -920,7 +920,7 @@ export async function handleScan({ q, t }) {
   if (q !== '_' && items.some((i) => i.qr_id === q)) return say(`이미 티켓 주머니에 "${name}" 티켓이 있어요. 부스에서 쓰고 나면 다시 찍을 수 있어요.`, true);
   const cap = known?.daily_cap || R.qr_daily_cap;
   const todayN = (S.snap.today?.[q] || 0) + S.outbox.filter((o) => o.q === q).length;
-  if (q !== '_' && todayN >= cap) return say(`오늘은 "${name}"을(를) ${cap}번 다 찍었어요. 다른 장소를 찾아보세요!`, true);
+  if (q !== '_' && todayN >= cap) return say(`오늘은 "${name}"${josa(name, '을', '를').slice(name.length)} ${cap}번 다 찍었어요. 다른 장소를 찾아보세요!`, true);
 
   S.outbox.push({ n: makeNonce(), q, t, at: new Date().toISOString() });
   await kv.set('outbox', S.outbox);
@@ -1145,7 +1145,7 @@ let encBusy = false;
 export async function catchEncounter(enc) {
   if (!enc || encBusy || celebrating) return;
   const wild = enc.kind === 'wild'; const safari = enc.kind === 'safari';
-  if (!S.online) return say(`${safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스'}를 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
+  if (!S.online) return say(`${josa(safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스', '을', '를')} 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
   const sp = speciesOf(enc.species_id);
   if (!sp) return;
   encBusy = true; celebrating = true;

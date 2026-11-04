@@ -47,7 +47,8 @@ function sheet(i) {
     const t = { img, ok: false, fail: 0 };
     t.p = new Promise((res) => {
       img.onload = () => { t.ok = true; res(t); repaintWaiting(); };
-      img.onerror = () => { t.fail = performance.now(); res(null); };
+      // 못 받으면 5초 뒤 기다리는 칸을 다시 그림 → 그때 다시 받음 (안 하면 빈칸으로 계속 남음)
+      img.onerror = () => { t.fail = performance.now(); res(null); setTimeout(repaintWaiting, 5100); };
     });
     img.src = new URL(`../sprites/${IDX.sheets[i]}`, import.meta.url).href;
     SHEET_IMG.set(i, t);

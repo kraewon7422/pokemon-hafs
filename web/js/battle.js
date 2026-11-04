@@ -452,7 +452,7 @@ export function openBattle(b0) {
     for (const x of rw.exp?.[me()] || []) {
       if (closed) return;
       await say2(`${josa(x.name, '은', '는')} ${x.exp} 경험치를 얻었다!`, 300);
-      if (x.up > 0) { sfx.catch(); await say2(`${x.name}의 레벨이 ${x.lv}${/[013678]$/.test(String(x.lv)) ? '으로' : '로'} 올랐다!`); }
+      if (x.up > 0) { sfx.catch(); await say2(`${x.name}의 레벨이 ${josa(x.lv, '으로', '로')} 올랐다!`); }
     }
     const got = rw.item?.[me()];
     if (got && itemOf(got)) { sfx.catch(); await say2(`${josa(itemOf(got).name, '을', '를')} 주웠다!`); }

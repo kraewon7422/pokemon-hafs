@@ -457,6 +457,8 @@ def main():
     S.append('on conflict (id) do update set max_stage = excluded.max_stage, rarity = excluded.rarity, btype = excluded.btype;')
     S.append('update public.lines l set max_stage = v.n, rarity = v.r, btype = v.bt from (values ' + ', '.join(
         f'({l}, {n}, {q(r)}, {q(bt)})' for l, n, r, bt, wild in lines_sql if not wild) + ') v(id, n, r, bt) where l.id = v.id;')
+    S.append("-- 예전 데이터의 '비밀 몬스터' (계열 37 = 뮤) → 포켓몬 이름으로 (도감 상세 '정체' 칸에 보임)")
+    S.append("update public.lines set teacher = '비밀 포켓몬' where id = 37 and teacher = '비밀 몬스터';")
     S.append(f'delete from public.lines where id > {max(line_ids)};')
     S.append('insert into public.species (id, line_id, stage, name, category, flavor, height, weight, btype, hp, atk, def, spa, spd, spe, dex, evo_lv, evo_item) values')
     S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {dex}, {ev if ev else 'null'}, {'true' if it else 'false'})"

@@ -4,7 +4,7 @@ import { rpc, errorText } from './sb.js';
 import { kv } from './db.js';
 import { spriteCanvas } from './sprites.js';
 import { sfx } from './sfx.js';
-import { h, $, toast, pix } from './ui.js';
+import { h, $, josa, toast, pix } from './ui.js';
 import { inAppBrowser, escapeInApp, isIOS, renderGoogleButton, devLogin, signOut } from './auth.js';
 import { S, app } from './state.js';
 import { ICONS, afterLogin, closeOverlay, go, handlePendingScan, installButton, renderShell, sheet } from './app.js';
@@ -398,7 +398,7 @@ export function renderRegister(info) {
   const form = h('form.register', { onsubmit: (e) => { e.preventDefault(); submit(); } },
     h('div.box.stack',
       h('b', '처음 왔구나! 누구인지 알려줘'),
-      fixed ? h('p', `${keyLabel(fixed)}(으)로 로그인했어요. 이름만 적어 주세요.`)
+      fixed ? h('p', `${josa(keyLabel(fixed), '으로', '로')} 로그인했어요. 이름만 적어 주세요.`)
         : [seg, h('small', '비학생 = 선생님·학부모·다른 학교 손님 (랭킹 제외)')],
       sidRow,
       idRow,

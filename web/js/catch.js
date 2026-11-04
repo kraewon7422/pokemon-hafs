@@ -946,9 +946,9 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         })().catch((e) => { if (e !== CANCEL) bail(); });
       };
 
-      // ─────── 시작: 나타났다! ───────
+      // ─────── 시작: 나타났다! ─────── (레이드 = HAFS 볼일 때만 '레이드 보스'. 야생도 공을 다 쓰면 도망가지만 레이드가 아님)
       run(async (c) => {
-        say(fleeAfterAll && !canRun ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
+        say(style === 'hafs' ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
         monW.setAlpha(1);
         play('scan');
         await c.tw({ targets: [mon, monW], scaleX: MON_K, scaleY: MON_K, duration: 320, ease: 'Back.easeOut' });

@@ -63,7 +63,7 @@ const SETTING_HELP = {
   drop_battle: '물건: 친구·실시간 배틀 승리 때 확률 (기본 0.5)', drop_practice: '물건: 연습 배틀 승리 때 확률 (기본 0.15)',
   drop_raid_tm: '물건: 레이드 승리 때 특별 기술머신 확률 (기본 0.3, 이상한사탕은 항상)',
   battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20)',
-  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","types":["음악","체육"]}, …] — 그 시간에 시작한 배틀은 그 타입 기술이 강해져요',
+  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","types":["불꽃","격투"]}, …] — 그 시간에 시작한 배틀은 그 타입 기술이 강해져요',
   battle_field_mult: '배틀 시간표: 강해지는 배율 (기본 1.3)',
   practice_exp_daily: '연습 배틀: 경험치·물건을 받는 판 수 (하루, 기본 10). 넘으면 연습은 할 수 있지만 경험치는 없어요',
 };
@@ -2316,13 +2316,14 @@ const DEFAULTS = {
   exp_need_mul: 8, exp_battle_mul: 4, exp_practice: 0.5, exp_lose: 0.4,
   drop_place: 0.3, drop_quiz: 0.4, drop_battle: 0.5, drop_practice: 0.15, drop_raid_tm: 0.3,
   battle_item_max: 2, battle_field_mult: 1.3, battle_turn_cap: 20,
+  // seed_pokemon.sql (0032): 과목 대신 실제 포켓몬 타입
   battle_fields: [
-    { from: '08:00', to: '10:00', name: '아침 조회', types: ['국어', '윤리'] },
-    { from: '10:00', to: '12:00', name: '오전 수업', types: ['수학', '물리', '화학'] },
-    { from: '12:00', to: '13:30', name: '점심시간', types: ['음악', '체육'] },
-    { from: '13:30', to: '16:00', name: '오후 수업', types: ['영어', '외국어', '역사'] },
-    { from: '16:00', to: '18:30', name: '방과후', types: ['정보', '지구', '생명'] },
-    { from: '18:30', to: '23:00', name: '야간 자율학습', types: ['지리', '정치경제'] },
+    { from: '08:00', to: '10:00', name: '아침 조회', types: ['노말', '비행', '풀'] },
+    { from: '10:00', to: '12:00', name: '오전 수업', types: ['에스퍼', '강철', '전기'] },
+    { from: '12:00', to: '13:30', name: '점심시간', types: ['불꽃', '격투', '페어리'] },
+    { from: '13:30', to: '16:00', name: '오후 수업', types: ['물', '얼음', '벌레'] },
+    { from: '16:00', to: '18:30', name: '방과후', types: ['땅', '바위', '독'] },
+    { from: '18:30', to: '23:00', name: '야간 자율학습', types: ['고스트', '악', '드래곤'] },
   ],
   // 0021_battle_end.sql · 0022_open_raids.sql · 0023_minigames.sql · 0025_minigame_admin.sql
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],

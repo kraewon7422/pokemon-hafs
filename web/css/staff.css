@@ -71,7 +71,7 @@ input::placeholder, textarea::placeholder { color: #6a7490; }
 }
 .legend-qr { background: #fff; color: #101828; border: 6px solid #f8d048; border-radius: 14px; padding: 12px; display: grid; justify-items: center; gap: 6px; flex: 1; }
 .legend-qr canvas { width: min(18vw, 30vh); height: auto; image-rendering: pixelated; }
-.fs-btn { position: fixed; left: 10px; bottom: 10px; opacity: .25; }
+.fs-btn { position: fixed; right: 10px; bottom: 10px; opacity: .25; }   /* 오른쪽 (왼쪽 아래는 팬 게임 안내 글과 겹침) */
 :fullscreen .fs-btn { display: none; }
 
 /* booth: special tickets (레이드·도감 보상) */

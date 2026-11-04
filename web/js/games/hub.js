@@ -11,20 +11,21 @@ import { overlay, closeOverlay, renderTab } from '../app.js';
 import { kv } from '../db.js';
 
 // 내 포켓몬 (지금 단계 도감 번호) — 게임 속 캐릭터로 씀. 없으면 기본 포켓몬
-const myMons = () => { const xs = collection().map((c) => dexOf(c.line_id, c.stage)); return xs.length ? xs : [1, 4, 7]; };
-const partnerDex = () => { const p = partnerMon(); return p ? dexOf(p.line_id, p.stage) : 1; };
+const myMons = () => { const xs = collection().map((c) => dexOf(c.line_id, c.stage)); return xs.length ? xs : [58, 61, 64]; };   // 없으면 이상해씨 · 파이리 · 꼬부기 (species id)
+const partnerDex = () => { const p = partnerMon(); return p ? dexOf(p.line_id, p.stage) : 35; };   // 없으면 피카츄
 
+// dex = 목록 그림 (species id — 전국도감 번호 아님): 라프라스 · 찌리리공 · 꼬마돌 · 디그다 · 파이리
 // fmt = 랭킹에 보이는 기록 모양, lower = 작을수록 좋음 (서버 _mg_lower 와 같게)
 export const GAMES = [
-  { id: 'surf', short: '서핑', title: '포켓몬 서핑', dex: 53, desc: '파도를 타고 바위·섬을 피해 멀리멀리! 뒤쫓아 오는 문어 포켓몬을 조심해요.',
+  { id: 'surf', short: '서핑', title: '포켓몬 서핑', dex: 343, desc: '파도를 타고 바위·섬을 피해 멀리멀리! 뒤쫓아 오는 문어 포켓몬을 조심해요.',
     fmt: (v) => `${v.toLocaleString()}m`, load: () => import('./surf.js') },
-  { id: 'dodge', short: '폭탄', title: '폭탄 피하기', dex: 100, desc: '하늘에서 떨어지는 폭탄 포켓몬을 좌우로 피해요. 오래 버틸수록 점수가 올라가요.',
+  { id: 'dodge', short: '폭탄', title: '폭탄 피하기', dex: 76, desc: '하늘에서 떨어지는 폭탄 포켓몬을 좌우로 피해요. 오래 버틸수록 점수가 올라가요.',
     fmt: (v) => `${v.toLocaleString()}점`, load: () => import('./dodge.js') },
-  { id: 'maze', short: '미로', title: '자이로 미로', dex: 175, desc: '폰을 기울여 몬스터볼을 미로 밖으로! 랭킹 모드 = 5단계 시간 재기, 자유 모드 = 끝없이 (미로 10가지).',
+  { id: 'maze', short: '미로', title: '자이로 미로', dex: 43, desc: '폰을 기울여 몬스터볼을 미로 밖으로! 랭킹 모드 = 5단계 시간 재기, 자유 모드 = 끝없이 (미로 10가지).',
     fmt: (v) => `${(v / 1000).toFixed(2)}초`, lower: true, free: true, load: () => import('./maze.js') },
-  { id: 'land', short: '땅따먹기', title: '땅따먹기', dex: 76, desc: '내 땅 밖으로 선을 그리고 돌아오면 그 안이 내 땅! 꼬리를 밟히면 목숨 하나 (3개). AI 3명과 90초 대결.',
+  { id: 'land', short: '땅따먹기', title: '땅따먹기', dex: 265, desc: '내 땅 밖으로 선을 그리고 돌아오면 그 안이 내 땅! 꼬리를 밟히면 목숨 하나 (3개). AI 3명과 90초 대결.',
     fmt: (v) => `${(v / 10).toFixed(1)}%`, load: () => import('./land.js') },
-  { id: 'cross', short: '등굣길', title: '포켓몬 등굣길', dex: 4, desc: '내 포켓몬과 학교 가는 길! 학교 → 바닷가 → 화산 → 우주를 한 칸씩 건너요. 멈춰 있으면 지각 괴물이 잡아가요.',
+  { id: 'cross', short: '등굣길', title: '포켓몬 등굣길', dex: 61, desc: '내 포켓몬과 학교 가는 길! 학교 → 바닷가 → 화산 → 우주를 한 칸씩 건너요. 멈춰 있으면 지각 괴물이 잡아가요.',
     fmt: (v) => `${v.toLocaleString()}칸`, load: () => import('./cross.js') },
 ];
 // 오프라인 기록: 인터넷이 없을 때 끝난 판은 폰에 (게임마다 가장 좋은 것 하나만) 두었다가 연결되면 보냄

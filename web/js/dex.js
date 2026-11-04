@@ -61,7 +61,7 @@ function viewQrMap() {
     h(`div.map-scroll${zoom > 1 ? '.zoomed' : ''}`,
       h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.webp', alt: '학교 지도', draggable: 'false' }),
         h('span.map-egg', { onclick: () => eggTap('map'), 'aria-hidden': 'true' }),   // 오른쪽 위 숲 모서리 (이스터에그)
-        MAP_LABELS.map(([t, x, y]) => h('span.map-label', { style: { left: `${x * 100}%`, top: `${y * 100}%` }, 'aria-hidden': 'true' }, t)), pins)),
+        MAP_LABELS.map(([t, x, y]) => h(`span.map-label${x < 0.15 ? '.edge-l' : x > 0.85 ? '.edge-r' : ''}`, { style: { left: `${x * 100}%`, top: `${y * 100}%` }, 'aria-hidden': 'true' }, t)), pins)),
     zoom > 1 && h('small', { style: { textAlign: 'center' } }, '손가락으로 끌어서 지도를 움직여요'),
     h('div.legend',
       h('span', h('i', { style: { background: 'var(--red)' } }), '아직 안 찍음'),
@@ -301,7 +301,7 @@ export function sumInfo(sp, type) {
   return [
     h('dl.sum-kv',
       h('dt', '이름'), h('dd', sp.name),
-      h('dt', '타입'), h('dd', typeChips(type)),
+      h('dt', '타입'), h('dd', h('span.types', typeChips(type))),   // span.types = 칩 사이 간격 (붙어 보이던 문제)
       h('dt', '분류'), h('dd', sp.category),
       h('dt', isWild(sp.line_id) ? '만나는 곳' : '정체'), h('dd', isWild(sp.line_id) ? '야생' : line?.teacher || '?'),
       h('dt', '성향'), h('dd', statNote(sp))),
