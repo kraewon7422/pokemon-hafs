@@ -281,7 +281,7 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .map-scroll.zoomed { max-height: 64dvh; overflow: auto; -webkit-overflow-scrolling: touch; border-radius: 10px; overscroll-behavior: contain; touch-action: pan-x pan-y; }
 .map-scroll.zoomed .map-wrap { margin: 0; }
 
-/* 진화의돌 룰렛 */
+/* 진화의 돌 룰렛 */
 .roulette { display: grid; gap: 8px; }
 .reel-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 6px; }
 .reel-cell { text-align: center; padding: 6px 0; border: 3px solid var(--ink); border-radius: 6px; background: #fff; font-size: var(--fs-m); }
@@ -1014,3 +1014,25 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .bt-opt .bt-lv { font-size: 11px; color: #586890; }
 .partner-pick small + small { font-size: 11px; color: #586890; }
 .sum-body { display: grid; gap: 6px; min-width: 0; }   /* 0036: 설명·제목이 한 줄에 붙지 않게 (320px) */
+
+/* 0037 도감 쪽 넘기기 + 지방 바로 가기 */
+.dex-pager { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
+.dex-pager .btn.small { min-width: 48px; min-height: 44px; }
+.dex-pager .dp-mid { display: grid; justify-items: center; text-align: center; line-height: 1.2; }
+.dex-pager .dp-mid small { font-size: var(--fs-s); color: #4a5268; white-space: nowrap; }
+.dex-regions .chip { word-break: keep-all; white-space: nowrap; }
+.dex-regions .chip:disabled { opacity: .45; cursor: default; }
+/* 0037 갈래 진화: 진화 길 칸 + 고르기 */
+.chain-cell { display: grid; justify-items: center; text-align: center; word-break: keep-all; }
+.chain-col { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 6px; justify-items: center; }
+.chain-col.many { grid-template-columns: repeat(3, auto); }
+.chain:has(.chain-col.many) { grid-template-columns: auto auto 1fr; }
+.chain-col small, .chain-cell small { font-size: 11px; white-space: nowrap; }
+.evo-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
+.evo-choice { appearance: none; border: 3px solid #384868; border-radius: 10px; background: var(--paper); padding: 6px 4px 8px; display: grid; justify-items: center; align-content: start; gap: 2px; cursor: pointer; color: inherit; font: inherit; min-height: 44px; text-align: center; }
+.evo-choice b { font-size: var(--fs-s); white-space: nowrap; }
+.evo-choice small { font-size: 11px; line-height: 1.25; word-break: keep-all; }
+.evo-choice:disabled { opacity: .5; filter: grayscale(1); cursor: not-allowed; }
+.evo-choice:not(:disabled):active { transform: translateY(1px); }
+.evo-panel .banner > span, .dex-head .banner > span + span { white-space: nowrap; }   /* '진화의 돌 × 3' 이 둘로 갈라지지 않게 */
+.sf-bl .sf-reset { display: block; font-size: 11px; white-space: nowrap; opacity: .85; }   /* 0037 다음 충전 */

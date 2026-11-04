@@ -24,9 +24,31 @@ export const lineOf = (id) => S.catalog?.lines.find((l) => l.id === id);
 export const maxStage = (line) => lineOf(line)?.max_stage ?? 3;
 export const speciesOf = (id) => S.catalog?.species.find((s) => s.id === id);
 export const qrName = (id) => S.catalog?.qrs.find((q) => q.id === id)?.name;
+// 계열의 곧은 길 (첫 갈래) 의 종 번호. 갈래 종 (0037: 쥬피썬더 · 엘레이드 …) 은 id 10000+ → 포켓몬마다 species_id 를 씀 (spIdOf · monSp)
 export const dexOf = (line, stage) => (line - 1) * 3 + stage;
 // 도감 번호 = 실제 전국도감 번호 (No.001 이상해씨 … No.809 멜메탈). species.id 는 (계열-1)*3+단계 그대로 (서버가 씀)
 export const dexNo = (sp) => `No.${String(sp?.dex || 0).padStart(3, '0')}`;
+// 도감 칸 = 전국도감 번호 (같은 번호가 두 계열에 있어도 한 칸). 번호 없는 운영자 포켓몬은 -id
+export const dexKey = (sp) => sp?.dex || -(sp?.id || 0);
+// 진화 길 (0037 public.evolutions). 예전 서버 (표 없음) = 계열의 다음 단계
+export const evosFrom = (spId) => {
+  const ev = S.catalog?.evolutions;
+  if (ev) return ev.filter((e) => e.from_species === spId).sort((a, b) => a.sort - b.sort || a.to_species - b.to_species);
+  const sp = speciesOf(spId); const nx = sp && speciesOf(dexOf(sp.line_id, sp.stage + 1));
+  return nx && nx.line_id === sp.line_id ? [{ from_species: spId, to_species: nx.id, how: nx.evo_item ? 'item' : 'level', lv: nx.evo_item ? null : nx.evo_lv, sort: 0 }] : [];
+};
+export const evoParent = (spId) => {
+  const ev = S.catalog?.evolutions;
+  if (ev) return ev.find((e) => e.to_species === spId)?.from_species ?? null;
+  const sp = speciesOf(spId);
+  return sp && sp.stage > 1 && sp.id < 10000 ? sp.id - 1 : null;
+};
+// 1단계 → … → 그 종
+export function spPath(spId) {
+  const out = [];
+  for (let x = spId, i = 0; x != null && i < 5; x = evoParent(x), i++) out.unshift(x);
+  return out;
+}
 // 도감 순서 = 전국도감 번호 순
 export function sortDex(cat) {
   cat.species.sort((a, b) => (a.dex || 9999) - (b.dex || 9999) || a.id - b.id);
@@ -38,7 +60,8 @@ export const collection = () => S.snap?.collection || [];
 export const mons = () => S.snap?.mons || [];
 export const monById = (id) => (id == null ? null : mons().find((m) => m.id === id) || null);
 export const monsOf = (line) => mons().filter((m) => m.line_id === line);
-export const monSp = (m) => (m ? speciesOf(dexOf(m.line_id, m.stage)) : null);
+export const spIdOf = (m) => (m ? m.species_id || dexOf(m.line_id ?? m.line, m.stage) : null);
+export const monSp = (m) => (m ? speciesOf(spIdOf(m)) : null);
 export const boxMax = () => Number(S.snap?.rules?.box_max) || 900;
 export const boxFull = () => mons().length >= boxMax();
 // 트레이너 카드 포켓몬: 고른 포켓몬 (set_partner, 0036 = 포켓몬 번호), 없으면 가장 많이 진화한 포켓몬
@@ -55,7 +78,20 @@ export const bag = () => [
     .map((o) => ({ nonce: o.n, qr_id: o.q, token: o.t, name: o.q === '_' ? '수동 코드' : qrName(o.q) || '확인 중인 장소', synced: false })),
 ];
 export const normalBag = () => bag().filter((t) => !t.special);   // only these count towards bag_max
-export const evolvable = () => mons().filter((c) => c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id));
+export const evolvable = () => mons().filter((c) => c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id) && evosFrom(spIdOf(c)).length > 0);
+// 본 적 있는 종 (0037 서버 snap.seen = 가진 · 놓아준 포켓몬의 종 + 앞 단계들). 예전 서버면 계열의 가장 높은 단계까지
+export function seenIds() {
+  const s = S.snap?.seen;
+  if (Array.isArray(s)) return new Set(s);
+  const out = new Set();
+  for (const c of collection()) for (let st = 1; st <= c.stage; st++) out.add(dexOf(c.line_id, st));
+  return out;
+}
+export function seenKeys() {
+  const out = new Set();
+  for (const id of seenIds()) { const sp = speciesOf(id); if (sp) out.add(dexKey(sp)); }
+  return out;
+}
 export const isWithdrawn = (line) => (S.snap?.rules?.withdrawn || []).includes(line) || !!lineOf(line)?.withdrawn;
 export const isSecret = (line) => !!lineOf(line)?.secret;
 export const isMythic = (line) => !!lineOf(line)?.mythic;
@@ -64,13 +100,15 @@ export const isBonus = (line) => !!lineOf(line)?.bonus || isSecret(line) || isMy
 export const isWild = (line) => lineOf(line)?.subject === '야생';
 // 학교 도감 = 선생님 포켓몬 + 특별 전설 (야생·비밀·환상·비공개 제외) → 도감 50%·100% 보상과 '도감 완성' 은 이것 기준
 // 전국 도감 = 야생까지 모든 포켓몬 (비밀·환상·비공개 제외)
+// 0037: 칸 = 전국도감 번호 (서버 _dex_rewards 와 같은 셈)
 export function dexStats() {
-  const reached = (sp) => (owned(sp.line_id)?.stage || 0) >= sp.stage;
-  const all = S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id));
-  const school = all.filter((sp) => !isWild(sp.line_id));
-  const found = school.filter(reached).length;
-  return { found, total: school.length, complete: school.length > 0 && found === school.length,
-           allFound: all.filter(reached).length, allTotal: all.length,
+  const seen = seenKeys();
+  const all = new Set(S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id)).map(dexKey));
+  const school = new Set(S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id) && !isWild(sp.line_id)).map(dexKey));
+  const cnt = (set) => [...set].filter((k) => seen.has(k)).length;
+  const found = cnt(school);
+  return { found, total: school.size, complete: school.size > 0 && found === school.size,
+           allFound: cnt(all), allTotal: all.size,
            secret: collection().some((c) => isSecret(c.line_id)) };
 }
 export const titlesOf = (p, d = dexStats()) => [...(p.titles || []), d.complete && '도감 마스터', d.secret && '비밀 탐험가'].filter(Boolean);

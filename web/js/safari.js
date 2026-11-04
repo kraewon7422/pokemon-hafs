@@ -206,6 +206,7 @@ function build() {
   const closed = () => !st ? null : st.pending ? null : st.balls_left <= 0 ? 'balls' : st.encounters_today >= st.max_encounters ? 'max' : null;
   function paintInfo() {
     ballsEl.textContent = st ? `${st.balls_left}/${st.balls_daily}` : '-';
+    ballsEl.nextElementSibling?.remove(); if (st?.next_reset_at) ballsEl.after(h('small.sf-reset', `다음 충전 ${new Date(st.next_reset_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' })}`));   // 0037 (branch-evo): 사파리볼 충전 시각
     encEl.textContent = !S.online ? '인터넷이 연결되면 포켓몬이 나와요' : st ? `오늘 만난 포켓몬 ${st.encounters_today}/${st.max_encounters}` : '불러오는 중…';
     encEl.title = '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요';
     pendBtn.hidden = !st?.pending;

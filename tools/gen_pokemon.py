@@ -2,6 +2,9 @@
 
 자료: PokeAPI CSV (https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv) 를 .work/pokeapi/ 에 받아 둔 것.
   - 1~7세대 (도감 1~809) 전부. 진화 계열 = 한 줄(1~3단계). 갈래 진화는 첫 갈래가 계열을 잇고, 나머지는 따로 1단계 계열.
+  - 갈래 진화 (0037): 첫 갈래가 아닌 진화 (이브이 → 쥬피썬더 …)도 원래 계열 안에 '갈래 종'으로 한 번 더 넣음
+    (species.id = 10000 + 전국도감 번호, 같은 계열 · 다음 단계). 진화 길은 public.evolutions (from → to, level | item).
+    따로 1단계 계열로 있던 것 (야생 쥬피썬더 등)은 그대로 둠 → 도감은 전국도감 번호마다 한 칸.
   - 선생님 계열 68개(1~34, 43~76)는 과목에 어울리는 포켓몬 (퀴즈는 그대로), 특별 계열(35~42, 77~82)은 정해진 전설·환상,
     나머지는 83번부터 '야생' 계열.
   - 이름·분류·키·몸무게·도감 설명 = 공식 한국어 (PokeAPI). 종족값 = 실제 값. 타입 = 실제 타입 ('불꽃/비행' 처럼 / 로 이음).
@@ -86,21 +89,25 @@ for r in rd('pokemon_evolution'):
     e = int(r['evolved_species_id'])
     if e <= MAXDEX and r['evolution_trigger_id'] == '1' and r['minimum_level']:
         EVO_MIN[e] = min(EVO_MIN.get(e, 999), int(r['minimum_level']))
-# 진화의돌(아이템)로 진화하는 포켓몬 (예: 라이츄 · 픽시 · 샤미드): 레벨로는 진화하지 않고 진화의돌 1개로 100% 진화 (0034)
+# 진화의 돌(아이템)로 진화하는 포켓몬 (예: 라이츄 · 픽시 · 샤미드): 레벨로는 진화하지 않고 진화의 돌 1개로 100% 진화 (0034)
 EVO_ITEM = {int(r['evolved_species_id']) for r in rd('pokemon_evolution')
             if r['evolution_trigger_id'] == '3' and int(r['evolved_species_id']) <= MAXDEX} - set(EVO_MIN)
 
 
 def evo_levels(path):
-    """[None, 2단계 진화 레벨, 3단계 진화 레벨] — 진화의돌로 진화하는 단계는 None (레벨로 진화 안 함).
+    """[None, 2단계 진화 레벨, 3단계 진화 레벨] — 진화의 돌로 진화하는 단계는 None (레벨로 진화 안 함).
     교환 · 친밀도 · 시간 진화는 이 게임에 없으므로 단계에 맞춘 레벨 (2단계 25 · 3단계 40 근처)로 바꿈."""
     out, prev = [None], 5
     for st, sid in enumerate(path[1:], start=2):
-        lv = EVO_MIN.get(sid) or max(prev + 10, {2: 25, 3: 40}[st])
-        lv = max(lv, prev + 1)
+        lv = evo_lv_raw(sid, st, prev)
         out.append(None if sid in EVO_ITEM else lv)
         prev = lv
     return out
+
+
+def evo_lv_raw(sid, st, prev):
+    """단계 st 의 sid 가 되는 레벨 (prev = 앞 단계가 된 레벨, 1단계면 5). 돌 진화도 다음 단계 계산용으로 레벨을 돌려줌."""
+    return max(EVO_MIN.get(sid) or max(prev + 10, {2: 25, 3: 40}[st]), prev + 1)
 
 
 # ── 진화 계열 → 한 줄씩 ──
@@ -196,6 +203,44 @@ for l, p in LINE_PATH.items():
 
 def sp_id(line, stage):
     return (line - 1) * 3 + stage
+
+
+# ── 갈래 진화 (0037): 계열 안의 '다른 갈래' 종 → id 10000 + 전국도감 번호 ──
+BRANCH_BASE = 10000
+BRANCHES = []          # (id, line, stage, 도감 번호, 부모 species.id, 진화 레벨 또는 None, 돌 진화?)
+
+
+def _branch_walk(line, parent_id, parent_sid, stage, prev_lv, skip):
+    for k, c in enumerate(CHILD.get(parent_sid, [])):
+        if c == skip or stage > 3:
+            continue
+        lv = evo_lv_raw(c, stage, prev_lv)
+        bid = BRANCH_BASE + c
+        BRANCHES.append((bid, line, stage, c, parent_id, None if c in EVO_ITEM else lv, c in EVO_ITEM, k))
+        _branch_walk(line, bid, c, stage + 1, lv, None)
+
+
+for _l in sorted(LINE_PATH):
+    _p = LINE_PATH[_l]
+    _prev = 5
+    for _i, _sid in enumerate(_p):
+        _nxt = _p[_i + 1] if _i + 1 < len(_p) else None
+        _branch_walk(_l, sp_id(_l, _i + 1), _sid, _i + 2, _prev, _nxt)
+        if _nxt:
+            _prev = evo_lv_raw(_nxt, _i + 2, _prev)
+assert len({b[0] for b in BRANCHES}) == len(BRANCHES), '갈래 종 번호가 겹침'
+
+
+def evolutions_rows():
+    """(from, to, how, lv, sort): 계열의 곧은 진화 + 갈래 진화"""
+    out = []
+    for l, p in LINE_PATH.items():
+        evl = evo_levels(p)
+        for st in range(2, len(p) + 1):
+            out.append((sp_id(l, st - 1), sp_id(l, st), 'item' if p[st - 1] in EVO_ITEM else 'level', evl[st - 1], 0))
+    for bid, l, st, dex, par, lv, item, k in BRANCHES:
+        out.append((par, bid, 'item' if item else 'level', lv, k))
+    return sorted(out)
 
 
 def rarity_of(line, path):
@@ -432,9 +477,25 @@ def main():
             for x in mv4:                   # 고른 기술은 꼭 배울 수 있게
                 lv_line.setdefault(x, 1 if st == 1 else 5 + 15 * (st - 1))
             sprites[sp_id(l, st)] = sid
+        for bid, bl, st, sid, par, ev, item, k in BRANCHES:      # 갈래 종 (0037): 같은 계열 안에
+            if bl != l:
+                continue
+            h, w = hw(sid)
+            species_rows.append((bid, l, st, NAME[sid], GENUS[sid], flavor(sid), h, w, '/'.join(types_of(sid)), stats_of(sid), sid, ev, item))
+            mv4 = pick4(sid, st, st if not CHILD.get(sid) else 3)
+            assert len(set(mv4)) == 4, (sid, mv4)
+            for kk, x in enumerate(mv4):
+                sm_rows.append((bid, kk + 1, MID(x)))
+            for x, lv in LEVEL[PID[sid]].items():
+                if x in GB.SIGNATURE:
+                    continue
+                lv_line[x] = min(lv_line.get(x, 999), lv)
+            for x in mv4:
+                lv_line.setdefault(x, 5 + 15 * (st - 1))
+            sprites[bid] = sid
         for x, lv in sorted(lv_line.items()):
             learn_rows.append((l, MID(x), lv, 'level'))
-        can = set().union(*(learnable(s) for s in p))
+        can = set().union(*(learnable(s) for s in p + [b[3] for b in BRANCHES if b[1] == l]))
         for x in TMS:
             if x in can or MV[x]['type'] == '노말' and x in ('방어', '스피드스타', '그림자분신', '잠자기'):
                 learn_rows.append((l, MID(x), 0, 'tm'))
@@ -476,6 +537,10 @@ def main():
              'from public.lines l, public.species x where l.id = s.line_id and s.stage > l.max_stage and x.line_id = s.line_id and x.stage = l.max_stage;')
     S.append('-- 단계가 줄어든 계열: 이미 잡은 것은 마지막 단계로')
     S.append('update public.collection c set stage = l.max_stage from public.lines l where l.id = c.line_id and c.stage > l.max_stage;')
+    S.append('-- 갈래 진화 (0037): 진화 길 전부 (곧은 진화 + 갈래). 진화할 때 서버가 이것만 봄')
+    S.append('delete from public.evolutions where true;')
+    S.append('insert into public.evolutions (from_species, to_species, how, lv, sort) values ' + ',\n'.join(
+        f"({a}, {b}, {q(hw_)}, {lv if lv else 'null'}, {k})" for a, b, hw_, lv, k in evolutions_rows()) + ';')
     S.append('insert into public.species_moves (species_id, slot, move_id) values ' + ',\n'.join(f'({a}, {b}, {c})' for a, b, c in sm_rows) + ';')
     S.append('insert into public.learnset (line_id, move_id, lv, how) values ' + ',\n'.join(f"({a}, {b}, {c}, {q(d)})" for a, b, c, d in learn_rows)
              + ' on conflict do nothing;')
@@ -500,6 +565,7 @@ def main():
     ident = {int(r['id']): r['identifier'] for r in rd('pokemon_species') if int(r['id']) <= MAXDEX}
     json.dump({'species': {str(k): v for k, v in sorted(sprites.items())}, 'ident': {str(k): v for k, v in sorted(ident.items())}, 'items': ITEM_ICON},
               open(os.path.join(ROOT, 'tools', 'pokemon_sprites.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
+    print(f'갈래 종 {len(BRANCHES)}: ' + ', '.join(f"{NAME[b[3]]}({b[0]}, 계열 {b[1]} {b[2]}단계, {'돌' if b[6] else 'Lv.' + str(b[5])})" for b in BRANCHES))
     print(f'{out}: lines {len(lines_sql)} (wild {sum(1 for x in lines_sql if x[4])}), species {len(species_rows)}, '
           f'moves {len(MOVES)}, learn {len(learn_rows)}, items {len(items)} (TM {len(TMS)})')
     for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, max(line_ids)]:

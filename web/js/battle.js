@@ -49,7 +49,7 @@ export const BT_WHY = {
   practice: '연습 배틀이라 보상은 없어요.',
   same_opp: '같은 친구에게는 하루 한 번만 보상이 있어요.',
   daily_max: '오늘 받을 수 있는 배틀 보상은 다 받았어요.',
-  luck: '이번엔 진화의돌이 없었어요. (이기면 가끔 받아요)',
+  luck: '이번엔 진화의 돌이 없었어요. (이기면 가끔 받아요)',
 };
 
 // 내 배틀 팀 = 저장한 팀 (아직 박스에 있는 것만), 없으면 가장 높은 단계·레벨부터. n = 3 (1 대 1) / 4 (2 대 2)
@@ -135,7 +135,7 @@ export function viewBattle() {
   return [
     h('div.box.stack',
       h('div.banner', h('b', pix('spark'), ' 배틀'), today ? h('span.chip', `오늘 보상 ${today.wins}/${today.max}`) : null),
-      h('p', { style: { margin: 0 } }, '내 포켓몬으로 겨뤄요. 친구를 이기면 진화의돌 1개! (하루 3번 · 같은 친구는 하루 1번)'),
+      h('p', { style: { margin: 0 } }, '내 포켓몬으로 겨뤄요. 친구를 이기면 진화의 돌 1개! (하루 3번 · 같은 친구는 하루 1번)'),
       act && h('button.btn.big.gold', { onclick: () => resumeBattle(act.id) }, pix('spark'),
         act.status === 'invite' ? '보낸 배틀 신청 보기' : pvp ? '하던 실시간 배틀 이어 하기' : '하던 배틀 이어 하기'),
       pvp && h('small.warn-txt', '실시간 배틀이 끝나기 전에는 다른 배틀을 시작할 수 없어요. (그만두려면 배틀 화면에서 기권)'),
@@ -239,7 +239,7 @@ export async function friendBattleSheet(code) {
     teamStrip(myTeam(f.n), 44),
     h('button.btn.big.primary', { onclick: () => startBattle('pvp', code) }, '실시간 배틀 신청 (친구가 수락하면 시작)'),
     h('button.btn.big', { onclick: () => startBattle('team', code) }, '친구 팀과 AI 배틀 (바로 시작)'),
-    h('small.muted', '이기면 진화의돌 1개 (하루 3번 · 같은 친구는 하루 1번)'),
+    h('small.muted', '이기면 진화의 돌 1개 (하루 3번 · 같은 친구는 하루 1번)'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
   S.btPeekFmt = pk.format;
 }
@@ -474,7 +474,7 @@ export function openBattle(b0) {
     if (b.winner == null) await say2('무승부!');
     else if (won) {
       await say2(`${josa(foeName(), '과', '와')}의 승부에서 이겼다!`);
-      if (rw.ticket) await say2(`★ 진화의돌 1개를 받았다! (오늘 ${rw.today}/${S.btToday?.max || 3})`);
+      if (rw.ticket) await say2(`★ 진화의 돌 1개를 받았다! (오늘 ${rw.today}/${S.btToday?.max || 3})`);
       else if (BT_WHY[rw.why]) await say2(BT_WHY[rw.why]);
     } else if ((side(me())?.mons || []).some((m) => m.hp > 0)) {
       await say2(b.mode === 'pvp' ? '기권했다… (진 것으로 판정)' : '무사히 도망쳤다! (진 것으로 판정)');

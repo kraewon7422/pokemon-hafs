@@ -5,9 +5,9 @@ import { rpc, errorText, selectAll } from './sb.js';
 import { spriteCanvas, monSprite } from './sprites.js';
 import { sfx } from './sfx.js';
 import { h, josa, toast, pix } from './ui.js';
-import { S, mons, speciesOf, dexOf, maxStage, isWithdrawn } from './state.js';
+import { S, mons, speciesOf, dexOf } from './state.js';
 import { overlay, sheet, closeOverlay, openBag, sync } from './app.js';
-import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES, evoSheet } from './dex.js';
+import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES, evoSheet, evoOpts } from './dex.js';
 import { moveOf } from './battle.js';
 import { eggPocket, loadEggs, TIER } from './eggs.js';
 
@@ -17,7 +17,7 @@ const ICONS = [...Array.from({ length: 18 }, (_, i) => `boost${String(i + 1).pad
   ...TYPES.map((t) => `tm:${t}`)];
 export const itemOf = (key) => (S.catalog.items || []).find((x) => x.key === key);
 const boxOf = (id) => (S.bag?.box || []).find((x) => x.id === id);
-const spOf = (m) => speciesOf(dexOf(m.line, m.stage));
+const spOf = (m) => speciesOf(m.species_id || dexOf(m.line, m.stage));   // 0037: 갈래 종은 species_id
 export const statl = (b, hp, lv) => Math.floor(((2 * (b || 50) + 31) * lv) / 100) + (hp ? lv + 10 : 5);
 
 // PC 박스: 30칸 × 30박스 (pos 0~899 → BOX pos/30+1, 칸 pos%30)
@@ -104,7 +104,7 @@ function pocketList(cur, sel, pick, redraw) {
   if (cur === 'key') {
     const p = S.snap?.profile || {};
     return [h('div.stack',
-      h('div.bag-item', h('span.key-ico', itemIcon('evo', 32)), h('span', h('b', '진화의돌'), h('br'), h('small', '진화 레벨 전에 진화시킬 때 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
+      h('div.bag-item', h('span.key-ico', itemIcon('evo', 32)), h('span', h('b', '진화의 돌'), h('br'), h('small', '진화 레벨 전에 진화시킬 때 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
       h('div.bag-item', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '부스 티켓'), h('br'), h('small', '부스에서 포켓몬으로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
       h('button.btn.big.primary', { onclick: () => { closeOverlay(); openBag(); } }, '티켓 QR 보여주기 (부스용)'))];
   }
@@ -264,7 +264,7 @@ export async function openMon(id, page = 0) {
     body.replaceChildren(...[monState, monStats, monMoves][page](boxOf(id), sp, () => openMon(id, page)).filter(Boolean));
   };
   const isPartner = S.bag?.partner === id;
-  const canEvo = m.stage < maxStage(m.line) && !isWithdrawn(m.line);
+  const canEvo = evoOpts(m).length > 0;   // 0037: 진화 길이 있는 종만 (갈래 종 포함)
   const ov = sheet([
     h('div.summary',
       h('div.sum-top', h('span', sp.name), h('span.types', typeChips(type)), h('span.sum-lv', `Lv.${m.level}`)),

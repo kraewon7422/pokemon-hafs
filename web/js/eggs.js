@@ -166,7 +166,7 @@ async function hatch(x, redraw) {
     const { itemOf } = await import('./bag.js');
     lines.push(`${josa(itemOf(res.held)?.name || '물건', '을', '를')} ${res.held_to === 'held' ? '지니고' : '가방에 넣어 두고'} 있었다!`);
   }
-  if (res.bonus_ticket) lines.push('진화의돌도 1개 받았다!');
+  if (res.bonus_ticket) lines.push('진화의 돌도 1개 받았다!');
   text.textContent = lines.join('\n');
   btns.replaceChildren(
     h('button.btn.primary', { onclick: async () => { closeOverlay(); const { openMon, loadBag } = await import('./bag.js'); await loadBag({ notify: false }).catch(() => {}); openMon(res.mon); } }, '포켓몬 보기'),
@@ -179,7 +179,7 @@ async function hatch(x, redraw) {
 // 95개 → 묶음(종류) 제목 + 걸러 보기 (받기 / 진행 중 / 완료 / 전체) + 모두 받기
 // 물건 이름은 서버 목록(items, 0032 = 실제 포켓몬 물건)에서
 const itemName = (k) => (S.catalog?.items || []).find((x) => x.key === k)?.name || '물건';
-const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item ? `${itemName(r.item)} ×${r.n || 1}` : r?.evo ? `진화의돌 ×${r.evo}` : '');
+const rewardText = (r) => (r?.egg ? TIER[r.egg] : r?.item ? `${itemName(r.item)} ×${r.n || 1}` : r?.evo ? `진화의 돌 ×${r.evo}` : '');
 const rewardIcon = (r) => (r?.egg ? eggImg('egg', r.egg, 0.8) : r?.evo ? pix('ticket', 'l') : pix('gift', 'l'));
 const GROUPS = [['도감', ['dex']], ['장소 · QR', ['places', 'scans', 'days']], ['배틀', ['wins']], ['레이드', ['raids']],
   ['알 · 걸음', ['eggsgot', 'hatch', 'purplehatch', 'steps']], ['포켓몬 키우기', ['shiny', 'evolves', 'stage3', 'rare', 'legend', 'maxlv', 'types', 'learned', 'held']],
