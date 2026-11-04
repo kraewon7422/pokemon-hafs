@@ -9,7 +9,22 @@ import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab
 
 // ───────────────────────── 지도 ─────────────────────────
 
+// 지도 탭 맨 위: QR 지도 | 사파리존 (사파리존 = safari.js, 처음 열 때만 불러옴)
+let safariMod = null;
 export function viewMap() {
+  const mode = S.mapMode === 'safari' ? 'safari' : 'qr';
+  const setMode = (m) => { if (m === mode) return; sfx.blip(); S.mapMode = m; renderTab(); };
+  const bar = h('div.seg.map-modes', { role: 'group', 'aria-label': '지도 종류' },
+    h('button', { 'aria-pressed': String(mode === 'qr'), onclick: () => setMode('qr') }, 'QR 지도'),
+    h('button', { 'aria-pressed': String(mode === 'safari'), onclick: () => setMode('safari') }, '사파리존'));
+  if (mode === 'qr') return [bar, ...viewQrMap()];
+  if (safariMod) return [bar, safariMod.viewSafari()];
+  import('./safari.js').then((m) => { safariMod = m; if (S.tab === 'map' && S.mapMode === 'safari') renderTab(); })
+    .catch(() => toast('사파리존을 불러오지 못했어요. 인터넷을 확인해 주세요.', { kind: 'error' }));
+  return [bar, h('div.box', '사파리존을 불러오는 중…')];
+}
+
+function viewQrMap() {
   const today = S.snap.today || {};
   const inBag = new Set(bag().map((t) => t.qr_id));
   const capOf = (q) => q.daily_cap || rules().qr_daily_cap;
@@ -46,7 +61,7 @@ export function viewMap() {
     h(`div.map-scroll${zoom > 1 ? '.zoomed' : ''}`,
       h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.webp', alt: '학교 지도', draggable: 'false' }),
         h('span.map-egg', { onclick: () => eggTap('map'), 'aria-hidden': 'true' }),   // 오른쪽 위 숲 모서리 (이스터에그)
-        MAP_LABELS.map(([t, x, y]) => h('span.map-label', { style: { left: `${x * 100}%`, top: `${y * 100}%` }, 'aria-hidden': 'true' }, t)), pins)),
+        MAP_LABELS.map(([t, x, y]) => h(`span.map-label${x < 0.15 ? '.edge-l' : x > 0.85 ? '.edge-r' : ''}`, { style: { left: `${x * 100}%`, top: `${y * 100}%` }, 'aria-hidden': 'true' }, t)), pins)),
     zoom > 1 && h('small', { style: { textAlign: 'center' } }, '손가락으로 끌어서 지도를 움직여요'),
     h('div.legend',
       h('span', h('i', { style: { background: 'var(--red)' } }), '아직 안 찍음'),
@@ -127,6 +142,8 @@ export function viewDex() {
 // 진화 레벨: 다음 단계 포켓몬의 evo_lv (그 레벨이 되면 진화의돌 없이 100% 진화)
 export const evoLevel = (c) => speciesOf(dexOf(c.line_id, c.stage + 1))?.evo_lv || null;
 export const canLevelEvolve = (c) => !!c && c.stage < maxStage(c.line_id) && !isWithdrawn(c.line_id) && !!evoLevel(c) && (c.level || 0) >= evoLevel(c);
+// 돌 진화 (0034, 라이츄 · 픽시 · 샤미드 …): 레벨로는 진화 안 함, 진화의돌 1개로 100%
+export const evoByItem = (c) => !!c && !!speciesOf(dexOf(c.line_id, c.stage + 1))?.evo_item;
 
 export function evoChance(c) {
   const R = rules();
@@ -140,12 +157,20 @@ const isLegendLine = (line) => lineOf(line)?.rarity === 'legendary';
 function evoPanel(c, chance, p) {
   const need = evoLevel(c);
   const byLevel = canLevelEvolve(c);
+  const byItem = evoByItem(c);
   const off = !S.online ? '진화는 인터넷이 필요해요' : !S.snap.festival_open ? '지금은 진화할 수 없어요' : null;
   if (byLevel) {
     return h('div.box.evo-panel',
       h('div.banner', h('span', `Lv.${c.level}`), h('b.prob', pix('spark'), `Lv.${need} 진화 레벨 도달!`)),
       h('button.btn.big.gold', { disabled: !!off, onclick: () => doEvolve(c) }, off || '진화시키기!'),
       h('small', '진화 레벨이 되어서 진화의돌 없이 반드시 진화해요.'));
+  }
+  if (byItem) {
+    return h('div.box.evo-panel',
+      h('div.banner', h('span', '진화의돌로 진화하는 포켓몬'), h('span', h('i.ticket-icon'), ` 진화의돌 × ${p.evo_tickets}`)),
+      h('button.btn.big.gold', { disabled: !p.evo_tickets || !!off, onclick: () => doEvolve(c) },
+        off || (!p.evo_tickets ? '진화의돌이 필요해요 (퀴즈·배틀·룰렛에서 가끔 받아요)' : '진화의돌로 진화 (100%)')),
+      h('small', '이 포켓몬은 레벨로는 진화하지 않아요. 진화의돌 1개면 반드시 진화해요.'));
   }
   return h('div.box.evo-panel',
     h('div.banner', h('span', need ? `Lv.${c.level || 1} → Lv.${need}에 진화` : `Lv.${c.level || 1}`),
@@ -276,7 +301,7 @@ export function sumInfo(sp, type) {
   return [
     h('dl.sum-kv',
       h('dt', '이름'), h('dd', sp.name),
-      h('dt', '타입'), h('dd', typeChips(type)),
+      h('dt', '타입'), h('dd', h('span.types', typeChips(type))),   // span.types = 칩 사이 간격 (붙어 보이던 문제)
       h('dt', '분류'), h('dd', sp.category),
       h('dt', isWild(sp.line_id) ? '만나는 곳' : '정체'), h('dd', isWild(sp.line_id) ? '야생' : line?.teacher || '?'),
       h('dt', '성향'), h('dd', statNote(sp))),
@@ -341,6 +366,7 @@ export async function doEvolve(c) {
   const col = owned(c.line_id);
   Object.assign(col, { stage: res.stage, evo_fails: res.evo_fails });
   if (res.by_level) toast('진화 레벨이 되어서 진화의돌을 쓰지 않았어요.', 2500);
+  else if (res.by_item) toast('진화의돌을 써서 진화했어요.', 2500);
   await kv.set('snap', S.snap);
   await evolutionScene(before, res.success ? res.species_id : before + 1, res.success, col);
   sync({ force: true });

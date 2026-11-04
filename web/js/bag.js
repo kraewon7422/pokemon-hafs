@@ -147,7 +147,7 @@ function pocketPanel(cur, sel, redraw) {
       h('button.btn.big.primary', { onclick: () => pickMon(`${josa(it.name, '을', '를')} 누구에게 쓸까?`, (m) => (m.level >= 100 ? 'Lv.100' : ''), async (line) => {
         try {
           const r = await rpc('bag_use', { p_item: it.key, p_line: line }, { retries: 0 });
-          sfx.catch(); toast(`${speciesOf(dexOf(line, boxOf(line).stage)).name}의 레벨이 ${r.level}${/[013678]$/.test(String(r.level)) ? "으로" : "로"} 올랐다!`, 3500);
+          sfx.catch(); toast(`${speciesOf(dexOf(line, boxOf(line).stage)).name}의 레벨이 ${josa(r.level, '으로', '로')} 올랐다!`, 3500);
         } catch (e) { toast(errorText(e.message)); }
         backToBag();
       }) }, '사용')];

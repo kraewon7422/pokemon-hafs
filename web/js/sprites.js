@@ -1,11 +1,15 @@
-// 포켓몬 그림 그리기. 그림은 Storage 'sprites' (0031·0032): 1~649 = 블랙·화이트 움직이는 GIF, 650~ = 같은 화풍 PNG, 색이 다른(반짝) 그림도 따로.
-// 올린 그림이 없는 칸은 예전 web/sprites/atlas.png (64×64 칸).
-// - 809마리를 한꺼번에 풀면 폰 메모리가 모자라서: 화면에 보이는 그림만 받아서 풀고 (IntersectionObserver), 최근 것 96개만 기억 (LRU).
-// - 그림 둘레의 빈칸은 잘라 냄 → 발이 아래에 닿고, 크기는 기기 픽셀 정수 배 (도트가 고르게).
-// - 64칸이 필요한 곳 (잡기 장면·미니게임): 64보다 크면 '많은 색 + 어두운 테두리 남기기' 로 줄여서 도트가 뭉개지지 않게.
-// 예전 판: .work/sprites/sprites_v1.js (아틀라스만), sprites_v2.js (올린 그림을 처음에 다 받음)
+// 포켓몬 그림 그리기 (v4). 809마리 = 멈춘 도트 그림 (블랙·화이트 화풍), web/sprites/pk-*.webp 그림판 8장에 미리 담아 둠
+// (tools/build_pokemon_sheets.py 가 만듦, 위치표 = web/sprites/pk-index.js). 움직이는 GIF 는 더 쓰지 않음 (느리고 자주 깨져서).
+// - 모든 포켓몬은 96×96 칸에 원래 도트 크기 그대로, 가운데·아래 맞춤 → 도트 크기·발 위치가 모두 같음
+// - 그림판은 필요한 장만 한 번 받음. 화면 가까이 있는 칸만 그리고, 멀리 벗어난 칸은 비워서 폰 메모리를 아낌
+// - 운영자가 올린 그림 (Storage 'sprites', 이름이 '<id>-p.gif' 꼴이 아닌 것) 이 있으면 그것: 첫 장면만, 같은 96칸에 맞춤
+// - 칸보다 작게 그려야 하면 '많은 색 + 어두운 테두리 남기기' 로 줄임 (도트가 뭉개지지 않게)
+// 예전 판: .work/sprites/sprites_v1.js (아틀라스만), sprites_v2.js, sprites_v3.js (GIF 를 보이는 칸마다 받아서 풀기)
 import { CONFIG } from './config.js';
 import { decodeGif, isGif } from './gif.js';
+import IDX from '../sprites/pk-index.js';
+
+export const CELL = IDX.cell;   // 96
 
 const ATLAS_URL = new URL('../sprites/atlas.png', import.meta.url).href;
 const atlas = new Image();
@@ -14,7 +18,6 @@ atlas.src = ATLAS_URL;
 
 export const spriteURL = (path) => `${CONFIG.SUPABASE_URL}/storage/v1/object/public/sprites/${path}`;
 const MAP_KEY = 'hafs.sprites';
-const MAX_RECS = 96;
 
 export function cellOf(dex) {
   const i = dex - 1;
@@ -23,9 +26,39 @@ export function cellOf(dex) {
 const inAtlas = (dex) => atlas.naturalWidth && dex >= 1 && dex <= (atlas.naturalWidth / 64) * (atlas.naturalHeight / 64);
 
 const mkCanvas = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+// 작은 LRU (Map 순서 = 최근에 쓴 순서)
+function lru(max) {
+  const m = new Map();
+  return {
+    get(k) { const v = m.get(k); if (v !== undefined) { m.delete(k); m.set(k, v); } return v; },
+    set(k, v) { m.set(k, v); while (m.size > max) m.delete(m.keys().next().value); return v; },
+    clear() { m.clear(); },
+  };
+}
 
-// ── 그림 풀기: GIF 는 프레임별로, PNG·WebP 는 한 장. 모든 프레임을 합친 테두리로 잘라 냄 ──
-// rec = { w, h, frames: [canvas], delays: [ms], total, modes: {} }
+// ── 그림판 (pk-n0..3 = 보통, pk-s0..3 = 색이 다른) ──
+const SHEET_IMG = new Map();   // 번호 → { img, ok, fail, p }
+const WAIT = { wait: true };
+function sheet(i) {
+  let s = SHEET_IMG.get(i);
+  if (s && s.fail && performance.now() - s.fail > 5000) s = null;   // 못 받았으면 5초 뒤 다시
+  if (!s) {
+    const img = new Image();
+    const t = { img, ok: false, fail: 0 };
+    t.p = new Promise((res) => {
+      img.onload = () => { t.ok = true; res(t); repaintWaiting(); };
+      // 못 받으면 5초 뒤 기다리는 칸을 다시 그림 → 그때 다시 받음 (안 하면 빈칸으로 계속 남음)
+      img.onerror = () => { t.fail = performance.now(); res(null); setTimeout(repaintWaiting, 5100); };
+    });
+    img.src = new URL(`../sprites/${IDX.sheets[i]}`, import.meta.url).href;
+    SHEET_IMG.set(i, t);
+    s = t;
+  }
+  return s;
+}
+
+// ── 그림 풀기 (운영자가 올린 그림): GIF 는 프레임별로, PNG·WebP 는 한 장. 모든 프레임을 합친 테두리로 잘라 냄 ──
+// rec = { w, h, frames: [canvas], delays: [ms], total }   (운영자 화면이 크기·장면 수를 보여 줌. 앱은 첫 장면만 씀)
 function cropRec(w, h, rgbaFrames, delays) {
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (const d of rgbaFrames) {
@@ -42,7 +75,7 @@ function cropRec(w, h, rgbaFrames, delays) {
     g.putImageData(img, 0, 0);
     return c;
   });
-  return { w: cw, h: ch, frames, delays, total: delays.reduce((a, b) => a + b, 0), modes: {} };
+  return { w: cw, h: ch, frames, delays, total: delays.reduce((a, b) => a + b, 0) };
 }
 
 export async function decodeSprite(buf) {
@@ -57,66 +90,7 @@ export async function decodeSprite(buf) {
   return cropRec(c.width, c.height, [g.getImageData(0, 0, c.width, c.height).data], [0]);
 }
 
-// ── 그림 목록 (도감번호 → 그림 · 색이 다른 그림) ──
-let MAP = new Map();      // dex → { n: path, s: shinyPath|null }
-const parseMap = (obj) => new Map(Object.entries(obj || {}).map(([k, v]) => { const [n, s] = String(v).split('|'); return [Number(k), { n, s: s || null }]; })
-  .filter(([k, v]) => k > 0 && v.n));
-const readMap = () => { try { return JSON.parse(localStorage.getItem(MAP_KEY) || '{}') || {}; } catch { return {}; } };
-MAP = parseMap(readMap());
-export const hasCustomSprite = (dex) => MAP.has(Number(dex));
-
-// ── 받은 그림 (LRU) ──
-const REC = new Map();    // path → rec  (Map 순서 = 최근에 쓴 순서)
-const LOADING = new Map();
-const touch = (path) => { const r = REC.get(path); if (r) { REC.delete(path); REC.set(path, r); } return r; };
-let active = 0; const waiters = [];
-const slot = () => (active < 6 ? (active++, Promise.resolve()) : new Promise((r) => waiters.push(r)).then(() => { active++; }));
-const release = () => { active--; waiters.shift()?.(); };
-function loadPath(path) {
-  if (REC.has(path)) return Promise.resolve(touch(path));
-  if (LOADING.has(path)) return LOADING.get(path);
-  const p = (async () => {
-    await slot();
-    try {
-      const r = await fetch(spriteURL(path));
-      if (!r.ok) throw new Error(`sprite ${r.status}`);
-      const rec = await decodeSprite(await r.arrayBuffer());
-      rec.path = path;
-      REC.set(path, rec);
-      while (REC.size > MAX_RECS) REC.delete(REC.keys().next().value);
-      return rec;
-    } catch (e) { console.warn('[sprites]', path, e.message); return null; } finally { LOADING.delete(path); release(); }
-  })();
-  LOADING.set(path, p);
-  return p;
-}
-const pathFor = (dex, shiny) => { const m = MAP.get(dex); return m ? (shiny && m.s ? m.s : m.n) : null; };
-// 이 포켓몬 그림을 받아 둠 (미니게임·잡기 장면이 시작 전에 부름)
-export const ensureSprites = (list, shiny = false) => Promise.all([...new Set(list.map(Number))].filter((d) => MAP.has(d))
-  .map((d) => loadPath(pathFor(d, shiny))));
-
-// ── 처음 준비: 아틀라스 + 서버 목록 (최대 3초 — 느린 망·오프라인에서 화면이 멈추지 않게) ──
-const timeout = (ms) => new Promise((r) => setTimeout(r, ms));
-async function fetchMap() {
-  const r = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/rpc/sprite_overrides`, {
-    method: 'POST', headers: { apikey: CONFIG.SUPABASE_KEY, 'Content-Type': 'application/json' }, body: '{}',
-  });
-  if (!r.ok) throw new Error(`sprite_overrides ${r.status}`);
-  return (await r.json()) || {};
-}
-export async function refreshSprites() {
-  const obj = await fetchMap();
-  try { localStorage.setItem(MAP_KEY, JSON.stringify(obj)); } catch { /* 저장 못 해도 괜찮음 */ }
-  const next = parseMap(obj);
-  const changed = next.size !== MAP.size || [...next].some(([k, v]) => { const o = MAP.get(k); return !o || o.n !== v.n || o.s !== v.s; });
-  MAP = next;
-  if (changed) { SHEETS.clear(); repaintAll(); }
-}
-const firstSync = refreshSprites().catch(() => { /* 오프라인: 저장된 목록 그대로 */ });
-export const spritesReady = atlasLoaded.then(() => Promise.race([firstSync, timeout(3000)]));
-
-// ── 64×64 칸 (잡기 장면·미니게임) ──
-// 64보다 크면 줄임: 칸마다 덮는 원래 픽셀 중 반 넘게 보이면 칠하고, 어두운 테두리 색이 1/3 넘으면 그 색, 아니면 가장 많은 색 (흐리게 섞지 않음)
+// ── 줄이기: 칸마다 덮는 원래 픽셀 중 반 넘게 보이면 칠하고, 어두운 테두리 색이 1/3 넘으면 그 색, 아니면 가장 많은 색 (흐리게 섞지 않음) ──
 function shrinkTo(src, w, h, k) {
   const tw = Math.max(1, Math.round(w * k)), th = Math.max(1, Math.round(h * k));
   const sg = src.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, w, h).data;
@@ -131,7 +105,7 @@ function shrinkTo(src, w, h, k) {
         tot++; const i = (sy * w + sx) * 4;
         if (sg[i + 3] > 127) { on.push(i); if (lum(i) < 70) dark++; }
       }
-      if (on.length * 2 < tot) continue;
+      if (!on.length || on.length * 2 < tot) continue;
       let pick;
       if (dark * 3 >= on.length) pick = on.reduce((a, b) => (lum(b) < lum(a) ? b : a));
       else {
@@ -145,55 +119,124 @@ function shrinkTo(src, w, h, k) {
   og.putImageData(img, 0, 0);
   return out;
 }
-export function fitCell(frame, w, h) {
-  const c = mkCanvas(64, 64); const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-  let src = frame, sw = w, sh = h;
-  if (w > 64 || h > 64) { const k = Math.min(64 / w, 64 / h); src = shrinkTo(frame, w, h, k); sw = src.width; sh = src.height; }
-  else { const s = Math.max(1, Math.floor(Math.min(64 / w, 64 / h, 1))); sw = w * s; sh = h * s; }
-  g.drawImage(src, 0, 0, src.width, src.height, Math.floor((64 - sw) / 2), 64 - sh, sw, sh);
-  return c;
-}
 
-// 이 포켓몬의 64×64 칸 (받아 둔 그림이 없으면 받기 시작하고 null)
-export function monCell(dex, shiny = false) {
-  dex = Number(dex);
-  if (MAP.has(dex)) {
-    const path = pathFor(dex, shiny); const rec = REC.get(path);
-    if (!rec) { loadPath(path); return null; }
-    return (rec.cell ||= fitCell(rec.frames[0], rec.w, rec.h));
+// 올린 그림 → 96칸에 맞는 한 장: 첫 장면만, 반투명 가장자리 없앰, 둘레 빈칸 자름,
+// 96보다 크면 도트답게 줄이고, 아주 작으면 (한 변 36 이하) 정수 배로 키움
+export function normRec(rec) {
+  if (rec._norm) return rec._norm;
+  const g = rec.frames[0].getContext('2d', { willReadFrequently: true });
+  const img = g.getImageData(0, 0, rec.w, rec.h); const d = img.data;
+  let x0 = rec.w, y0 = rec.h, x1 = -1, y1 = -1;
+  for (let y = 0; y < rec.h; y++) for (let x = 0; x < rec.w; x++) {
+    const i = (y * rec.w + x) * 4;
+    if (d[i + 3] > 127) { d[i + 3] = 255; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; } else d[i + 3] = 0;
   }
+  if (x1 < 0) { x0 = 0; y0 = 0; x1 = 0; y1 = 0; }
+  const w = x1 - x0 + 1, h = y1 - y0 + 1;
+  let cv = mkCanvas(w, h); cv.getContext('2d').putImageData(img, -x0, -y0);
+  const m = Math.max(w, h);
+  if (m > CELL) cv = shrinkTo(cv, w, h, CELL / m);
+  else if (m <= 36) {
+    const s = Math.floor(72 / m); const big = mkCanvas(w * s, h * s); const bg = big.getContext('2d');
+    bg.imageSmoothingEnabled = false; bg.drawImage(cv, 0, 0, w * s, h * s); cv = big;
+  }
+  rec._norm = { cv, w: cv.width, h: cv.height };
+  return rec._norm;
+}
+
+// ── 운영자가 올린 그림 목록 (species.id → 그림 · 색이 다른 그림). 공식 그림 ('<id>-p.gif' 꼴) 은 그림판에 이미 있어서 안 받음 ──
+let MAP = new Map();      // dex → { n: path, s: shinyPath|null }
+const parseMap = (obj) => new Map(Object.entries(obj || {}).map(([k, v]) => { const [n, s] = String(v).split('|'); return [Number(k), { n, s: s || null }]; })
+  .filter(([k, v]) => k > 0 && v.n));
+const readMap = () => { try { return JSON.parse(localStorage.getItem(MAP_KEY) || '{}') || {}; } catch { return {}; } };
+MAP = parseMap(readMap());
+const isPack = (p) => /^\d+-ps?\.(gif|png)$/.test(p || '');
+// 올린 그림 경로 (없으면 null). 색이 다른 그림을 따로 올리지 않았으면 보통 그림 (색은 돌려서 만듦)
+function customPath(dex, shiny) {
+  const m = MAP.get(dex);
+  if (!m) return null;
+  if (shiny && m.s && !isPack(m.s)) return m.s;
+  return isPack(m.n) ? null : m.n;
+}
+export const hasCustomSprite = (dex) => !!customPath(Number(dex), false);
+
+// ── 받은 올린 그림 (LRU, 96칸에 맞춘 것) ──
+const REC = lru(48);
+const LOADING = new Map();
+function loadPath(path) {
+  const hit = REC.get(path);
+  if (hit) return Promise.resolve(hit);
+  if (LOADING.has(path)) return LOADING.get(path);
+  const p = (async () => {
+    try {
+      const r = await fetch(spriteURL(path));
+      if (!r.ok) throw new Error(`sprite ${r.status}`);
+      const rec = await decodeSprite(await r.arrayBuffer());
+      return REC.set(path, normRec(rec));
+    } catch (e) { console.warn('[sprites]', path, e.message); return null; } finally { LOADING.delete(path); }
+  })();
+  LOADING.set(path, p);
+  p.then((r) => { if (r) repaintWaiting(); });
+  return p;
+}
+
+// 이 포켓몬 그림을 받아 둠 (미니게임·잡기 장면이 시작 전에 부름)
+export const ensureSprites = (list, shiny = false) => Promise.all([...new Set(list.map(Number))].map((d) => {
+  const cp = customPath(d, shiny);
+  if (cp) return loadPath(cp);
+  const ent = (shiny && IDX.s[d]) || IDX.n[d];
+  return ent ? sheet(ent[0]).p : atlasLoaded;
+}));
+
+// ── 처음 준비: 서버 목록 (최대 3초 — 느린 망·오프라인에서 화면이 멈추지 않게) ──
+const timeout = (ms) => new Promise((r) => setTimeout(r, ms));
+async function fetchMap() {
+  const r = await fetch(`${CONFIG.SUPABASE_URL}/rest/v1/rpc/sprite_overrides`, {
+    method: 'POST', headers: { apikey: CONFIG.SUPABASE_KEY, 'Content-Type': 'application/json' }, body: '{}',
+  });
+  if (!r.ok) throw new Error(`sprite_overrides ${r.status}`);
+  return (await r.json()) || {};
+}
+export async function refreshSprites() {
+  const obj = await fetchMap();
+  try { localStorage.setItem(MAP_KEY, JSON.stringify(obj)); } catch { /* 저장 못 해도 괜찮음 */ }
+  const next = parseMap(obj);
+  const changed = next.size !== MAP.size || [...next].some(([k, v]) => { const o = MAP.get(k); return !o || o.n !== v.n || o.s !== v.s; });
+  MAP = next;
+  if (changed) { SHEETS.clear(); FX.clear(); C64.clear(); SMALL.clear(); repaintAll(); }
+}
+const firstSync = refreshSprites().catch(() => { /* 오프라인: 저장된 목록 그대로 */ });
+export const spritesReady = Promise.race([firstSync, timeout(3000)]);
+
+// ── 그릴 그림 찾기: { img, sx, sy, w, h, key, fx } | WAIT (받는 중) | null (그림 없음) ──
+//    fx = 덧입힐 효과 (normal · silhouette · white · shiny = 색 돌리기)
+function sourceOf(dex, mode, preview) {
+  const shiny = mode === 'shiny';
+  if (preview) {
+    const n = normRec(preview);
+    return { img: n.cv, sx: 0, sy: 0, w: n.w, h: n.h, key: (preview._k ||= `pv${Math.random()}`), fx: mode };
+  }
+  const cp = customPath(dex, shiny);
+  if (cp) {
+    const n = REC.get(cp);
+    if (!n) { loadPath(cp); return WAIT; }
+    const real = shiny && cp === MAP.get(dex).s;
+    return { img: n.cv, sx: 0, sy: 0, w: n.w, h: n.h, key: cp, fx: real ? 'normal' : mode };
+  }
+  const ent = (shiny && IDX.s[dex]) || IDX.n[dex];
+  if (ent) {
+    const s = sheet(ent[0]);
+    if (!s.ok) return WAIT;
+    return { img: s.img, sx: ent[1], sy: ent[2], w: ent[3], h: ent[4], key: `${shiny ? 's' : 'n'}${dex}`, fx: shiny && IDX.s[dex] ? 'normal' : mode };
+  }
+  if (!atlas.complete) return WAIT;
   if (!inAtlas(dex)) return null;
-  const c = mkCanvas(64, 64); const [sx, sy] = cellOf(dex); c.getContext('2d').drawImage(atlas, sx, sy, 64, 64, 0, 0, 64, 64);
-  return c;
+  const [sx, sy] = cellOf(dex);
+  return { img: atlas, sx, sy, w: 64, h: 64, key: `a${dex}`, fx: mode };
 }
 
-// Phaser 가 불러갈 그림판: 필요한 포켓몬만 12칸씩 줄지어 → { url, frame(dex) }. 큰 그림판(809칸)은 폰 GPU 한계를 넘어서.
-const SHEETS = new Map();
-export async function atlasURL(dexes = []) {
-  await spritesReady;
-  const list = [...new Set(dexes.map(Number).filter((d) => d > 0))];
-  const key = list.join(',');
-  if (SHEETS.has(key)) return SHEETS.get(key);
-  await ensureSprites(list);
-  const cols = CONFIG.ATLAS_COLS, rows = Math.max(1, Math.ceil((list.length + 1) / cols));
-  const c = mkCanvas(cols * 64, rows * 64); const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-  list.forEach((d, i) => { const cell = monCell(d); if (cell) g.drawImage(cell, (i % cols) * 64, Math.floor(i / cols) * 64); });
-  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
-  const idx = new Map(list.map((d, i) => [d, i]));
-  const res = { url: blob ? URL.createObjectURL(blob) : ATLAS_URL, frame: (d) => idx.get(Number(d)) ?? list.length, cols };
-  SHEETS.set(key, res);
-  return res;
-}
-
-// 잡기 장면용: 움직이는 그림이면 64칸에 맞춘 프레임들, 아니면 null
-export function monAnim(dex) {
-  const path = pathFor(Number(dex), false); const rec = path && REC.get(path);
-  if (!rec || rec.frames.length < 2) return null;
-  return { frames: rec.frames.map((f) => fitCell(f, rec.w, rec.h)), delays: rec.delays, total: rec.total };
-}
-
-// ── 모드별 그림 (실루엣 · 흰색 · 반짝이) ──
-const ATLAS_MODES = new Map();
+// ── 효과 (실루엣 · 흰색 · 색 돌리기) — 그림 한 장 크기 캔버스로 만들어 둠 ──
+const FX = lru(160);
 function tint(src, color) {
   const c = mkCanvas(src.width, src.height); const g = c.getContext('2d');
   g.drawImage(src, 0, 0); g.globalCompositeOperation = 'source-in'; g.fillStyle = color; g.fillRect(0, 0, c.width, c.height);
@@ -221,119 +264,154 @@ function shinyOf(src, dex) {
   g.putImageData(img, 0, 0);
   return c;
 }
-const makeMode = (base, mode, dex) => (mode === 'shiny' ? base.map((f) => shinyOf(f, dex))
-  : mode === 'silhouette' ? base.map((f) => tint(f, '#20283a'))
-  : mode === 'white' ? base.map((f) => tint(f, '#ffffff'))
-  : base);
-function framesFor(dex, mode, rec) {
-  if (rec) return (rec.modes[`${mode}|${dex}`] ||= makeMode(rec.frames, mode, dex));
-  const k = `${dex}|${mode}`;
-  if (!ATLAS_MODES.has(k)) {
-    const c = mkCanvas(64, 64); const [sx, sy] = cellOf(dex); c.getContext('2d').drawImage(atlas, sx, sy, 64, 64, 0, 0, 64, 64);
-    ATLAS_MODES.set(k, makeMode([c], mode, dex));
+// 효과를 입힌 (또는 need 이면 그냥 잘라 낸) 그림 한 장 캔버스 → { img, sx: 0, sy: 0, w, h, key, fx: 'normal' }
+function withFx(src, dex, need = false) {
+  if (src.fx === 'normal' && !need) return src;
+  const k = `${src.key}|${src.fx}`;
+  let c = FX.get(k);
+  if (!c) {
+    c = mkCanvas(src.w, src.h); c.getContext('2d').drawImage(src.img, src.sx, src.sy, src.w, src.h, 0, 0, src.w, src.h);
+    if (src.fx === 'shiny') c = shinyOf(c, dex);
+    else if (src.fx === 'silhouette') c = tint(c, '#20283a');
+    else if (src.fx === 'white') c = tint(c, '#ffffff');
+    FX.set(k, c);
   }
-  return ATLAS_MODES.get(k);
+  return { img: c, sx: 0, sy: 0, w: src.w, h: src.h, key: k, fx: 'normal' };
 }
 
-// ── 화면에 그리기 ──
-const LIVE = new Set();        // { c, dex, cssSize, mode, preview, idx, born, vis }
-let raf = 0; let adds = 0;
-const io = typeof IntersectionObserver !== 'undefined'
-  ? new IntersectionObserver((ents) => { for (const en of ents) { const e = en.target.__spr; if (!e) continue; e.vis = en.isIntersecting; if (e.vis) draw(e); } }, { rootMargin: '300px' })
-  : null;
-
-function frameIdx(rec, now) {
-  if (!rec || rec.frames.length < 2 || !rec.total) return 0;
-  let t = now % rec.total;
-  for (let i = 0; i < rec.delays.length; i++) { t -= rec.delays[i]; if (t < 0) return i; }
-  return 0;
+// ── 64×64 칸 (잡기 장면·미니게임): 64보다 크면 도트답게 줄임, 아니면 원래 크기. 가운데·아래 맞춤 ──
+export function fitCell(frame, w, h) {
+  const c = mkCanvas(64, 64); const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  let src = frame, sw = w, sh = h;
+  if (w > 64 || h > 64) { const k = Math.min(64 / w, 64 / h); src = shrinkTo(frame, w, h, k); sw = src.width; sh = src.height; }
+  g.drawImage(src, 0, 0, sw, sh, Math.floor((64 - sw) / 2), 64 - sh, sw, sh);
+  return c;
+}
+const C64 = lru(64);
+// 이 포켓몬의 64×64 칸 (그림판을 아직 받는 중이면 받기 시작하고 null)
+export function monCell(dex, shiny = false) {
+  dex = Number(dex);
+  const src = sourceOf(dex, shiny ? 'shiny' : 'normal');
+  if (!src || src === WAIT) return null;
+  const f = withFx(src, dex, true);
+  return C64.get(f.key) || C64.set(f.key, fitCell(f.img, f.w, f.h));
 }
 
-// 그림 크기: 원래 한 변(base, 64 이상)을 기기 픽셀 정수 배로. 화면 칸보다 훨씬 크면 줄임.
+// Phaser 가 불러갈 그림판: 필요한 포켓몬만 12칸씩 줄지어 (64×64 칸) → { url, frame(dex), cols }
+const SHEETS = new Map();
+export async function atlasURL(dexes = []) {
+  await spritesReady;
+  const list = [...new Set(dexes.map(Number).filter((d) => d > 0))];
+  const key = list.join(',');
+  if (SHEETS.has(key)) return SHEETS.get(key);
+  await ensureSprites(list);
+  const cols = CONFIG.ATLAS_COLS, rows = Math.max(1, Math.ceil((list.length + 1) / cols));
+  const c = mkCanvas(cols * 64, rows * 64); const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  list.forEach((d, i) => { const cell = monCell(d); if (cell) g.drawImage(cell, (i % cols) * 64, Math.floor(i / cols) * 64); });
+  const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
+  const idx = new Map(list.map((d, i) => [d, i]));
+  const res = { url: blob ? URL.createObjectURL(blob) : ATLAS_URL, frame: (d) => idx.get(Number(d)) ?? list.length, cols };
+  SHEETS.set(key, res);
+  return res;
+}
+
+// 움직이는 그림은 더 쓰지 않음 (잡기 장면도 멈춘 그림)
+export const monAnim = () => null;
+
+// 예전 이름 (남겨 둠): 한 변 base 를 기기 픽셀 정수 배로
 export function spriteBox(base, cssSize, dpr = window.devicePixelRatio || 1) {
   const target = cssSize * dpr;
   if (base <= target * 1.25) { const s = Math.max(1, Math.round(target / base)); return { px: base * s, s }; }
   const px = Math.max(16, Math.round(target)); return { px, s: px / base };
 }
 
-// 이 칸에 그릴 그림: 올린 그림이면 rec (없으면 받기 시작 → 받으면 다시 그림), 아니면 null (= 아틀라스)
-function recOf(e) {
-  if (e.preview) return { rec: e.preview, mode: e.mode };
-  if (!MAP.has(e.dex)) return { rec: null, mode: e.mode };
-  const realShiny = e.mode === 'shiny' && MAP.get(e.dex).s;
-  const path = pathFor(e.dex, e.mode === 'shiny');
-  const rec = touch(path);
-  if (!rec && (e.vis || !io)) loadPath(path).then((r) => { if (r) for (const x of LIVE) if (x.dex === e.dex) draw(x); kick(); });
-  return { rec, mode: realShiny ? 'normal' : e.mode, wait: !rec };
+// ── 96칸 그림을 px×px 캔버스에 그리기 ──
+// 배율 k = px/96 (모든 포켓몬 같음). 정수면 그대로, 1 보다 크면 정수 배로 키운 뒤 한 번 부드럽게 맞춤 (도트 크기가 고름),
+// 1 보다 작으면 도트답게 줄인 그림 (만들어 둠)
+const SMALL = lru(400);
+function render(g, src, px, dex) {
+  const k = px / CELL;
+  const si = Math.round(k);
+  if (si >= 1 && Math.abs(k - si) < 0.02) {
+    g.imageSmoothingEnabled = false;
+    g.drawImage(src.img, src.sx, src.sy, src.w, src.h, Math.floor((px - src.w * si) / 2), px - src.h * si, src.w * si, src.h * si);
+  } else if (k > 1) {
+    const s = Math.ceil(k);
+    const dw = Math.round(src.w * k), dh = Math.round(src.h * k);
+    const big = mkCanvas(src.w * s, src.h * s);   // 매번 새로 (같은 캔버스를 다시 쓰면 Safari 가 그리기 전에 지워져서 빈칸이 됨)
+    const sg = big.getContext('2d'); sg.imageSmoothingEnabled = false;
+    sg.drawImage(src.img, src.sx, src.sy, src.w, src.h, 0, 0, src.w * s, src.h * s);
+    g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'low';
+    g.drawImage(big, 0, 0, src.w * s, src.h * s, Math.floor((px - dw) / 2), px - dh, dw, dh);
+  } else {
+    const key = `${src.key}|${k.toFixed(3)}`;
+    let sm = SMALL.get(key);
+    if (!sm) { const f = withFx(src, dex, true); sm = SMALL.set(key, shrinkTo(f.img, f.w, f.h, k)); }
+    g.imageSmoothingEnabled = false;
+    g.drawImage(sm, Math.floor((px - sm.width) / 2), px - sm.height);
+  }
 }
 
-function draw(e, now = performance.now()) {
-  const { c, dex, cssSize } = e;
-  const { rec, mode, wait } = recOf(e);
+// ── 화면에 그리기 ──
+const LIVE = new Set();        // { c, dex, cssSize, mode, preview, born, vis, wait }
+let adds = 0;
+// 화면 가까이 (400px 안) 오면 그리고, 멀어지면 캔버스를 비움 (도감 809칸 × 큰 캔버스 = 폰 메모리 부족 방지)
+const io = typeof IntersectionObserver !== 'undefined'
+  ? new IntersectionObserver((ents) => {
+    for (const en of ents) {
+      const e = en.target.__spr; if (!e) continue;
+      e.vis = en.isIntersecting;
+      if (e.vis) draw(e); else if (e.c.width > 1) { e.c.width = 1; e.c.height = 1; }   // 1×1 (가로세로 비율은 그대로)
+    }
+  }, { rootMargin: '400px' })
+  : null;
+
+function draw(e) {
+  const { c, dex, cssSize, mode } = e;
+  c.style.width = c.style.height = `${cssSize}px`;
+  if (io && !e.vis) { e.wait = false; return; }
   const dpr = window.devicePixelRatio || 1;
-  const w = rec ? rec.w : 64, hh = rec ? rec.h : 64;
-  const { px, s } = spriteBox(rec ? Math.max(64, w, hh) : 64, cssSize, dpr);
+  const px = Math.max(1, Math.round(cssSize * dpr));
   if (c.width !== px || c.height !== px) { c.width = c.height = px; }
-  c.style.width = c.style.height = `${px / dpr}px`;
   const g = c.getContext('2d');
-  g.imageSmoothingEnabled = false;
   g.clearRect(0, 0, px, px);
-  e.idx = frameIdx(rec, now);
-  if (wait || (!dex && !rec)) return;                         // 아직 받는 중: 빈칸 (예전 그림이 잠깐 보이지 않게)
-  if (!rec) {
-    if (!inAtlas(dex)) return;
-    if (mode === 'normal') { const [sx, sy] = cellOf(dex); g.drawImage(atlas, sx, sy, 64, 64, 0, 0, px, px); return; }
-  }
-  const fr = framesFor(dex, mode, rec);
-  const f = fr[e.idx] || fr[0];
-  const dw = Math.round(w * s), dh = Math.round(hh * s);
-  g.drawImage(f, 0, 0, w, hh, Math.floor((px - dw) / 2), px - dh, dw, dh);   // 가운데, 아래 맞춤
+  const src = sourceOf(dex, mode, e.preview);
+  e.wait = src === WAIT;
+  if (!src || src === WAIT) return;                       // 받는 중이면 빈칸 → 받으면 다시 그림
+  render(g, withFx(src, dex), px, dex);
 }
 
 const gone = (e, now) => !e.c.isConnected && now - e.born > 4000;
-function tick(now) {
-  raf = 0;
-  let anim = false;
-  for (const e of LIVE) {
-    if (gone(e, now)) { LIVE.delete(e); io?.unobserve(e.c); continue; }
-    if (!e.c.isConnected || (io && !e.vis)) continue;
-    const { rec } = recOf(e);
-    if (!rec || rec.frames.length < 2) continue;
-    anim = true;
-    if (!document.hidden && frameIdx(rec, now) !== e.idx) draw(e, now);
-  }
-  if (anim) raf = requestAnimationFrame(tick);
-}
-function kick() { if (!raf) raf = requestAnimationFrame(tick); }
-function repaintAll() {
+function sweep() {
   const now = performance.now();
-  for (const e of LIVE) { if (gone(e, now)) { LIVE.delete(e); io?.unobserve(e.c); continue; } draw(e, now); }
-  kick();
+  for (const e of LIVE) if (gone(e, now)) { LIVE.delete(e); io?.unobserve(e.c); }
 }
+function repaintWaiting() { sweep(); for (const e of LIVE) if (e.wait) draw(e); }
+function repaintAll() { sweep(); for (const e of LIVE) draw(e); }
+atlasLoaded.then(repaintWaiting);
 
-// 화면에 ~cssSize CSS px 로 보이는 <canvas>.  mode: 'normal' | 'silhouette' | 'white' | 'shiny'
+// 화면에 cssSize CSS px 정사각형으로 보이는 <canvas>.  mode: 'normal' | 'silhouette' | 'white' | 'shiny'
 export function spriteCanvas(dex, cssSize = 96, mode = 'normal') {
   const c = document.createElement('canvas');
   c.className = 'sprite';
+  c.width = c.height = 1;
   paint(c, dex, cssSize, mode);
   return c;
 }
 
 export function paint(c, dex, cssSize = 96, mode = 'normal', preview = null) {
   let e = c.__spr;
-  if (!e) { e = { c, born: performance.now(), idx: -1, vis: !io }; c.__spr = e; io?.observe(c); }
+  if (!e) { e = { c, born: performance.now(), vis: !io }; c.__spr = e; io?.observe(c); }
   Object.assign(e, { dex: Number(dex) || 0, cssSize, mode, preview });
   LIVE.add(e);
-  if (++adds % 300 === 0) { const now = performance.now(); for (const x of LIVE) if (gone(x, now)) { LIVE.delete(x); io?.unobserve(x.c); } }
-  const go = () => { draw(e); kick(); };
-  if (atlas.complete) go(); else atlasLoaded.then(go);
-  // 받기는 화면에 보일 때만 (IntersectionObserver) — 도감 805칸을 한꺼번에 받지 않게
+  if (++adds % 300 === 0) sweep();
+  draw(e);
   return c;
 }
 
 // 운영자 미리보기: 아직 올리지 않은 그림(rec)으로 그리기
 export const previewCanvas = (rec, cssSize, mode = 'normal', dex = 1) => {
-  const c = document.createElement('canvas'); c.className = 'sprite';
+  const c = document.createElement('canvas'); c.className = 'sprite'; c.width = c.height = 1;
   return paint(c, dex, cssSize, mode, rec);
 };
 

@@ -159,7 +159,7 @@ async function hatch(x, redraw) {
     res.shiny && [1, 2, 3].map((i) => h(`i.hatch-spark.s${i}`, pix('spark', 'l')))));
   stageEl.classList.remove('flash');
   const lines = [`알에서 ${josa(sp?.name || '포켓몬', '이', '가')} 태어났다!`];
-  lines.push(res.new ? '새 포켓몬! 도감에 올랐다.' : `이미 있던 포켓몬라 레벨이 올랐다! (Lv.${res.level})`);
+  lines.push(res.new ? '새 포켓몬! 도감에 올랐다.' : `이미 있던 포켓몬이라 레벨이 올랐다! (Lv.${res.level})`);
   if (res.shiny) lines.push(res.shiny_new ? '반짝이는 색이다! (가방에서 색을 바꿀 수 있어요)' : '반짝이는 색이다!');
   if (res.egg_move) lines.push(`알 기술 ${josa(moveOf(res.egg_move)?.name || '기술', '을', '를')} 알고 있다!`);
   if (res.held) {

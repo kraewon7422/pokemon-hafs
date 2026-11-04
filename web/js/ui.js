@@ -28,8 +28,12 @@ export function h(sel, attrs, ...kids) {
 export const $ = (sel, root = document) => root.querySelector(sel);
 
 // 받침 있으면 a, 없으면 b — josa('영자몽', '을', '를')
+// 숫자로 끝나면 읽는 소리로: 0 영 · 1 일 · 3 삼 · 6 육 · 7 칠 · 8 팔 = 받침 (1·7·8 = ㄹ). 예: josa('Lv.21', '으로', '로') → 21로
+const NUM_JONG = { 0: 21, 1: 8, 3: 16, 6: 1, 7: 8, 8: 8 };
 export function josa(word, a, b) {
-  const c = String(word).trim().slice(-1).charCodeAt(0);
+  const ch = String(word).trim().slice(-1);
+  const c = ch.charCodeAt(0);
+  if (/[0-9]/.test(ch)) { const j = NUM_JONG[ch] || 0; return word + (a === '으로' && j === 8 ? b : j ? a : b); }
   if (c < 0xac00 || c > 0xd7a3) return word + b;
   const jong = (c - 0xac00) % 28;
   if (a === '으로' && jong === 8) return word + b;      // ㄹ 받침 + (으)로 → '로' (예: 파이어로)

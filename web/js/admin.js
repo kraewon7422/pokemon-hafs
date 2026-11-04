@@ -6,7 +6,7 @@ import { sb, rpc, errorText, selectAll } from './sb.js';
 import { h, $, toast, timeAgo, josa } from './ui.js';
 import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
-import { spriteCanvas, previewCanvas, decodeSprite, fitCell, refreshSprites, spritesReady } from './sprites.js';
+import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady } from './sprites.js';
 
 const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '외국어', '정보', '한국사', '음악', '체육', '전설'];
 const RARITY = { common: '일반', rare: '희귀', legendary: '전설' };
@@ -44,7 +44,7 @@ const SETTING_HELP = {
   dev_login: '개발용 테스트 로그인(아무 이메일, 비밀번호 1234abcd!) — 실전 서버에서는 반드시 false',
   roulette_every_min: '룰렛을 한 번 돌린 뒤 다음까지 기다리는 시간(분, 기본 5)',
   roulette_daily_max: '한 사람이 하루에 돌릴 수 있는 룰렛 횟수 (기본 12)',
-  roulette_odds: '룰렛 칸 [진화의돌 수, 가중치] 목록. 기본 [[0,60],[1,30],[3,8],[5,2]] = 꽝 60% · 1개 30% · 3개 8% · 5개 2%',
+  roulette_odds: '룰렛 칸 [진화의돌 수, 가중치] 목록. 기본 [[0,72],[1,24],[3,4]] = 꽝 72% · 1개 24% · 3개 4%',
   rotating_window_sec: '대형 화면 QR이 바뀌는 간격(초)',
   rotating_accept_sec: '대형 화면 QR을 찍은 뒤 인정되는 시간(초). 짧을수록 사진 공유가 어려워요',
   self_redeem: '셀프 지급 모드 ([축제 운영] 탭의 스위치)',
@@ -63,7 +63,7 @@ const SETTING_HELP = {
   drop_battle: '물건: 친구·실시간 배틀 승리 때 확률 (기본 0.5)', drop_practice: '물건: 연습 배틀 승리 때 확률 (기본 0.15)',
   drop_raid_tm: '물건: 레이드 승리 때 특별 기술머신 확률 (기본 0.3, 이상한사탕은 항상)',
   battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20)',
-  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","types":["음악","체육"]}, …] — 그 시간에 시작한 배틀은 그 타입 기술이 강해져요',
+  battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","types":["불꽃","격투"]}, …] — 그 시간에 시작한 배틀은 그 타입 기술이 강해져요',
   battle_field_mult: '배틀 시간표: 강해지는 배율 (기본 1.3)',
   practice_exp_daily: '연습 배틀: 경험치·물건을 받는 판 수 (하루, 기본 10). 넘으면 연습은 할 수 있지만 경험치는 없어요',
 };
@@ -1048,7 +1048,7 @@ function picPreview(rec, dex) {
   const cell = (label, el) => h('figure.pv', h('div.pv-pic', el), h('figcaption', label));
   const mini = document.createElement('canvas');
   mini.width = mini.height = 64; mini.className = 'sprite';
-  mini.getContext('2d').drawImage(fitCell(rec.frames[0], rec.w, rec.h), 0, 0);
+  { const n = normRec(rec); mini.getContext('2d').drawImage(fitCell(n.cv, n.w, n.h), 0, 0); }
   mini.style.width = mini.style.height = '64px'; mini.style.imageRendering = 'pixelated';
   return h('div.pv-grid',
     cell('가방·목록', previewCanvas(rec, 40, 'normal', dex)),
@@ -1062,7 +1062,7 @@ function picPreview(rec, dex) {
 async function uploadPic(dex, redraw) {
   const sp = S.spById.get(dex);
   const input = h('input.inp', { type: 'file', accept: 'image/png,image/gif,image/webp' });
-  const info = h('p.small-txt.muted', '도트 그림 파일을 고르세요. 움직이는 GIF 도 돼요.');
+  const info = h('p.small-txt.muted', '도트 그림 파일을 고르세요. GIF 는 첫 장면만 써요.');
   const pv = h('div');
   let picked = null;
   input.onchange = async () => {
@@ -1071,7 +1071,7 @@ async function uploadPic(dex, redraw) {
       picked = await readPic(input.files[0]);
       if (!picked) return;
       const r = picked.rec;
-      info.textContent = `${r.w}×${r.h}` + (r.frames.length > 1 ? ` · 움직이는 그림 ${r.frames.length}장 · 한 바퀴 ${(r.total / 1000).toFixed(1)}초` : ' · 멈춘 그림')
+      info.textContent = `${r.w}×${r.h}` + (r.frames.length > 1 ? ` · GIF ${r.frames.length}장 중 첫 장면만 씀` : ' · 멈춘 그림')
         + ` · ${Math.max(1, Math.round(picked.file.size / 1024))}KB`;
       info.className = 'small-txt';
       pv.replaceChildren(picPreview(r, dex),
@@ -1081,7 +1081,7 @@ async function uploadPic(dex, redraw) {
   const body = h('div.stack',
     h('p', `${sp?.name || `#${dex}`}의 그림을 바꿔요. 올리면 학생 앱 · 부스 · 대형 화면 · 미니게임에 모두 쓰여요.`),
     h('ul.small-txt.muted.tight',
-      h('li', 'PNG · WebP (멈춘 그림) 또는 GIF (움직이는 그림), 1MB · 한 변 256픽셀까지'),
+      h('li', 'PNG · WebP · GIF (첫 장면만), 1MB · 한 변 256픽셀까지. 공식 그림과 같은 96×96 칸에 맞춰 도트로 정리돼요'),
       h('li', '배경은 투명하게, 포켓몬 발이 그림 아래쪽에 닿게 (원래 그림처럼 정사각형 + 둘레에 조금 여백)'),
       h('li', '올린 뒤에도 "원래 그림으로" 단추로 언제든 되돌릴 수 있어요')),
     field('그림 파일', input), info, pv);
@@ -2286,6 +2286,8 @@ const DEFAULTS = {
   stage_points: [0, 1, 3, 6], rarity_bonus: { common: 0, rare: 2, legendary: 10 },
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
+  // 0033 사파리존
+  safari_balls_daily: 10, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_daily_max_encounters: 15, safari_flee: 0.1, safari_steps_per_sec: 6,
   evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2],
   qr_daily_cap: 3, bag_max: 5, ticket_ttl_hours: 10, token_grace_minutes: 30, rotating_window_sec: 30,
   quiz_ticket_daily_cap: 30,                 // 0001 은 20 → 0005_festival_ops.sql 에서 30 으로
@@ -2294,7 +2296,7 @@ const DEFAULTS = {
   // 0005_festival_ops.sql
   notice: null, prize_note: null, dup_bonus_every: 3,
   // 0007_roulette.sql
-  roulette_enabled: true, roulette_every_min: 5, roulette_daily_max: 12, roulette_odds: [[0, 60], [1, 30], [3, 8], [5, 2]],
+  roulette_enabled: true, roulette_every_min: 5, roulette_daily_max: 12, roulette_odds: [[0, 72], [1, 24], [3, 4]],
   // 0008_open_login.sql (code_signup_per_10min 60 → 0019_ops_polish.sql 에서 1000)
   code_self_signup: true, code_signup_per_10min: 1000, dev_login: false,
   // 0010_allowed_gens.sql
@@ -2314,13 +2316,14 @@ const DEFAULTS = {
   exp_need_mul: 8, exp_battle_mul: 4, exp_practice: 0.5, exp_lose: 0.4,
   drop_place: 0.3, drop_quiz: 0.4, drop_battle: 0.5, drop_practice: 0.15, drop_raid_tm: 0.3,
   battle_item_max: 2, battle_field_mult: 1.3, battle_turn_cap: 20,
+  // seed_pokemon.sql (0032): 과목 대신 실제 포켓몬 타입
   battle_fields: [
-    { from: '08:00', to: '10:00', name: '아침 조회', types: ['국어', '윤리'] },
-    { from: '10:00', to: '12:00', name: '오전 수업', types: ['수학', '물리', '화학'] },
-    { from: '12:00', to: '13:30', name: '점심시간', types: ['음악', '체육'] },
-    { from: '13:30', to: '16:00', name: '오후 수업', types: ['영어', '외국어', '역사'] },
-    { from: '16:00', to: '18:30', name: '방과후', types: ['정보', '지구', '생명'] },
-    { from: '18:30', to: '23:00', name: '야간 자율학습', types: ['지리', '정치경제'] },
+    { from: '08:00', to: '10:00', name: '아침 조회', types: ['노말', '비행', '풀'] },
+    { from: '10:00', to: '12:00', name: '오전 수업', types: ['에스퍼', '강철', '전기'] },
+    { from: '12:00', to: '13:30', name: '점심시간', types: ['불꽃', '격투', '페어리'] },
+    { from: '13:30', to: '16:00', name: '오후 수업', types: ['물', '얼음', '벌레'] },
+    { from: '16:00', to: '18:30', name: '방과후', types: ['땅', '바위', '독'] },
+    { from: '18:30', to: '23:00', name: '야간 자율학습', types: ['고스트', '악', '드래곤'] },
   ],
   // 0021_battle_end.sql · 0022_open_raids.sql · 0023_minigames.sql · 0025_minigame_admin.sql
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
@@ -2375,6 +2378,12 @@ const GROUPS = {
       P('wild_steps', '걸음마다 야생 포켓몬 1마리', 'int', { unit: '걸음', min: 0, max: 100000, help: '0 = 걸어서 만나기 끔. 앱 홈에 "야생 포켓몬이 나타났다!" 가 뜨고 잡기 장면에서 잡아요.' }),
       P('wild_daily', '걸어서 만나는 야생 포켓몬 (하루 최대)', 'int', { unit: '마리', min: 0, max: 100 }),
       P('wild_balls', '걸어서 만난 야생 포켓몬: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요.' }),
+      P('safari_balls_daily', '사파리존: 하루 사파리볼', 'int', { unit: '개', min: 0, max: 100, help: '앱 지도 탭 → 사파리존. 다 쓰면 그날은 끝 (서버가 셈). 0 = 사파리존 끔.' }),
+      P('safari_min_steps', '사파리존: 풀숲 몇 걸음부터 만날 수 있나', 'int', { unit: '걸음', min: 0, max: 200 }),
+      P('safari_encounter_rate', '사파리존: 그다음 풀숲 한 걸음마다 만날 확률', 'pct', { max: 100, help: '기본 12%. 확률은 서버가 굴려요.' }),
+      P('safari_daily_max_encounters', '사파리존: 하루 최대 만남', 'int', { unit: '마리', min: 0, max: 100 }),
+      P('safari_flee', '사파리존: 공이 빗나갈 때마다 도망칠 확률', 'pct', { max: 100 }),
+      P('safari_steps_per_sec', '사파리존: 1초에 셀 수 있는 걸음 (속임 막기)', 'int', { unit: '걸음', min: 1, max: 20, help: '앱은 1초에 5걸음 걸어요. 너무 낮추면 걸어도 만나지 못해요.' }),
     ],
   },
   // 레이드

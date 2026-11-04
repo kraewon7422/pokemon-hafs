@@ -28,6 +28,7 @@ export const BT_WHY = {
   practice: '연습 배틀이라 보상은 없어요.',
   same_opp: '같은 친구에게는 하루 한 번만 보상이 있어요.',
   daily_max: '오늘 받을 수 있는 배틀 보상은 다 받았어요.',
+  luck: '이번엔 진화의돌이 없었어요. (이기면 가끔 받아요)',
 };
 
 // 내 배틀 팀 = 저장한 팀 (아직 가지고 있는 것만), 없으면 가장 높은 단계부터. n = 3 (1 대 1) / 4 (2 대 2)
@@ -451,7 +452,7 @@ export function openBattle(b0) {
     for (const x of rw.exp?.[me()] || []) {
       if (closed) return;
       await say2(`${josa(x.name, '은', '는')} ${x.exp} 경험치를 얻었다!`, 300);
-      if (x.up > 0) { sfx.catch(); await say2(`${x.name}의 레벨이 ${x.lv}${/[013678]$/.test(String(x.lv)) ? '으로' : '로'} 올랐다!`); }
+      if (x.up > 0) { sfx.catch(); await say2(`${x.name}의 레벨이 ${josa(x.lv, '으로', '로')} 올랐다!`); }
     }
     const got = rw.item?.[me()];
     if (got && itemOf(got)) { sfx.catch(); await say2(`${josa(itemOf(got).name, '을', '를')} 주웠다!`); }

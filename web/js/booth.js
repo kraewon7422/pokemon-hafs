@@ -69,7 +69,7 @@ function renderLogin(msg = '') {
 
 function renderBooth(p) {
   const input = h('input.booth-input', {
-    placeholder: '바코드 스캐너로 찍거나 학번 입력 후 Enter', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
+    placeholder: '스캐너로 찍기 · 고유번호 + Enter', autocomplete: 'off', autocapitalize: 'off', spellcheck: 'false',
     onkeydown: (e) => {
       if (e.key !== 'Enter') return;
       const v = input.value; input.value = '';

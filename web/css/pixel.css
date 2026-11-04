@@ -93,7 +93,7 @@ img, canvas.sprite { image-rendering: pixelated; image-rendering: crisp-edges; -
 
 /* chips / badges */
 .chip { display: inline-flex; align-items: center; gap: 4px; padding: 2px 10px; border-radius: 999px; border: 2px solid var(--ink); background: #fff; font-size: var(--fs-s); white-space: nowrap; }
-.type { display: inline-block; padding: 1px 10px; border-radius: 6px; font-size: var(--fs-s); text-shadow: 1px 1px 0 rgba(0,0,0,.35); border: 2px solid rgba(0,0,0,.25); }
+.type { display: inline-block; white-space: nowrap; padding: 1px 10px; border-radius: 6px; font-size: var(--fs-s); text-shadow: 1px 1px 0 rgba(0,0,0,.35); border: 2px solid rgba(0,0,0,.25); }
 
 /* HP-bar style progress */
 .bar { height: 12px; background: #505860; border: 2px solid var(--ink); border-radius: 6px; overflow: hidden; }
