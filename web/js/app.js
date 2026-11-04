@@ -6,7 +6,7 @@ import { kv, persist } from './db.js';
 import { parsePlace, isBag, makeNonce, bagPayload, drawQR } from './qrfmt.js';
 import { Scanner } from './scanner.js';
 import { spriteCanvas, paint, monSprite } from './sprites.js';
-import { sfx, unlockAudio, isMuted, setMuted } from './sfx.js';
+import { sfx, unlockAudio, isSfxOn, setSfxOn, isBgmOn, setBgmOn, bgmScene } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
 import { S, app, bag, collection, dexOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
@@ -44,6 +44,7 @@ export async function boot() {
   // iPhone: touchend/click 에서만 소리를 켤 수 있음 · 앱으로 돌아오면 다시 깨움
   for (const ev of ['touchend', 'click', 'keydown']) document.addEventListener(ev, unlockAudio, { passive: true });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) unlockAudio(); });
+  bgmScene('main');   // 배경 음악: 첫 터치 뒤에 시작 (배틀·잡기 장면은 배틀 곡으로 잠깐 바꿈)
   window.addEventListener('online', () => { S.online = true; renderStatus(); sync(); });
   window.addEventListener('offline', () => { S.online = false; renderStatus(); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) sync(); });
@@ -544,7 +545,15 @@ export async function spinRoulette() {
   renderTab();
 }
 
-export const soundLabel = () => (isMuted() ? [pix('mute'), '소리 꺼짐 (누르면 켜기)'] : [pix('sound'), '소리 켜짐 (누르면 끄기)']);
+// 소리 설정: 효과음 · 배경 음악 따로 켜고 끄기 (이 폰에 기억)
+function soundRow(icon, label, get, set) {
+  const row = h('div.sound-row');
+  const draw = () => row.replaceChildren(h('span.sound-lbl', pix(get() ? icon : 'mute'), h('b', label)),
+    h('div.seg', { role: 'group', 'aria-label': label }, [[true, '켜기'], [false, '끄기']].map(([v, t]) =>
+      h('button', { 'aria-pressed': String(get() === v), onclick: () => { if (get() === v) return; set(v); unlockAudio(); if (v) sfx.blip(); draw(); } }, t))));
+  draw();
+  return row;
+}
 
 // ⚙ settings (top-right). Name visibility comes first so students can find it immediately.
 export function openSettings() {
@@ -570,9 +579,10 @@ export function openSettings() {
         ? h('small', pix('spark'), ` 복구용 구글: ${p.google_email || '연결됨'}`)
         : [h('small', '복구용 구글을 연결해 두면 비밀번호를 잊어도 그 구글로 들어와서 다시 정할 수 있어요.'),
           h('button.btn', { onclick: startGoogleLink }, pix('school'), '복구용 구글 연결하기')]),
+    h('section.box.setting-sound', { 'aria-label': '소리' },
+      soundRow('sound', '효과음', isSfxOn, setSfxOn),
+      soundRow('music', '배경 음악', isBgmOn, setBgmOn)),
     h('section.box', { style: { display: 'grid', gap: '8px' } },
-      h('button.btn', { onclick: (e) => { setMuted(!isMuted()); e.currentTarget.replaceChildren(...soundLabel()); } },
-        ...soundLabel()),
       h('button.btn', { onclick: () => showOnboarding(true) }, pix('book'), '게임 방법 다시 보기'),
       h('button.btn', { onclick: inquirySheet }, pix('memo'), '운영진에게 문의하기'),
       ['number', 'id'].includes(p.login) && h('button.btn', { onclick: () => passwordSheet() }, pix('ticket'), '비밀번호 바꾸기'),

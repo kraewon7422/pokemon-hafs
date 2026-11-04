@@ -1,9 +1,12 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v54';
+const VERSION = 'hafsmon-v55';
 // 운영자가 올린 포켓몬 그림 (Supabase Storage, 0031): 파일 이름이 올릴 때마다 바뀌므로 한 번 받으면 계속 씀 (버전과 따로 보관)
 const SPRITES = 'hafsmon-sprites';
+// 배경 음악 (web/audio/, 합쳐 약 9MB): 설치 때 받지 않음 (CORE 아님). 처음 틀 때 받아서 따로 보관 → 버전을 올려도 다시 받지 않음.
+//   파일을 바꿀 땐 이름을 바꿈 (sfx.js TRACKS). 오프라인이면 받아 둔 곡만 나옴
+const AUDIO = 'hafsmon-audio-1';
 // 설치할 때 바로 받는 것 = 첫 화면(로그인·홈)에 필요한 것만 (약 1MB)
 const CORE = [
   './', 's/', 'manifest.webmanifest',   // not index.html: Cloudflare Pages redirects it, and a redirected response can't answer a navigation
@@ -41,7 +44,7 @@ self.addEventListener('message', (e) => {
 });
 
 self.addEventListener('activate', (e) => {
-  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== SPRITES).map((k) => caches.delete(k))))
+  e.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== SPRITES && k !== AUDIO).map((k) => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
@@ -60,6 +63,18 @@ self.addEventListener('fetch', (e) => {
     return;
   }
   if (req.method !== 'GET' || url.origin !== location.origin) return;   // Supabase etc. → network only
+  if (url.pathname.includes('/audio/')) {
+    if (req.headers.has('range')) return;   // <audio> 같은 부분 요청은 브라우저에 맡김 (sfx.js 는 fetch 로 통째로 받음)
+    e.respondWith((async () => {
+      const cache = await caches.open(AUDIO);
+      const hit = await cache.match(req, { ignoreSearch: true });
+      if (hit) return hit;
+      const res = await fetch(req);
+      if (res.ok && res.status === 200 && res.type === 'basic') cache.put(req, res.clone());
+      return res;
+    })());
+    return;
+  }
   // staff pages are online-only tools; don't cache them
   if (/\/(admin|booth|screen)(\.html)?$/.test(url.pathname) || url.pathname.includes('/js/admin') || url.pathname.includes('/js/booth') || url.pathname.includes('/js/screen')) return;
   e.respondWith((async () => {

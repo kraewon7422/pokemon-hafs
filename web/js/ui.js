@@ -162,6 +162,7 @@ const PX = {
   light: ['..yyyy..', '..yyyy..', '...kk...', '...ss...', '...ss...', '...ss...', '...ss...', '...kk...'],
   sound: ['...k....', '..kk..k.', 'kkkk.k..', 'kkkk.k.k', 'kkkk.k.k', 'kkkk.k..', '..kk..k.', '...k....'],
   mute: ['...k....', '..kk....', 'kkkkr..r', 'kkkk.rr.', 'kkkk.rr.', 'kkkkr..r', '..kk....', '...k....'],
+  music: ['....kkkk', '...kkkkk', '...k...k', '...k...k', '...k...k', '.kkk.kkk', 'kkkkkkkk', '.kk..kk.'],
   memo: ['kkkkkk..', 'kwwwwk..', 'kwkkwk..', 'kwwwwk.o', 'kwkkwko.', 'kwwwwo..', 'kwwwkk..', 'kkkkk...'],
   mega: ['......k.', '.....kk.', 'kk.kkwk.', 'kwkwwwk.', 'kwkwwwk.', 'kk.kkwk.', '.k...kk.', '.k....k.'],
   pause: ['........', '.kk..kk.', '.kk..kk.', '.kk..kk.', '.kk..kk.', '.kk..kk.', '.kk..kk.', '........'],
