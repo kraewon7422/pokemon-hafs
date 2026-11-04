@@ -3,13 +3,13 @@
 // 바위·통나무·뗏목·통·상자·연잎·모래 무늬·조개·양동이는 CC0 도트 그림 — img/games/surf/CREDITS.txt)
 // 서버 상한: 점수 ≤ 초×40+50 → 최고 속도(부스트 포함) 26.4 m/s 로 묶음. 숨긴 탭·멈춤(mg-pause) 시간은 ms 에 안 들어감.
 import { loadPhaser } from './common.js';
+import { atlasURL } from '../sprites.js';
 
 const GW = 160, GH = 288;          // 논리 해상도 (정수 배로 키움)
 const PY = 96;                      // 플레이 중 내 몬스터 화면 y
 const PX_PER_M = 10;                // 10 도트 = 1 m
 const HEAD = [-62, -32, 0, 32, 62]; // 방향 5단계 (도, 0 = 똑바로 아래)
 const BOOST_T = 2.2, BOOST_K = 1.6, MAX_BASE = 165; // 165×1.6 = 264 px/s = 26.4 m/s
-const ATLAS_URL = new URL('../../sprites/atlas.png', import.meta.url).href;
 const PROPS_URL = new URL('../../img/games/surf/surf-props.png', import.meta.url).href;
 const PROPS = { rockBig: [0, 0, 25, 21], rock1: [26, 0, 16, 14], rock2: [43, 0, 15, 13], rock3: [59, 0, 11, 9], log: [71, 0, 44, 15], raft: [116, 0, 32, 26], barrel: [149, 0, 17, 24], crate: [167, 0, 16, 18], pad2: [0, 27, 9, 9], pad3: [10, 27, 11, 11], sandTile: [22, 27, 16, 16], pebbleS: [39, 27, 7, 5], pebbleL: [47, 27, 12, 7], shell1: [60, 27, 7, 5], shell2: [68, 27, 12, 7], shell3: [81, 27, 7, 5], shell4: [89, 27, 12, 7], bucket: [102, 27, 10, 17], bucketB: [113, 27, 10, 17], shovel: [124, 27, 18, 17], star1: [143, 27, 5, 5], star2: [149, 27, 5, 5] };
 const JUMP_T = 1.0; // 파도 점프 체공 시간 (초)
@@ -554,7 +554,7 @@ export default {
     window.addEventListener('keydown', onKey);
 
     const fontsReady = (document.fonts?.load ? Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}) : Promise.resolve());
-    Promise.all([loadPhaser(), fontsReady]).then(([Phaser]) => {
+    Promise.all([loadPhaser(), fontsReady, atlasURL()]).then(([Phaser, , ATLAS_URL]) => {
       if (dead) return;
       wrap.textContent = '';
       game = new Phaser.Game({

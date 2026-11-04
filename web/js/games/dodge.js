@@ -4,7 +4,7 @@
 // 배경 그림: web/img/games/dodge/dodge-bg.png (CC0, 출처는 같은 폴더 CREDITS.txt)
 // 판은 192×288 도트. 내 몬스터는 어떤 몬스터든 64×64 칸 전체를 정확히 1/2(32×32)로 줄여 같은 비율로 그림.
 import { pixelCanvas, loop, text } from './common.js';
-import { atlasImage, cellOf } from '../sprites.js';
+import { atlasImage, atlasOk, cellOf } from '../sprites.js';
 
 const W = 192, H = 288;
 const GR_Y = H - 64;         // 풀·흙길·덤불 띠 윗줄 (띠 높이 64)
@@ -94,7 +94,7 @@ function skyCanvas() {
 //  body = 3칸 이상(키의 1/4) 칠해진 세로줄 수 = 실제 몸통 폭, bh = 그림 키, cx = 몸통 가운데 (맞는 범위 계산용)
 const lum = (d, i) => 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
 function monSprites(dex) {
-  if (!atlasImage.complete || !atlasImage.naturalWidth) return null;
+  if (!atlasOk()) return null;
   const [sx, sy] = cellOf(dex);
   const cell = document.createElement('canvas'); cell.width = cell.height = 64;
   const cg = cell.getContext('2d'); cg.drawImage(atlasImage, sx, sy, 64, 64, 0, 0, 64, 64);

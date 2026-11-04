@@ -11,6 +11,7 @@
 import { sfx } from './sfx.js';
 import { josa, reducedMotion } from './ui.js';
 import { loadPhaser } from './games/common.js';
+import { atlasURL, monAnim } from './sprites.js';
 
 const W = 270, H = 480;                 // 논리 화면 (배경 그림과 같음)
 const SPOT_X = 135, FEET_Y = 356;       // 몬스터가 서는 밝은 자리 (가운데 y=352, 발은 살짝 아래)
@@ -38,7 +39,6 @@ const BOUNCE = 0.45, SKID = 0.78, ROLL = 4;             // 땅에 튈 때 위아
 const S_MID = 1118, S_SPAN = Math.sqrt(5);
 const PW_LO = -Math.log(0.945), PW_HI = Math.log(1.10);
 
-const ATLAS_URL = new URL('../sprites/atlas.png', import.meta.url).href;
 const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
 // 배경 그림 맨 위 / 맨 아래 색 (화면이 그림보다 길 때 위아래를 채움)
 const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'] };
@@ -271,7 +271,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
     const fonts = document.fonts?.load
       ? Promise.race([Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}), new Promise((r) => setTimeout(r, 1500))])
       : Promise.resolve();
-    const [Phaser] = await Promise.all([loadPhaser(), fonts]);
+    const [Phaser, ATLAS_URL] = await Promise.all([loadPhaser(), atlasURL(), fonts]);
     if (dead) return out;
 
     let tick = () => {};
@@ -337,6 +337,17 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (몬스터 뒤로 가면 1.5)
       const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
       const monW = sc.add.image(SPOT_X, footY, 'monW').setOrigin(0.5, 1).setScale(0).setDepth(4).setAlpha(0);
+      // 운영자가 올린 움직이는 그림(GIF, 0031)이면 프레임을 돌려 가며 보여 줌
+      const anim = monAnim(dex);
+      if (anim) {
+        anim.frames.forEach((f, i) => { if (!sc.textures.exists(`monA${i}`)) sc.textures.addCanvas(`monA${i}`, f); });
+        let shown = -1;
+        sc.time.addEvent({ delay: 30, loop: true, callback: () => {
+          let t = performance.now() % anim.total, i = 0;
+          for (; i < anim.delays.length - 1; i++) { t -= anim.delays[i]; if (t < 0) break; }
+          if (i !== shown && mon.active) { shown = i; mon.setTexture(`monA${i}`); }
+        } });
+      }
       const rings = sc.add.graphics().setDepth(5);
       const ball = sc.add.image(HOME.x, H + 30, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setScale(2).setDepth(6);   // 몬스터 뒤로 가면 2
       const fx = sc.add.graphics().setDepth(7);   // 할퀴기 등 잠깐 그리는 것

@@ -7,6 +7,9 @@
 // 조작: 화면 어디든 누르고 끄는 조이스틱 (어느 각도든 — 대각선은 계단처럼 고르게 꺾임) · 방향키/WASD (두 키 = 대각선).
 // Phaser 3 (vendor) 사용 — start() 는 바로 돌아가고 Phaser 는 뒤에서 불러옴.
 import { loadPhaser } from './common.js';
+import { atlasURL } from '../sprites.js';
+
+let ATLAS = '';   // 몬스터 그림 (원래 아틀라스 또는 올린 그림을 합친 것, 게임을 시작할 때 정함)
 
 export const N = 30;                        // 판 크기 (칸)
 const K = 4;                                // 처음 땅 (K×K)
@@ -356,7 +359,6 @@ const T = 20, WM = 28, WORLD = N * T + WM * 2;  // 칸 크기 · 판 둘레 풀�
 const VIEW = { x: 0, y: 40, w: W, h: 360 };   // 판이 보이는 창 (위 40 = 점수줄, 아래 = 조이스틱 칸)
 const PAD_Y = VIEW.y + VIEW.h;
 const JOY = { x: 168, y: PAD_Y + 80, r: 62, knob: 22, dead: 10 };   // 조이스틱 (지름 124)
-const ATLAS = new URL('../../sprites/atlas.png', import.meta.url).href;
 const FONT = 'Galmuri11, monospace';
 
 const PAL = [
@@ -549,7 +551,7 @@ export default {
       monBox(d) {
         this.boxes ||= {};
         if (this.boxes[d]) return this.boxes[d];
-        const f = Math.max(0, Math.min(251, d - 1));
+        const f = Math.max(0, Math.min(this.textures.get('mons').frameTotal - 2, d - 1));
         const img = this.textures.get('mons').getSourceImage();
         const c = document.createElement('canvas'); c.width = 64; c.height = 64;
         const g = c.getContext('2d'); g.drawImage(img, (f % 12) * 64, Math.floor(f / 12) * 64, 64, 64, 0, 0, 64, 64);
@@ -563,7 +565,7 @@ export default {
       monIcon(cx, cy, d, w, h) {
         const b = this.monBox(d);
         const s = [1, 0.5, 0.25].find((k) => b.w * k <= w && b.h * k <= h) || 0.25;
-        const spr = this.add.sprite(0, 0, 'mons', Math.max(0, Math.min(251, d - 1))).setOrigin(0).setScale(s).setCrop(b.x, b.y, b.w, b.h);
+        const spr = this.add.sprite(0, 0, 'mons', Math.max(0, Math.min(this.textures.get('mons').frameTotal - 2, d - 1))).setOrigin(0).setScale(s).setCrop(b.x, b.y, b.w, b.h);
         spr.setPosition(Math.round(cx - (b.x + b.w / 2) * s), Math.round(cy - (b.y + b.h / 2) * s));
         return spr;
       }
@@ -634,7 +636,7 @@ export default {
         this.refreshTiles();
         // 몬스터 + 발밑 고리
         this.rings = this.add.graphics().setDepth(5);
-        this.mons = sim.players.map((p) => this.add.sprite(0, 0, 'mons', Math.max(0, Math.min(251, dex[p.id] - 1))).setOrigin(0.5, 1));
+        this.mons = sim.players.map((p) => this.add.sprite(0, 0, 'mons', Math.max(0, Math.min(this.textures.get('mons').frameTotal - 2, dex[p.id] - 1))).setOrigin(0.5, 1));
         this.marker = this.add.graphics().setDepth(400);
         this.fx = this.add.particles(0, 0, 'px', {
           lifespan: { min: 600, max: 1100 }, speed: { min: 70, max: 190 }, angle: { min: 200, max: 340 }, gravityY: 320,
@@ -1035,6 +1037,7 @@ export default {
     };
 
     loadPhaser().then(async (Phaser) => {
+      ATLAS = await atlasURL();
       if (dead) return;
       try { await Promise.race([document.fonts?.load?.(`12px ${FONT}`), new Promise((r) => setTimeout(r, 1500))]); } catch { /* 글꼴 없어도 진행 */ }
       if (dead) return;
