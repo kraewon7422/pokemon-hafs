@@ -191,7 +191,9 @@ ok(r.data?.correct === false && r.data.granted === false && r.data.answer_pos ==
   'wrong answer → no ticket, shows right position', r);
 
 console.log('\n[8] evolve race (5 parallel taps, 1 ticket)');
-const line = st.collection[0].line_id;
+// 3단계 계열 · 진화 레벨 전 (0032/0034: 레벨이 되면 무료, 돌 진화는 100% — 진화의돌 1개 경쟁을 보려면 둘 다 아니어야)
+const three8 = new Set((await admin.select('lines?select=id&max_stage=eq.3')).data.map((l) => l.id));
+const line = (st.collection.find((c) => c.stage === 1 && three8.has(c.line_id) && c.level < 15) || st.collection[0]).line_id;
 const have = (await S[0].rpc('sync')).data.state.profile.evo_tickets;
 if (have !== 1) await admin.rpc('admin_adjust_tickets', { p_student_id: '022901', p_delta: 1 - have });   // exactly 1 ticket for the race
 const evs = await Promise.all(Array.from({ length: 5 }, () => S[0].rpc('evolve', { p_line: line })));
@@ -367,7 +369,7 @@ S[2] = client(await login('022903@test.local'));
   await setS('festival_open', false);
   ok((await S[3].rpc('spin_roulette')).error === 'FESTIVAL_CLOSED', 'no roulette while the festival is closed');
   await setS('festival_open', true);
-  await setS('roulette_every_min', 5); await setS('roulette_daily_max', 12); await setS('roulette_odds', [[0, 60], [1, 30], [3, 8], [5, 2]]);
+  await setS('roulette_every_min', 5); await setS('roulette_daily_max', 12); await setS('roulette_odds', [[0, 72], [1, 24], [3, 4]]);   // 0034 기본값으로 되돌림
 }
 // auto-close via festival_close_at
 await setS('festival_close_at', new Date(Date.now() - 60000).toISOString());
@@ -542,7 +544,7 @@ let NA, NB;
   r = await NB.rpc('spin_roulette');
   ok(r.data?.jackpot === true && r.data.prize === 0 && r.data.titles?.includes('럭키 세븐'), '777 turns a miss into the 럭키 세븐 title', r);
   ok((await NB.rpc('ensure_profile')).data?.titles?.includes('럭키 세븐'), 'title stays on the profile');
-  await setS('roulette_777_per_mille', 10); await setS('roulette_every_min', 5); await setS('roulette_odds', [[0, 60], [1, 30], [3, 8], [5, 2]]);
+  await setS('roulette_777_per_mille', 10); await setS('roulette_every_min', 5); await setS('roulette_odds', [[0, 72], [1, 24], [3, 4]]);   // 0034 기본값으로 되돌림
   await admin.rpc('admin_unlink', { p_student_id: sidA }); await admin.rpc('admin_unlink', { p_student_id: sidB });
 }
 
@@ -1634,8 +1636,11 @@ console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 �
   ok((await F.rpc('safari_encounter', { p_steps: -1 })).error === 'BAD_STEPS' && (await F.rpc('safari_encounter', { p_steps: 5000 })).error === 'BAD_STEPS', 'bad step counts rejected');
   const a1 = (await F.rpc('safari_encounter', { p_steps: 5 })).data;
   ok(a1?.encounter === null && a1.accepted === 5, 'before safari_min_steps → no encounter (rate 100%)', a1);
+  // 걸음 속도 제한만 보려고 이 순간엔 만남 확률 0 (네트워크가 느리면 받아들이는 걸음이 조금 늘어 8걸음을 넘을 수 있음)
+  await setS('safari_encounter_rate', 0);
   const a2 = (await F.rpc('safari_encounter', { p_steps: 500 })).data;
-  ok(a2?.encounter === null && a2.accepted <= 3, 'claiming 500 steps right away → speed limit accepts only a few, no encounter', a2);
+  await setS('safari_encounter_rate', 1);
+  ok(a2?.encounter === null && a2.accepted <= 20, 'claiming 500 steps right away → speed limit accepts only a few, no encounter', a2);
   ok((await F.rpc('sync')).data.state.encounters.length === 0, 'nothing appears on the home banner');
   await wait(1500);
   const a3 = (await F.rpc('safari_encounter', { p_steps: 8 })).data;

@@ -492,7 +492,7 @@ export function rouletteBox() {
   S.rouletteTimer = setInterval(() => (btn.isConnected ? tick() : clearInterval(S.rouletteTimer)), 1000);
   return h('section.box.roulette', { 'aria-label': '진화의돌 룰렛' },
     h('div.banner', h('b', '진화의돌 룰렛'), h('span', { style: { fontSize: '13px' } }, `오늘 ${Math.max(0, left)}/${r.daily_max}번 남음`)),
-    h('div.reel-row', (r.odds || []).map(([n]) => h('span.reel-cell', n ? `${n}장` : '꽝'))),
+    h('div.reel-row', (r.odds || []).map(([n]) => h('span.reel-cell', n ? `${n}개` : '꽝'))),
     btn,
     h('small', `${r.every_min}분마다 한 번! 꽝이 나와도 다음 기회가 있어요.`));
 }
@@ -510,7 +510,7 @@ export async function spinRoulette() {
   await kv.set('snap', S.snap);
   // the prize is already decided; the reel runs a fixed time so the wait never hints at the result
   const vals = (res.roulette.odds || []).map(([n]) => n);
-  const cells = vals.map((n) => h('span.reel-cell', n ? `${n}장` : '꽝'));
+  const cells = vals.map((n) => h('span.reel-cell', n ? `${n}개` : '꽝'));
   const text = h('div.box.textbox');
   overlay(h('div.stage', h('div.scene', h('div.reel-row.big', cells)), text), 'full');
   text.textContent = '룰렛이 돌아간다…!';

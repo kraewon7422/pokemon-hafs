@@ -44,7 +44,7 @@ const SETTING_HELP = {
   dev_login: '개발용 테스트 로그인(아무 이메일, 비밀번호 1234abcd!) — 실전 서버에서는 반드시 false',
   roulette_every_min: '룰렛을 한 번 돌린 뒤 다음까지 기다리는 시간(분, 기본 5)',
   roulette_daily_max: '한 사람이 하루에 돌릴 수 있는 룰렛 횟수 (기본 12)',
-  roulette_odds: '룰렛 칸 [진화의돌 수, 가중치] 목록. 기본 [[0,60],[1,30],[3,8],[5,2]] = 꽝 60% · 1개 30% · 3개 8% · 5개 2%',
+  roulette_odds: '룰렛 칸 [진화의돌 수, 가중치] 목록. 기본 [[0,72],[1,24],[3,4]] = 꽝 72% · 1개 24% · 3개 4%',
   rotating_window_sec: '대형 화면 QR이 바뀌는 간격(초)',
   rotating_accept_sec: '대형 화면 QR을 찍은 뒤 인정되는 시간(초). 짧을수록 사진 공유가 어려워요',
   self_redeem: '셀프 지급 모드 ([축제 운영] 탭의 스위치)',
@@ -2296,7 +2296,7 @@ const DEFAULTS = {
   // 0005_festival_ops.sql
   notice: null, prize_note: null, dup_bonus_every: 3,
   // 0007_roulette.sql
-  roulette_enabled: true, roulette_every_min: 5, roulette_daily_max: 12, roulette_odds: [[0, 60], [1, 30], [3, 8], [5, 2]],
+  roulette_enabled: true, roulette_every_min: 5, roulette_daily_max: 12, roulette_odds: [[0, 72], [1, 24], [3, 4]],
   // 0008_open_login.sql (code_signup_per_10min 60 → 0019_ops_polish.sql 에서 1000)
   code_self_signup: true, code_signup_per_10min: 1000, dev_login: false,
   // 0010_allowed_gens.sql
