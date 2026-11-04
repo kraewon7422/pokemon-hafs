@@ -32,7 +32,7 @@ def hx(s):
 C = {k: hx(v) for k, v in dict(
     g0='#8cd6b8', g1='#5cc49c', g2='#3aa874', gL='#b8ecd0',            # 풀밭
     s0='#e8dc9c', s1='#f4ecbc', s2='#d8c88c', sE='#d8b064', sK='#c09850',  # 모래
-    k='#426311', t='#38ae68', n='#68d0a0', L='#b0ecd0',                # 풀숲
+    k='#426311', t='#3c9c48', n='#5cbc6c', L='#a8e4a8',                # 풀숲
     T0='#5c9a2c', T1='#8cc850', T2='#b8e47c', T3='#d8f4a0', TK='#3c5a10', Tp='#6c5a62', TP='#8c7a80',  # 나무
     f0='#f8f8f8', f1='#c0c0c8', f2='#9c9ca4', f3='#5c6484', f4='#80809a',  # 울타리
     w0='#88c8f0', w1='#5c90d0', w2='#3c68b0', wL='#d0f0ff',            # 물
@@ -67,18 +67,17 @@ class Tile:
 # ─────────── 풀밭: 대각선 점무늬 (16px 반복) ───────────
 def ground():
     t = Tile(base='g0')
-    # 오른쪽 위 → 왼쪽 아래로 흐르는 점 줄 (3세대 풀밭처럼 촘촘하지 않게)
+    # 참고 그림처럼 왼쪽 위 → 오른쪽 아래로 가는 가는 대각선 줄 (진한 점 · 중간 점 · 빈칸 두 개 반복) + 듬성한 밝은 점
     for y in range(16):
         for x in range(16):
-            d = (x + y) % 8
-            if d == 0 and (y % 4 == 1):
-                t.px(x, y, 'g1')
-            elif d == 0 and (y % 4 == 3):
-                t.px(x, y, 'g2')
-            elif d == 4 and (y % 4 == 0):
+            if (x - y) % 8 == 0:
+                k = ((x + y) // 2) % 4
+                if k == 0:
+                    t.px(x, y, 'g2')
+                elif k == 1:
+                    t.px(x, y, 'g1')
+            elif (x - y) % 8 == 4 and (x + y) % 4 == 0:
                 t.px(x, y, 'gL')
-    for (x, y) in [(3, 6), (11, 14), (13, 3), (6, 11)]:
-        t.px(x, y, 'g2')
     return t
 
 
@@ -227,23 +226,23 @@ def fence(mask):
 
 
 # ─────────── 손으로 찍은 그림들 ───────────
-TALL = [  # 두 포기 (윗줄 · 아랫줄 엇갈림) — 진한 올리브 테두리, 청록 잎, 밝은 잎맥
-    '................',
-    '...kL..L.k......',
-    '..nLLk.kLLn..L..',
-    '..tnLLkLLnt.nLk.',
-    '...ktnLnntk.tnLk',
-    '..L.kttntk..ktnk',
-    '.nLk.kttk.kLn.kt',
-    '.tnLLkttkLLnt.k.',
-    '..ktnLkkLnttk...',
-    '...kttnkntk...L.',
-    '.k..kknkkk..knLk',
-    'kLn..kttk..kLnLk',
-    'knLLkttttkLLnLk.',
-    '.ktnLnttnLntnk..',
-    '..kkttkkkttkk...',
-    '....kk...kk.....',
+TALL = [  # 둥근 잎 네 장이 X 모양으로 겹친 포기 (진한 테두리 · 중간 초록 · 밝은 잎) — 이어 붙이면 빽빽한 풀숲
+    '.kk..........kk.',
+    'kLLk...kk...kLLk',
+    'knLnk.kLLk.knLnk',
+    'ktnnLkLnnLkLnntk',
+    '.kttnkntnnknttk.',
+    '..kktkttntktkk..',
+    '.kLLkktnnkkLLk..',
+    'kLnnLktkktLnnLk.',
+    'kntnnLkLLkLnntnk',
+    'ktttnkLnnLkntttk',
+    '.kkttktnntkttkk.',
+    '.kLkktttttkkLk..',
+    'kLnLkkkttkkLnLk.',
+    'kntnnLk..kLnntnk',
+    '.ktttk....ktttk.',
+    '..kkk......kkk..',
 ]
 TALL_PAL = {'k': 'k', 't': 't', 'n': 'n', 'L': 'L'}
 
@@ -386,92 +385,94 @@ def bridge():
 
 # ─────────── 주인공: HAFS 교복 (남색 재킷 + 금색 테두리) ───────────
 HP = {
-    'k': '#181820', 'N': '#3c4c8c', 'n': '#28325e', 'Y': '#f0c850', 'y': '#b88a28',
-    'h': '#4a3028', 'H': '#6e4a38', 's': '#f8d0a8', 'S': '#d89868',
+    'k': '#181820', 'R': '#e04838', 'r': '#a82830', 'O': '#f88860', 'D': '#701c24', 'Y': '#f0c850', 'y': '#b88a28',
+    'h': '#282838', 'H': '#444460', 's': '#f8d0a8', 'S': '#d89868', 'e': '#202028',
     'w': '#f8f8f8', 'W': '#c0c8d8', 'B': '#3a4672', 'b': '#262c4c', 'd': '#181c34',
-    'P': '#2c3658', 'p': '#1c2240', 'o': '#f0f0f0', 'O': '#9098a8', 'T': '#1c2448', 't': '#f0c850',
+    'P': '#2c3658', 'p': '#1c2240', 'o': '#f0f0f0', 'q': '#9098a8', 'T': '#1c2448', 't': '#f0c850',
 }
-DARK = {'B': 'b', 'N': 'n', 'P': 'p', 'Y': 'y', 's': 'S', 'b': 'd', 'o': 'O'}
+DARK = {'B': 'b', 'R': 'r', 'O': 'R', 'P': 'p', 'Y': 'y', 's': 'S', 'b': 'd', 'o': 'q'}
 
-FRONT_HALF = [  # 왼쪽 절반 7칸 → 거울 (오른쪽은 그늘색). 모자 0-4 · 얼굴 5-10 · 교복 11-15 · 다리 16-19
-    '....kkk',
-    '..kkNNN',
-    '.kNNNNN',
-    'kNNNNNY',
-    'kYYYYYY',
-    'khnnnnn',
-    'khsssss',
-    'khsskss',
-    'kSsskss',
-    '.kSssss',
-    '..kkSSS',
-    '.kBBYwT',
-    'kBBBBYt',
-    'kYBBBBY',
-    'ksBBBBB',
+# 머리는 참고 그림(3세대 남자아이)처럼: 빨간 모자 + 흰 앞판 + 배지, 검은 머리, 좁은 얼굴(테두리 안 8칸). 옷만 HAFS 교복.
+FRONT_HALF = [  # 왼쪽 절반 7칸 → 거울 (오른쪽은 그늘색). 모자 0-6 · 얼굴 7-11 · 교복 12-16 · 다리 17-19
+    '...kkkk',
+    '..kROOO',
+    '.kRROOO',
+    '.kRRRRR',
+    '.krRRRw',
+    'kkrrwwR',
+    'kDDDDDD',
+    '.khhhhh',
+    '.kShsss',
+    '..ksses',
+    '..ksses',
+    '...kSss',
+    'kBBBwwT',
+    'kBBYBwt',
+    'kYBBYBT',
+    'ksBBBYY',
     '.kyYYYY',
     '..kPPPk',
     '..kPPPk',
-    '..kPPPk',
-    '..kooOk',
+    '..kooqk',
 ]
 BACK_HALF = [
-    '....kkk',
-    '..kkNNN',
-    '.kNNNNN',
-    'kNNNNNN',
-    'kYYYYYY',
-    'khhhhhh',
-    'khHhhhh',
-    'khHHhhh',
-    'khhhhhh',
+    '...kkkk',
+    '..kROOO',
+    '.kRROOO',
+    '.kRRRRR',
+    '.krRRRR',
+    'kkrrrrr',
+    'kDhhhhh',
     '.khhhhh',
-    '..kkhhh',
-    '.kBBBBB',
+    '.khHhhh',
+    '..khhhh',
+    '..khhhh',
+    '...kkSS',
+    'kBBBBBB',
     'kBBBBBB',
     'kYBBBBB',
     'ksBBBBB',
     '.kyYYYY',
     '..kPPPk',
     '..kPPPk',
-    '..kPPPk',
-    '..kooOk',
+    '..kooqk',
 ]
 SIDE = [  # 왼쪽을 봄, 14칸
-    '.....kkkk.....',
-    '...kkNNNNk....',
-    '..kNNNNNNNk...',
-    '..kNNNNNNNnk..',
-    '..kYYYYYYYyk..',
-    'knnnnnhhhhhk..',
-    '.kksssshhhhk..',
-    '..kskssSHhhk..',
-    '..kskssShhk...',
-    '...kSssSSk....',
-    '....kkSSk.....',
-    '...kwYBBBk....',
-    '...kTYBBbk....',
-    '...kBBBBbk....',
-    '...kBYBBbk....',
-    '...kBsBbbk....',
-    '...kyYYYyk....',
-    '....kPPpk.....',
-    '....kPPpk.....',
-    '....kooOk.....',
+    '....kkkkk.....',
+    '...kROOOOk....',
+    '..kRROOOOrk...',
+    '..kwRRRRRrk...',
+    '..kwwRRRrrk...',
+    'kkDDDDDrrrrk..',
+    '...khhhhhhk...',
+    '...khsshhhk...',
+    '...ksessShk...',
+    '...ksessShk...',
+    '....ksssShk...',
+    '.....kSSk.....',
+    '....kwTYBk....',
+    '....ktYBbk....',
+    '....kBYBbk....',
+    '....kBBsbk....',
+    '....kyYYyk....',
+    '.....kPpk.....',
+    '.....kPpk.....',
+    '....kooqk.....',
 ]
-SIDE_STEP1 = SIDE[:17] + [
-    '...kPPkPpk....',
-    '..kPPk.kppk...',
-    '..kook..kOk...',
+SIDE_STEP1 = SIDE[:16] + [
+    '....kyYYyk....',
+    '....kPkkpk....',
+    '...kPk..kpk...',
+    '...kok..kqk...',
 ]
 SIDE_STEP2 = SIDE[:13] + [
-    '...kBBBBbk....',
-    '...kBBYBbk....',
-    '...kBBsbbk....',
-    '...kyYYYyk....',
-    '....kPPpk.....',
-    '....kPpk......',
-    '....kooOk.....',
+    '....kBYBbk....',
+    '....kBsBbk....',
+    '....kBBbbk....',
+    '....kyYYyk....',
+    '.....kPpk.....',
+    '.....kPk......',
+    '.....kook.....',
 ]
 
 
