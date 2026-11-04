@@ -1,7 +1,7 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v59';
+const VERSION = 'hafsmon-v61';
 // 운영자가 올린 포켓몬 그림 (Supabase Storage, 0031): 파일 이름이 올릴 때마다 바뀌므로 한 번 받으면 계속 씀 (버전과 따로 보관)
 const SPRITES = 'hafsmon-sprites';
 // 배경 음악 (web/audio/, 합쳐 약 9MB): 설치 때 받지 않음 (CORE 아님). 처음 틀 때 받아서 따로 보관 → 버전을 올려도 다시 받지 않음.
@@ -12,7 +12,7 @@ const CORE = [
   './', 's/', 'manifest.webmanifest',   // not index.html: Cloudflare Pages redirects it, and a redirected response can't answer a navigation
   'css/pixel.css', 'css/types.css', 'css/app.css',
   'js/app.js', 'js/state.js', 'js/dex.js', 'js/raid.js', 'js/battle.js', 'js/login.js', 'js/bag.js', 'js/games/hub.js', 'js/games/common.js',
-  'js/eggs.js', 'js/config.js', 'js/sb.js', 'js/db.js', 'js/qrfmt.js', 'js/scanner.js', 'js/sprites.js', 'js/gif.js', 'js/sfx.js', 'js/ui.js', 'js/auth.js',
+  'js/eggs.js', 'js/legends.js', 'js/config.js', 'js/sb.js', 'js/db.js', 'js/qrfmt.js', 'js/scanner.js', 'js/sprites.js', 'js/gif.js', 'js/sfx.js', 'js/ui.js', 'js/auth.js',
   'vendor/supabase.js', 'vendor/qrcode.js',
   'fonts/Galmuri11.woff', 'fonts/Galmuri11-Bold.woff',
   'sprites/atlas.png', 'sprites/pk-index.js', 'img/clubs/watson.png', 'img/clubs/decfi.png', 'img/title/sky.png', 'img/title/grass.png', 'img/items.png',

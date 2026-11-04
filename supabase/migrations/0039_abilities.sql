@@ -607,7 +607,7 @@ begin
       lg := lg || jsonb_build_object('m', dw || ' 사이코필드에 보호받고 있다!'); st := public._bt_setm(st, u, a); return;
     end if;
     -- 명중: 기술 명중 × (내 명중 랭크 − 상대 회피 랭크) × 광각렌즈 × 특성 (복안 · 의욕 · 모래숨기 · 눈숨기). 노가드 = 반드시 맞음
-    if mv.accuracy is not null and not (aab = 'no-guard' or dab0 = 'no-guard') then
+    if mv.accuracy is not null and not (coalesce(aab, '') = 'no-guard' or coalesce(dab0, '') = 'no-guard') then
       acc := mv.accuracy * public._bt_sm(greatest(-6, least(6, coalesce((a -> 'stg' ->> 'acc')::int, 0) - coalesce((d -> 'stg' ->> 'eva')::int, 0))), true)
              * coalesce((a -> 'hold' ->> 'acc')::numeric / 100, 1)
              * case when aab = 'compound-eyes' then 1.3 else 1 end
@@ -757,18 +757,18 @@ begin
       end if;
       if e ? 'self' then select * into a, lg from public._bt_stages(a, lg, e -> 'self', an || '의 ', u); end if;
     end if;
-    if e ? 'self_all_up' and public._bt_rnd(st) * 100 < (e ->> 'self_all_up')::int * case when aab = 'serene-grace' then 2 else 1 end then
+    if e ? 'self_all_up' and public._bt_rnd(st) * 100 < (e ->> 'self_all_up')::int * (case when aab = 'serene-grace' then 2 else 1 end) then
       select * into a, lg from public._bt_stages(a, lg, '{"atk": 1, "def": 1, "spa": 1, "spd": 1, "spe": 1}', an || '의 ', u);
     end if;
     -- 풀죽음: 상대가 이번 턴에 아직 안 움직였으면 (정신력 · 인분은 안 됨)
     if e ? 'flinch' and tot > 0 and (d ->> 'hp')::int > 0 and not (fl -> 'moved' ? tu::text) and coalesce(dab, '') not in ('inner-focus', 'shield-dust')
-       and public._bt_rnd(st) * 100 < (e ->> 'flinch')::int * case when aab = 'serene-grace' then 2 else 1 end then
+       and public._bt_rnd(st) * 100 < (e ->> 'flinch')::int * (case when aab = 'serene-grace' then 2 else 1 end) then
       fl := jsonb_set(fl, array['flinch', tu::text], 'true');
     end if;
     -- 접촉 특성 (정전기 · 독가시 · 불꽃몸 · 포자: 30%, 까칠한피부 · 철가시: 1/8)
     if contact and tot > 0 and (a ->> 'hp')::int > 0 then
       if dab0 in ('static', 'poison-point', 'flame-body', 'effect-spore') and (a ->> 'st') is null and public._bt_rnd(st) * 100 < 30
-         and not (dab0 = 'effect-spore' and (public._bt_hastype(a, '풀') or aab = 'overcoat')) then
+         and not (dab0 = 'effect-spore' and (public._bt_hastype(a, '풀') or coalesce(aab, '') = 'overcoat')) then
         xk := case dab0 when 'static' then 'par' when 'poison-point' then 'psn' when 'flame-body' then 'brn'
                        else (array['psn', 'par', 'slp'])[1 + floor(random() * 3)::int] end;
         select * into d, lg from public._bt_pop(d, lg, tu);
@@ -1183,7 +1183,7 @@ begin
   return jsonb_build_object('intro', intro, 'logs', logs, 'st', st);
 end $$;
 
--- rule (0006): every migration that creates functions ends with this block (copied from 0037_branch_evo.sql + 0039)
+-- rule (0006): every migration that creates functions ends with this block (copied from 0038_legends.sql + 0039)
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function
   public.create_code_account(text), public.create_number_account(text, text), public.request_password_reset(text, text, text, text),
@@ -1223,7 +1223,13 @@ grant execute on function
   public.catch_bonus(text, text, boolean),
   public.catch_config(), public.catch_result(text, text, boolean, boolean), public.my_encounters(),
   public.encounter_result(bigint, boolean, text, boolean),
-  public.safari_state(), public.safari_encounter(int), public.safari_result(bigint, int, boolean, text, boolean), public.safari_turn(bigint),
+  public.safari_state(), public.safari_encounter(int, text), public.safari_result(bigint, int, boolean, text, boolean), public.safari_turn(bigint),
+  -- 0038
+  public.safari_throws(bigint, int), public.notice_seen(bigint[]), public.gift_claim(text),
+  public.legend_encounter(int), public.legend_result(bigint, boolean, text, boolean),
+  public.admin_create_gift(text, text, int, text, int, timestamptz, timestamptz, int), public.admin_list_gifts(), public.admin_set_gift(bigint, boolean),
+  public.admin_delete_gift(bigint), public.admin_encounter_age(bigint, int),
+  public.admin_roam_spots(timestamptz),
   public.my_abilities(), public.admin_bt_sim(jsonb)
 to authenticated;
 notify pgrst, 'reload schema';

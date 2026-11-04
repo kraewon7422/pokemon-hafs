@@ -6,6 +6,7 @@ import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
 import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, vibrate } from './state.js';
 import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
+import { rumourBox } from './legends.js';
 
 // ───────────────────────── 지도 ─────────────────────────
 
@@ -58,6 +59,7 @@ function viewQrMap() {
         h('button.btn.small', { disabled: zoom <= 1, onclick: () => setZoom(zoom - 1), 'aria-label': '축소' }, '-'),
         h('span', `×${zoom}`),
         h('button.btn.small', { disabled: zoom >= 3, onclick: () => setZoom(zoom + 1), 'aria-label': '확대' }, '+'))),
+    rumourBox(),                     // 0038: 방랑 전설 소문 (구역만)
     h(`div.map-scroll${zoom > 1 ? '.zoomed' : ''}`,
       h('div.map-wrap', { style: { width: `${mapWidth(zoom)}px` } }, h('img', { src: 'img/map.webp', alt: '학교 지도', draggable: 'false' }),
         h('span.map-egg', { onclick: () => eggTap('map'), 'aria-hidden': 'true' }),   // 오른쪽 위 숲 모서리 (이스터에그)

@@ -72,24 +72,46 @@ function legendArt(dex) {
   return out;
 }
 const speciesIdOf = (dex) => S.catalog?.species?.find((sp) => sp.dex === dex)?.id || SPECIES_FALLBACK[dex];
-// 서버가 조건을 알려 주면 부름: setLegendHints([{ dex, ok, cond?, where?, caught? }])
+// 서버 (0038 safari_state · sync 의 legends) 가 알려 준 전설 조건: setLegendHints([{ dex, ok, cond?, where?, caught?, seen? }])
 export function setLegendHints(list) {
   for (const x of list || []) {
     const t = hintOf(x.dex); if (!t) continue;
     if (x.ok != null) t.ok = !!x.ok;
     if (x.caught != null) t.caught = !!x.caught;
+    if (x.seen != null) t.seen = !!x.seen;
     if (x.cond) t.cond = x.cond;
     if (x.where) t.where = x.where;
   }
 }
-// 조건을 채웠는지 (지금은 LEGEND_HINTS 의 ok — 아직 서버가 채우지 않으니 늘 false. ?legend=1 이면 true)
+// 서버의 퀘스트 줄 (0038 _quest_rows) → 사육사 힌트 (조건 글 + 진행 "물 타입 4/20")
+export function hintsFromServer(rows) {
+  setLegendHints((rows || []).filter((x) => x.reward === 'map').map((x) => ({
+    dex: x.dex, ok: x.ok, caught: x.caught, seen: x.seen || x.caught,
+    cond: x.ok || !x.prog ? x.cond : `${x.cond} (지금 ${x.prog})`,
+  })));
+}
+// 조건을 채웠는지 (서버가 채운 ok. ?legend=1 = 시험용으로 모두 채운 것처럼 — 서버가 다시 확인하므로 실제로는 NOT_READY)
 export function legendReady(dex) { return DEV_LEGEND || !!hintOf(dex)?.ok; }
-// ⚠ 자리표시 (STUB): 전설 포켓몬과 만남 → 잡기. 나중에 서버 (0038 예정) 와 이어서 catchEncounter 를 부르게 바꿀 것.
+// 전설 포켓몬과 만남 → 잡기 (0038): 서버 legend_encounter (조건 · 오늘 도전 횟수 확인) → GO 방식 잡기 (HAFS 볼 N개) → legend_result
 //   dex = 전국도감 번호 · ctx = { talk(lines) → Promise, map: 지금 지도 id, name } · 돌려줌 { caught: bool }
 //   caught 가 아니면 (도망·놓침) 지도에 그대로 남아 다시 도전할 수 있음.
+const LEGEND_ERR = {
+  NOT_READY: (n) => [`${n}…?`, '아직 무언가 부족한 것 같다…'],
+  NO_TRIES: (n) => [`${josa(n, '은', '는')} 오늘은 더 이상 모습을 보이지 않을 것 같다…`, '내일 다시 와 보자!'],
+  ALREADY_CAUGHT: (n) => [`${josa(n, '은', '는')} 이미 내 박스에 있다!`],
+  BOX_FULL: () => ['박스가 꽉 찼다! 가방 → 포켓몬에서 몇 마리를 놓아준 뒤에 다시 오자.'],
+};
 export async function startLegendEncounter(dex, ctx) {
-  await ctx.talk([`(시험판) ${josa(ctx.name, '과', '와')}의 승부는 곧 열려요!`, '지금은 서버와 이어지기 전이라 만나기만 할 수 있어요.']);
-  return { caught: false };
+  if (!S.online) { await ctx.talk(['인터넷이 연결되어야 전설의 포켓몬과 만날 수 있어요.']); return { caught: false }; }
+  let r;
+  try { r = await rpc('legend_encounter', { p_dex: Number(dex) }, { retries: 1 }); } catch (e) {
+    const f = LEGEND_ERR[e.message];
+    await ctx.talk(f ? f(ctx.name) : [errorText(e.message)]);
+    if (e.message === 'ALREADY_CAUGHT') { const t = hintOf(dex); if (t) t.caught = true; return { caught: true }; }
+    return { caught: false };
+  }
+  const res = await catchEncounter({ ...r.encounter, kind: 'legend' });
+  return { caught: !!res?.caught };
 }
 
 // ─────────────────────── 도트 그림 (그림판 → 미리 그린 맵) ───────────────────────
@@ -205,9 +227,8 @@ export function zoneAt(x, y) { return ENC[M.kind].has(tileAt(x, y)) ? M.zone : n
 export const currentZone = () => M.zone;
 // 만남 칸 걸음 보내기 — 걸음은 모두 여기 한 곳으로 (구역이 바뀌면 그 전에 따로 보냄)
 export async function reportSteps(n, zone) {
-  // TODO(0038): pass p_zone — rpc('safari_encounter', { p_steps: n, p_zone: zone }) 로 바꾸면 서버가 구역별 포켓몬 (ultra = 울트라비스트) 을 고름
-  void zone;
-  return rpc('safari_encounter', { p_steps: n });
+  // 0038: 서버가 구역별 포켓몬을 고름 (ultra = 울트라비스트만 · cave/deep = 바위·땅·고스트·악·강철·물 타입이 더 자주)
+  return rpc('safari_encounter', { p_steps: n, p_zone: zone || currentZone() || 'grass' });
 }
 // 사람·전설 포켓몬 (지도마다): { type: 'npc' | 'legend', o }
 function objAt(x, y) {
@@ -220,6 +241,7 @@ const wormsOf = (m) => (m._worms ||= m.rows.flatMap((r, y) => [...r].map((c, x) 
 const solidAt = (x, y) => SOLID[M.kind].has(tileAt(x, y)) || !!objAt(x, y);
 
 export function viewSafari() {
+  hintsFromServer(S.snap?.legends);     // 0038: sync 로 받은 전설 조건 (사파리존 상태를 받으면 다시)
   if (!V) V = build();
   V.start();
   V.refresh();
@@ -319,6 +341,7 @@ function build() {
       }
       queued = await queuedResult();
       st = await rpc('safari_state', {});
+      hintsFromServer(st?.legends);          // 0038: 사육사 · 전설 자리 = 서버의 진짜 조건
     } catch (e) { if (!e.offline) say(errorText(e.message)); }
     loading = false; paintInfo();
   };

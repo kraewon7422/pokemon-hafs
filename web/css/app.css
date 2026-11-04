@@ -540,15 +540,15 @@ details.box[open] > summary::after { content: ' ▴'; }
   -webkit-mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); mask-image: linear-gradient(transparent, #000 18%, #000 82%, transparent); }
 .bt-fx.up { clip-path: polygon(24% 0, 76% 0, 100% 100%, 0 100%); }
 .bt-fx.down { clip-path: polygon(0 0, 100% 0, 76% 100%, 24% 100%); }
-.bt-fx i { position: absolute; left: 0; right: 0; top: 0; height: 200%; background-size: 24px 48px; image-rendering: pixelated; will-change: transform; }
-.bt-fx.up i { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='24' shape-rendering='crispEdges'%3E%3Cpath fill='%23f84830' d='M1 2h1v7h-1zM5 13h1v8h-1zM9 5h1v6h-1z'/%3E%3Cpath fill='%23ffa040' d='M3 9h1v6h-1zM7 0h1v5h-1zM11 16h1v6h-1z'/%3E%3C/svg%3E"); }
-.bt-fx.down i { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='24' shape-rendering='crispEdges'%3E%3Cpath fill='%233868f0' d='M1 2h1v7h-1zM5 13h1v8h-1zM9 5h1v6h-1z'/%3E%3Cpath fill='%2390c0ff' d='M3 9h1v6h-1zM7 0h1v5h-1zM11 16h1v6h-1z'/%3E%3C/svg%3E"); }
-.bt-fx.big i { background-size: 16px 32px; }
-.bt-fx.run { animation: bt-fx-show .72s steps(9); }
-.bt-fx.up.run i { animation: bt-fx-rise .72s steps(12); }
-.bt-fx.down.run i { animation: bt-fx-fall .72s steps(12); }
+.bt-fx i { position: absolute; left: 0; right: 0; top: 0; height: 200%; background-size: 30px 30px; image-rendering: pixelated; will-change: transform; }
+.bt-fx.up i { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' shape-rendering='crispEdges'%3E%3Cpath fill='%23ff3820' d='M0 2h2v8h-2zM6 13h2v9h-2zM12 5h2v7h-2zM18 16h2v7h-2z'/%3E%3Cpath fill='%23ffb040' d='M3 9h2v7h-2zM9 0h2v6h-2zM15 18h2v6h-2zM21 7h2v8h-2z'/%3E%3C/svg%3E"); }
+.bt-fx.down i { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' shape-rendering='crispEdges'%3E%3Cpath fill='%232c60f8' d='M0 2h2v8h-2zM6 13h2v9h-2zM12 5h2v7h-2zM18 16h2v7h-2z'/%3E%3Cpath fill='%238cc8ff' d='M3 9h2v7h-2zM9 0h2v6h-2zM15 18h2v6h-2zM21 7h2v8h-2z'/%3E%3C/svg%3E"); }
+.bt-fx.big i { background-size: 22px 22px; }
+.bt-fx.run { animation: bt-fx-show .8s steps(10); filter: drop-shadow(0 0 2px rgba(255, 255, 255, .7)); }
+.bt-fx.up.run i { animation: bt-fx-rise .8s steps(12); }
+.bt-fx.down.run i { animation: bt-fx-fall .8s steps(12); }
 .bt-fx.big.run, .bt-fx.big.run i { animation-duration: .6s; }
-.bt-fx.big.run { filter: brightness(1.25) saturate(1.4); }
+.bt-fx.big.run { filter: brightness(1.25) saturate(1.4) drop-shadow(0 0 2px rgba(255, 255, 255, .8)); }
 @keyframes bt-fx-show { 0% { opacity: 0; } 12%, 78% { opacity: 1; } 100% { opacity: 0; } }
 @keyframes bt-fx-rise { from { transform: translateY(0); } to { transform: translateY(-50%); } }
 @keyframes bt-fx-fall { from { transform: translateY(-50%); } to { transform: translateY(0); } }
@@ -1170,3 +1170,55 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .evo-choice:not(:disabled):active { transform: translateY(1px); }
 .evo-panel .banner > span, .dex-head .banner > span + span { white-space: nowrap; }   /* '진화의 돌 × 3' 이 둘로 갈라지지 않게 */
 .sf-bl .sf-reset { display: block; font-size: 11px; white-space: nowrap; opacity: .85; }   /* 0037 다음 충전 */
+
+/* ── 0038 전설 알림 (전체 화면) · 이상한 소포 · 메타몽 변신 · 방랑 전설 소문 ── */
+.overlay.ff-ov { background: #000; align-items: stretch; animation: none; }
+.ff { flex: 1; display: grid; grid-template-rows: 1fr auto; min-height: 100%; color: #fff; cursor: pointer; }
+.ff-stage { position: relative; display: grid; place-items: center; min-height: 260px; }
+.ff-stage > * { grid-area: 1 / 1; }
+.ff-bang { font-size: 64px; font-weight: bold; color: #f8f8f8; text-shadow: 3px 3px 0 #c03020; opacity: 0; transform: scale(.4); transition: opacity .15s, transform .2s steps(4); }
+.ff-ov.s1 .ff-bang { opacity: 1; transform: scale(1); }
+.ff-ov.s2 .ff-bang { opacity: 0; transition: opacity .2s; }
+.ff-shadow { opacity: 0; filter: brightness(0) drop-shadow(0 0 6px #6880c0); transition: opacity .5s; }
+.ff-ov.s2 .ff-shadow { opacity: 1; }
+.ff-ov.s3 .ff-shadow { opacity: 0; transition: none; }
+.ff-mon { opacity: 0; transform: scale(.6); }
+.ff-ov.s3 .ff-mon { opacity: 1; animation: ff-pop .45s steps(6) both; }
+.ff-ov.s3 .ff-stage::after { content: ''; position: absolute; inset: 0; background: #fff; animation: ff-flash .45s ease-out both; pointer-events: none; }
+@keyframes ff-pop { 0% { transform: scale(.6); } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+@keyframes ff-flash { from { opacity: .95; } to { opacity: 0; } }
+.ff-parcel { display: grid; place-items: center; width: 120px; height: 120px; color: #e8b858; }
+.ff-parcel .icon { width: 120px; height: 120px; }
+.ff-sparks { width: 0; height: 0; position: relative; pointer-events: none; }
+.ff-sparks i { position: absolute; left: -4px; top: -4px; width: 8px; height: 8px; background: #fff8b0; box-shadow: 0 0 0 2px #e8b030; opacity: 0;
+  transform: rotate(var(--a)) translateY(0); }
+.ff-ov.s3 .ff-sparks i { animation: ff-spark 1.1s var(--d) steps(8) both; }
+@keyframes ff-spark { 0% { opacity: 1; transform: rotate(var(--a)) translateY(-30px) scale(1); } 100% { opacity: 0; transform: rotate(var(--a)) translateY(-120px) scale(.4); } }
+.ff-text { margin: 0 12px calc(16px + env(safe-area-inset-bottom)); padding: 12px 14px 10px; background: #f8f8f8; color: #202838; border: 4px solid #586890;
+  border-radius: 8px; box-shadow: inset 0 0 0 2px #fff; opacity: 0; transform: translateY(12px); transition: opacity .25s, transform .25s; position: relative;
+  word-break: keep-all; overflow-wrap: break-word; }
+.ff-ov.s4 .ff-text { opacity: 1; transform: none; }
+.ff-title { display: block; font-size: var(--fs-l); margin-bottom: 4px; color: #c03020; }
+.ff-body { margin: 0; line-height: 1.5; }
+.ff-more { position: absolute; right: 10px; bottom: 4px; color: #c03020; animation: ff-blink 1s steps(2) infinite; }
+@media (prefers-reduced-motion: reduce) { .ff-ov * { animation: none !important; transition: none !important; } .ff-ov.s3 .ff-stage::after { display: none; } }
+.gift-btn { position: relative; color: #e8c070; }
+.gift-btn .icon { width: 22px; height: 22px; }
+.gift-dot { position: absolute; top: -6px; right: -6px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--red); color: #fff; font-size: 11px;
+  line-height: 14px; text-align: center; border: 2px solid #182030; }
+nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
+.gift-head { display: flex; gap: 12px; align-items: center; word-break: keep-all; }
+.gift-head p { margin: 4px 0 0; }
+.gift-big { flex: none; color: #c89038; } .gift-big .icon { width: 48px; height: 48px; }
+.gift-open { color: #a02818; word-break: keep-all; }
+.gift-code { width: 100%; font: inherit; font-size: var(--fs-l); padding: 10px 12px; border: 3px solid #586890; border-radius: 8px; text-align: center; letter-spacing: 1px; }
+.gift-msg { min-height: 1.4em; margin: 6px 2px; color: #a02818; word-break: keep-all; }
+.overlay.full .ditto { flex: 1; display: grid; place-items: center; align-content: center; gap: 18px; color: #fff; padding: 16px; text-align: center; cursor: pointer; }
+.ditto-text { margin: 0; font-size: var(--fs-l); word-break: keep-all; }
+.rumour { word-break: keep-all; }
+.rumour b { color: #803090; }
+.rumour ul { margin: 4px 0; padding-left: 18px; }
+.rumour small { color: #586078; }
+@keyframes ff-blink { 50% { opacity: 0; } }
+.ff-mon, .ff-shadow { width: min(72vw, 288px) !important; height: auto !important; aspect-ratio: 1; image-rendering: pixelated; }
+.ditto-c { width: min(60vw, 224px); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
