@@ -22,6 +22,8 @@
   sfloor<0-1> saltar sstairs<L|R|C>  제단 방 돌바닥 · 흰 대리석 제단 · 돌계단 (난간 쪽)
   pwall<0-15>_<0-2> spillar    제단 방 분홍빛 갈색 절벽 · 부서진 돌기둥 16×32
   tallR<0-1>                   풀숲을 밟을 때 흔들리는 잎 2장
+  bsand<0-1> bshal<0-15>_<0-1> bdeep<0-1> bdeepe<0-15> bshalc<..>  해변 모래 · 얕은 물 (물거품 테두리, 2장) · 깊은 바다 · 깊은 바다 테두리
+  bcoralA bcoralB bshell brock bsign palm   산호 (분홍 / 노랑) · 조개+불가사리 · 모래 위 바위 · 표지판 · 야자나무 16×24
 주인공 safari-hero.png · 사육사 safari-keeper.png: 16×24 칸, 줄 = 아래·위·왼쪽·오른쪽, 칸 = 서기·걸음1·걸음2.
 """
 import json
@@ -928,6 +930,215 @@ def shrine_tiles():
     return out
 
 
+# ─────────── 해변 (0040): 밝은 모래 · 얕은 물 (물거품 테두리) · 깊은 바다 · 산호 · 조개 · 불가사리 · 야자나무 ───────────
+# 3세대 해변 길 느낌으로 새로 그림: 모래는 따뜻한 연노랑 + 듬성한 반점, 얕은 물은 청록 + 흰 물거품 줄,
+# 깊은 바다는 진한 파랑. 테두리는 모래길 · 물가와 같은 이웃 비트 (N1 E2 S4 W8).
+BC = {k: hx(v) for k, v in dict(
+    bs0='#f8e4a8', bs1='#fff4cc', bs2='#e4c888', bs3='#c8a868', bw='#d8bc80',   # 모래 · 젖은 모래
+    q0='#68cce0', q1='#a0e8f4', q2='#40a8cc', qF='#ffffff', qf='#d0f4fc',        # 얕은 물 · 물거품
+    d0='#3c84d0', d1='#5ca4e8', d2='#2c64b0',                                    # 깊은 바다
+    c0='#f07894', c1='#ffb4c4', c2='#c04870', cK='#782c48', cy='#f8d060', cY='#d09838',  # 산호 · 노란 산호
+    sh0='#fff8f0', sh1='#f4c8c8', sh2='#c89090', st0='#f89848', st1='#d06828', st2='#ffc888',  # 조개 · 불가사리
+    pt0='#b07c48', pt1='#d8a468', pt2='#7c5028', pK='#4c3018',                  # 야자 줄기
+    pl0='#3c9c48', pl1='#68c058', pl2='#a0e070', plK='#1c5a28',                 # 야자 잎
+).items()}
+
+
+def bsand(v):
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            t.px(x, y, BC['bs0'])
+    pts = [(2, 2), (11, 4), (6, 10), (13, 13), (1, 12)] if v == 0 else [(4, 1), (9, 8), (14, 5), (3, 14), (12, 12)]
+    for (x, y) in pts:                      # 작은 반짝 알갱이 (밝은 2점 + 그늘 1점)
+        t.px(x, y, BC['bs1']); t.px(x + 1, y, BC['bs1']); t.px(x + 1, y + 1, BC['bs2'])
+    for (x, y) in ([(8, 6), (4, 7), (12, 9)] if v == 0 else [(7, 3), (1, 6), (10, 14)]):
+        t.px(x, y, BC['bs2'])
+    if v == 1:
+        t.px(6, 12, BC['bs3'])
+    return t
+
+
+def bshallow(mask, f):
+    """얕은 물 (걸을 수 있음): 청록 + 물결 (2장), 물이 아닌 쪽 (모래) 으로 젖은 모래 · 흰 물거품 · 밝은 물."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            t.px(x, y, BC['q0'])
+    o = 3 * f
+    for (x, y, n) in [(1, 3, 4), (9, 6, 3), (4, 11, 4), (11, 13, 3)]:
+        for i in range(n):
+            t.px((x + i + o) % 16, y, BC['q1'])
+        t.px((x + o + n) % 16, y + 1, BC['q2'])
+    for y in range(16):
+        for x in range(16):
+            d = edge_dist(x, y, mask, 4)
+            if d < 0.5:
+                t.px(x, y, BC['bw'])
+            elif d < 1.5:
+                t.px(x, y, BC['qF'] if (x + y + f) % 4 else BC['qf'])
+            elif d < 2.5:
+                t.px(x, y, BC['qf'] if (x * 3 + y + f * 2) % 3 == 0 else BC['q1'])
+    return t
+
+
+def bshallow_corner(corner):
+    """얕은 물 안쪽 모서리 (두 옆은 물인데 대각선만 모래): 귀퉁이에 둥근 젖은 모래 · 물거품."""
+    t = Tile()
+    for y in range(5):
+        for x in range(5):
+            X = x if 'w' in corner else 15 - x
+            Y = y if 'n' in corner else 15 - y
+            r = (x * x + y * y) ** 0.5
+            if r < 1.6:
+                t.px(X, Y, BC['bw'])
+            elif r < 2.7:
+                t.px(X, Y, BC['qF'] if (X + Y) % 4 else BC['qf'])
+            elif r < 3.7 and (X * 3 + Y) % 3 == 0:
+                t.px(X, Y, BC['qf'])
+    return t
+
+
+def bdeep(f):
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            t.px(x, y, BC['d0'])
+    o = 4 * f
+    for (x, y) in [(2, 2), (10, 5), (5, 10), (12, 13)]:
+        xx = (x + o) % 13
+        t.px(xx, y, BC['d1']); t.px(xx + 1, y, BC['d1']); t.px(xx + 2, y, BC['d1']); t.px(xx + 1, y + 1, BC['d2'])
+    return t
+
+
+def bdeep_edge(mask):
+    """깊은 바다 위 덧그림: 얕은 물 쪽으로 밝아지는 띠 (2단, 점무늬로 섞음)."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            d = edge_dist(x, y, mask, 4)
+            if d < 1.5:
+                t.px(x, y, BC['q0'])
+            elif d < 3.5:
+                t.px(x, y, BC['q2'])
+            elif d < 4.5 and (x + y) % 2 == 0:
+                t.px(x, y, BC['q2'])
+    return t
+
+
+CORAL = [
+    '................',
+    '..k.....k.......',
+    '.kak...kak..k...',
+    '.kaAk.kaAk.kak..',
+    '..kaAkkaAk.kaAk.',
+    '.k.kaAaAk.kaAk..',
+    'kak.kaaAkkaAk.k.',
+    'kaAkkaaAAaAk.kak',
+    '.kaAaaAAAAk.kaAk',
+    '..kaaAAAAAkkaAk.',
+    '...kaAAAAAaaAk..',
+    '....kkaaaAAAk...',
+    '...wkddddddk.w..',
+    '..w.wkkkkkk.w...',
+    '................',
+    '................',
+]
+
+
+def bcoral(yellow=False):
+    t = Tile()
+    pal = {'k': BC['cK'], 'a': BC['cY'] if yellow else BC['c2'], 'A': BC['cy'] if yellow else BC['c0'],
+           'd': BC['q2'], 'w': BC['qF']}
+    t.art(CORAL, pal)
+    for (x, y) in [(2, 2), (8, 2), (12, 3)]:      # 가지 끝 밝은 점
+        t.px(x, y, BC['bs1'] if yellow else BC['c1'])
+    return t
+
+
+SHELL = [
+    '..........kk....',
+    '.........kAAk...',
+    '........kAaAak..',
+    '........kaAaAk..',
+    '.........kkkk...',
+    '................',
+    '..s.............',
+    '.sSs............',
+    'sSSSs...........',
+    '.sSs............',
+    '.s.s............',
+]
+
+
+def bshell():
+    t = Tile()
+    t.art(SHELL, {'k': BC['sh2'], 'A': BC['sh0'], 'a': BC['sh1'], 's': BC['st1'], 'S': BC['st0']}, 1, 3)
+    t.px(3, 11, BC['st2'])
+    return t
+
+
+def brock():
+    t = Tile(); t.art(ROCK, {'k': 'mK', '1': 'm1', '2': 'm0', '3': 'm2', 'g': BC['bs3']}); return t
+
+
+def bsign():
+    t = Tile(); t.art(SIGN, dict(SIGN_PAL, g=BC['bs3'])); return t
+
+
+PALM = [  # 16×24: 위 8줄은 윗칸으로 솟음. 부채처럼 펼친 잎 + 마디진 줄기 (오른쪽 그늘)
+    '......kk..kk....',
+    '....kk11kk11kk..',
+    '...k1222k1221k..',
+    '..k12kk2k2kk21k.',
+    '.k12k..k22k.k21k',
+    'k12k..k2332k.k1k',
+    'k1k..k123321k.kk',
+    '.k..k12k33k21k..',
+    '...k12k.cc.k21k.',
+    '..k12k..cC..k1k.',
+    '..k1k..kpPk..kk.',
+    '...k...kpPk.....',
+    '.......kpPk.....',
+    '........kpPk....',
+    '........kpPk....',
+    '........kppPk...',
+    '........kpPPk...',
+    '.......kpppPk...',
+    '.......kpPPPk...',
+    '.......kppPPk...',
+    '......kpppPPPk..',
+    '.....ggkkkkkkgg.',
+    '......gggggggg..',
+    '................',
+]
+
+
+def palm():
+    t = Tile(16, 24)
+    t.art(PALM, {'k': BC['plK'], '1': BC['pl1'], '2': BC['pl0'], '3': BC['pl2'], 'c': BC['pt2'], 'C': BC['pt1'],
+                 'p': BC['pt0'], 'P': BC['pt2'], 'g': BC['bs3']})
+    for y in range(10, 21, 3):               # 줄기 마디
+        for x in range(16):
+            if t.get(x, y) == BC['pt0']:
+                t.px(x, y, BC['pt1'])
+    return t
+
+
+def beach_tiles():
+    out = [('bsand0', bsand(0)), ('bsand1', bsand(1))]
+    for f in range(2):
+        for m in range(16):
+            out.append((f'bshal{m}_{f}', bshallow(m, f)))
+    for c in ('ne', 'nw', 'se', 'sw'):
+        out.append((f'bshalc{c}', bshallow_corner(c)))
+    out += [('bdeep0', bdeep(0)), ('bdeep1', bdeep(1))]
+    for m in range(16):
+        out.append((f'bdeepe{m}', bdeep_edge(m)))
+    out += [('bcoralA', bcoral()), ('bcoralB', bcoral(True)), ('bshell', bshell()), ('brock', brock()), ('bsign', bsign())]
+    return out
+
+
 def grass_rustle(f):
     """풀숲을 밟을 때 잎이 흔들리는 2장: 위쪽 잎 끝이 좌우로 1px."""
     t = Tile()
@@ -1144,6 +1355,7 @@ def build():
     tiles += ultra_tiles()
     tiles += shrine_tiles()
     tiles += [('tallR0', grass_rustle(0)), ('tallR1', grass_rustle(1))]
+    tiles += beach_tiles()
     tree = Tile(16, 24); tree.art(TREE, TREE_PAL)
 
     cols = 16
@@ -1161,6 +1373,8 @@ def build():
         idx[f'worm{f}'] = [16 + f * 32, rows * TS, 32, 32]
     sheet.paste(spillar().im, (144, rows * TS))          # 돌기둥 16×32
     idx['spillar'] = [144, rows * TS, 16, 32]
+    sheet.paste(palm().im, (160, rows * TS))            # 해변 야자나무 16×24
+    idx['palm'] = [160, rows * TS, 16, 24]
     return sheet, idx
 
 
