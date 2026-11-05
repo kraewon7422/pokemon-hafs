@@ -468,9 +468,16 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .type-table td.x0 { background: #404858; color: #fff; font-weight: bold; }
 
 /* ───────── 배틀 (3세대 느낌) ───────── */
-.bt-team { display: flex; gap: 8px; justify-content: space-around; }
-.bt-team > div { display: grid; justify-items: center; gap: 2px; text-align: center; min-width: 0; }
-.bt-team small { font-size: 12px; word-break: keep-all; }
+/* 내 배틀 팀: 3·4마리 모두 같은 너비 칸. 칸마다 그림 → 이름 → Lv → 타입이 같은 높이에 (이름은 한 줄, 단어 안에서 안 끊음) */
+.bt-team { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: start; }
+.bt-mon { container-type: inline-size; display: grid; justify-items: center; align-content: start; gap: 2px; text-align: center; min-width: 0; }
+.bt-tpic { display: flex; align-items: flex-end; justify-content: center; width: 100%; overflow: hidden; }
+/* 긴 이름 (일레도리자드 6글자)은 칸 너비에 맞춰 글자를 줄임: 100cqi = 칸 너비 */
+.bt-name { display: block; max-width: 100%; white-space: nowrap; word-break: keep-all; font-size: min(var(--fs-s), calc(100cqi / (var(--len, 4) + .3))); height: 18px; line-height: 18px; font-weight: bold; }
+.bt-mlv { font-size: var(--fs-s); white-space: nowrap; height: 16px; line-height: 16px; }
+.bt-team .types { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; margin-top: 2px; }
+.bt-team .type { padding: 0 4px; line-height: 16px; border-width: 1px; }
+@container (min-width: 112px) { .bt-team .types { flex-direction: row; } }
 .bt-invite { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px; border: 3px solid var(--ink); border-radius: 8px; background: #fff4c8; }
 .bt-invite b { flex: 1 1 100%; }
 .bt-banner { background: #fff4c8; }

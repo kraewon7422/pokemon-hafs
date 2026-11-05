@@ -122,7 +122,10 @@ export function teamStrip(team, size = 56) {
     ? h('div.bt-team', team.map((id) => {
       const m = monById(id); const sp = monSp(m);
       if (!sp) return null;
-      return h('div', spriteCanvas(sp.id, size), h('small', sp.name, ` Lv.${m.level}`), h('span.types', typeChips(sp)));
+      // 칸마다 같은 줄: 그림 상자 · 이름 (한 줄, 길면 글자 작게 = --len) · Lv · 타입 (app.css .bt-team)
+      const name = h('b.bt-name', sp.name);
+      name.style.setProperty('--len', String([...sp.name].length));
+      return h('div.bt-mon', h('div.bt-tpic', { style: { height: `${size}px` } }, spriteCanvas(sp.id, size)), name, h('small.bt-mlv', `Lv.${m.level}`), h('span.types', typeChips(sp)));
     }).filter(Boolean))
     : h('p', '아직 포켓몬이 없어요. QR을 찍어 포켓몬을 먼저 모아요!');
 }
