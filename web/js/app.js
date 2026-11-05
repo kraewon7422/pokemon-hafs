@@ -430,8 +430,8 @@ export function viewHome() {
       h('div', h('b', '레이드 보스 출현!'), h('br'), h('small', `${S.snap.raids_live.map((x) => x.title).join(' · ')} — 대형 화면의 QR을 찍어 참가해요`))),
     encounters().length > 0 && h('button.box.raid-banner.enc-banner', { onclick: () => { sfx.select(); catchEncounter(encounters()[0]); } },
       spriteCanvas(encounters()[0].species_id, 48),
-      encounters()[0].kind === 'wild'
-        ? h('div', h('b', '야생 포켓몬이 나타났다!'), h('br'),
+      encounters()[0].kind === 'wild' || encounters()[0].kind === 'roam'
+        ? h('div', h('b', encounters()[0].kind === 'roam' ? '방랑 전설이 나타났다!' : '야생 포켓몬이 나타났다!'), h('br'),
           h('small', `${speciesOf(encounters()[0].species_id)?.name || '야생 포켓몬'} · 몬스터볼 ${encounters()[0].balls || 5}개`,
             encounters().length > 1 ? ` (+${encounters().length - 1})` : ''),
           h('span.chip.enc-go', '잡으러 가기 ▶'))
