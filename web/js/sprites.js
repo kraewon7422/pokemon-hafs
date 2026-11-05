@@ -309,15 +309,15 @@ export function monCell(dex, shiny = false) {
 
 // Phaser 가 불러갈 그림판: 필요한 포켓몬만 12칸씩 줄지어 (64×64 칸) → { url, frame(dex), cols }
 const SHEETS = new Map();
-export async function atlasURL(dexes = []) {
+export async function atlasURL(dexes = [], shiny = false) {   // shiny = 반짝이는 색 그림 (0042 잡기 장면)
   await spritesReady;
   const list = [...new Set(dexes.map(Number).filter((d) => d > 0))];
-  const key = list.join(',');
+  const key = (shiny ? 's:' : '') + list.join(',');
   if (SHEETS.has(key)) return SHEETS.get(key);
-  await ensureSprites(list);
+  await ensureSprites(list, shiny);
   const cols = CONFIG.ATLAS_COLS, rows = Math.max(1, Math.ceil((list.length + 1) / cols));
   const c = mkCanvas(cols * 64, rows * 64); const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
-  list.forEach((d, i) => { const cell = monCell(d); if (cell) g.drawImage(cell, (i % cols) * 64, Math.floor(i / cols) * 64); });
+  list.forEach((d, i) => { const cell = monCell(d, shiny); if (cell) g.drawImage(cell, (i % cols) * 64, Math.floor(i / cols) * 64); });
   const blob = await new Promise((r) => c.toBlob(r, 'image/png'));
   const idx = new Map(list.map((d, i) => [d, i]));
   const res = { url: blob ? URL.createObjectURL(blob) : ATLAS_URL, frame: (d) => idx.get(Number(d)) ?? list.length, cols };

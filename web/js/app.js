@@ -5,7 +5,7 @@ import { sb, rpc, errorText, reportError, selectAll } from './sb.js';
 import { kv, persist } from './db.js';
 import { parsePlace, isBag, makeNonce, bagPayload, drawQR } from './qrfmt.js';
 import { Scanner } from './scanner.js';
-import { spriteCanvas, paint, monSprite, aliasSprites } from './sprites.js';
+import { spriteCanvas, paint, monSprite, aliasSprites, ensureSprites } from './sprites.js';
 import { sfx, unlockAudio, isSfxOn, setSfxOn, isBgmOn, setBgmOn, bgmScene } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
@@ -1114,26 +1114,28 @@ const tagFor = (sp) => (isSecret(sp.line_id) ? '★비밀 포켓몬 발견★' :
 const throwText = (b) => (b?.exp > 0 ? `\n${{ nice: '나이스', great: '그레이트', excellent: '엑설런트' }[b.grade] || ''} 던지기! 경험치 +${b.exp}${b.levels ? ` (Lv.${b.level})` : ''}` : '');
 
 // 한 마리 획득 축하 화면 (탭하면 닫힘)
-async function showCatch(sp, { isNew, sub = '', bonus = null }) {
+async function showCatch(sp, { isNew, sub = '', bonus = null, shiny = false }) {
   const lucky = luckyMoment();
+  if (shiny) await ensureSprites([sp.id], true).catch(() => {});
   const canvas = spriteCanvas(sp.id, 200, 'white');
-  const scene = h(`div.scene${lucky ? '.golden' : ''}`, h('div.rays'), h('span.spr', canvas, isNew && h('span.new-badge', 'NEW!')));
+  const scene = h(`div.scene${lucky ? '.golden' : ''}${shiny ? '.shiny-catch' : ''}`, h('div.rays'), h('span.spr', canvas, isNew && h('span.new-badge', 'NEW!')));
   const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
   const ov = overlay(h('div.stage', scene, text), 'full');
   await sleep(reducedMotion() ? 0 : 500);
   scene.classList.add('flash');
-  paint(canvas, sp.id, 200);
+  paint(canvas, sp.id, 200, shiny ? 'shiny' : 'normal');
   sfx.catch(); vibrate([80, 60, 160]);
   if (lucky) sfx.correct();
+  if (shiny) setTimeout(() => sfx.ability?.(), 700);   // 0042: 반짝이는 포켓몬
   // 등급 표시는 첫 줄에 따로 (문장 끝에 붙이면 좁은 폰에서 혼자 다음 줄로 떨어짐)
-  const tag = tagFor(sp);
+  const tag = [shiny ? '✦반짝이는 색✦' : '', tagFor(sp)].filter(Boolean).join(' ');
   await typeText(text, `${tag ? `${tag}\n` : ''}축하합니다! ${josa(sp.name, '을', '를')} 획득했습니다!${sub ? `\n(${sub})` : ''}${throwText(bonus)}${lucky ? `\n✦ ${lucky} ✦` : ''}`);
   text.append(h('span.more', '▼'));
   return ov;
 }
 // 도망쳤다 화면
-async function showFled(sp, sub = '', next = '다른 QR을 찾아 다시 만나 봐요!') {
-  const scene = h('div.scene.fled', h('span.spr', spriteCanvas(sp.id, 160)));
+async function showFled(sp, sub = '', next = '다른 QR을 찾아 다시 만나 봐요!', shiny = false) {
+  const scene = h('div.scene.fled', h('span.spr', spriteCanvas(sp.id, 160, shiny ? 'shiny' : 'normal')));
   const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
   const ov = overlay(h('div.stage', scene, text), 'full');
   sfx.fail(); vibrate([40, 40, 40]);
@@ -1143,8 +1145,8 @@ async function showFled(sp, sub = '', next = '다른 QR을 찾아 다시 만나 
 }
 // 남은 포켓몬 모두 바로 잡기 → 한 화면에 모아서 축하
 async function showGroup(items) {
-  const grid = h('div.catch-grid', items.map(({ sp, isNew }) => h('div.catch-cell',
-    h('span.spr', spriteCanvas(sp.id, 96), isNew && h('span.new-badge.small', 'NEW')), h('small', sp.name))));
+  const grid = h('div.catch-grid', items.map(({ sp, isNew, shiny }) => h('div.catch-cell',
+    h('span.spr', spriteCanvas(sp.id, 96, shiny ? 'shiny' : 'normal'), isNew && h('span.new-badge.small', 'NEW')), h('small', sp.name))));
   const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
   const ov = overlay(h('div.stage.group', h('div.scene.group-scene', h('div.rays'), grid), text), 'full');
   sfx.catch(); vibrate([80, 60, 160]);
@@ -1166,30 +1168,31 @@ export async function celebrate(tickets, prevLines) {
     // 0038: QR 에서 나온 야생 포켓몬이 사실 메타몽 → 잡기 장면에는 변신한 모습
     const disg = speciesOf(S.snap?.disguised?.[t.nonce]);
     const seen = disg || sp;
+    const shiny = !!S.snap?.shiny_t?.[t.nonce];   // 0042: 받을 때 서버가 굴린 반짝
     // 0028/0030: 먼저 몬스터볼로 잡기 (공 3개 다 빗나가면 아주 가끔 도망). 장면을 못 띄우면 바로 축하로
     let c = null;
     try {
       cfg ||= S.online ? await catchConfig() : { flee: 0 };
       const { catchScene } = await import('./catch.js');
-      c = await catchScene({ dex: seen.id, name: seen.name, rarity: rarityFor(seen), ball: 'red', balls: 3,
+      c = await catchScene({ dex: seen.id, name: seen.name, rarity: rarityFor(seen), ball: 'red', balls: 3, shiny,
         fleeChance: S.online && cfg.ok ? Number(cfg.flee) || 0 : 0, remaining: list.length - 1 - i });
     } catch { /* 잡기 장면 없이 */ }
     if (c?.fled) {
       await reportCatch(t, c, true);
       changed = true;
       await done(t);
-      const ov = await showFled(sp, t.qr_name);
+      const ov = await showFled(sp, t.qr_name, undefined, shiny);
       await tapToContinue(ov); closeOverlay();
       continue;
     }
     if (c?.skipAll) {
       // 이번 것 + 남은 것 모두: 잡기 장면 없이 한 화면에서 축하 (등급 없음)
       const rest = list.slice(i);
-      const items = rest.map((x) => { const s2 = speciesOf(x.species_id); const isNew = !prevLines.has(s2.line_id); prevLines.add(s2.line_id); return { sp: s2, isNew }; });
+      const items = rest.map((x) => { const s2 = speciesOf(x.species_id); const isNew = !prevLines.has(s2.line_id); prevLines.add(s2.line_id); return { sp: s2, isNew, shiny: !!S.snap?.shiny_t?.[x.nonce] }; });
       await Promise.all(rest.map((x) => reportCatch(x, { grade: 'none' }, false)));
       for (const x of rest) S.celebrated.add(x.nonce);
       await kv.set('celebrated', [...S.celebrated]);
-      const ov = rest.length > 1 ? await showGroup(items) : await showCatch(sp, { isNew: items[0].isNew, sub: t.qr_name });
+      const ov = rest.length > 1 ? await showGroup(items) : await showCatch(sp, { isNew: items[0].isNew, sub: t.qr_name, shiny });
       await tapToContinue(ov); closeOverlay();
       break;
     }
@@ -1197,7 +1200,7 @@ export async function celebrate(tickets, prevLines) {
     prevLines.add(sp.line_id);
     const bonus = c ? await reportCatch(t, c, false) : null;
     if (disg) await dittoReveal(disg.id, sp.id);
-    const ov = await showCatch(sp, { isNew, sub: t.qr_name, bonus });
+    const ov = await showCatch(sp, { isNew, sub: t.qr_name, bonus, shiny });
     await done(t);
     await tapToContinue(ov);
     closeOverlay();
@@ -1223,6 +1226,7 @@ export async function catchEncounter(enc) {
   if (!S.online) return say(`${josa(legend || roam ? '전설의 포켓몬' : safari ? '사파리존 포켓몬' : wild ? '야생 포켓몬' : '레이드 보스', '을', '를')} 잡으려면 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.`, true);
   const sp = speciesOf(enc.species_id);
   if (!sp) return;
+  const shiny = !!enc.shiny;   // 0042: 만남이 생길 때 서버가 굴린 반짝
   // 0036: 박스가 꽉 차면 잡을 수 없음 (만남은 그대로 남음 → 놓아준 뒤 다시)
   if (boxFull()) return say(`박스가 꽉 찼어요 (${boxMax()}마리). 가방 → 포켓몬에서 몇 마리를 놓아준 뒤에 잡아요.`, true);
   encBusy = true; celebrating = true;
@@ -1247,20 +1251,19 @@ export async function catchEncounter(enc) {
       const { catchScene } = await import('./catch.js');
       if (c) { /* 이어서 보내기만 */ } else
       c = safari
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior), level: Number(enc.level) || undefined,   // 0040: 서버가 정한 야생 레벨 (잡기 난이도)
-         
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior), level: Number(enc.level) || undefined, shiny,   // 0040: 서버가 정한 야생 레벨 (잡기 난이도)
           fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true,
           onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss })
         : legend
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true,
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true, shiny,
           intro: `전설의 포켓몬 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` })
         : wild
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true,
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true, shiny,
           intro: roam ? `방랑 전설 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` : null })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
-          balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false });
+          balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false, shiny });
     } catch { /* */ }
     // 장면을 못 띄웠으면 (레이드엔 바로 잡기 버튼이 없으니 skipped = 실패) 결과를 보내지 않음 → 기회는 그대로 남음
     if (!c || c.skipped) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
@@ -1290,8 +1293,8 @@ export async function catchEncounter(enc) {
     if (fled && c.ran) return r;      // 사파리존에서 스스로 도망 → 알림 없이 맵으로
     if (!fled && r?.ditto && r.disguised_as) await dittoReveal(r.disguised_as, r.species_id);   // 0038: 메타몽이었다!
     const ov = fled ? await showFled(sp2, sub, legend ? '아직 그 자리에 있어요. 다시 말을 걸면 또 도전할 수 있어요!' : roam ? '방랑 전설은 다음 시간에 또 다른 곳으로 옮겨 간대요.'
-      : safari ? '풀숲을 걷다 보면 또 만날 수 있어요!' : wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!')
-      : await showCatch(sp2, { isNew: r?.new ?? !prev.has(sp2.line_id), sub, bonus: r?.exp > 0 ? { ...r, grade: c.grade } : null });
+      : safari ? '풀숲을 걷다 보면 또 만날 수 있어요!' : wild ? '걷다 보면 또 다른 포켓몬을 만날 수 있어요!' : '다음 레이드에서 다시 도전해 봐요!', shiny)
+      : await showCatch(sp2, { isNew: r?.new ?? !prev.has(sp2.line_id), sub, bonus: r?.exp > 0 ? { ...r, grade: c.grade } : null, shiny: r?.shiny ?? shiny });
     await tapToContinue(ov); closeOverlay();
     return r;
   } finally {

@@ -201,7 +201,7 @@ const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..
 
 // ═════════════════════════════ 장면 ═════════════════════════════
 // onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
-export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수)
+export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null, shiny = false } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수) · shiny: 반짝이는 색 (0042)
   const tod = EDGE[time] ? time : defaultTime();
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
@@ -319,7 +319,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
       ? Promise.race([Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}), new Promise((r) => setTimeout(r, 1500))])
       : Promise.resolve();
     // 곡이 나오기 시작할 때까지도 기다림 (최대 1.5초) → 포켓몬 등장을 곡의 박에 맞출 수 있게
-    const [Phaser, SHEET] = await Promise.all([loadPhaser(), atlasURL([dex]), fonts, bgmReady(TRACK, 1500)]);
+    const [Phaser, SHEET] = await Promise.all([loadPhaser(), atlasURL([dex], !!shiny), fonts, bgmReady(TRACK, 1500)]);
     const ATLAS_URL = SHEET.url;     // 이 포켓몬 한 칸짜리 그림판 (sprites.js)
     if (dead) return out;
 
@@ -640,7 +640,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         play('select'); vibrate([30, 40, 60]);
         burst(ball.x, ball.y - 8, 8);
         ball.setTint(0xb8b8c8);
-        say(`${josa(nm, '을', '를')} 잡았다!`);
+        say(shiny ? `반짝이는 ${josa(nm, '을', '를')} 잡았다!` : `${josa(nm, '을', '를')} 잡았다!`);
         showHud(false);
         await c.wait(160);
         play('catch');
@@ -986,11 +986,21 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         // 곡이 나오고 있으면 다음 박 (야생 곡 첫 타격 전이면 그 타격) 에 나타남 — 그땐 8비트 '짠' 효과음은 안 냄 (겹치지 않게)
         const beat = bgmBeat(TRACK, 120);
         if (beat != null && beat < 2500) await new Promise((res, rej) => setTimeout(() => (c.alive() ? res() : rej(CANCEL)), beat));
+        const introText = intro ? intro.replace('{n}', String(BALLS)).split('\n')[0] : style === 'hafs' ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`;
         say(intro ? intro.replace('{n}', String(BALLS)) : style === 'hafs' ? `레이드 보스 ${josa(nm, '이', '가')} 덤벼든다!\n공 ${BALLS}개로 잡아 보자!` : `야생의 ${josa(nm, '이', '가')} 나타났다!`);
         monW.setAlpha(1);
         if (beat == null) play('scan');
         await c.tw({ targets: [mon, monW], scaleX: MON_K, scaleY: MON_K, duration: 320, ease: 'Back.easeOut' });
         await c.tw({ targets: monW, alpha: 0, duration: 200 });
+        // 0042: 반짝이는 포켓몬 — 나타나자마자 별이 두 번 번쩍 + '반짝반짝!' (3세대처럼)
+        if (shiny) {
+          const cc = center();
+          play('ability'); burst(cc.x, cc.y, 10);
+          label('반짝반짝!', '#ffe14a', cc.x, cc.y - bh / 2 - 18, false);
+          await c.wait(260);
+          play('ability'); burst(cc.x + 6, cc.y - 6, 8);
+          say(`${introText}\n몸이 반짝반짝 빛나고 있다!`);
+        }
         resetMon(); B.free = true;
         // 1.4초 (화면을 누르면 바로)
         await new Promise((res) => {

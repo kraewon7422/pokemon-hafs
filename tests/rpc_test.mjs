@@ -76,6 +76,9 @@ await patchSetting('roam_chance', 0);
 // 0039: 시간표 칸의 날씨 · 필드 (모래바람 데미지 등) — 예전 배틀 시험이 시각에 따라 달라지지 않게 시험 동안 빈 시간표 (끝에서 되돌림)
 const BF_ORIG = (await admin.select('settings?key=eq.battle_fields')).data?.[0]?.value ?? [];
 await patchSetting('battle_fields', []);
+// 0042: 새로 잡는 포켓몬이 1/512 로 반짝 — 예전 시험 (SHINY_LOCKED 등) 이 흔들리지 않게 시험 동안 0 (끝에서 되돌림)
+const WSHINY0 = (await admin.select('settings?key=eq.wild_shiny_chance')).data?.[0]?.value ?? 0.001953125;
+await patchSetting('wild_shiny_chance', 0);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -2833,11 +2836,137 @@ console.log('\n[51] 별명 (0041): set_nickname · 길이/글자/욕설 막기 �
   ok(r.data && r.data.nickname === null, 'blank → nickname cleared by the student', r);
 }
 
+console.log('\n[52] 반짝이는 포켓몬 · 빛나는 부적 · 알림 이유 (0042)');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_flee', 'safari_flee_step',
+                'safari_flee_legend', 'safari_reset_hours', 'ditto_disguise_chance', 'shiny_charm_mult', 'egg_shiny', 'legend_quests', 'roam_chance'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sh1234' })).error);
+  const X = client(await pwLogin(`${sid}@code.local`, 'sh1234'));
+  await X.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '반짝테스트' });
+  const st = async () => (await X.rpc('sync')).data.state;
+  const walk = async () => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const a = (await X.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).data;
+      if (a?.encounter || a?.reason) return a;
+      await wait(400);
+    }
+    return null;
+  };
+  const flee = (a) => X.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+  try {
+    // 0) 설정 (사용자가 고른 값)
+    ok(Math.abs(Number(WSHINY0) - 1 / 512) < 1e-12 && Number(old.shiny_charm_mult) === 3
+       && Math.abs(old.egg_shiny?.green - 1 / 256) < 1e-12 && Math.abs(old.egg_shiny?.yellow - 1 / 128) < 1e-12 && Math.abs(old.egg_shiny?.purple - 1 / 64) < 1e-12,
+       'settings: wild shiny 1/512 · eggs 1/256 · 1/128 · 1/64 · charm ×3', [WSHINY0, old.shiny_charm_mult, old.egg_shiny]);
+    const item = (await admin.select('items?key=eq.shiny_charm&select=key,name,pocket')).data?.[0];
+    ok(item?.pocket === 'key' && item.name === '빛나는 부적', 'shiny_charm item (key pocket)', item);
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    await setS('safari_encounter_rate', 1);
+    // 1) 반짝 100% → 만날 때부터 반짝 (safari pending.shiny) → 잡으면 박스의 그 한 마리 shiny + shiny_on
+    await setS('wild_shiny_chance', 1);
+    const a1 = await walk();
+    ok(a1?.encounter?.shiny === true, 'wild shiny chance 1 → the safari encounter is shiny when it appears', a1?.encounter);
+    const c1 = (await X.rpc('safari_result', { p_id: a1?.encounter?.id, p_throws: 1, p_caught: true })).data;
+    const m1 = (await X.select(`collection?id=eq.${c1?.mon}&select=id,shiny,shiny_on`)).data?.[0];
+    ok(c1?.caught && c1.shiny === true && m1?.shiny === true && m1.shiny_on === true, 'caught shiny encounter → collection shiny = shiny_on = true', [c1, m1]);
+    const t1 = (await X.select(`tickets?nonce=eq.${c1?.nonce}&select=shiny`)).data?.[0];
+    ok(t1?.shiny === true, 'its ticket records shiny', t1);
+    // 2) 반짝 0% → 반짝 아님
+    await setS('wild_shiny_chance', 0);
+    const a0 = await walk();
+    ok(a0?.encounter && a0.encounter.shiny === false, 'chance 0 → not shiny', a0?.encounter);
+    await flee(a0);
+    // 3) 만남이 없는 길 (소포 → _redeem_ticket) 도 굴림 + state.shiny_t
+    await setS('wild_shiny_chance', 1);
+    const gcode = `shiny${Math.random().toString(36).slice(2, 8)}`;
+    const g = (await admin.rpc('admin_create_gift', { p_code: gcode, p_title: '반짝 소포', p_dex: 25, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null })).data;
+    const gc = (await X.rpc('gift_claim', { p_code: gcode })).data;
+    const gm = (await X.select(`collection?id=eq.${gc?.mon}&select=shiny,shiny_on`)).data?.[0];
+    const s1 = await st();
+    ok(gc?.ok && gm?.shiny === true && gm.shiny_on === true && Object.keys(s1.shiny_t || {}).length >= 2, 'redeem path (gift) rolls shiny too · state.shiny_t lists shiny tickets', [gc, gm, s1.shiny_t]);
+    if (g?.id) await admin.rpc('admin_delete_gift', { p_id: g.id });
+    // 5) 퀘스트 알림 = 해낸 조건 글 · 깨어남 알림 = 조건 + 사파리존 자리
+    const Q = structuredClone(old.legend_quests);
+    Q.find((q) => q.dex === 482).n = 1;
+    Q.find((q) => q.dex === 249).n = 1;
+    await setS('legend_quests', Q);
+    const water = (await admin.select(`lines?select=id&subject=eq.${encodeURIComponent('야생')}&rarity=eq.common&ultra=eq.false&legend_src=is.null&btype=eq.${encodeURIComponent('물')}&order=id&limit=1`)).data?.[0]?.id;
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: water, p_stage: 1 });
+    const s2 = await st();
+    const nq = s2.notices.find((n) => n.kind === 'quest');
+    ok(nq?.body.startsWith('포켓몬을 1마리 잡았어요!') && nq.body.includes('\n') && nq.data?.reason === '포켓몬을 1마리 잡았어요!', 'quest notice body starts with the achieved condition', nq);
+    const nr = s2.notices.find((n) => n.kind === 'legend_ready' && n.data?.dex === 249);
+    ok(nr?.body.startsWith('물 타입 포켓몬을 1마리 잡았어요!') && nr.body.includes('여울의 동굴'), "'깨어났다' notice: condition + where in the Safari", nr);
+    await setS('legend_quests', old.legend_quests);
+    // 6) 방랑 전설: 만난 장소 QR 이름이 알림에 · QR 로 만난 만남도 반짝 (100%)
+    await setS('roam_chance', 1); await setS('wild_shiny_chance', 1);
+    const spots = (await admin.rpc('admin_roam_spots', { p_at: new Date().toISOString() })).data;
+    const rk = spots?.find((x) => x.dex === 243);
+    await X.rpc('sync', { p_scans: [{ n: nonce(), q: rk.qr, t: T[rk.qr].token }] });
+    const re = (await st()).encounters.find((e) => e.kind === 'roam');
+    ok(re?.shiny === true, 'roaming encounter from a QR scan is shiny (chance 1) · encounters carry shiny', re);
+    await X.rpc('encounter_result', { p_id: re?.id, p_caught: true });
+    const nro = (await st()).notices.find((n) => n.kind === 'roam');
+    ok(nro?.body.includes(rk.qr_name) && nro.body.includes('방랑하던') && nro.data?.shiny === true && nro.body.includes('반짝'), 'roam notice says where it was met (QR name) + shiny line', [nro, rk.qr_name]);
+    await setS('roam_chance', old.roam_chance ?? 0.3); await setS('wild_shiny_chance', 0);
+    // 7) 학교 도감 완성 → 빛나는 부적 한 번 + 알림 한 번
+    const elig = (await admin.select(`lines?select=id,max_stage&active=eq.true&withdrawn=eq.false&bonus=eq.false&secret=eq.false&subject=neq.${encodeURIComponent('야생')}&order=id`)).data;
+    for (const l of elig) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: 1 });
+    for (const l of elig) if (l.max_stage > 1) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: l.max_stage });
+    for (const l of elig) if (l.max_stage > 2) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: 2 });
+    const brs = ((await admin.select('species?id=gte.10000&select=id,line_id,stage')).data || []).filter((x) => elig.some((l) => l.id === x.line_id));
+    const evs = (await admin.select('evolutions?to_species=gte.10000&select=from_species,to_species')).data || [];
+    for (const b of brs) {
+      const e = evs.find((x) => x.to_species === b.id);
+      const from = e && (await admin.select(`species?id=eq.${e.from_species}&select=id,stage`)).data?.[0];
+      if (!from || from.id >= 10000) continue;
+      await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: b.line_id, p_stage: from.stage });
+      await admin.rpc('admin_set_level', { p_student_id: sid, p_line: b.line_id, p_level: 100 });
+      await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: 1 });
+      const m = (await myMons(X)).filter((x) => x.line_id === b.line_id && x.stage === from.stage).pop();
+      await X.rpc('evolve', { p_mon: m?.id, p_to: b.id });
+    }
+    const s3 = await st();
+    const charmQty = async () => ((await X.rpc('bag_state', { p_since: 0 })).data?.items || []).find((x) => x.key === 'shiny_charm')?.qty;   // 학생은 inventory 표를 직접 못 읽음 (RLS)
+    const inv = { qty: await charmQty() };
+    const charmN = s3.notices.filter((n) => n.kind === 'charm');
+    ok(inv?.qty === 1 && s3.charm === true && charmN.length === 1 && charmN[0].title === '빛나는 부적을 받았다!' && charmN[0].body.includes('3배') && charmN[0].body.includes('도감을 모두 채웠어요!'),
+       'dex complete → 빛나는 부적 + notice', [inv, charmN, s3.profile?.dex_count]);
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: elig[0].id, p_stage: 1 });
+    const s4 = await st();
+    ok((await charmQty()) === 1 && s4.notices.filter((n) => n.kind === 'charm').length === 1, 'given only once (later catches give nothing more)');
+    const n100 = s4.notices.find((n) => n.kind === 'dex100');
+    ok(!n100 || n100.body.startsWith('학교 도감을 모두 채웠어요!'), 'dex100 notice (if configured) starts with the reason', n100);
+    // 8) 부적 (도감 완성으로 받은 것): 확률 × shiny_charm_mult (최대 1), 0 은 그대로 0 · 쓸 수 없음
+    await setS('wild_shiny_chance', 0.5); await setS('shiny_charm_mult', 2);
+    const withCharm = [];
+    for (let i = 0; i < 4; i++) { const a = await walk(); withCharm.push(a?.encounter?.shiny); await flee(a); }
+    ok(withCharm.every((x) => x === true), 'charm: 1/2 × 2 = 100% → every encounter shiny', withCharm);
+    await setS('wild_shiny_chance', 0);
+    const zero = []; for (let i = 0; i < 3; i++) { const a = await walk(); zero.push(a?.encounter?.shiny); await flee(a); }
+    ok(zero.every((x) => x === false), 'charm multiplies (0 × 2 = 0), never adds', zero);
+    ok((await st()).charm === true, 'state.charm = true while holding the charm');
+    const m0 = (await X.rpc('sync')).data.state.mons?.[0]?.id;
+    ok((await X.rpc('bag_use', { p_item: 'shiny_charm', p_mon: m0 })).error === 'KEY_ITEM', 'the charm cannot be used (KEY_ITEM)');
+    ok((await X.rpc('bag_set_held', { p_mon: m0, p_item: 'shiny_charm' })).error, 'the charm cannot be held');
+    await setS('shiny_charm_mult', old.shiny_charm_mult ?? 3);
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    await setS('wild_shiny_chance', 0);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);
 await patchSetting('roam_chance', ROAM0);
 await patchSetting('battle_fields', BF_ORIG);
+await patchSetting('wild_shiny_chance', WSHINY0);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

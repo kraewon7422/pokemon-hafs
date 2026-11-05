@@ -10,6 +10,7 @@ import { overlay, sheet, closeOverlay, openBag, sync } from './app.js';
 import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES, evoSheet, evoOpts, abilityBox } from './dex.js';
 import { moveOf } from './battle.js';
 import { eggPocket, loadEggs, TIER } from './eggs.js';
+import { CHARM_SVG } from './legends.js';
 
 // 아이콘 순서 = tools/build_item_icons.py ORDER (web/img/items.png, 32px 칸, 실제 포켓몬 물건 그림)
 const ICONS = [...Array.from({ length: 18 }, (_, i) => `boost${String(i + 1).padStart(2, '0')}`),
@@ -106,7 +107,10 @@ function pocketList(cur, sel, pick, redraw) {
   if (cur === 'box') return pcView(redraw);
   if (cur === 'key') {
     const p = S.snap?.profile || {};
+    const charm = (S.bag?.items || []).some((x) => x.key === 'shiny_charm' && x.qty > 0);   // 0042: 빛나는 부적 (쓰기 · 지니기 없음)
     return [h('div.stack',
+      charm ? h('div.bag-item.charm-row', h('span.key-ico', { html: CHARM_SVG }),
+        h('span', h('b', '빛나는 부적'), h('br'), h('small', '도감을 모두 채운 증거. 반짝이는 포켓몬을 더 잘 만나요'))) : null,
       h('div.bag-item', h('span.key-ico', itemIcon('evo', 32)), h('span', h('b', '진화의 돌'), h('br'), h('small', '진화 레벨 전에 진화시킬 때 써요')), h('b.qty', `×${p.evo_tickets ?? 0}`)),
       h('div.bag-item', h('span.key-ico', pix('ticket', 'l')), h('span', h('b', '부스 티켓'), h('br'), h('small', '부스에서 포켓몬으로 바꿔요')), h('b.qty', `×${(S.snap?.tickets || []).filter((t) => t.status === 'pending').length}`)),
       h('button.btn.big.primary', { onclick: () => { closeOverlay(); openBag(); } }, '티켓 QR 보여주기 (부스용)'))];
@@ -359,7 +363,7 @@ function holdPicker(m, reopen) {
     h('button.btn', { onclick: reopen }, '그만두기')));
 }
 
-// 반짝 색 (알에서 반짝으로 태어난 포켓몬만): 켜고 끄기
+// 반짝 색 (반짝이는 색으로 만난 포켓몬 — 알 · 야생 · 사파리 · QR · 레이드 · 전설 모두, 0042): 켜고 끄기
 function shinyRow(m, reopen) {
   if (!m?.shiny) return null;
   return h('div.bag-item.slim.shiny-row', h('i.shiny-ico', pix('spark')), h('span', h('small', '반짝이는 색'), h('br'), h('b', m.shiny_on ? '켜짐' : '꺼짐')),
