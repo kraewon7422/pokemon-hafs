@@ -16,13 +16,13 @@ const CORE = [
   'vendor/supabase.js', 'vendor/qrcode.js',
   'fonts/Galmuri11.woff', 'fonts/Galmuri11-Bold.woff',
   'sprites/atlas.png', 'sprites/pk-index.js', 'img/clubs/watson.png', 'img/clubs/decfi.png', 'img/title/sky.png', 'img/title/grass.png', 'img/items.png',
-  'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png',
+  'icons/hapsball-192.png', 'icons/hapsball-512.png', 'icons/hapsball-maskable-512.png', 'icons/hapsball-apple-180.png', 'img/hapsball.png',
 ];
 // 첫 화면이 뜬 뒤 뒤에서 받는 것 (QR 카메라·지도·배틀·미니게임) — 다 받으면 미니게임까지 인터넷 없이 됨
 const EXTRA = [
   // 포켓몬 그림판 (보통 4장 먼저, 다음 색이 다른 4장 — 장 수를 바꾸면 여기도)
   ...['n', 's'].flatMap((k) => [0, 1, 2, 3].map((i) => `sprites/pk-${k}${i}.webp`)),
-  'vendor/jsQR.js', 'img/map.webp', 'img/eggs.png', 'js/catch.js', 'js/safari.js', 'js/safari-maps.js', 'js/safari-caves.js', 'js/safari-sync.js', 'img/safari-tiles.png', 'img/safari-tiles.js', 'img/safari-hero.png', 'img/safari-keeper.png', 'img/catch/day.png', 'img/catch/sunset.png', 'img/catch/night.png', 'img/fx/status.png',
+  'vendor/jsQR.js', 'js/share.js', 'img/map.webp', 'img/eggs.png', 'js/catch.js', 'js/safari.js', 'js/safari-maps.js', 'js/safari-caves.js', 'js/safari-sync.js', 'img/safari-tiles.png', 'img/safari-tiles.js', 'img/safari-hero.png', 'img/safari-keeper.png', 'img/catch/day.png', 'img/catch/sunset.png', 'img/catch/night.png', 'img/fx/status.png',
   ...['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'].map((n) => `img/battle/${n}.png`),
   'js/games/surf.js', 'js/games/dodge.js', 'js/games/maze.js', 'js/games/land.js', 'js/games/cross.js', 'img/games/cross/cross-props.png',
   'vendor/phaser.min.js', 'img/games/dodge/dodge-bg.png', 'img/games/surf/surf-props.png',

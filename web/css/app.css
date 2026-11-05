@@ -1222,3 +1222,28 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 @keyframes ff-blink { 50% { opacity: 0; } }
 .ff-mon, .ff-shadow { width: min(72vw, 288px) !important; height: auto !important; aspect-ratio: 1; image-rendering: pixelated; }
 .ditto-c { width: min(60vw, 224px); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
+
+/* 0041 합스볼 로고 (tools/build_logo.py) · 별명 · 사진 공유 (share.js) */
+.topbar h1 { display: flex; align-items: center; gap: 6px; }
+.top-logo { width: 24px; height: 24px; flex: none; image-rendering: pixelated; }
+.topbar .status { white-space: nowrap; }
+@media (max-width: 389px) { .topbar h1 { gap: 4px; letter-spacing: 0; } .top-logo { width: 20px; height: 20px; } }
+@media (max-width: 359px) { .topbar .status { white-space: normal; } }
+@media (max-width: 339px) { .top-logo { display: none; } }
+nav.tabs .scan-tab .capsule img { width: 46px; height: 46px; image-rendering: pixelated; display: block; }
+@media (max-width: 359px) { nav.tabs .scan-tab .capsule img { width: 40px; height: 40px; } }
+.boot-ball, .boot-ball img { width: 40px; height: 40px; }
+.boot-ball img { display: block; image-rendering: pixelated; }
+.trainer .card-share { grid-column: 1 / -1; justify-self: end; min-height: 36px; white-space: nowrap; }
+.setting-nick .nick-row { display: flex; gap: 8px; }
+.setting-nick .nick-row input { flex: 1; min-width: 0; }
+.setting-nick .nick-row .btn { flex: none; white-space: nowrap; }
+.setting-nick small { word-break: keep-all; overflow-wrap: break-word; }
+.share-box { display: grid; gap: 10px; }
+.share-pic { display: block; width: 100%; max-width: 420px; max-height: 56dvh; object-fit: contain; justify-self: center; border: 3px solid var(--ink); border-radius: 8px; background: #283048; }
+.share-hint { word-break: keep-all; overflow-wrap: break-word; text-align: center; }
+.share-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.share-acts .btn { min-height: 48px; }
+.share-bgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.share-bgs button { appearance: none; min-height: 40px; padding: 4px; border: 3px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: var(--fs-s); white-space: nowrap; cursor: pointer; }
+.share-bgs button[aria-pressed='true'] { background: var(--gold); box-shadow: inset 0 -3px 0 #c8a048; font-weight: bold; }

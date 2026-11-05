@@ -268,19 +268,14 @@ export const ICONS = {
   battle: '<path d="M3 3h4l13 13-4 4L3 7zM25 3h-4L8 16l4 4L25 7zM5 19l4 4-3 3-4-4zM23 19l-4 4 3 3 4-4z"/>',
 };
 // red & white ball for the centre scan button (user's choice)
-export const CAPSULE = `<svg viewBox="0 0 32 32" aria-hidden="true">
-  <circle cx="16" cy="16" r="14" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
-  <path d="M2.5 16a13.5 13.5 0 0 1 27 0z" fill="#e04848"/>
-  <path d="M6 9a11 11 0 0 1 6-4" fill="none" stroke="#ff9a9a" stroke-width="2" stroke-linecap="round"/>
-  <rect x="2" y="14.5" width="28" height="3" fill="#202838"/>
-  <circle cx="16" cy="16" r="5" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
-  <circle cx="16" cy="16" r="2" fill="#fff" stroke="#c8c8c8" stroke-width="1"/></svg>`;
+// 가운데 QR 버튼 = 합스볼 (tools/build_logo.py → web/img/hapsball.png)
+export const CAPSULE = '<img src="img/hapsball.png" alt="" width="46" height="46">';
 
 export const TABS = [['home', '홈'], ['map', '지도'], ['raid', '레이드'], ['scan', 'QR'], ['battle', '배틀'], ['dex', '도감'], ['rank', '랭킹']];
 
 export function renderShell() {
   app().replaceChildren(
-    h('header.topbar', h('h1', { onclick: logoTap }, CONFIG.GAME_TITLE),
+    h('header.topbar', h('h1', { onclick: logoTap }, h('img.top-logo', { src: 'img/hapsball.png', alt: '', width: 24, height: 24 }), CONFIG.GAME_TITLE),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         h('div.status#status', { role: 'status' }),
         h('span#gift-slot', giftButton()),
@@ -383,6 +378,9 @@ export function nextAction() {
   return [pix('camera', 'l'), 'QR을 찾아서 찍어 보세요', 'go', openScanner];
 }
 
+// 트레이너 카드 → PNG (share.js 는 처음 누를 때만 불러옴)
+const openCardShare = () => import('./share.js').then((m) => m.openCardShare()).catch(() => toast('인터넷이 연결되면 다시 해 주세요.'));
+
 export function viewHome() {
   const p = S.snap.profile;
   const R = rules();
@@ -455,7 +453,8 @@ export function viewHome() {
       h('div.badges', { title: '최종 진화시킨 쌤 포켓몬' }, S.catalog.lines.filter((l) => !l.secret && !l.bonus && l.subject !== '야생').map((l) => {
         const done = (owned(l.id)?.stage || 0) >= (l.max_stage ?? 3);
         return h(`i${done ? '.on.t-' + l.subject : ''}`, { title: done ? `${l.subject} 완성` : '?' });
-      }))),
+      })),
+      h('button.btn.small.card-share', { onclick: openCardShare }, pix('phone'), '카드 공유 · 저장')),
 
     h('section.box', { 'aria-label': '티켓 주머니' },
       h('div.banner', h('b', `티켓 주머니 ${normal.length}/${R.bag_max}`, items.length > normal.length ? h('span.special-count', ` + ★${items.length - normal.length}`) : null),
@@ -586,7 +585,8 @@ export function openSettings() {
       h('div.seg', { role: 'group', 'aria-label': '이름 공개' },
         h('button', { 'aria-pressed': String(!!p.show_on_board), onclick: () => setPublic(true) }, h('span', '공개'), h('small', masked)),
         h('button', { 'aria-pressed': String(!p.show_on_board), onclick: () => setPublic(false) }, h('span', '비공개'), h('small', '익명 트레이너'))),
-      h('small', '공개해도 이름 가운데 글자는 가려져요. 언제든 바꿀 수 있어요.')),
+      h('small', p.nickname ? '별명을 정해서 지금은 별명이 보여요. 별명을 지우면 위 설정대로 보여요.' : '공개해도 이름 가운데 글자는 가려져요. 언제든 바꿀 수 있어요.')),
+    nicknameBox(p),
     isStudentAcct(p) && h('section.box.class-row',
       h('span', h('b', '우리 반'), h('br'), h('small', p.grade ? `${classLabel(p)} (반별 랭킹)` : '아직 안 정했어요')),
       h('button.btn.small', { onclick: () => { closeOverlay({ replacing: true }); classSheet(); } }, p.grade ? '바꾸기' : '정하기')),
@@ -611,6 +611,39 @@ export function openSettings() {
     h('small', { style: { textAlign: 'center' } }, `${p.student_id.replace(/^g:/, '')} · 버전 ${CONFIG.VERSION}`),
     h('small.fan-note', CONFIG.FAN_NOTICE),
   ]);
+}
+
+// 별명 (0041): 랭킹 · 대형 화면 · 배틀 상대에게 보이는 이름. 2~10자 한글·영어·숫자, 욕설은 서버가 막음. 빈 칸 = 지우기
+export const NICK_RE = /^[가-힣A-Za-z0-9]+( [가-힣A-Za-z0-9]+)*$/;
+export function nickProblem(v) {
+  if (!v) return '';
+  if (v.length < 2 || v.length > 10 || !NICK_RE.test(v) || /[0-9]{5,}/.test(v)) return errorText('BAD_NICKNAME');
+  return '';
+}
+function nicknameBox(p) {
+  const inp = h('input', { type: 'text', maxlength: 10, value: p.nickname || '', placeholder: '예: 번개토끼', autocomplete: 'off', enterkeyhint: 'done', 'aria-label': '별명' });
+  const err = h('div.err', { role: 'alert' });
+  const save = h('button.btn.primary', { type: 'submit' }, '저장');
+  const send = async (v) => {
+    err.textContent = nickProblem(v);
+    if (err.textContent) return;
+    save.disabled = true;
+    try {
+      const prof = await rpc('set_nickname', { p_nick: v }, { retries: 0 });
+      S.snap.profile = { ...S.snap.profile, ...prof };
+      await kv.set('snap', S.snap);
+      sfx.blip();
+      toast(v ? `별명을 "${v}"${josa(v, '으로', '로').slice(v.length)} 정했어요! 랭킹에 별명이 보여요.` : '별명을 지웠어요.');
+      closeOverlay({ replacing: true });
+      openSettings();
+    } catch (e) { err.textContent = errorText(e.message); save.disabled = false; }
+  };
+  return h('form.box.stack.setting-nick', { onsubmit: (e) => { e.preventDefault(); send(inp.value.trim().replace(/\s+/g, ' ')); } },
+    h('b', '별명'),
+    h('div.nick-row', inp, save),
+    err,
+    h('small', '랭킹 · 대형 화면 · 배틀에서 이름 대신 보여요. 2~10자, 한글·영어·숫자.'),
+    p.nickname && h('button.btn.small', { type: 'button', onclick: () => send('') }, '별명 지우기 (원래 이름으로)'));
 }
 
 // 불편한 점·문의 → 운영자 페이지 '요청' 탭
@@ -792,7 +825,8 @@ export function viewRank() {
       h('button', { 'aria-pressed': String(S.rankScope === 'gen'), onclick: () => { S.rankScope = 'gen'; loadRanking(); } }, `${p.gen}기`)),
     r ? h('div.box.banner', h('span', '내 순위 ', h('b', r.me ? `#${r.me.rank}` : '-'), ` / ${r.total}명`),
       h('small', `${timeAgo(r.at)} 기준`)) : h('div.box', S.online ? '불러오는 중…' : '오프라인이에요. 인터넷이 연결되면 랭킹을 불러와요.'),
-    !p.show_on_board && h('div.box', { style: { fontSize: '13px' } }, '지금은 "익명 트레이너"로 표시돼요. 오른쪽 위 톱니바퀴 설정에서 바꿀 수 있어요.'),
+    p.nickname ? h('div.box', { style: { fontSize: '13px' } }, `별명 "${p.nickname}"${josa(p.nickname, '으로', '로').slice(p.nickname.length)} 표시돼요. 설정에서 바꿀 수 있어요.`)
+      : !p.show_on_board && h('div.box', { style: { fontSize: '13px' } }, '지금은 "익명 트레이너"로 표시돼요. 오른쪽 위 톱니바퀴 설정에서 별명을 정하거나 이름을 공개할 수 있어요.'),
     r && h('ol.rank-list', r.top.map((t) => h(`li${t.me ? '.me' : ''}`,
       h(`span.rank-no.r${t.rank}`, t.rank <= 3 ? pix(['gold', 'silver', 'bronze'][t.rank - 1], 'l') : `#${t.rank}`),
       h('span', h('div', t.display, t.me ? ' (나)' : ''), h('div.rank-sub', sub(t))),

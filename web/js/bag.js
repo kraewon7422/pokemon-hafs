@@ -276,6 +276,7 @@ export async function openMon(id, page = 0) {
     h('div.sum-acts',
       h('button.btn', { disabled: isPartner, onclick: () => setPartner(m) }, isPartner ? '카드 포켓몬' : '카드에 올리기'),
       canEvo ? h('button.btn.gold', { onclick: () => evoSheet({ ...m, line_id: m.line }) }, '진화') : null,
+      h('button.btn', { onclick: () => import('./share.js').then((s) => s.openPhoto(m, () => openMon(id, page))).catch(() => toast('인터넷이 연결되면 다시 해 주세요.')) }, '사진 만들기'),
       h('button.btn', { onclick: () => { sfx.blip(); moving = id; pcBox = Math.floor(m.pos / PER); last = { pocket: 'box', sel: null }; backToBag(); } }, '옮기기'),
       h('button.btn.danger', { onclick: () => releaseMon(m) }, '놓아주기')),
     h('button.btn', { onclick: backToBag }, '박스로'),

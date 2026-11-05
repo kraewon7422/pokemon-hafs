@@ -1516,6 +1516,10 @@ async function studentDetail(sid, reload) {
       try { await rpc('admin_unlink', { p_student_id: sid }); toast(`${sid} 기록을 삭제했어요.`); S.stuSel = null; await reload(); } catch (e) { fail(e); }
     }
   };
+  const clearNick = async () => {
+    const ok = await confirmBox('별명 지우기', [`${sid}의 별명 "${p.nickname}"을(를) 지울까요? 랭킹에는 원래 이름(또는 익명)으로 보여요.`], { ok: '지우기', danger: true });
+    if (ok) act('admin_clear_nickname', { p_student_id: sid }, '별명을 지웠어요.');
+  };
   const cancel = (t) => async () => {
     const ok = await confirmBox('티켓 취소', [`${S.qrById.get(t.qr_id)?.name || t.qr_id} 티켓(대기 중)을 취소할까요?`, '취소하면 그 QR이 다시 열려요.'], { ok: '티켓 취소', danger: true });
     if (ok) act('admin_cancel_ticket', { p_nonce: t.nonce }, '티켓을 취소했어요.');
@@ -1531,12 +1535,15 @@ async function studentDetail(sid, reload) {
       h('dt', '진화의 돌'), h('dd', h('b', p.evo_tickets)),
       h('dt', '랭킹 포함'), h('dd', p.in_ranking === false ? chip('랭킹 제외', 'off') : chip('랭킹 포함', 'ok')),
       h('dt', '랭킹 공개'), h('dd', p.show_on_board ? '공개' : '익명'),
+      h('dt', '별명'), h('dd', p.nickname ? h('b', p.nickname) : h('span.muted', '없음')),
       h('dt', '마지막 접속'), h('dd', p.last_seen ? `${fmtTime(p.last_seen)} (${timeAgo(p.last_seen)})` : '–'),
       h('dt', '가입'), h('dd', fmtTime(p.created_at))),
     h('div.row', h('b', '진화의 돌'), delta, h('button.btn.small', { onclick: adj(-1) }, '빼기 −'), h('button.btn.small.go', { onclick: adj(1) }, '더하기 +')),
     h('div.row', h('b', '역할'), roleSel, h('button.btn.small', { onclick: setRole }, '변경')),
     h('div.row', h('b', '랭킹'), h('button.btn.small', { onclick: toggleRanking }, p.in_ranking === false ? '랭킹에 넣기' : '랭킹에서 빼기'),
-      h('span.small-txt.muted', '선생님·손님(g:) 계정은 처음부터 빠져 있어요.')));
+      h('span.small-txt.muted', '선생님·손님(g:) 계정은 처음부터 빠져 있어요.')),
+    p.nickname && h('div.row', h('b', '별명'), h('button.btn.small', { onclick: clearNick }, '별명 지우기'),
+      h('span.small-txt.muted', '나쁜 말 · 남을 흉내 낸 별명이면 지워요. 학생은 다시 정할 수 있어요.')));
 
   // move all game data to another login (lost phone, new Google login → STUDENT_ID_TAKEN, backup code …)
   const codeEmail = `${isGuest(sid) ? sid.slice(2) : sid}@code.local`;
