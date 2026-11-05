@@ -89,7 +89,7 @@ python tools/build_atlas.py                                                   # 
 ## 0042 반짝이 · 빛나는 부적 · 알림 이유 확인 (스테이징)
 - 서버: `node tests/rpc_test.mjs` → [52] (반짝 100% → 만남부터 반짝 · 잡으면 박스도 반짝 · 소포 길도 굴림 · 부적 × 배수 · 쓸 수 없음 · 도감 완성 → 부적 한 번 + 알림 · 퀘스트/깨어남/방랑 알림 첫 줄 = 이유). 시험 동안 `wild_shiny_chance` 는 0 (끝에서 되돌림).
 - 확률 (운영자 [성장·보상] → '반짝이는 포켓몬'): 새로 잡는 포켓몬 1/512 · 알 1/256 · 1/128 · 1/64 · 빛나는 부적 ×3 (확률 칸은 "1 / N" 의 N).
-- 화면: `node C:/dev/tools/pw-webkit/shiny/prep.mjs` (임시 학생) → 그 학생에게 반짝 만남 한 줄 (SQL `insert into raid_encounters (..., shiny) values (..., true)`) → `node C:/dev/tools/pw-webkit/shiny/ui.mjs <sid> c320|c375 <port>` → 끝나면 `prep.mjs --clean <sid>`.
+- 화면: 임시 학생(0205xx)을 만들고 그 학생에게 반짝 만남 한 줄 (SQL `insert into raid_encounters (..., shiny) values (..., true)`) → `cd web && python -m http.server 8138` 에서 홈 배너 → 잡기 장면(반짝반짝) · 알림 이유 · 가방 부적을 폰(375) · 320 크기로 확인 → 끝나면 임시 학생 지우기.
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.
