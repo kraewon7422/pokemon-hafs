@@ -6,7 +6,7 @@ import { sb, rpc, errorText, selectAll } from './sb.js';
 import { h, $, toast, timeAgo, josa } from './ui.js';
 import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
-import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady, aliasSprites } from './sprites.js';
+import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady, aliasSprites, spriteBlob } from './sprites.js';
 
 const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '외국어', '정보', '한국사', '음악', '체육', '전설'];
 const RARITY = { common: '일반', rare: '희귀', legendary: '전설' };
@@ -880,7 +880,7 @@ function mapBox(q, pos, onPick) {
       const x = isSel ? pos.x : p.map_x;
       const y = isSel ? pos.y : p.map_y;
       if (x == null || y == null) continue;
-      const m = h('div.marker', { style: { left: x * 100 + '%', top: y * 100 + '%' }, title: `${p.id} ${p.name}` }, h('span', p.id));
+      const m = h(`div.marker${x > 0.88 ? '.flip' : ''}`, { style: { left: x * 100 + '%', top: y * 100 + '%' }, title: `${p.id} ${p.name}` }, h('span', p.id));
       if (isSel) m.classList.add('sel');
       if (!p.active) m.classList.add('off');
       wrap.append(m);
@@ -1029,7 +1029,27 @@ function picTools(dex, redraw) {
   const up = h('button.btn.small.go', { type: 'button', onclick: () => uploadPic(dex, redraw).catch(fail) }, sp?.sprite ? '그림 바꾸기' : '그림 올리기');
   const back = custom ? h('button.btn.small', { type: 'button' }, hasPack(sp) || dex <= ATLAS_CAP ? '원래 그림으로' : '그림 지우기') : null;
   if (back) back.onclick = () => busy(back, () => resetPic(dex, redraw));
-  return h('div.pic-tools', custom ? chip('올린 그림', 'ok') : h('span.small-txt.muted', sp?.sprite ? '공식 그림' : dex <= ATLAS_CAP ? '기본 그림' : '그림 없음'), up, back);
+  const dl = h('button.btn.small', { type: 'button', title: '보통 그림과 반짝이(색이 다른) 그림을 PNG 로 저장' }, '그림 내려받기');
+  dl.onclick = () => busy(dl, () => downloadPics(dex));
+  return h('div.pic-tools', custom ? chip('올린 그림', 'ok') : h('span.small-txt.muted', sp?.sprite ? '공식 그림' : dex <= ATLAS_CAP ? '기본 그림' : '그림 없음'), up, back, dl);
+}
+
+// 그림 내려받기: 0493-아르세우스.png + 0493-아르세우스-shiny.png (번호 = 전국도감 번호, 없으면 종 번호)
+const picFileName = (sp, id, shiny) => `${String(sp?.dex || id).padStart(4, '0')}-${String(sp?.name || `포켓몬${id}`).replace(/[\\/:*?"<>|\s]+/g, '_')}${shiny ? '-shiny' : ''}.png`;
+async function downloadPics(dex) {
+  const sp = S.spById.get(dex);
+  let saved = 0;
+  for (const shiny of [false, true]) {
+    const blob = await spriteBlob(dex, shiny);
+    if (!blob) continue;
+    const url = URL.createObjectURL(blob);
+    const a = h('a', { href: url, download: picFileName(sp, dex, shiny) });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    saved++;
+    await new Promise((r) => setTimeout(r, 300));   // 두 파일을 바로 이어서 받으면 브라우저가 하나를 막을 때가 있음
+  }
+  toast(saved ? `그림 ${saved}장을 내려받았어요.` : '이 포켓몬은 내려받을 그림이 없어요.');
 }
 
 async function readPic(file) {
@@ -3082,7 +3102,8 @@ async function tabLegend() {
   if (!S.species?.length) await loadCatalog();
   const set = await loadSettings();
   let items = [];
-  try { items = await tq(sb.from('items').select('key,name,sort').order('sort')); } catch { /* 물건 목록 없이 */ }
+  try { items = await tq(sb.from('items').select('key,name,sort,pocket,move_id,moves(name)').order('sort')); }
+  catch { try { items = await tq(sb.from('items').select('key,name,sort').order('sort')); } catch { /* 물건 목록 없이 */ } }
   return [h('div.cols', h('div', giftCard(items), roamCard()), h('div', questCard(set), settingsGroup(GROUPS.legends, set)))];
 }
 
@@ -3094,19 +3115,40 @@ function giftCard(items) {
   const dex = h('input.inp.w-num', { type: 'number', min: 1, max: 809, placeholder: '번호', 'aria-label': '포켓몬 도감 번호' });
   const dexName = h('span.small-txt.muted');
   dex.oninput = () => { const sp = spByDex(dex.value); dexName.textContent = sp ? sp.name : dex.value ? '없는 번호' : ''; };
-  const item = h('select.inp.w-sel', { 'aria-label': '물건' }, h('option', { value: 'evo_stone' }, '진화의 돌'),
-    items.map((it) => h('option', { value: it.key }, it.name)));
+  // 물건: 주머니별로 묶고 기술머신은 기술 이름까지 (예: 기술머신30 (몸통박치기)). 많아서 찾기 칸으로 거름
+  const itemLabel = (it) => (it.pocket === 'tm' && it.moves?.name ? `${it.name} (${it.moves.name})` : it.name);
+  const POCKET_LABEL = [['tool', '도구'], ['hold', '지니는 물건'], ['med', '회복약'], ['tm', '기술머신'], ['key', '중요한 물건']];
+  const groups = POCKET_LABEL.map(([k, label]) => [label, items.filter((it) => it.pocket === k)])
+    .concat([['기타', items.filter((it) => !POCKET_LABEL.some(([k]) => k === it.pocket))]]).filter(([, l]) => l.length);
+  const item = h('select.inp.w-sel', { 'aria-label': '물건' });
+  const itemFind = h('input.inp', { type: 'search', placeholder: '물건 · 기술 이름으로 찾기', 'aria-label': '물건 찾기' });
+  const fillItems = () => {
+    const q = itemFind.value.replace(/\s+/g, '').toLowerCase();
+    const hit = (label) => !q || label.replace(/\s+/g, '').toLowerCase().includes(q);
+    const prev = item.value;
+    const opts = [];
+    if (hit('진화의 돌')) opts.push(h('option', { value: 'evo_stone' }, '진화의 돌'));
+    for (const [label, list] of groups) {
+      const l = list.filter((it) => hit(itemLabel(it)) || hit(it.key));
+      if (l.length) opts.push(h('optgroup', { label: `${label} (${l.length})` }, l.map((it) => h('option', { value: it.key }, itemLabel(it)))));
+    }
+    item.replaceChildren(...(opts.length ? opts : [h('option', { value: '', disabled: true }, '찾는 물건이 없어요')]));
+    if ([...item.options].some((o) => o.value === prev)) item.value = prev;
+  };
+  itemFind.oninput = fillItems;
+  fillItems();
   const qty = h('input.inp.w-num', { type: 'number', min: 1, max: 99, value: 1, 'aria-label': '개수' });
   const starts = h('input.inp', { type: 'datetime-local', 'aria-label': '시작 시각' });
   const ends = h('input.inp', { type: 'datetime-local', 'aria-label': '끝 시각' });
   const max = h('input.inp.w-num', { type: 'number', min: 0, placeholder: '0', 'aria-label': '최대 받는 사람 수' });
   const monRow = h('div.row', h('label', '도감 번호 ', dex), dexName);
-  const itemRow = h('div.row', h('label', '물건 ', item));
+  const itemRow = h('div.stack', h('label.stack', '물건 찾기', itemFind), h('label', '물건 ', item));
   itemRow.style.display = 'none';
   kind.onchange = () => { monRow.style.display = kind.value === 'mon' ? '' : 'none'; itemRow.style.display = kind.value === 'mon' ? 'none' : ''; };
   const make = h('button.btn.go', '소포 만들기');
   make.onclick = () => busy(make, async () => {
     const mon = kind.value === 'mon';
+    if (!mon && !item.value) { toast('줄 물건을 고르세요.'); return; }
     try {
       await rpc('admin_create_gift', {
         p_code: code.value, p_title: title.value || null, p_dex: mon ? Number(dex.value) || null : null, p_item: mon ? null : item.value,
@@ -3123,7 +3165,7 @@ function giftCard(items) {
     try { rows = await rpc('admin_list_gifts', {}); } catch (e) { list.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
     if (!rows.length) { list.replaceChildren(h('p.small-txt.muted', '아직 만든 소포가 없어요.')); return; }
     list.replaceChildren(...rows.map((g) => {
-      const what = g.species_id ? `${g.species_name} (No.${g.dex})${g.qty > 1 ? ` ×${g.qty}` : ''}` : `${g.item_name || g.item} ×${g.qty}`;
+      const what = g.species_id ? `${g.species_name} (No.${g.dex})${g.qty > 1 ? ` ×${g.qty}` : ''}` : `${(() => { const it = items.find((x) => x.key === g.item); return it ? itemLabel(it) : g.item_name || g.item; })()} ×${g.qty}`;
       const when = [g.starts_at && `${new Date(g.starts_at).toLocaleString('ko-KR')}부터`, g.ends_at && `${new Date(g.ends_at).toLocaleString('ko-KR')}까지`]
         .filter(Boolean).join(' · ') || '기간 제한 없음';
       const tog = h('button.btn.small', g.active ? '끄기' : '켜기');
