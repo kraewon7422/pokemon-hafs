@@ -1657,7 +1657,7 @@ async function studentDetail(sid, reload) {
   // 가방 물건 주기 · 레벨 정하기 (0020)
   const itemSel = h('select.inp', { 'aria-label': '물건' }, h('option', { value: '' }, '물건 불러오는 중…'));
   sb.from('items').select('key,name,pocket').order('sort').then(({ data }) => {
-    itemSel.replaceChildren(...(data || []).map((x) => h('option', { value: x.key }, `${x.name} (${{ hold: '지닌 물건', med: '회복약', tool: '도구', tm: '기술머신' }[x.pocket]})`)));
+    itemSel.replaceChildren(...(data || []).map((x) => h('option', { value: x.key }, `${x.name} (${{ hold: '지닌 물건', med: '회복약', tool: '도구', tm: '기술머신', key: '소중한 물건' }[x.pocket] || x.pocket})`)));
   });
   const itemQty = h('input.inp', { type: 'number', min: 1, max: 99, value: 1, style: { width: '72px' }, 'aria-label': '개수' });
   const itemBtn = h('button.btn.go', '주기');
@@ -2373,7 +2373,9 @@ const DEFAULTS = {
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
   // 0027_eggs_class_achievements.sql
   egg_steps: { green: 1000, yellow: 2500, purple: 5000 }, egg_qr_bonus: 300, steps_per_min_max: 200, steps_day_max: 30000,
-  egg_hold_max: 9, egg_incubators: 3, egg_drop_place: 0.25, egg_shiny: { green: 0.1, yellow: 0.25, purple: 0.5 }, egg_legend: 0.1,
+  egg_hold_max: 9, egg_incubators: 3, egg_drop_place: 0.25, egg_legend: 0.1,
+  // 0042_shiny.sql (egg_shiny 는 0027 값을 0042 가 바꿈)
+  egg_shiny: { green: 1 / 256, yellow: 1 / 128, purple: 1 / 64 }, wild_shiny_chance: 1 / 512, shiny_charm_mult: 3,
   // 0028_catch.sql
   catch_exp: { none: 0, nice: 20, great: 40, excellent: 80, curve: 20 },
   // 0030_catch_raid_class.sql
@@ -2499,8 +2501,17 @@ const GROUPS = {
       P('egg_hold_max', '한 사람이 가질 수 있는 알 수', 'int', { unit: '개', min: 1, max: 30 }),
       P('egg_incubators', '부화기 칸 수', 'int', { unit: '칸', min: 1, max: 3, help: '서버가 1~3칸만 써요.' }),
       P('egg_drop_place', '새 장소 QR에서 알이 나올 확률', 'pct'),
-      P('egg_shiny', '알에서 반짝이(색 다른 포켓몬)가 나올 확률', 'obj', { parts: EGG_PARTS, partKind: 'pct' }),
       P('egg_legend', '보라 알에서 전설이 나올 확률', 'pct'),
+    ],
+  },
+  // 0042 반짝이는 포켓몬 (이로치)
+  shiny: {
+    tab: '성장·보상', title: '반짝이는 포켓몬 (색이 다른 포켓몬)',
+    intro: '확률은 "1/N" 의 N 으로 넣어요 (512 = 512마리에 1마리꼴). 0 = 안 나옴. 도감을 모두 채운 학생은 빛나는 부적을 받아 모든 확률이 아래 배수만큼 올라가요.',
+    fields: [
+      P('wild_shiny_chance', '새로 잡는 포켓몬이 반짝일 확률', 'odds', { help: '야생 (걸음 · QR) · 사파리존 · 레이드 · 전설 · 방랑 · 부스 티켓 · 소포 모두. 만날 때 서버가 정해서 잡기 장면부터 반짝여요. 기본 1/512.' }),
+      P('egg_shiny', '알에서 반짝이가 나올 확률', 'obj', { parts: EGG_PARTS, partKind: 'odds', help: '기본 초록 1/256 · 노랑 1/128 · 보라 1/64.' }),
+      P('shiny_charm_mult', '빛나는 부적: 확률 배수', 'num', { unit: '배', min: 1, max: 20, help: '기본 3배 (1/512 → 1/171). 확률은 100%를 넘지 않아요.' }),
     ],
   },
   catchExp: {
@@ -2570,9 +2581,13 @@ const KEY_TITLE = { battle_fields: '배틀 시간표 (날씨 · 필드)', notice
 const keyTitle = (key) => SPEC_BY_KEY[key]?.label || KEY_TITLE[key] || key;
 
 const pctTxt = (v) => `${+(Number(v) * 100).toFixed(2)}%`;
+// 1/N 확률 (0042 반짝이): 0 = 끔
+const oddsN = (v) => (Number(v) > 0 ? Math.round(1 / Number(v)) : 0);
+const oddsTxt = (v) => (Number(v) > 0 ? `1/${oddsN(v).toLocaleString()} (${+(Number(v) * 100).toFixed(3)}%)` : '끔 (0)');
 function fmtPart(kind, v, unit) {
   if (v == null || v === '') return '없음';
   if (kind === 'pct') return pctTxt(v);
+  if (kind === 'odds') return oddsTxt(v);
   if (kind === 'bool') return isOn(v) ? '켜짐' : '꺼짐';
   return `${Number(v).toLocaleString()}${unit ? ' ' + unit : ''}`;
 }
@@ -2615,6 +2630,9 @@ function resetBtn(key, cur, after = rerender) {
 
 // 숫자 칸 (pct 는 % 로 보여 주고 0~1 로 저장)
 function numInput(kind, v, sp, label) {
+  if (kind === 'odds') {
+    return h('input.inp.w-num', { type: 'number', inputmode: 'numeric', step: 1, min: 0, max: 1000000, value: v == null || v === '' ? '' : oddsN(v), 'aria-label': `${label} (1/N 의 N)` });
+  }
   const pct = kind === 'pct';
   const shown = v == null || v === '' ? '' : pct ? +(Number(v) * 100).toFixed(2) : v;
   return h('input.inp.w-num', {
@@ -2625,6 +2643,12 @@ function numInput(kind, v, sp, label) {
 function readNum(inp, kind, sp) {
   const raw = inp.value.trim();
   const n = Number(raw);
+  if (kind === 'odds') {
+    const ok = raw !== '' && Number.isInteger(n) && n >= 0 && n <= 1000000;
+    inp.classList.toggle('bad', !ok);
+    if (!ok) return { ok, err: '0~1,000,000 사이 정수로 넣어 주세요 (1/N 의 N, 0 = 끔)' };
+    return { ok, value: n === 0 ? 0 : 1 / n };
+  }
   const pct = kind === 'pct';
   const lo = pct ? (sp.min ?? 0) : sp.min ?? -Infinity, hi = pct ? (sp.max ?? 100) : sp.max ?? Infinity;
   const ok = raw !== '' && Number.isFinite(n) && (kind !== 'int' || Number.isInteger(n)) && n >= lo && n <= hi;
@@ -2632,7 +2656,7 @@ function readNum(inp, kind, sp) {
   if (!ok) return { ok, err: `${lo.toLocaleString()}~${hi.toLocaleString()}${pct ? '%' : ''} 사이${kind === 'int' ? ' 정수' : ' 숫자'}로 넣어 주세요` };
   return { ok, value: pct ? +(n / 100).toFixed(4) : n };
 }
-const unitSpan = (kind, unit) => (kind === 'pct' ? h('span.unit', '%') : unit ? h('span.unit', unit) : null);
+const unitSpan = (kind, unit) => (kind === 'pct' ? h('span.unit', '%') : kind === 'odds' ? null : unit ? h('span.unit', unit) : null);
 
 // 설정 하나 → { el, read() }
 function makeField(sp, row) {
@@ -2665,7 +2689,8 @@ function makeField(sp, row) {
   if (sp.kind === 'obj') {
     const ins = sp.parts.map(([k, l]) => [k, numInput(sp.partKind, v?.[k], sp, `${sp.label} ${l}`), l]);
     return {
-      el: h('div.parts', ins.map(([, inp, l]) => h('label.part', h('span', l), h('span.part-in', inp, unitSpan(sp.partKind, sp.unit))))),
+      el: h('div.parts', ins.map(([, inp, l]) => h('label.part', h('span', l), sp.partKind === 'odds'
+        ? h('span.part-in', h('span.unit', '1 /'), inp) : h('span.part-in', inp, unitSpan(sp.partKind, sp.unit))))),
       read: () => {
         const out = { ...(v && typeof v === 'object' ? v : {}) };
         for (const [k, inp, l] of ins) {
@@ -2678,6 +2703,7 @@ function makeField(sp, row) {
     };
   }
   const inp = numInput(sp.kind, v, sp, sp.label);
+  if (sp.kind === 'odds') return { el: h('span.part-in', h('span.unit', '1 /'), inp), read: () => readNum(inp, sp.kind, sp) };
   return { el: h('span.part-in', inp, unitSpan(sp.kind, sp.unit)), read: () => readNum(inp, sp.kind, sp) };
 }
 
@@ -3039,7 +3065,7 @@ async function tabGrow() {
   const set = await loadSettings();
   return [
     h('div.cols.wide-left', fieldEditor(set), settingsGroup(GROUPS.battleEnv, set)),
-    h('div.cols', h('div', settingsGroup(GROUPS.eggs, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
+    h('div.cols', h('div', settingsGroup(GROUPS.eggs, set), settingsGroup(GROUPS.shiny, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
     h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
       h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),
   ];

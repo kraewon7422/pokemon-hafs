@@ -457,10 +457,42 @@ function build() {
     return new Promise((res) => {
       clearPad(); say('');
       if (talkQ) { clearInterval(talkQ.timer); talkQ.res(); }
-      talkQ = { lines: lines.filter(Boolean), i: -1, typing: false, timer: 0, res };
       talkEl.hidden = false;
+      talkQ = { lines: lines.filter(Boolean).flatMap(paginate), i: -1, typing: false, timer: 0, res };
       nextLine();
     });
+  }
+  // 0042: 3세대 글 상자처럼 한 상자에 두 줄까지 — 문장 (. ! ? … 뒤) 마다 나눠, 한 줄짜리 두 문장까지 한 상자에 (지금 상자 폭으로 잼).
+  //   한 문장이 두 줄을 넘으면 띄어쓰기에서 나눠 다음 상자로 (단어 중간은 절대 안 끊음 — CSS keep-all).
+  let probe = null;
+  function linesOf(text) {
+    if (!probe) { probe = h('div.sf-probe', { 'aria-hidden': 'true' }); talkEl.append(probe); }
+    const cs = getComputedStyle(talkEl);
+    probe.style.width = `${Math.max(40, talkEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight))}px`;
+    probe.textContent = text;
+    const lh = parseFloat(getComputedStyle(probe).lineHeight) || 24;
+    return Math.max(1, Math.round(probe.offsetHeight / lh));
+  }
+  function paginate(text) {
+    if (!talkEl.clientWidth) return [String(text)];
+    const sents = String(text).replace(/([.!?…]+["'」』)]*)[ \t]+/g, '$1\n').split('\n').map((x) => x.trim()).filter(Boolean);
+    const parts = [];
+    for (const st of sents) {
+      if (linesOf(st) <= 2) { parts.push(st); continue; }
+      let cur = '';
+      for (const w of st.split(' ')) {
+        const t = cur ? `${cur} ${w}` : w;
+        if (cur && linesOf(t) > 2) { parts.push(cur); cur = w; } else cur = t;
+      }
+      if (cur) parts.push(cur);
+    }
+    const out = []; let cur = '';
+    for (const st of parts) {
+      const t = cur ? `${cur}\n${st}` : st;
+      if (cur && linesOf(t) > 2) { out.push(cur); cur = st; } else cur = t;
+    }
+    if (cur) out.push(cur);
+    return out.length ? out : [String(text)];
   }
   function nextLine() {
     const q = talkQ; q.i++;

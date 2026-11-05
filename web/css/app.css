@@ -183,7 +183,7 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .stage .rays { position: absolute; width: 320px; height: 320px; border-radius: 50%; background: repeating-conic-gradient(rgba(248, 208, 72, .35) 0 10deg, transparent 10deg 20deg); animation: spin 8s linear infinite; }
 @keyframes spin { to { transform: rotate(1turn); } }
 .new-badge { position: absolute; top: -8px; right: -24px; z-index: 2; background: var(--red); color: #fff; padding: 2px 10px; border-radius: 6px; border: 3px solid #fff; animation: blink 1s steps(1) infinite; }
-.textbox { min-height: 96px; font-size: var(--fs-m); }
+.textbox { min-height: 96px; font-size: var(--fs-m); white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }   /* 0042: 대사 줄 바꿈 (단어 중간에서 안 끊김) */
 .textbox .more { float: right; animation: blink .8s steps(1) infinite; }
 
 /* quiz */
@@ -685,7 +685,7 @@ details.box[open] > summary::after { content: ' ▴'; }
 
 /* 3세대 느낌 글 상자: 남색 바탕 · 금색 테두리 · 빨간 ▼ */
 .bt-textbox { position: relative; background: #2c4c6c; border: 4px solid #d8b850; box-shadow: inset 0 0 0 3px #1a2c40; border-radius: 8px; padding: 10px 30px 10px 14px; min-height: 74px; box-sizing: border-box; }
-.bt-text { color: #fff; font-size: 16px; line-height: 1.5; white-space: pre-line; text-shadow: 2px 2px 0 #10202c; }
+.bt-text { color: #fff; font-size: 16px; line-height: 1.5; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; text-shadow: 2px 2px 0 #10202c; }
 .bt-arrow { position: absolute; right: 12px; bottom: 10px; width: 0; height: 0; border: 7px solid transparent; border-top-color: #f04830; border-bottom: 0; animation: bt-arrow .7s steps(2) infinite; }
 .bt-arrow[hidden] { display: none; }
 @keyframes bt-arrow { 50% { transform: translateY(3px); } }
@@ -1212,8 +1212,13 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
   border-radius: 8px; box-shadow: inset 0 0 0 2px #fff; opacity: 0; transform: translateY(12px); transition: opacity .25s, transform .25s; position: relative;
   word-break: keep-all; overflow-wrap: break-word; }
 .ff-ov.s4 .ff-text { opacity: 1; transform: none; }
-.ff-title { display: block; font-size: var(--fs-l); margin-bottom: 4px; color: #c03020; }
-.ff-body { margin: 0; line-height: 1.5; }
+.ff-title { display: block; font-size: var(--fs-l); margin-bottom: 4px; color: #c03020; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }
+.ff-body { margin: 0; line-height: 1.5; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }   /* 0042: 이유 줄 · 문장마다 줄 바꿈 (
+) */
+.charm-svg { color: inherit; }
+.ff-parcel .charm-svg { filter: drop-shadow(0 0 10px #fff3a0); }
+.charm-row .key-ico .icon { width: 28px; height: 32px; }
+.scene.shiny-catch .spr::after { content: '✦'; position: absolute; left: 6%; top: 4%; color: #ffe14a; font-size: 28px; text-shadow: 0 0 6px #fff; animation: blink .8s steps(1) infinite; }
 .ff-more { position: absolute; right: 10px; bottom: 4px; color: #c03020; animation: ff-blink 1s steps(2) infinite; }
 @media (prefers-reduced-motion: reduce) { .ff-ov * { animation: none !important; transition: none !important; } .ff-ov.s3 .ff-stage::after { display: none; } }
 .gift-btn { position: relative; color: #e8c070; }
@@ -1228,7 +1233,7 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .gift-code { width: 100%; font: inherit; font-size: var(--fs-l); padding: 10px 12px; border: 3px solid #586890; border-radius: 8px; text-align: center; letter-spacing: 1px; }
 .gift-msg { min-height: 1.4em; margin: 6px 2px; color: #a02818; word-break: keep-all; }
 .overlay.full .ditto { flex: 1; display: grid; place-items: center; align-content: center; gap: 18px; color: #fff; padding: 16px; text-align: center; cursor: pointer; }
-.ditto-text { margin: 0; font-size: var(--fs-l); word-break: keep-all; }
+.ditto-text { margin: 0; font-size: var(--fs-l); word-break: keep-all; overflow-wrap: break-word; white-space: pre-line; }
 .rumour { word-break: keep-all; }
 .rumour b { color: #803090; }
 .rumour ul { margin: 4px 0; padding-left: 18px; }
@@ -1258,3 +1263,5 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .share-bgs button[aria-pressed='true'] { background: var(--gold); box-shadow: inset 0 -3px 0 #c8a048; font-weight: bold; }
 /* 상태 알약 (온라인 · 방금): 좁은 폰에서 줄이 바뀌어도 낱말 중간에서는 안 끊기게 */
 .status { word-break: keep-all; overflow-wrap: normal; min-width: 0; }
+/* 0042: 사파리 글 상자 줄 수 재기 (보이지 않음) */
+.sf-probe { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }
