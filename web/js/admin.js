@@ -2310,7 +2310,8 @@ const DEFAULTS = {
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
-  safari_balls_daily: 20, safari_reset_hours: 24, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_daily_max_encounters: 15, safari_flee: 0.25, safari_steps_per_sec: 6,
+  safari_balls_daily: 20, safari_reset_hours: 0.5, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_flee: 0.25, safari_steps_per_sec: 10,   // 0040: 30분 충전 · 만남 상한 없음 · 걸음 10/초
+  safari_flee_level: 0.1,
   safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
   evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2],
   qr_daily_cap: 3, bag_max: 5, ticket_ttl_hours: 10, token_grace_minutes: 30, rotating_window_sec: 30,
@@ -2415,16 +2416,16 @@ const GROUPS = {
       P('wild_daily', '걸어서 만나는 야생 포켓몬 (하루 최대)', 'int', { unit: '마리', min: 0, max: 100 }),
       P('wild_balls', '걸어서 만난 야생 포켓몬: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요.' }),
       P('safari_balls_daily', '사파리존: 사파리볼 개수', 'step', { unit: '개', min: 0, max: 100, help: '충전 주기마다 한 사람이 받는 사파리볼 (기본 20개). 다 쓰면 다음 충전까지 못 만나요 (서버가 셈). 0 = 사파리존 끔.' }),
-      P('safari_reset_hours', '사파리존: 충전 주기', 'seg', { unit: '시간', options: [[1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간']],
-        help: '서울 시각 00:00 부터 이 시간마다 사파리볼과 만남 수가 다시 차요. 예: 6시간 → 00 · 06 · 12 · 18시. 앱에 "다음 충전 15:00" 처럼 보여요. 바꾸면 바로 새 주기로 세요.' }),
+      P('safari_reset_hours', '사파리존: 충전 주기', 'seg', { unit: '시간', options: [[0.25, '15분'], [0.5, '30분'], [1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간']],
+        help: '서울 시각 00:00 부터 이만큼마다 사파리볼이 다시 차요 (기본 30분). 예: 30분 → 00:00 · 00:30 · 01:00 …. 앱에 "다음 충전 15:30" 처럼 보여요. 바꾸면 바로 새 주기로 세요.' }),
       P('safari_min_steps', '사파리존: 풀숲 몇 걸음부터 만날 수 있나', 'int', { unit: '걸음', min: 0, max: 200 }),
       P('safari_encounter_rate', '사파리존: 그다음 풀숲 한 걸음마다 만날 확률', 'pct', { max: 100, help: '기본 12%. 확률은 서버가 굴려요.' }),
-      P('safari_daily_max_encounters', '사파리존: 충전 주기마다 최대 만남', 'int', { unit: '마리', min: 0, max: 100 }),
       P('safari_flee', '사파리존: 공을 처음 놓쳤을 때 도망칠 확률', 'pct', { max: 100, help: '기본 25% (3세대 사파리존처럼). 도망은 서버가 정해요 — 공을 놓칠 때마다 서버에 물어봐요.' }),
       P('safari_flee_step', '사파리존: 놓칠 때마다 도망 확률이 더 오름', 'pct', { max: 100, help: '기본 +5%. 오래 머물수록 잘 도망가요 (25% → 30% → 35% …).' }),
       P('safari_flee_legend', '사파리존: 전설 포켓몬은 도망 확률 더하기', 'pct', { max: 100, help: '기본 +15%.' }),
       P('safari_flee_max', '사파리존: 도망 확률 최대', 'pct', { max: 100, help: '기본 90%. 아무리 올라도 이보다 높아지지 않아요.' }),
-      P('safari_steps_per_sec', '사파리존: 1초에 셀 수 있는 걸음 (속임 막기)', 'int', { unit: '걸음', min: 1, max: 20, help: '앱은 1초에 5걸음 걸어요. 너무 낮추면 걸어도 만나지 못해요.' }),
+      P('safari_flee_level', '사파리존: 레벨이 높으면 도망 확률 더하기 (Lv.50 기준)', 'pct', { max: 100, help: '기본 +10%. Lv.5 = 0 → Lv.50 = 이만큼 (레벨은 입구에서 멀수록 · 깊을수록 높아요, 5~50).' }),
+      P('safari_steps_per_sec', '사파리존: 1초에 셀 수 있는 걸음 (속임 막기)', 'int', { unit: '걸음', min: 1, max: 20, help: '앱은 1초에 6걸음쯤 걸어요 (기본 10). 너무 낮추면 걸어도 만나지 못해요.' }),
     ],
   },
   // 0038 전설 · 메타몽 · 방랑 전설 · 소포

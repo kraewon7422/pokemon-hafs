@@ -1242,7 +1242,8 @@ export async function catchEncounter(enc) {
       const { catchScene } = await import('./catch.js');
       if (c) { /* 이어서 보내기만 */ } else
       c = safari
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior),
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior), level: Number(enc.level) || undefined,   // 0040: 서버가 정한 야생 레벨 (잡기 난이도)
+         
           fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true,
           onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss })
         : legend

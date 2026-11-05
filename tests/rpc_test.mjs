@@ -1675,12 +1675,12 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
 
 console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 만남 · 사파리볼 하루 개수 · 잡기/도망');
 {
-  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
                 'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
   const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
   await setS('safari_reset_hours', 24);   // 0037: 충전 주기 — 예전 시험은 하루 (24시간)
-  await setS('safari_balls_daily', 10); await setS('safari_min_steps', 8); await setS('safari_daily_max_encounters', 15); await setS('safari_steps_per_sec', 6);
+  await setS('safari_balls_daily', 10); await setS('safari_min_steps', 8); await setS('safari_steps_per_sec', 6);
   await setS('safari_encounter_rate', 1);              // 시험: 8걸음이 지나면 바로 만남
   await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);   // 0037: 도망은 서버가 굴림 → 아래 예전 시험 동안은 0 ([44] 에서 따로)
   let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sf1234' })).error);
@@ -1743,10 +1743,11 @@ console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 �
   ok(c4?.caught && e4?.balls === 4 && s4?.balls_left === 0, 'encounter_result without a throw count spends every borrowed ball', [e4, s4]);
   const a5 = await walk();
   ok(a5?.encounter === null && a5.reason === 'no_balls' && a5.balls_left === 0, 'daily ball cap: no balls left → no more encounters today', a5);
-  // 하루 최대 만남
-  await setS('safari_balls_daily', 30); await setS('safari_daily_max_encounters', 4);
+  // 0040: 만남 상한 없음 — 볼만 있으면 계속 만남 (이미 4번 만났어도)
+  await setS('safari_balls_daily', 30);
   const a6 = await walk();
-  ok(a6?.encounter === null && a6.reason === 'max' && a6.balls_left === 20, 'daily encounter cap reached → no encounter', a6);
+  ok(a6?.encounter && a6.reason == null && a6.balls_left === 20 && !('max_encounters' in a6), 'no encounter cap (0040): balls left → still meets Pokémon after 4 encounters', a6);
+  if (a6?.encounter) await F.rpc('safari_result', { p_id: a6.encounter.id, p_throws: 1, p_caught: false });
   for (const k of keys) await setS(k, old[k]);
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
@@ -1970,10 +1971,10 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
   ok(bell?.stage === 3 && bellLine?.subject && bellLine.subject !== '야생', '아르코 is a stage-3 branch of a teacher line (counts in the school dex)', { bell, bellLine });
 
   // 7) 사파리존 도망 (서버): 25% + 놓칠 때마다 +5% (전설 +15%), safari_turn · safari_result
-  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
                 'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
-  ok(Number(old.safari_balls_daily) === 20 && Number(old.safari_reset_hours) === 24, 'safari ball defaults: 20 balls, refill every 24 h', old);
+  ok(Number(old.safari_balls_daily) === 20 && Number(old.safari_reset_hours) === 0.5, 'safari ball defaults: 20 balls, refill every 30 min (0040)', old);
   ok(Number(old.safari_flee) === 0.25 && Number(old.safari_flee_step) === 0.05 && Number(old.safari_flee_legend) === 0.15 && Number(old.safari_flee_max) === 0.9,
      'flee settings: 25% base, +5% per turn, +15% legend, max 90%', old);
   const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
@@ -1988,7 +1989,7 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
   };
   try {
     await setS('safari_balls_daily', 30); await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1);
-    await setS('safari_daily_max_encounters', 20); await setS('safari_steps_per_sec', 6);
+    await setS('safari_steps_per_sec', 6); await setS('safari_reset_hours', 24);   // 0040: 기본은 30분 → 아래 예전 시험은 24시간으로
     // 첫 차례 0% (전설 더하기도 0) → 반드시 남음. 그다음 차례의 확률은 굴리지 않고 safari_state 로만 봄 (결정적)
     await setS('safari_flee', 0); await setS('safari_flee_step', 0.05); await setS('safari_flee_legend', 0); await setS('safari_flee_max', 0.9);
     const e1 = (await walk())?.encounter;
@@ -2048,7 +2049,7 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
     const z1 = (await X.c.rpc('safari_state')).data;
     ok(hOf(z1?.period_start) === seoulH && new Date(z1.next_reset_at) - new Date(z1.period_start) === 3600e3, '1 h: refills every hour on the hour', z1);
     await setS('safari_reset_hours', 99);
-    ok((await X.c.rpc('safari_state')).data?.reset_hours === 24, 'reset hours are clamped to 1–24');
+    ok((await X.c.rpc('safari_state')).data?.reset_hours === 24, 'reset hours are clamped to at most 24');
   } finally {
     for (const k of keys) await setS(k, old[k]);
   }
@@ -2070,7 +2071,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
   const L = await mk('전설테스트');
   const M = await mk('소포테스트');
   const st = async (c = L.c) => (await c.rpc('sync')).data.state;
-  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
                 'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours',
                 'legend_quests', 'roam_chance', 'legend_daily_tries', 'legend_balls', 'gift_fail_limit', 'ditto_disguise_chance', 'wild_chance', 'self_redeem'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
@@ -2232,7 +2233,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
 
     // ── E · F · G. 사파리: 구역 · 메타몽 · 정리 · 같은 결과 ──
     await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1);
-    await setS('safari_daily_max_encounters', 100); await setS('safari_steps_per_sec', 6);
+    await setS('safari_steps_per_sec', 6);
     await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);
     const walk = async (zone) => {
       for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
@@ -2669,6 +2670,110 @@ console.log('\n[46] 특성 · 변신 · 날씨 / 필드 (0039): admin_bt_sim (�
     const anonTry = await anon.rpc('admin_bt_sim', { p: {} });
     const stuTry = await c3.rpc('admin_bt_sim', { p: {} });
     ok(!!anonTry.error && !!stuTry.error, 'admin_bt_sim: admins only', [anonTry.error, stuTry.error]);
+  }
+}
+
+console.log('\n[50] 사파리존 v3 (0040): 만남 상한 없음 · 구역 레벨 범위 · 해변 포켓몬 · 걸음 속도 · 또 잡으면 레벨 +1 · 30분 충전');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours', 'safari_flee_level', 'ditto_disguise_chance'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  ok(Number(old.safari_reset_hours) === 0.5 && Number(old.safari_steps_per_sec) >= 10 && Number(old.safari_flee_level) === 0.1,
+     'defaults: refill every 30 min, step limit 10/s, level flee bonus 10%', old);
+  ok(!(await admin.select('settings?key=eq.safari_daily_max_encounters&select=key')).data?.length, 'safari_daily_max_encounters setting is gone');
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sv1234' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'sv1234'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '사파리셋' });
+  const walk = async (zone, area, dist) => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const a = (await V.rpc('safari_encounter', { p_steps: 3, p_zone: zone, p_area: area, p_dist: dist })).data;
+      if (a?.encounter || a?.reason) return a;
+      await wait(400);
+    }
+    return null;
+  };
+  const flee = async (a) => V.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+  const spRow = async (id) => (await admin.select(`species?id=eq.${id}&select=line_id,stage,btype`)).data?.[0];
+  try {
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    // 1) 걸음 속도: 앱처럼 1초에 6걸음 (0.5초마다 3걸음) 은 언제나 다 받아들임 · 한 번에 500걸음은 몇 개만
+    await setS('safari_encounter_rate', 0);
+    await V.rpc('safari_encounter', { p_steps: 0 });
+    const acc = [];
+    for (let i = 0; i < 6; i++) { await wait(500); acc.push((await V.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).data?.accepted); }
+    ok(acc.every((n) => n === 3), 'honest fast walking (6 steps/s, STEP_MS 165) is never cut by the speed limit', acc);
+    const big = (await V.rpc('safari_encounter', { p_steps: 500 })).data;
+    ok(big?.accepted <= 20, 'claiming 500 steps at once → only a few accepted', big?.accepted);
+    await setS('safari_encounter_rate', 1);
+    // 2) 만남 상한 없음: 8번 연속 만나도 계속 (이유 'max' 없음, 상태에 max_encounters 없음)
+    const seen = [];
+    for (let i = 0; i < 8; i++) { const a = await walk('grass', 'safari', 0); seen.push(!!a?.encounter && a.reason == null); await flee(a); }
+    const s8 = (await V.rpc('safari_state')).data;
+    ok(seen.every(Boolean) && s8?.encounters_today >= 8 && !('max_encounters' in s8), 'no encounter cap: 8 encounters in a row, no "max" reason', { seen, s8 });
+    // 3) 레벨: 지도 (p_area) 의 범위 안에서 입구 거리만큼 · 맞지 않는 지도 = 그 구역의 가장 낮은 레벨
+    const lv = async (zone, area, dist) => { const a = await walk(zone, area, dist); await flee(a); return a?.encounter?.level; };
+    const L = {
+      entrance: await lv('grass', 'safari', 0), farGrass: await lv('grass', 'safari', 9999), pond: await lv('pond', 'safari', 45),
+      beach0: await lv('beach', 'beach', 0), beachEnd: await lv('beach', 'beach', 58), maze4: await lv('cave', 'maze4', null),
+      liarCave: await lv('grass', 'maze4', 58), liarBeach: await lv('grass', 'beach', 58), noArea: await lv('cave', null, 99), negDist: await lv('beach', 'beach', -50),
+    };
+    ok(L.entrance >= 5 && L.entrance <= 6, 'safari entrance → Lv.5 (±1)', L);
+    ok(L.farGrass >= 15 && L.farGrass <= 16 && L.pond >= 15 && L.pond <= 16, 'far grass / pond grass → top of the safari band (≤16), huge distance clamped', L);
+    ok(L.beach0 >= 10 && L.beach0 <= 11 && L.beachEnd >= 49 && L.beachEnd <= 50, 'beach: Lv.10 at the entrance → Lv.50 at the far end', L);
+    ok(L.maze4 >= 42 && L.maze4 <= 50, 'deepest cave floor (미혹의 동굴 지하 3층) → Lv.42–50', L);
+    ok(L.liarCave === 5 && L.liarBeach === 5 && L.noArea === 14 && L.negDist >= 10 && L.negDist <= 11,
+       'area that does not match the zone / no area → lowest level of that zone (no Lv.50 at the entrance)', L);
+    // 4) 해변 = 물 · 얼음 타입만, 동굴에는 물이 첫 타입인 포켓몬이 없음, 풀숲에는 물 · 얼음 없음
+    const typesOf = async (zone, area) => { const a = await walk(zone, area, 10); await flee(a); return (await spRow(a?.encounter?.species_id))?.btype || ''; };
+    const beachT = [], caveT = [], grassT = [];
+    for (let i = 0; i < 6; i++) beachT.push(await typesOf('beach', 'beach'));
+    for (let i = 0; i < 4; i++) caveT.push(await typesOf('cave', 'shoal2'));
+    for (let i = 0; i < 4; i++) grassT.push(await typesOf('grass', 'safari'));
+    ok(beachT.every((t) => /물|얼음/.test(t)), 'beach pool: only water / ice types', beachT);
+    ok(caveT.every((t) => t && !/^(물|얼음)/.test(t)), 'cave pool: rock/ground/ghost/poison… (never water-first)', caveT);
+    ok(grassT.every((t) => t && !/물|얼음/.test(t)), 'grass pool: no water / ice types', grassT);
+    // 5) 잡으면 그 레벨 그대로 · 또 잡으면 그 계열에서 레벨이 가장 높은 한 마리 +1
+    const e = (await walk('beach', 'beach', 58))?.encounter;
+    const line = (await spRow(e?.species_id))?.line_id;
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: line, p_stage: 1 });
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: line, p_level: 30 });
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: line, p_stage: 1 });
+    const before = (await V.rpc('sync')).data.state.mons.filter((m) => m.line_id === line).sort((a, b) => a.id - b.id);
+    const c = (await V.rpc('safari_result', { p_id: e?.id, p_throws: 1, p_caught: true })).data;
+    const after = (await V.rpc('sync')).data.state.mons.filter((m) => m.line_id === line).sort((a, b) => a.id - b.id);
+    const newMon = after.find((m) => m.id === c?.mon);
+    ok(c?.caught && c.level === e?.level && newMon?.level === e?.level && e.level >= 49, 'caught safari Pokémon keeps its wild level (Lv.49–50 at the far beach)', { e, c, newMon });
+    ok(before.length === 2 && c?.lv_up_mon === before[0].id && after.find((m) => m.id === before[0].id)?.level === 31
+       && after.find((m) => m.id === before[1].id)?.level === before[1].level,
+       'duplicate catch → the highest-level one of that species gets +1 (30 → 31), others unchanged', { before, after, up: c?.lv_up_mon });
+    // 6) 레벨이 진화 레벨을 넘으면 진화의 돌 없이 진화 (0037 evolve 그대로)
+    const evo = (await admin.select('evolutions?how=eq.level&lv=lte.40&select=from_species,to_species,lv&limit=1')).data?.[0];
+    const from = evo && await spRow(evo.from_species);
+    if (from) {
+      await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: from.line_id, p_stage: from.stage });
+      await admin.rpc('admin_set_level', { p_student_id: sid, p_line: from.line_id, p_level: evo.lv });
+      const m = (await V.rpc('sync')).data.state.mons.filter((x) => x.line_id === from.line_id).sort((a, b) => b.id - a.id)[0];
+      const tickets = (await V.rpc('sync')).data.state.profile.evo_tickets;
+      const ev = await V.rpc('evolve', { p_mon: m?.id, p_to: evo.to_species });
+      ok(ev.data?.success && ev.data.by_level && ev.data.evo_tickets === tickets, 'level ≥ evolution level → free evolution (no stone used)', [ev.error, ev.data?.by_level, evo]);
+    } else ok(false, 'found a level evolution for the evolve check');
+    // 7) 사파리볼 충전 30분: 서울 00:00 부터 30분마다 · 0.1 시간은 15분으로 올림 · 99 는 24시간
+    await setS('safari_reset_hours', 0.5);
+    const z = (await V.rpc('safari_state')).data;
+    const mOf = (iso) => Number(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Seoul', minute: 'numeric' }));
+    ok(z?.reset_hours === 0.5 && z.reset_minutes === 30 && mOf(z.period_start) % 30 === 0 && new Date(z.next_reset_at) - new Date(z.period_start) === 30 * 60e3,
+       '30 min refill: period starts on :00/:30, next refill 30 min later', z);
+    ok(z?.balls === 100, 'new 30-min period → balls refilled', z?.balls);
+    await setS('safari_reset_hours', 0.1);
+    ok((await V.rpc('safari_state')).data?.reset_minutes === 15, 'reset period clamped to at least 15 min');
+    await setS('safari_reset_hours', 99);
+    ok((await V.rpc('safari_state')).data?.reset_hours === 24, 'reset period clamped to at most 24 h');
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
   }
 }
 
