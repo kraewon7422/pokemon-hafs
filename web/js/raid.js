@@ -100,23 +100,26 @@ async function findEncounter(speciesId) {
   } catch { return null; }
 }
 
+let joining = false;   // 참가 버튼을 두 번 눌러도 한 번만 (두 번 열리면 화면이 꼬였음)
 export async function joinRaid(q, t) {
   if (!S.online) return say('레이드는 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  if (joining) return; joining = true;
   try {
     const r = await rpc('raid_join', { p_q: q, p_t: t, p_mon: null }, { retries: 0 });
     sfx.scan(); vibrate(80);
     openRaid(r);
-  } catch (e) { sfx.error(); say(errorText(e.message), true); }
+  } catch (e) { sfx.error(); say(errorText(e.message), true); } finally { joining = false; }
 }
 
 // QR 없이 참가 (운영자가 "QR 없이 참가"로 연 레이드)
 export async function joinOpenRaid(r) {
   if (!S.online) return say('레이드는 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
+  if (joining) return; joining = true;
   try {
     const x = await rpc('raid_join_open', { p_raid: r.id, p_mon: bestMon(r.species_id) }, { retries: 0 });
     sfx.scan(); vibrate(80);
     openRaid(x);
-  } catch (e) { sfx.error(); say(errorText(e.message), true); loadMyRaids(); }
+  } catch (e) { sfx.error(); say(errorText(e.message), true); loadMyRaids(); } finally { joining = false; }
 }
 
 export function openRaid(r0) {
@@ -153,7 +156,7 @@ export function openRaid(r0) {
   const finish = async () => {
     if (over) return;
     over = true;
-    clearInterval(S.raidTimer); clearInterval(S.raidFlush);
+    stopTimers();
     bossBtn.disabled = true;
     const sp = speciesOf(r.species_id);
     if (r.status === 'won') {
@@ -230,10 +233,13 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
     picker,
     text), 'full');
   ov.classList.add('raid-overlay');
-  ov.onclose = () => { over = true; clearInterval(S.raidTimer); clearInterval(S.raidFlush); if (pending) rpc('raid_attack', { p_raid: r.id, p_taps: pending, p_mon: mon }, { retries: 0 }).catch(() => {}); loadMyRaids(); };
+  // 이 화면의 타이머만 멈춤 (예전엔 S.raidTimer 를 같이 써서, 다시 들어갈 때 앞 화면이 닫히며 새 화면 타이머까지 꺼 → 탭이 안 보내졌음)
+  let tickT = 0, flushT = 0;
+  const stopTimers = () => { clearInterval(tickT); clearInterval(flushT); if (S.raidTimer === tickT) S.raidTimer = 0; if (S.raidFlush === flushT) S.raidFlush = 0; };
+  ov.onclose = () => { over = true; stopTimers(); if (pending) rpc('raid_attack', { p_raid: r.id, p_taps: pending, p_mon: mon }, { retries: 0 }).catch(() => {}); loadMyRaids(); };
   clearInterval(S.raidTimer); clearInterval(S.raidFlush);
-  S.raidTimer = setInterval(tick, 1000);
-  S.raidFlush = setInterval(flush, 4000);
+  S.raidTimer = tickT = setInterval(tick, 1000);
+  S.raidFlush = flushT = setInterval(flush, 4000);
   draw(); tick();
   const sp = speciesOf(r.species_id);
   const mine = monSp(monById(mon));
