@@ -1230,17 +1230,7 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .ff-mon, .ff-shadow { width: min(72vw, 288px) !important; height: auto !important; aspect-ratio: 1; image-rendering: pixelated; }
 .ditto-c { width: min(60vw, 224px); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
 
-/* 0041 합스볼 로고 (tools/build_logo.py) · 별명 · 사진 공유 (share.js) */
-.topbar h1 { display: flex; align-items: center; gap: 6px; }
-.top-logo { width: 24px; height: 24px; flex: none; image-rendering: pixelated; }
-.topbar .status { white-space: nowrap; }
-@media (max-width: 389px) { .topbar h1 { gap: 4px; letter-spacing: 0; } .top-logo { width: 20px; height: 20px; } }
-@media (max-width: 359px) { .topbar .status { white-space: normal; } }
-@media (max-width: 339px) { .top-logo { display: none; } }
-nav.tabs .scan-tab .capsule img { width: 46px; height: 46px; image-rendering: pixelated; display: block; }
-@media (max-width: 359px) { nav.tabs .scan-tab .capsule img { width: 40px; height: 40px; } }
-.boot-ball, .boot-ball img { width: 40px; height: 40px; }
-.boot-ball img { display: block; image-rendering: pixelated; }
+/* 0041 별명 · 사진 공유 (share.js) */
 .trainer .card-share { grid-column: 1 / -1; justify-self: end; min-height: 36px; white-space: nowrap; }
 .setting-nick .nick-row { display: flex; gap: 8px; }
 .setting-nick .nick-row input { flex: 1; min-width: 0; }

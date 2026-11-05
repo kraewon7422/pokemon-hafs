@@ -81,11 +81,10 @@ python tools/build_atlas.py                                                   # 
 - 서버: `node tests/rpc_test.mjs` → [46] (admin_bt_sim 으로 특성 하나하나 · 날씨 · 필드 · 변신 · 시간표 칸 · 잡을 때 특성). 시험 동안 `battle_fields` 는 빈 목록 (끝에서 되돌림).
 - 화면: 배틀 (연습) 에서 HP 상자를 누르면 특성 설명, 날씨 띠는 오른쪽 위. 운영자 [성장·보상] → '배틀 시간표 (날씨 · 필드)'.
 
-## 0041 별명 · 사진 공유 · 합스볼 로고 확인 (스테이징)
+## 0041 별명 · 사진 공유 확인 (스테이징)
 - 서버: `node tests/rpc_test.mjs` → [51] (별명 정하기 · 길이/글자/욕설 막기 · 10초 제한 · 랭킹 'nick' · 운영자 지우기). 테스트 학생 022901 · 022902 의 별명은 끝에서 지움.
 - 욕설 목록 늘리기: 새 migration 에서 `public._nick_blocked` 를 다시 만듦 (띄어쓰기 · 기호를 뺀 소문자로 비교).
 - 화면: 홈 트레이너 카드 → '카드 공유 · 저장', 가방 → 포켓몬 → '사진 만들기' (배경 고르기). 폰은 [공유] (인스타그램 등), PC 는 [저장] (PNG). 설정 → 별명.
-- 로고를 바꾸려면 `python tools/build_logo.py --preview` (→ `.work/hapsball-8x.png`). 파일 이름을 바꾸면 `manifest.webmanifest` · `index.html` · `sw.js` 도 같이.
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.

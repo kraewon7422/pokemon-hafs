@@ -268,14 +268,19 @@ export const ICONS = {
   battle: '<path d="M3 3h4l13 13-4 4L3 7zM25 3h-4L8 16l4 4L25 7zM5 19l4 4-3 3-4-4zM23 19l-4 4 3 3 4-4z"/>',
 };
 // red & white ball for the centre scan button (user's choice)
-// 가운데 QR 버튼 = 합스볼 (tools/build_logo.py → web/img/hapsball.png)
-export const CAPSULE = '<img src="img/hapsball.png" alt="" width="46" height="46">';
+export const CAPSULE = `<svg viewBox="0 0 32 32" aria-hidden="true">
+  <circle cx="16" cy="16" r="14" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
+  <path d="M2.5 16a13.5 13.5 0 0 1 27 0z" fill="#e04848"/>
+  <path d="M6 9a11 11 0 0 1 6-4" fill="none" stroke="#ff9a9a" stroke-width="2" stroke-linecap="round"/>
+  <rect x="2" y="14.5" width="28" height="3" fill="#202838"/>
+  <circle cx="16" cy="16" r="5" fill="#f8f8f8" stroke="#202838" stroke-width="2.5"/>
+  <circle cx="16" cy="16" r="2" fill="#fff" stroke="#c8c8c8" stroke-width="1"/></svg>`;
 
 export const TABS = [['home', '홈'], ['map', '지도'], ['raid', '레이드'], ['scan', 'QR'], ['battle', '배틀'], ['dex', '도감'], ['rank', '랭킹']];
 
 export function renderShell() {
   app().replaceChildren(
-    h('header.topbar', h('h1', { onclick: logoTap }, h('img.top-logo', { src: 'img/hapsball.png', alt: '', width: 24, height: 24 }), CONFIG.GAME_TITLE),
+    h('header.topbar', h('h1', { onclick: logoTap }, CONFIG.GAME_TITLE),
       h('div', { style: { display: 'flex', alignItems: 'center', gap: '8px' } },
         h('div.status#status', { role: 'status' }),
         h('span#gift-slot', giftButton()),

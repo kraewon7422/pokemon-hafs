@@ -49,7 +49,20 @@ async function drawMon(g, m, cx, footY, scale) {
   for (let r = 0; r < sh; r += U) { const k = Math.sqrt(1 - ((r - sh / 2) / (sh / 2)) ** 2); const w = Math.round((sw * k) / U) * U; g.fillRect(cx - w / 2, footY - sh / 2 + r - 2 * scale, w, U); }
   if (cell) { g.imageSmoothingEnabled = false; g.drawImage(cell, 0, 0, 64, 64, Math.round(cx - 32 * scale), Math.round(footY - 64 * scale), 64 * scale, 64 * scale); }
 }
-async function logo(g, x, y, size) { const i = await img('img/hapsball.png'); if (i) { g.imageSmoothingEnabled = false; g.drawImage(i, x, y, size, size); } }
+// 몬스터볼 도트 (16×16 칸, 앱 가운데 QR 버튼과 같은 빨강 · 흰색): 칸마다 원 안인지 재서 칠함
+function logo(g, x, y, size) {
+  const N = 16, k = size / N, c = (N - 1) / 2;
+  for (let j = 0; j < N; j++) for (let i = 0; i < N; i++) {
+    const d = Math.hypot(i - c, j - c);
+    if (d > 7.6) continue;
+    let col;
+    if (d > 6.7 || Math.abs(j - c) <= 0.5 || (d > 1.9 && d <= 3.1)) col = '#202838';   // 테두리 · 가운데 띠 · 버튼 테두리
+    else if (d <= 1.9) col = '#f8f8f8';                                                // 버튼
+    else if (j < c) col = (i - c) + (j - c) < -6 ? '#ff9a9a' : (i - c) + (j - c) > 3 ? '#b83030' : '#e04848';
+    else col = (i - c) + (j - c) > 5 ? '#c8ccd8' : '#f8f8f8';
+    g.fillStyle = col; g.fillRect(Math.round(x + i * k), Math.round(y + j * k), Math.ceil(k), Math.ceil(k));
+  }
+}
 
 // ── 내보내기: 미리보기 + 공유 / 저장 ──
 const canShareFiles = (file) => { try { return !!navigator.canShare?.({ files: [file] }) && !!navigator.share; } catch { return false; } };
@@ -132,11 +145,11 @@ export async function drawCard() {
     g.moveTo(o, 0); g.lineTo(W + H, 0); g.lineTo(W + H, H); g.lineTo(o - H, H); g.closePath(); g.fill();
   }
   g.restore();
-  // 머리띠: HAFS 파랑 + 합스볼 + 이름
+  // 머리띠: HAFS 파랑 + 몬스터볼 + 이름
   const IX = X + 6 * U, IW = CW - 12 * U;
   pbox(g, IX, Y + 6 * U, IW, 34 * U, '#1c3e8c', 2);
   pbox(g, IX, Y + 6 * U, IW, 32 * U, '#2a5cbc', 2);
-  await logo(g, IX + 4 * U, Y + 8 * U, 28 * U);
+  logo(g, IX + 4 * U, Y + 8 * U, 28 * U);
   text(g, 'HAFS 몬스터', IX + 36 * U, Y + 29 * U, { size: 66, bold: true, col: '#ffffff', shadow: '#182030', maxW: 116 * U });
   text(g, 'TRAINER CARD', IX + IW - 5 * U, Y + 28 * U, { size: 44, bold: true, col: '#f8d048', shadow: '#182030', align: 'right', maxW: 80 * U });
   // 이름 · 기수 · 칭호
@@ -296,7 +309,7 @@ export async function drawPhoto(m, bgKey) {
   text(g, lv, bx + bw - 12 * U, mid, { size: 66, bold: true, shadow: '#d8d8d0', align: 'right', base: 'middle' });
   // 왼쪽 위 로고
   pbox(g, 40, 40, 70 * U, 22 * U, 'rgba(24, 32, 48, .78)', 2);
-  await logo(g, 40 + 3 * U, 40 + 3 * U, 16 * U);
+  logo(g, 40 + 3 * U, 40 + 3 * U, 16 * U);
   text(g, 'HAFS 몬스터', 40 + 22 * U, 40 + 15 * U, { size: 44, bold: true, col: '#ffffff', shadow: '#101828', maxW: 45 * U });
   return c;
 }
