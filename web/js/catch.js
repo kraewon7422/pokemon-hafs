@@ -1,8 +1,11 @@
 // 잡기 화면: 부스에서 포켓몬을 받기 직전, 공을 위로 휙 던져 잡는 짧은 장면 (Phaser 3, 270×480 세로 화면).
 // 포켓몬은 이미 정해져 있다. 공을 다 써도 보통은 지쳐서 얌전해짐 (반드시 잡힘). 던지기 솜씨는 등급(약간의 EXP)만 정한다.
-//   catchScene({ dex, name, rarity, time, balls = 3, ball = 'red'|'hafs'|'safari', fleeChance = 0, fleeAfterAll = false, remaining = 0,
+//   catchScene({ dex, name, rarity, level, time, balls = 3, ball = 'red'|'hafs'|'safari', fleeChance = 0, fleeAfterAll = false, remaining = 0,
 //                fleeMiss = 0, canRun = false, onMiss = null })
 //     → Promise<{ grade:'none'|'nice'|'great'|'excellent', curve, throws, skipped, skipAll, fled, ran }>
+//   level: 야생 레벨 (1~100, 없어도 됨). 있으면 난이도 단계 tierOf(level, rarity) → 안쪽 고리 색 (초록·노랑·주황·빨강),
+//          고리 최대 크기 (빨강일수록 작게), 기본 잡힘 확률. 없으면 예전처럼 희귀도로만 (색·확률·크기 모두).
+//   등급 (나이스·그레이트·엑설런트) 은 공이 색 고리 '안' 에 맞을 때만 (포켓몬 GO 처럼). 고리 밖 = 그냥 맞음 (등급·배율 없음).
 //   onMiss: async () => true(도망)/false — 공이 빗나갈 때마다 서버에 물어봄 (0037 사파리존: 도망은 서버가 정함). 있으면 fleeMiss 대신.
 //   fleeMiss: 공이 빗나갈(튕겨 나올) 때마다 이 확률로 도망 (예전 서버의 사파리존). canRun: '도망가기' 버튼 (사파리존, 바로 잡기 대신) → fled·ran.
 //   fleeAfterAll: 공을 다 쓰면 도망 (레이드 보스). 아니면 fleeChance 확률로 도망 (부스 5%), 아니면 지쳐서 잡힘.
@@ -47,6 +50,17 @@ const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
 const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'] };
 const RING = { common: 0x58d858, rare: 0xf8a830, legendary: 0xf04848, mythic: 0xf04848 };
 const BASE_P = { common: 0.6, rare: 0.4, legendary: 0.25, mythic: 0.25 };
+// 난이도 단계 (level 이 있을 때): 0 초록 · 1 노랑 · 2 주황 · 3 빨강 (포켓몬 GO 색). 고리 최대 크기 (R 의 배), 기본 잡힘 확률
+const TIER_RING = [0x58d858, 0xf8e030, 0xf88830, 0xf04848];
+const TIER_MAX = [1.0, 0.92, 0.84, 0.75];
+const TIER_P = [0.75, 0.6, 0.47, 0.35];
+// 야생 레벨 + 희귀도 → 단계 0~3. 레벨 ≤15 →0, ≤28 →1, ≤40 →2, 그 위 →3 · 희귀 +1 · 전설·환상은 언제나 3
+export function tierOf(level, rarity = 'common') {
+  if (rarity === 'legendary' || rarity === 'mythic') return 3;
+  const lv = Number(level) || 1;
+  const t = lv <= 15 ? 0 : lv <= 28 ? 1 : lv <= 40 ? 2 : 3;
+  return clamp(t + (rarity === 'rare' ? 1 : 0), 0, 3);
+}
 const GRADE_K = { nice: 1.2, great: 1.5, excellent: 2.0 };
 const GRADE_TXT = { nice: ['나이스!', '#ffffff'], great: ['그레이트!', '#98f080'], excellent: ['엑설런트!', '#ffd23f'] };
 const RANK = { none: 0, nice: 1, great: 2, excellent: 3 };
@@ -187,7 +201,7 @@ const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..
 
 // ═════════════════════════════ 장면 ═════════════════════════════
 // onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
-export async function catchScene({ dex, name, rarity = 'common', time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수)
+export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수)
   const tod = EDGE[time] ? time : defaultTime();
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
@@ -196,6 +210,11 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
   const left = Math.max(0, Math.round(Number(remaining) || 0));
   const canSkip = !fleeAfterAll && !canRun;
   const rar = RING[rarity] ? rarity : 'common';
+  const hasLv = level != null && level !== '' && Number.isFinite(Number(level));
+  const tier = hasLv ? tierOf(clamp(Math.round(Number(level)), 1, 100), rar) : null;   // null = 예전처럼 희귀도로만
+  const ringCol = tier != null ? TIER_RING[tier] : RING[rar];
+  const ringMax = tier != null ? TIER_MAX[tier] : 1;
+  const baseP = tier != null ? TIER_P[tier] : BASE_P[rar];
   const nm = String(name || '포켓몬');
   const rm = (() => { try { return reducedMotion(); } catch { return false; } })();
   let speed = 1;                        // 바로 잡기 = 두 배 빠르게
@@ -419,8 +438,9 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
       const evlog = [];   // 시험용 기록 (던지기·명중·빗나감)
       let traj = [];      // 시험용: 마지막 공의 화면 궤적
       const B = { free: false, ox: 0, hop: 0, sx: MON_K, sy: MON_K, ph: 'idle', tm: 1.2, from: 0, to: 0, dur: 0.3, el: 0, h: 0, cr: 0.2 };
-      const ratio = () => (frozen != null ? frozen : 1 - 0.85 * ((ringT % CYCLE) / CYCLE));
+      const ratio = () => (frozen != null ? frozen : ringMax * (1 - 0.85 * ((ringT % CYCLE) / CYCLE)));
       const center = () => ({ x: mon.x + bcx, y: mon.y - bcy });
+      const innerR = (r) => Math.max(3, R * r);   // 색 고리 반지름 (그림 = 등급 판정)
       const ballOk = () => ballsLeft > 0;
 
       const showHud = (v) => {
@@ -464,7 +484,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
           const c = center(); const r = ratio();
           rings.lineStyle(4, 0x182030, 0.25).strokeCircle(c.x, c.y + 1, R);
           rings.lineStyle(2, 0xffffff, 0.95).strokeCircle(c.x, c.y, R);
-          rings.lineStyle(3, RING[rar], 1).strokeCircle(c.x, c.y, Math.max(3, R * r));
+          rings.lineStyle(3, ringCol, 1).strokeCircle(c.x, c.y, innerR(r));
         }
       };
 
@@ -761,9 +781,11 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
                 f.mode = 'deflect'; evlog.push(['swat']);
                 run((k) => { f.c = k; return swat(k, f, q); });
               } else if (hit) {
-                evlog.push(['hit', Math.round(q.x), Math.round(q.y), Math.round(c2.x), Math.round(c2.y)]);
+                // 등급은 공 (가운데) 이 던질 때의 색 고리 안에 맞았을 때만 — 같은 화면 좌표 (q, 지금 고리 가운데 c2)
+                const inside = Math.hypot(q.x - c2.x, q.y - c2.y) <= innerR(relRatio);
+                evlog.push(['hit', Math.round(q.x), Math.round(q.y), Math.round(c2.x), Math.round(c2.y), inside, +innerR(relRatio).toFixed(1)]);
                 f.mode = 'rebound';
-                run((k) => { f.c = k; return onHit(k, relRatio, !!curve, f, q); });
+                run((k) => { f.c = k; return onHit(k, relRatio, inside, !!curve, f, q); });
               } else {
                 // 고리 아래로 몸에 맞으면 (발치) 툭 튕겨 나옴, 위·옆이면 그냥 지나감
                 if (q.y > c2.y && Math.abs(q.x - c2.x) < bw / 2) { f.p.vz = -0.3 * Math.abs(f.p.vz); f.p.vx *= 0.5; play('blip'); }
@@ -819,17 +841,17 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
         await nextOrTired(c);
       };
 
-      const onHit = async (c, rr, curve, f, q) => {
+      const onHit = async (c, rr, inside, curve, f, q) => {
         phase = 'seq'; B.free = false;
-        const grade = rr < 0.35 ? 'excellent' : rr < 0.65 ? 'great' : 'nice';
+        // 색 고리 밖 = 그냥 맞음 (등급 없음, 배율 1). 안이면 고리 크기로 등급 (예전 그대로)
+        const grade = !inside ? 'none' : rr < 0.35 ? 'excellent' : rr < 0.65 ? 'great' : 'nice';
         if (RANK[grade] > RANK[result.grade]) result.grade = grade;
         if (curve) result.curve = true;
         play('correct'); vibrate(30);
         const cc = center();
-        const [txt, col] = GRADE_TXT[grade];
-        label(txt, col, cc.x, cc.y - bh / 2 - 22);
-        if (curve) sc.time.delayedCall(D(260), () => label('커브볼!', '#7fd8ff', cc.x, cc.y - bh / 2 + 6, false));
-        const pc = Math.min(0.95, BASE_P[rar] * GRADE_K[grade] * (curve ? 1.3 : 1));
+        if (grade !== 'none') { const [txt, col] = GRADE_TXT[grade]; label(txt, col, cc.x, cc.y - bh / 2 - 22); }
+        if (curve) sc.time.delayedCall(grade !== 'none' ? D(260) : 0, () => label('커브볼!', '#7fd8ff', cc.x, cc.y - bh / 2 + 6, false));
+        const pc = Math.min(0.95, baseP * (GRADE_K[grade] || 1) * (curve ? 1.3 : 1));
         const u = rand();
         const ok = u < pc;
         // 아깝게 놓칠수록 많이 흔들림
@@ -984,7 +1006,7 @@ export async function catchScene({ dex, name, rarity = 'common', time, balls = 3
 
       // 시험용 (dev 페이지·자동 시험)
       layer.__cz = {
-        phase: () => phase, ring: () => ({ ...center(), R, ratio: ratio() }), ball: () => ({ x: ball.x, y: ball.y, visible: ball.visible, scale: ball.scaleX, depth: ball.depth }),
+        phase: () => phase, ring: () => ({ ...center(), R, ratio: ratio(), inner: innerR(ratio()), max: ringMax, color: ringCol }), tier, baseP, ball: () => ({ x: ball.x, y: ball.y, visible: ball.visible, scale: ball.scaleX, depth: ball.depth }),
         ballsLeft: () => ballsLeft, balls: BALLS, style, fled: () => result.fled, log: evlog, home: HOME, curve: () => curveArmed, world: { W, H }, traj: () => traj,
         freeze: (v) => { B.free = !v; if (v) { resetMon(); mon.setPosition(SPOT_X, footY).setScale(MON_K); } },   // 시험용: 포켓몬을 가운데에 세워 둠 (궤적 비교용)
       };
