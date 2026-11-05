@@ -1236,3 +1236,9 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 @keyframes ff-blink { 50% { opacity: 0; } }
 .ff-mon, .ff-shadow { width: min(72vw, 288px) !important; height: auto !important; aspect-ratio: 1; image-rendering: pixelated; }
 .ditto-c { width: min(60vw, 224px); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
+
+/* 좁은 폰(≤360px): 연습 배틀 버튼 — 글자가 카드 밖으로 나가지 않게 "보상 없음"을 아래 줄로 */
+@media (max-width: 360px) {
+  .btn.big:has(> .btn-sub) { flex-wrap: wrap; row-gap: 0; justify-content: center; }
+  .btn.big > .btn-sub { flex-basis: 100%; text-align: center; }
+}

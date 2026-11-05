@@ -2228,13 +2228,29 @@ async function tabRaid() {
   [...S.species].filter((sp) => sp.stage <= maxStage(S.lineById.get(sp.line_id) || {}))
     .sort((x, y) => (x.dex || 9999) - (y.dex || 9999))
     .forEach((sp) => { const t = String(sp.btype || '노말').split('/')[0]; (spGroups.get(t) || spGroups.get('노말')).push(sp); });
-  const sel = h('select.inp', [...spGroups].filter(([, a]) => a.length).map(([t, a]) => h('optgroup', { label: t }, a.map((sp) => {
+  const spLabel = (sp) => {
     const l = S.lineById.get(sp.line_id);
-    return h('option', { value: sp.id }, `No.${String(sp.dex || 0).padStart(3, '0')} ${sp.name} (${sp.btype || ''}${isSpecialLine(l) ? ' · 전설' : isWildLine(l) ? '' : ` · ${l?.teacher || ''}`})`);
-  }))));
-  sel.value = '3';
+    return `No.${String(sp.dex || 0).padStart(3, '0')} ${sp.name} (${sp.btype || ''}${isSpecialLine(l) ? ' · 전설' : isWildLine(l) ? '' : ` · ${l?.teacher || ''}`})`;
+  };
+  const sel = h('select.inp');
   const pic = h('div', spriteImg(3, 72));
-  sel.onchange = () => pic.replaceChildren(spriteImg(Number(sel.value), 72));
+  const showPic = () => pic.replaceChildren(sel.value ? spriteImg(Number(sel.value), 72) : h('span.muted', '-'));
+  // 이름·번호로 찾기: 글자를 넣으면 맞는 포켓몬만 남기고 첫 번째를 고름
+  const fillSel = (q) => {
+    const want = String(q || '').trim().toLowerCase().replace(/^no\.?\s*/, '');
+    const hit = (sp) => !want || String(sp.name).toLowerCase().includes(want) || String(sp.dex || '') === want.replace(/^0+/, '')
+      || String(sp.btype || '').includes(want) || String(S.lineById.get(sp.line_id)?.teacher || '').toLowerCase().includes(want);
+    const keep = sel.value;
+    sel.replaceChildren(...[...spGroups].map(([t, a]) => [t, a.filter(hit)]).filter(([, a]) => a.length)
+      .map(([t, a]) => h('optgroup', { label: t }, a.map((sp) => h('option', { value: sp.id }, spLabel(sp))))));
+    if (!sel.options.length) sel.append(h('option', { value: '', disabled: true }, '찾는 포켓몬이 없어요'));
+    sel.value = [...sel.options].some((o) => o.value === keep && !o.disabled) ? keep : (sel.options[0]?.value || '');
+    showPic();
+  };
+  const find = h('input.inp', { type: 'search', placeholder: '이름 · 도감 번호 · 타입으로 찾기 (예: 후딘, 65)', oninput: () => fillSel(find.value) });
+  fillSel('');
+  sel.value = '3'; showPic();
+  sel.onchange = showPic;
   // 프리셋 고르기 + "직접 입력" → 숫자 칸
   const preset = (opts, unit, min, max) => {
     const own = h('input.inp', { type: 'number', inputmode: 'numeric', min, max, placeholder: `${min}~${max.toLocaleString()} ${unit}`, hidden: true });
@@ -2251,6 +2267,7 @@ async function tabRaid() {
   const form = h('form.box.stack', {
     onsubmit: (e) => {
       e.preventDefault();
+      if (!sel.value) { toast('보스 포켓몬을 골라 주세요.'); return; }
       for (const [f, name] of [[hp, '보스 체력'], [mins, '시간']]) {
         if (!Number.isInteger(f.value) || f.value < f.min || f.value > f.max) { toast(`${name}은(는) ${f.min}~${f.max.toLocaleString()} 사이 숫자로 넣어 주세요.`); return; }
       }
@@ -2266,7 +2283,7 @@ async function tabRaid() {
   },
     h('h2', '레이드 열기'),
     h('p.small-txt', `아무 포켓몬(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, ${minTaps}번 이상 공격한 모두가 ${catchMode ? '앱에서 그 포켓몬을 잡을 기회' : '그 포켓몬 특별 티켓 (주머니 칸 제한 없음)'}를 받아요 (오른쪽 "보상 방식"). 시간 안에 못 잡으면 실패.`),
-    h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 포켓몬'), sel)),
+    h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 포켓몬'), find, sel)),
     h('div.row', h('label.field', h('span', '보스 체력'), hp.el), h('label.field', h('span', '시간'), mins.el)),
     h('label.field', h('span', 'QR 방식'), mode), title,
     h('label.chk.chk-top', openChk, h('span', h('b', 'QR 없이 참가'), ' — 학생 앱 레이드 탭에 "참가" 버튼이 떠요 (아침·점심·저녁에 모두에게 주는 레이드용)')),
