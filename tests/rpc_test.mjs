@@ -69,6 +69,10 @@ await patchSetting('quiz_stone_chance', 1); await patchSetting('battle_stone_cha
 // 0038: 야생 · 사파리 잡기가 아주 가끔 메타몽 — 예전 시험은 잡은 포켓몬이 그대로라고 보므로 시험 동안 0 (끝에서 되돌림)
 const DITTO0 = (await admin.select('settings?key=eq.ditto_disguise_chance')).data?.[0]?.value ?? 0.005;
 await patchSetting('ditto_disguise_chance', 0);
+// 0038: 방랑 전설 (라이코·앤테이·스이쿤) — 한 시간마다 바뀌는 장소 QR 에서 30% 로 티켓 대신 만남이 생김 → 그 시각에 그 QR 을 찍는
+// 예전 시험 (가방 · 셀프 수령 · 레이드 잡기 [12] [41] …) 이 가끔 깨짐. 시험 동안 0 ([45] 는 직접 켜서 봄, 끝에서 되돌림)
+const ROAM0 = (await admin.select('settings?key=eq.roam_chance')).data?.[0]?.value ?? 0.3;
+await patchSetting('roam_chance', 0);
 // 0039: 시간표 칸의 날씨 · 필드 (모래바람 데미지 등) — 예전 배틀 시험이 시각에 따라 달라지지 않게 시험 동안 빈 시간표 (끝에서 되돌림)
 const BF_ORIG = (await admin.select('settings?key=eq.battle_fields')).data?.[0]?.value ?? [];
 await patchSetting('battle_fields', []);
@@ -203,7 +207,12 @@ ok(r.data?.correct === false && r.data.granted === false && r.data.answer_pos ==
 console.log('\n[8] evolve race (5 parallel taps, 1 ticket)');
 // 3단계 계열 · 진화 레벨 전 (0032/0034: 레벨이 되면 무료, 돌 진화는 100% — 진화의 돌 1개 경쟁을 보려면 둘 다 아니어야)
 const three8 = new Set((await admin.select('lines?select=id&max_stage=eq.3')).data.map((l) => l.id));
-const line = (st.collection.find((c) => c.stage === 1 && three8.has(c.line_id) && c.level < 15) || st.collection[0]).line_id;
+// 0037 갈래 진화 계열 (랄토스 → 킬리아 → 가디안/엘레이드 …) 은 2단계에서 PICK_BRANCH 가 먼저라 경쟁 시험이 안 됨 → 뺌
+const evoFrom = (await admin.select('evolutions?select=from_species')).data || [];
+const evoN = {}; for (const e of evoFrom) evoN[e.from_species] = (evoN[e.from_species] || 0) + 1;
+const branchSp = Object.keys(evoN).filter((k) => evoN[k] > 1);
+const branch8 = new Set(branchSp.length ? ((await admin.select(`species?select=line_id&id=in.(${branchSp.join(',')})`)).data || []).map((x) => x.line_id) : []);
+const line = (st.collection.find((c) => c.stage === 1 && three8.has(c.line_id) && !branch8.has(c.line_id) && c.level < 15) || st.collection[0]).line_id;
 const have = (await S[0].rpc('sync')).data.state.profile.evo_tickets;
 if (have !== 1) await admin.rpc('admin_adjust_tickets', { p_student_id: '022901', p_delta: 1 - have });   // exactly 1 ticket for the race
 const mon8 = await monId(S[0], line);
@@ -286,7 +295,8 @@ await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: J
 let lastStatus;
 for (let i = 0; i < 11; i++) lastStatus = (await S[0].rpc('sync', { p_scans: [{ n: nonce(), q: '_', t: 'ZZZZ' + 'ABCDEFGHJK'[i % 10] }] })).data?.acks?.[0]?.status;
 ok(lastStatus === 'locked', 'manual-code guessing locked after 10 misses', lastStatus);
-ok((await S[1].rpc('self_redeem')).error === 'SELF_REDEEM_OFF', 'self-redeem off by default');
+const sr0 = await S[1].rpc('self_redeem');
+ok(sr0.error === 'SELF_REDEEM_OFF', 'self-redeem off by default', sr0);
 const setS = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { method: 'PATCH', headers: H0, body: JSON.stringify({ value: v }) });
 await setS('self_redeem', true);
 r = await S[1].rpc('self_redeem');
@@ -2085,8 +2095,8 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
   };
   const uidOf = async (sid) => (await admin.select(`profiles?student_id=eq.${sid}&select=user_id`)).data?.[0]?.user_id;
   try {
-    ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
-       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto (0 during the suite), roam 30%, legend 3 tries · 10 balls, 14 quests', old);
+    ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0 && Number(ROAM0) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
+       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto · roam (0 during the suite), roam default 30%, legend 3 tries · 10 balls, 14 quests', old);
     ok(Number(DITTO0) === 0.005, 'ditto_disguise_chance default 0.5% (user choice)', DITTO0);
     // ── 0. 야생 무리: 퀘스트 · 사파리 · 방랑 · 소포 전설과 울트라비스트는 빠짐 ──
     const ln = (await admin.select('lines?select=id,ultra,legend_src&or=(ultra.eq.true,legend_src.not.is.null)')).data;
@@ -2777,9 +2787,56 @@ console.log('\n[50] 사파리존 v3 (0040): 만남 상한 없음 · 구역 레�
   }
 }
 
+console.log('\n[51] 별명 (0041): set_nickname · 길이/글자/욕설 막기 · 랭킹에 별명 · admin_clear_nickname');
+{
+  const [c1, c2] = [S[0], S[1]];
+  await admin.rpc('admin_clear_nickname', { p_student_id: '022901' });   // 다시 돌려도 처음부터 (nickname_at 도 지움)
+  await admin.rpc('admin_clear_nickname', { p_student_id: '022902' });
+  const NICK = `별명시험${Math.floor(Math.random() * 90 + 10)}`;
+  let r = await c1.rpc('set_nickname', { p_nick: `  ${NICK} ` });
+  ok(r.data?.nickname === NICK && r.data?.display === NICK, 'set_nickname: trimmed, profile.nickname + display = nickname', r);
+  for (const [bad, code, why] of [['가', 'BAD_NICKNAME', '1 char'], ['가나다라마바사아자차카', 'BAD_NICKNAME', '11 chars'], ['별명!!', 'BAD_NICKNAME', 'symbols'],
+    ['트레이너_1', 'BAD_NICKNAME', 'underscore'], ['a1234567', 'BAD_NICKNAME', '5+ digits (student number)'], ['시발놈', 'NICKNAME_BLOCKED', 'bad word'],
+    ['F u c k', 'NICKNAME_BLOCKED', 'spaced english bad word'], ['운영자 김', 'NICKNAME_BLOCKED', 'impersonation']]) {
+    const x = await c1.rpc('set_nickname', { p_nick: bad });
+    ok(x.error?.includes(code), `set_nickname rejects ${why} → ${code}`, x);
+  }
+  r = await c1.rpc('set_nickname', { p_nick: NICK });
+  ok(r.data?.nickname === NICK, 'same nickname again = no-op (not rate limited)', r);
+  r = await c1.rpc('set_nickname', { p_nick: 'Speedy 2' });
+  ok(r.error?.includes('TRY_LATER'), 'changing again within 10s → TRY_LATER', r);
+  const rk = (await c1.rpc('get_ranking_by', { p_gen: null, p_kind: 'score' })).data;
+  const meRow = rk?.top?.find((t) => t.me);
+  ok(meRow?.display === NICK && meRow?.nick === true, 'get_ranking_by: my row shows the nickname (nick=true)', meRow);
+  const other = rk?.top?.find((t) => !t.me);
+  ok(!other || other.nick === false || typeof other.nick === 'boolean', 'get_ranking_by: other rows carry nick flag', other);
+  const cls = (await c1.rpc('class_ranking')).data;
+  ok(!!cls && Array.isArray(cls.classes), 'class_ranking still works with nickname column', cls && Object.keys(cls));
+  // 운영자만 지움
+  const stu = await c2.rpc('admin_clear_nickname', { p_student_id: '022901' });
+  const an = await anon.rpc('admin_clear_nickname', { p_student_id: '022901' });
+  ok(!!stu.error && !!an.error, 'admin_clear_nickname: admins only', [stu.error, an.error]);
+  const anSet = await anon.rpc('set_nickname', { p_nick: '익명시험' });
+  ok(!!anSet.error, 'set_nickname: not for anon', anSet.error);
+  r = await admin.rpc('admin_clear_nickname', { p_student_id: '022901' });
+  ok(r.data?.was === NICK && r.data?.nickname === null, 'admin_clear_nickname clears + returns old nickname', r);
+  const rk2 = (await c1.rpc('get_ranking_by', { p_gen: null, p_kind: 'score' })).data;
+  const me2 = rk2?.top?.find((t) => t.me);
+  ok(me2 && me2.display !== NICK && me2.nick === false, 'after clear: ranking shows the normal display again', me2);
+  const nf = await admin.rpc('admin_clear_nickname', { p_student_id: '029999' });
+  ok(nf.error?.includes('NOT_FOUND'), 'admin_clear_nickname unknown student → NOT_FOUND', nf);
+  // 학생이 스스로 지우기 (빈 칸) — 10초 제한 뒤
+  r = await c2.rpc('set_nickname', { p_nick: 'Tester  Two' });
+  ok(r.data?.nickname === 'Tester Two', 'english + inner spaces collapsed to one', r);
+  await new Promise((res) => setTimeout(res, 10500));
+  r = await c2.rpc('set_nickname', { p_nick: '   ' });
+  ok(r.data && r.data.nickname === null, 'blank → nickname cleared by the student', r);
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);
+await patchSetting('roam_chance', ROAM0);
 await patchSetting('battle_fields', BF_ORIG);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);

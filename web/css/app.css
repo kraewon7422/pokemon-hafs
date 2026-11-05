@@ -1242,3 +1242,19 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
   .btn.big:has(> .btn-sub) { flex-wrap: wrap; row-gap: 0; justify-content: center; }
   .btn.big > .btn-sub { flex-basis: 100%; text-align: center; }
 }
+/* 0041 별명 · 사진 공유 (share.js) */
+.trainer .card-share { grid-column: 1 / -1; justify-self: end; min-height: 36px; white-space: nowrap; }
+.setting-nick .nick-row { display: flex; gap: 8px; }
+.setting-nick .nick-row input { flex: 1; min-width: 0; }
+.setting-nick .nick-row .btn { flex: none; white-space: nowrap; }
+.setting-nick small { word-break: keep-all; overflow-wrap: break-word; }
+.share-box { display: grid; gap: 10px; }
+.share-pic { display: block; width: 100%; max-width: 420px; max-height: 56dvh; object-fit: contain; justify-self: center; border: 3px solid var(--ink); border-radius: 8px; background: #283048; }
+.share-hint { word-break: keep-all; overflow-wrap: break-word; text-align: center; }
+.share-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.share-acts .btn { min-height: 48px; }
+.share-bgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.share-bgs button { appearance: none; min-height: 40px; padding: 4px; border: 3px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: var(--fs-s); white-space: nowrap; cursor: pointer; }
+.share-bgs button[aria-pressed='true'] { background: var(--gold); box-shadow: inset 0 -3px 0 #c8a048; font-weight: bold; }
+/* 상태 알약 (온라인 · 방금): 좁은 폰에서 줄이 바뀌어도 낱말 중간에서는 안 끊기게 */
+.status { word-break: keep-all; overflow-wrap: normal; min-width: 0; }
