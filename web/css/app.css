@@ -74,7 +74,9 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .next-action span { font-size: var(--fs-xl); }
 .warn-box { background: #fff4c0; }
 .evo-dot { font-size: var(--fs-s); color: #a06000; }
-.evo-panel { display: grid; gap: 8px; }
+.evo-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }   /* 칸이 글자 폭만큼 늘어나 화면 오른쪽 밖으로 나가지 않게 */
+.evo-panel > .banner { flex-wrap: wrap; row-gap: 4px; }   /* 좁은 폰: '진화의 돌 × 3' 은 다음 줄로 */
+.evo-panel > .btn { white-space: normal; min-width: 0; }
 .chain.n2 { grid-template-columns: 1fr auto 1fr; }
 /* 로그인 화면 (0018): 학생 카드 · 비학생 카드 · 맨 아래 구글(복구용) */
 .pw-wrap { position: relative; display: block; }
