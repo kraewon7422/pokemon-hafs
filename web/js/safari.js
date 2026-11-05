@@ -838,7 +838,8 @@ function build() {
     const grass = (gx, gy, sy0) => {
       const X = gx * TS - camX, Y = gy * TS - camY;
       if (rustle && rustle.x === gx && rustle.y === gy && now - rustle.t0 < RUSTLE_MS) {
-        const t = TI[`tallR${Math.floor((now - rustle.t0) / (RUSTLE_MS / 2)) % 2}`], gr = M.kind === 'beach' ? TI.bsand0 : TI.ground;
+        // rustle.t0 = 누른 순간 (performance.now), now = 이 장면 시작 시각 (rAF) → now 가 조금 더 이를 수 있음. 음수면 tallR-1 (없음) 이 되어 그리기가 멈췄음
+        const t = TI[`tallR${Math.floor(Math.max(0, now - rustle.t0) / (RUSTLE_MS / 2)) % 2}`], gr = M.kind === 'beach' ? TI.bsand0 : TI.ground;
         g.drawImage(sheet, gr[0], gr[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
         g.drawImage(sheet, t[0], t[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
       } else g.drawImage(map, gx * TS, gy * TS + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
