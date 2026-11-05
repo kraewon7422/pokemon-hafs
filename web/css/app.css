@@ -910,6 +910,10 @@ section[aria-label="티켓 주머니"] .banner > span { text-align: right; }
 .egg-steps { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fffdf5; border: 3px solid #384050; border-radius: 8px; }
 .egg-steps > span { flex: 1; min-width: 0; }
 .egg-note { line-height: 1.5; }
+.egg-notice { margin-top: 8px; padding: 8px 10px; background: #fff4c0; border: 2px solid #c8a040; border-radius: 8px; font-size: var(--fs-s); line-height: 1.5; }
+.egg-awake { display: flex; align-items: center; gap: 8px; margin-top: 6px; min-height: 40px; cursor: pointer; }
+.egg-awake input { width: 22px; height: 22px; flex: none; accent-color: var(--red); }
+.egg-awake span { min-width: 0; }
 .egg-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-top: 4px; }
 .egg-incs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .egg-slot { display: grid; grid-template-columns: minmax(0, 1fr); justify-items: center; gap: 3px; padding: 8px 4px; font-size: 12px; background: #e8f4fc; border: 3px solid #384050; border-radius: 10px; text-align: center; min-width: 0; }

@@ -30,6 +30,8 @@ const ST = { on: false, alive: 0, pending: 0, base: null, smooth: null, up: fals
 const stepsOff = () => { try { return localStorage.getItem('stepsOff') === '1'; } catch { return false; } };
 const needsAsk = () => typeof window.DeviceMotionEvent?.requestPermission === 'function';   // iPhone: 탭 안에서 허락을 받아야 함
 export const stepsLive = () => ST.on && performance.now() - ST.alive < 5000;
+// 걸음 세기가 정말 켜져 있음 (아이폰은 허락을 받아 센서 값이 들어올 때만) — 알 주머니의 '켜짐/꺼짐' 과 화면 켜 두기가 같은 기준을 씀
+const stepsActive = () => ST.on && (stepsLive() || !needsAsk());
 
 function onMotion(e) {
   if (document.hidden) return;
@@ -97,6 +99,39 @@ function disableSteps() {
   try { localStorage.setItem('stepsOff', '1'); } catch { /* */ }
 }
 
+// ───────────── 화면 켜 두기 (Screen Wake Lock) ─────────────
+// 웹앱은 화면이 꺼지면 걸음을 못 셈 → 알 주머니를 보는 동안 (걸음 세기가 켜져 있으면) 화면이 꺼지지 않게 잡아 둠.
+//   다른 탭·앱으로 가면 브라우저가 풀어 버리므로 돌아올 때 (visibilitychange) 다시 잡고, 알 주머니를 떠나면 놓음. 지원 안 하는 기기는 그냥 넘어감.
+const WL = { lock: null, asking: false, el: null, timer: 0, hooked: false };
+export const canKeepAwake = () => typeof navigator !== 'undefined' && !!navigator.wakeLock?.request;
+const awakeOff = () => { try { return localStorage.getItem('stepsAwakeOff') === '1'; } catch { return false; } };
+const wantAwake = () => canKeepAwake() && !awakeOff() && stepsActive() && !document.hidden && !!WL.el?.isConnected;
+
+async function syncAwake() {
+  if (WL.el && !WL.el.isConnected) { WL.el = null; clearInterval(WL.timer); WL.timer = 0; }
+  if (wantAwake()) {
+    if (WL.lock || WL.asking) return;
+    WL.asking = true;
+    try {
+      const lock = await navigator.wakeLock.request('screen');
+      if (!wantAwake()) { lock.release().catch(() => {}); return; }       // 기다리는 사이에 알 주머니를 떠남
+      WL.lock = lock;
+      lock.addEventListener?.('release', () => { if (WL.lock === lock) WL.lock = null; });
+    } catch { /* 배터리 절약 모드 · 권한 없음 → 화면은 평소처럼 꺼짐 */ }
+    finally { WL.asking = false; }
+  } else if (WL.lock) {
+    const lock = WL.lock; WL.lock = null;
+    lock.release().catch(() => {});
+  }
+}
+function watchAwake(el) {
+  WL.el = el;
+  if (!WL.hooked) { WL.hooked = true; document.addEventListener('visibilitychange', syncAwake); }
+  if (!WL.timer) WL.timer = setInterval(syncAwake, 1500);              // 알 주머니가 화면에서 빠지면 (다른 주머니 · 가방 닫기) 놓기
+  setTimeout(syncAwake, 0);                                              // eggPocket 이 만든 줄이 화면에 붙은 다음에
+}
+export const keepingAwake = () => !!WL.lock;
+
 // ───────────── 가방 '알' 주머니 ─────────────
 export function eggPocket(redraw) {
   const E = S.eggs;
@@ -121,9 +156,23 @@ export function eggPocket(redraw) {
       h('small', `${x.steps.toLocaleString()} / ${x.need.toLocaleString()}`),
       ready ? h('button.btn.small.gold', { onclick: () => hatch(x, redraw) }, '부화!') : h('small.muted', '걸음'));
   };
+  const awake = canKeepAwake()
+    ? h('label.egg-awake',
+      h('input', { type: 'checkbox', checked: !awakeOff(), onchange: (e) => {
+        try { if (e.target.checked) localStorage.removeItem('stepsAwakeOff'); else localStorage.setItem('stepsAwakeOff', '1'); } catch { /* */ }
+        syncAwake(); redraw();
+      } }),
+      h('span', h('b', '화면 켜 두기'), h('small.muted', ' · 이 화면을 보는 동안')))
+    : null;
+  const notice = h('div.egg-notice',
+    h('b', '걸음은 앱을 켜 둔 동안만 세져요.'), ' ',
+    canKeepAwake() && stepsActive() && !awakeOff() ? '화면이 꺼지지 않게 해 둘게요.' : '화면이 꺼지면 걸음도 멈춰요.',
+    awake);
+  watchAwake(stepRow);
   return [
     stepRow,
-    h('small.muted.egg-note', '앱을 켜 두고 걸을 때만 세요 (화면이 꺼지면 멈춰요). 새 장소 QR 을 찍으면 부화기 알이 ', h('b', `+${E.qr_bonus || 300}걸음`), '!'),
+    notice,
+    h('small.muted.egg-note', '새 장소 QR 을 찍으면 부화기 알이 ', h('b', `+${E.qr_bonus || 300}걸음`), '!'),
     h('div.egg-head', h('b', '부화기'), h('small', `알 ${eggs.length} / ${E.hold_max || 9}`)),
     h('div.egg-incs', inc.map(slotCard)),
     h('div.egg-head', h('b', '기다리는 알'), h('small.muted', wait.length ? '누르면 부화기에 넣어요' : '')),
