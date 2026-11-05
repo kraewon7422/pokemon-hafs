@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0039 순서대로 실행 (0034 다음에 `supabase/seed_pokemon.sql` 실행 — 0037 을 넣은 뒤에도 한 번 더 실행: 갈래 진화 종 20마리 + `evolutions` 표가 seed 에 들어 있음 → `node tools/upload_pokemon_sprites.mjs` 로 포켓몬 그림 올리기 (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD 를 줌, 파일 맨 위 설명) — 사람이 없을 때) → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
+1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0041 순서대로 실행 (0034 다음에 `supabase/seed_pokemon.sql` 실행 — 0037 을 넣은 뒤에도 한 번 더 실행: 갈래 진화 종 20마리 + `evolutions` 표가 seed 에 들어 있음 → `node tools/upload_pokemon_sprites.mjs` 로 포켓몬 그림 올리기 (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD 를 줌, 파일 맨 위 설명) — 사람이 없을 때) → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
@@ -80,6 +80,16 @@ python tools/build_atlas.py                                                   # 
   0039 를 다시 만들 때: `python .work/abil/build_0039.py` (p1 + p2 + 가장 최근 migration 의 revoke/grant 블록).
 - 서버: `node tests/rpc_test.mjs` → [46] (admin_bt_sim 으로 특성 하나하나 · 날씨 · 필드 · 변신 · 시간표 칸 · 잡을 때 특성). 시험 동안 `battle_fields` 는 빈 목록 (끝에서 되돌림).
 - 화면: 배틀 (연습) 에서 HP 상자를 누르면 특성 설명, 날씨 띠는 오른쪽 위. 운영자 [성장·보상] → '배틀 시간표 (날씨 · 필드)'.
+
+## 0041 별명 · 사진 공유 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [51] (별명 정하기 · 길이/글자/욕설 막기 · 10초 제한 · 랭킹 'nick' · 운영자 지우기). 테스트 학생 022901 · 022902 의 별명은 끝에서 지움.
+- 욕설 목록 늘리기: 새 migration 에서 `public._nick_blocked` 를 다시 만듦 (띄어쓰기 · 기호를 뺀 소문자로 비교).
+- 화면: 홈 트레이너 카드 → '카드 공유 · 저장', 가방 → 포켓몬 → '사진 만들기' (배경 고르기). 폰은 [공유] (인스타그램 등), PC 는 [저장] (PNG). 설정 → 별명.
+
+## 0042 반짝이 · 빛나는 부적 · 알림 이유 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [52] (반짝 100% → 만남부터 반짝 · 잡으면 박스도 반짝 · 소포 길도 굴림 · 부적 × 배수 · 쓸 수 없음 · 도감 완성 → 부적 한 번 + 알림 · 퀘스트/깨어남/방랑 알림 첫 줄 = 이유). 시험 동안 `wild_shiny_chance` 는 0 (끝에서 되돌림).
+- 확률 (운영자 [성장·보상] → '반짝이는 포켓몬'): 새로 잡는 포켓몬 1/512 · 알 1/256 · 1/128 · 1/64 · 빛나는 부적 ×3 (확률 칸은 "1 / N" 의 N).
+- 화면: 임시 학생(0205xx)을 만들고 그 학생에게 반짝 만남 한 줄 (SQL `insert into raid_encounters (..., shiny) values (..., true)`) → `cd web && python -m http.server 8138` 에서 홈 배너 → 잡기 장면(반짝반짝) · 알림 이유 · 가방 부적을 폰(375) · 320 크기로 확인 → 끝나면 임시 학생 지우기.
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.

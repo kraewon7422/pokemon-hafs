@@ -7,7 +7,8 @@
 // 제단 글자 (kind 'shrine'): P 절벽 · B 점자 절벽 · . 돌바닥 · I 부서진 돌기둥 · = 돌계단 · A 흰 대리석 제단 · r 돌
 //            E 나가는 계단 · U 올라가는 사다리 · L 전설 포켓몬 자리 (만남 칸 없음)
 // 울트라 스페이스 글자 (kind 'ultra'): X 빈 우주 · . 떠 있는 발판 · = 밝은 빛의 길 · K 빛나는 수정 · Q 울트라 워프홀
-// zone (만남 구역): 'grass' 사파리존 풀숲 · 'cave' 동굴 바닥 · 'deep' 깊은 바깥 구역 풀숲 · 'ultra' 울트라 스페이스
+// 해변 글자 (kind 'beach'): T 야자나무 · . 모래 · , 바닷가 풀숲 · w 얕은 물 (걸을 수 있음) · ~ 깊은 바다 · c 산호 · R 바위 · h 조개껍데기 · S 표지판 · E 나가는 곳
+// zone (만남 구역): 'beach' 해변 · 'pond' (앱이 정함: 물가 2칸 안의 사파리존 풀숲) · 'grass' 사파리존 풀숲 · 'cave' 동굴 바닥 · 'deep' 깊은 바깥 구역 풀숲 · 'ultra' 울트라 스페이스
 // warps: 'x,y' → [지도, x, y, 보는 쪽, 'warp'?]  (그 칸에 들어서면 화면이 어두워지며 옮겨 감. 'warp' = 워프홀 연출)
 // 참고: 3세대 여울의 동굴 (물웅덩이·바위) · 미혹의 동굴 (갈림길 미로·점자·구멍) 느낌으로 새로 그린 지도 (원본 지도를 베끼지 않음)
 
@@ -33,7 +34,8 @@ export const LEGEND_HINTS = [
 export const ULTRA_BEASTS = [793, 794, 795, 796, 797, 798, 799, 803, 804, 805, 806];
 // 구역 힌트 (사육사가 전설 힌트 다음에 알려 줌). ⚠ 자리표시 글.
 export const ZONE_HINTS = [
-  { zone: 'ultra', name: '울트라 워프홀', where: '깊은 동굴 지하 2층 어딘가', cond: '그 너머 울트라 스페이스에서만 울트라비스트가 나온대', more: '텅비드·매시붕·페로코체·전수목·철화구야·종이신도·악식킹·베베놈·아고용·차곡차곡·두파팡… 모두 다른 세계에서 온 포켓몬이란다.' },
+  { zone: 'beach', name: '해변', where: '사파리존 동쪽 끝 모래길 너머', cond: '얕은 물과 바닷가 풀숲에서 물 · 얼음 타입 포켓몬이 나온대', more: '산호초가 있는 동쪽 끝으로 갈수록 레벨이 높은 포켓몬이 산단다. 연못 가까운 풀숲에도 물 포켓몬이 가끔 나오지.' },
+  { zone: 'ultra', name: '울트라 워프홀', where: '깊은 동굴 지하 2층 어딘가', cond: '그 너머 울트라 스페이스에서만 울트라비스트가 나온대', more: '텅비드, 매시붕, 페로코체, 전수목, 철화구야, 종이신도, 악식킹, 베베놈, 아고용, 차곡차곡, 두파팡… 모두 다른 세계에서 온 포켓몬이란다.' },
 ];
 
 const BRAILLE = '벽에 점자가 새겨져 있다… "깊은 곳에 잠든 거인을 깨우려면 세 개의 돌을 모아라."';
@@ -78,8 +80,8 @@ export const MAPS = {
       'TTT..FfffffffF.,,,,,,,,,Fffff..##..ffffF,,,,,,,,,,,,,.~~~~~..TTT',
       'TTT..FfffffffF.,,,,,,,,,FffffF.##.FffffF,,,,,,,,,,,,,........TTT',
       'TTT..FFFF.FFFF..........FFFFFF.##.FFFFFF,,,,,,,,,,,,,........TTT',
-      'TTT......########################.............S...........R..TTT',
-      'TTT......########################.................R..........TTT',
+      'TTT......########################.............S...........R#####',
+      'TTT......########################.................R....#########',
       'TTT..........S.........,,,,,,..##..,,,,,,...,,,,,,,,,,,,,,,,.TTT',
       'TTT,,,,,,,,,,..FFF.FFFF,,,,,,..##..,,,,,,...,,,,,,,,,,,,,,,,.TTT',
       'TTT,,,,,,,,,,..FffffffF,,,,,,..###############,,,,,,,,,,,,,,.TTT',
@@ -95,17 +97,45 @@ export const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT##TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT##TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
     ],
-    warps: { '8,2': 'shoal.in', '54,2': 'maze.in', '32,17': 'deep.in' },
+    warps: { '8,2': 'shoal.in', '54,2': 'maze.in', '32,17': 'deep.in', '63,36': ['beach', 1, 5, 'right'], '63,37': ['beach', 1, 6, 'right'] },
     signs: {
       '34,45': '사파리존에 어서 와요! 키 큰 풀숲을 걸으면 야생 포켓몬이 나와요. 궁금한 건 옆의 사육사에게 물어보세요.',
-      '29,24': '↖ 연못 구역 · 여울의 동굴   ↗ 바위 구역 · 미혹의 동굴   ↑ 깊은 동굴   ↓ 입구',
+      '29,24': '↖ 연못 구역 · 여울의 동굴   ↗ 바위 구역 · 미혹의 동굴   ↑ 깊은 동굴   ↘ 해변   ↓ 입구',
       '12,21': '연못 구역: 다리를 건너 보세요. 물가 풀숲에도 포켓몬이 숨어 있대요!',
       '51,21': '바위 구역: 바위 사이 풀숲이 아주 넓어요.',
-      '46,36': '← 꽃밭   남동 풀숲은 사파리존에서 가장 넓은 풀숲이에요!',
+      '46,36': '← 꽃밭   → 해변   남동 풀숲은 사파리존에서 가장 넓은 풀숲이에요!',
       '13,38': '울타리 안 꽃밭은 들어가서 구경할 수 있어요.',
     },
     npcs: [{ id: 'keeper', x: 30, y: 45, dir: 'down' }],
     legends: [],
+  },
+
+  // 해변 (0040): 사파리존 동쪽 끝 모래길 너머. 얕은 물 (w) · 바닷가 풀숲 (,) 에서 물 · 얼음 타입 포켓몬. 동쪽 끝 산호초로 갈수록 레벨이 높음 (Lv.10 → 50)
+  beach: {
+    name: '해변', kind: 'beach', zone: 'beach', start: [1, 5, 'right'],
+    rows: [
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTT....,,,....TTTTT...,,,,,...TTTTT....,,,,,.....TTTTT...,,,TTT',
+      'TT....,,,,,,,..h....,,,,,,,,.......,,,,,,,,,,....h....,,,,,,,.TT',
+      'TT.S..,,,,,,,......,,,,,,,,,,..R...,,,,,,,,..........,,,,,,,,.TT',
+      'E.........,,,,.........,,,,......h.....,,,,....R.......,,,,,..TT',
+      'E.....h.......................................................TT',
+      'TT..........R.........h..............R..........h...........RRTT',
+      'TT............................................................TT',
+      'TTwwwww.....wwwwwwww.......wwwwwwwwww.....wwwwwwwwwwwwwwwwwwRRTT',
+      'TTwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwcwwwwwwwwRRT',
+      'TTwwwcwwwwwwwwwcwwwwwwwwwwwwwwcwwwwwwwwwwwcwwwwwwwwwwwwwcwwwwwRT',
+      '~~wwwwwww~~~~wwwwwwwwww~~~~~wwwwwwwww~~~~wwwwwwcwwwwwwwwwwwwwwRT',
+      '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~wwwwwwwwwcwwwwwwwwwRT',
+      '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~wwwwwwwwwwwcwwwwRT',
+      '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~wwwwwwwwwwwRT',
+      '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~wwcwwRT',
+      '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~T',
+    ],
+    warps: { '0,5': ['safari', 62, 36, 'left'], '0,6': ['safari', 62, 37, 'left'] },
+    signs: { '3,4': '해변: 얕은 물과 바닷가 풀숲에 물 · 얼음 타입 포켓몬이 살아요. 동쪽 산호초로 갈수록 강한 포켓몬이 나온대요!' },
+    npcs: [], legends: [],
   },
 
   deepPond: {
@@ -248,6 +278,6 @@ for (const m of Object.values(MAPS)) {
 }
 
 // 이 글자가 막힌 칸인지 (사람·전설 포켓몬 자리는 safari.js 가 따로 막음)
-export const SOLID = { out: new Set(['T', '~', 'F', 'R', 'S', 'G', 'M', 'L']), cave: new Set(['W', '~', 'r', 'O', 'B', 'L', 'S']), ultra: new Set(['X', 'K']), shrine: new Set(['P', 'B', 'I', 'r', 'L']) };
+export const SOLID = { out: new Set(['T', '~', 'F', 'R', 'S', 'G', 'M', 'L']), beach: new Set(['T', '~', 'c', 'R', 'S']), cave: new Set(['W', '~', 'r', 'O', 'B', 'L', 'S']), ultra: new Set(['X', 'K']), shrine: new Set(['P', 'B', 'I', 'r', 'L']) };
 // 야생 포켓몬이 나오는 칸
-export const ENC = { out: new Set([',']), cave: new Set(['.']), ultra: new Set(['.', '=']), shrine: new Set() };
+export const ENC = { out: new Set([',']), beach: new Set([',', 'w']), cave: new Set(['.']), ultra: new Set(['.', '=']), shrine: new Set() };

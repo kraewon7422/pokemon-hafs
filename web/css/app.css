@@ -183,7 +183,7 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .stage .rays { position: absolute; width: 320px; height: 320px; border-radius: 50%; background: repeating-conic-gradient(rgba(248, 208, 72, .35) 0 10deg, transparent 10deg 20deg); animation: spin 8s linear infinite; }
 @keyframes spin { to { transform: rotate(1turn); } }
 .new-badge { position: absolute; top: -8px; right: -24px; z-index: 2; background: var(--red); color: #fff; padding: 2px 10px; border-radius: 6px; border: 3px solid #fff; animation: blink 1s steps(1) infinite; }
-.textbox { min-height: 96px; font-size: var(--fs-m); }
+.textbox { min-height: 96px; font-size: var(--fs-m); white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }   /* 0042: 대사 줄 바꿈 (단어 중간에서 안 끊김) */
 .textbox .more { float: right; animation: blink .8s steps(1) infinite; }
 
 /* quiz */
@@ -468,9 +468,16 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .type-table td.x0 { background: #404858; color: #fff; font-weight: bold; }
 
 /* ───────── 배틀 (3세대 느낌) ───────── */
-.bt-team { display: flex; gap: 8px; justify-content: space-around; }
-.bt-team > div { display: grid; justify-items: center; gap: 2px; text-align: center; min-width: 0; }
-.bt-team small { font-size: 12px; word-break: keep-all; }
+/* 내 배틀 팀: 3·4마리 모두 같은 너비 칸. 칸마다 그림 → 이름 → Lv → 타입이 같은 높이에 (이름은 한 줄, 단어 안에서 안 끊음) */
+.bt-team { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: start; }
+.bt-mon { container-type: inline-size; display: grid; justify-items: center; align-content: start; gap: 2px; text-align: center; min-width: 0; }
+.bt-tpic { display: flex; align-items: flex-end; justify-content: center; width: 100%; overflow: hidden; }
+/* 긴 이름 (일레도리자드 6글자)은 칸 너비에 맞춰 글자를 줄임: 100cqi = 칸 너비 */
+.bt-name { display: block; max-width: 100%; white-space: nowrap; word-break: keep-all; font-size: min(var(--fs-s), calc(100cqi / (var(--len, 4) + .3))); height: 18px; line-height: 18px; font-weight: bold; }
+.bt-mlv { font-size: var(--fs-s); white-space: nowrap; height: 16px; line-height: 16px; }
+.bt-team .types { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; margin-top: 2px; }
+.bt-team .type { padding: 0 4px; line-height: 16px; border-width: 1px; }
+@container (min-width: 112px) { .bt-team .types { flex-direction: row; } }
 .bt-invite { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px; border: 3px solid var(--ink); border-radius: 8px; background: #fff4c8; }
 .bt-invite b { flex: 1 1 100%; }
 .bt-banner { background: #fff4c8; }
@@ -678,7 +685,7 @@ details.box[open] > summary::after { content: ' ▴'; }
 
 /* 3세대 느낌 글 상자: 남색 바탕 · 금색 테두리 · 빨간 ▼ */
 .bt-textbox { position: relative; background: #2c4c6c; border: 4px solid #d8b850; box-shadow: inset 0 0 0 3px #1a2c40; border-radius: 8px; padding: 10px 30px 10px 14px; min-height: 74px; box-sizing: border-box; }
-.bt-text { color: #fff; font-size: 16px; line-height: 1.5; white-space: pre-line; text-shadow: 2px 2px 0 #10202c; }
+.bt-text { color: #fff; font-size: 16px; line-height: 1.5; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; text-shadow: 2px 2px 0 #10202c; }
 .bt-arrow { position: absolute; right: 12px; bottom: 10px; width: 0; height: 0; border: 7px solid transparent; border-top-color: #f04830; border-bottom: 0; animation: bt-arrow .7s steps(2) infinite; }
 .bt-arrow[hidden] { display: none; }
 @keyframes bt-arrow { 50% { transform: translateY(3px); } }
@@ -1054,13 +1061,30 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .sf-place.on { opacity: 1; }
 /* 조작: 안내 카드 위 · 아래 줄 = 십자 버튼 (왼쪽) … A/B (오른쪽, 휴대용 게임기처럼 떨어져서) */
 .sf-ctl { display: grid; gap: 10px; min-width: 0; }
-.sf-btns { display: flex; align-items: center; justify-content: space-between; gap: 24px; min-width: 0; padding: 0 4px; }
-.sf-ab { flex: none; position: relative; width: 132px; height: 112px; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
-.sf-a, .sf-b { position: absolute; display: grid; place-items: center; padding: 0; border: 3px solid var(--ink); border-radius: 50%; color: #fff; font-weight: bold; font-size: var(--fs-l);
-  cursor: pointer; touch-action: none; box-shadow: 0 3px 0 #182030; text-shadow: 1px 1px 0 #701c24; }
-.sf-a { width: 64px; height: 64px; right: 0; top: 0; background: #c83848; }
-.sf-b { width: 56px; height: 56px; left: 0; bottom: 0; background: #8c3858; font-size: var(--fs-m); }
-.sf-a:active, .sf-b:active { filter: brightness(1.2); transform: translateY(2px); box-shadow: 0 1px 0 #182030; }
+.sf-btns { display: flex; align-items: stretch; gap: 12px; min-width: 0; }
+/* 0040: 끌어서 걷는 조이스틱 칸 (누른 곳이 가운데) · A 버튼 하나 + 스프레이 */
+.sf-joy { position: relative; flex: 1; min-width: 0; height: 132px; border: 3px solid var(--ink); border-radius: 12px; overflow: hidden;
+  background: repeating-linear-gradient(45deg, #3a4258 0 6px, #343c52 6px 12px); box-shadow: inset 0 3px 0 rgba(0,0,0,.25);
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; cursor: grab; }
+.sf-jb { position: absolute; left: 50%; top: 50%; width: 84px; height: 84px; margin: -42px 0 0 -42px; border-radius: 50%; pointer-events: none;
+  background: rgba(255,255,255,.08); border: 3px solid rgba(255,255,255,.35); box-sizing: border-box; display: grid; place-items: center; }
+.sf-jk { width: 40px; height: 40px; border-radius: 50%; background: #e8ecf8; border: 3px solid var(--ink); box-sizing: border-box; box-shadow: 0 3px 0 #182030; }
+.sf-joy.on { cursor: grabbing; }
+.sf-joy.on .sf-jb { border-color: rgba(255,255,255,.6); background: rgba(255,255,255,.14); }
+.sf-jt { position: absolute; left: 0; right: 0; bottom: 4px; text-align: center; color: #c8d0e8; font-size: 11px; pointer-events: none; white-space: nowrap; }
+.sf-joy.on .sf-jt { visibility: hidden; }
+.sf-act { flex: none; width: 104px; display: grid; grid-template-rows: 1fr auto; gap: 8px; justify-items: center;
+  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; }
+.sf-a { width: 72px; height: 72px; display: grid; place-items: center; padding: 0; border: 3px solid var(--ink); border-radius: 50%; color: #fff; font-weight: bold;
+  font-size: var(--fs-l); background: #c83848; cursor: pointer; touch-action: none; box-shadow: 0 3px 0 #182030; text-shadow: 1px 1px 0 #701c24; align-self: center; }
+.sf-a:active { filter: brightness(1.2); transform: translateY(2px); box-shadow: 0 1px 0 #182030; }
+.sf-spray { width: 100%; min-height: 44px; display: grid; justify-items: center; align-content: center; gap: 0; padding: 2px 4px; box-sizing: border-box;
+  border: 3px solid var(--ink); border-radius: 10px; background: #4c9c6c; color: #fff; cursor: pointer; touch-action: none; box-shadow: 0 3px 0 #182030;
+  line-height: 1.15; text-shadow: 1px 1px 0 #1c4c30; }
+.sf-spray:active { transform: translateY(2px); box-shadow: 0 1px 0 #182030; }
+.sf-spray.on { background: #7c5cc8; text-shadow: 1px 1px 0 #3c2870; }
+.sf-sl { font-size: 12px; white-space: nowrap; }
+.sf-st { font-size: var(--fs-s); font-variant-numeric: tabular-nums; white-space: nowrap; }
 /* 사육사 고르기 메뉴 (3세대 오른쪽 위 상자) */
 .sf-menu { position: absolute; z-index: 3; right: 6px; top: 6px; bottom: calc(3em + 30px); width: min(230px, calc(100% - 12px)); margin: 0; padding: 6px 4px; box-sizing: border-box; overflow-y: auto; overscroll-behavior: contain; }
 .sf-menu[hidden] { display: none; }
@@ -1075,15 +1099,6 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .sf-mt b { font-size: var(--fs-m); }
 .sf-mt small { font-size: var(--fs-s); color: #586078; }
 .sf-mk { flex: none; font-weight: bold; color: #2c8c4c; }
-.sf-pad { flex: none; display: grid; grid-template-columns: repeat(3, 48px); grid-template-rows: repeat(3, 48px); gap: 2px;
-  touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
-.sf-dir { display: grid; place-items: center; padding: 0; border: 3px solid var(--ink); border-radius: 8px; background: #3a4258; cursor: pointer; touch-action: none; box-shadow: 0 3px 0 #182030; }
-.sf-dir.on, .sf-dir:active { background: #586890; transform: translateY(2px); box-shadow: 0 1px 0 #182030; }
-.sf-dir i { width: 0; height: 0; border: 9px solid transparent; }
-.sf-up { grid-area: 1 / 2; } .sf-up i { border-bottom-color: #fff; margin-top: -9px; }
-.sf-down { grid-area: 3 / 2; } .sf-down i { border-top-color: #fff; margin-bottom: -9px; }
-.sf-left { grid-area: 2 / 1; } .sf-left i { border-right-color: #fff; margin-left: -9px; }
-.sf-right { grid-area: 2 / 3; } .sf-right i { border-left-color: #fff; margin-right: -9px; }
 .sf-info { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; padding: 8px 10px; background: #fffbe8; border: 3px solid var(--ink); border-radius: 8px; }
 .sf-balls { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .sf-bl { display: grid; line-height: 1.25; white-space: nowrap; }
@@ -1091,10 +1106,9 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .sf-num { font-size: var(--fs-m); }
 .sf-balls canvas, .sf-ball { width: 30px; height: 30px; flex: none; }
 .sf-sub { font-size: var(--fs-s); word-break: keep-all; overflow-wrap: break-word; }
-.sf-pend { width: 100%; word-break: keep-all; }
-.sf-pend[hidden] { display: none; }
-@media (max-width: 340px) { .sf-pad { grid-template-columns: repeat(3, 44px); grid-template-rows: repeat(3, 44px); } .sf-info { padding: 6px 8px; }
-  .sf-btns { gap: 12px; } .sf-ab { width: 112px; height: 100px; } .sf-a { width: 58px; height: 58px; } .sf-b { width: 50px; height: 50px; } .sf-talk { font-size: 14px; padding: 8px 28px 8px 10px; } }
+.sf-sub:empty { display: none; }
+@media (max-width: 340px) { .sf-info { padding: 6px 8px; }
+  .sf-btns { gap: 8px; } .sf-joy { height: 112px; } .sf-act { width: 92px; } .sf-a { width: 62px; height: 62px; } .sf-talk { font-size: 14px; padding: 8px 28px 8px 10px; } }
 
 /* ───────── 0036 PC 박스 (3세대 에메랄드): ◀ BOX n ▶ + 풀숲 벽지 6 × 5 ───────── */
 .pc { display: grid; gap: 6px; min-width: 0; }
@@ -1198,8 +1212,13 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
   border-radius: 8px; box-shadow: inset 0 0 0 2px #fff; opacity: 0; transform: translateY(12px); transition: opacity .25s, transform .25s; position: relative;
   word-break: keep-all; overflow-wrap: break-word; }
 .ff-ov.s4 .ff-text { opacity: 1; transform: none; }
-.ff-title { display: block; font-size: var(--fs-l); margin-bottom: 4px; color: #c03020; }
-.ff-body { margin: 0; line-height: 1.5; }
+.ff-title { display: block; font-size: var(--fs-l); margin-bottom: 4px; color: #c03020; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }
+.ff-body { margin: 0; line-height: 1.5; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }   /* 0042: 이유 줄 · 문장마다 줄 바꿈 (
+) */
+.charm-svg { color: inherit; }
+.ff-parcel .charm-svg { filter: drop-shadow(0 0 10px #fff3a0); }
+.charm-row .key-ico .icon { width: 28px; height: 32px; }
+.scene.shiny-catch .spr::after { content: '✦'; position: absolute; left: 6%; top: 4%; color: #ffe14a; font-size: 28px; text-shadow: 0 0 6px #fff; animation: blink .8s steps(1) infinite; }
 .ff-more { position: absolute; right: 10px; bottom: 4px; color: #c03020; animation: ff-blink 1s steps(2) infinite; }
 @media (prefers-reduced-motion: reduce) { .ff-ov * { animation: none !important; transition: none !important; } .ff-ov.s3 .ff-stage::after { display: none; } }
 .gift-btn { position: relative; color: #e8c070; }
@@ -1214,7 +1233,7 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .gift-code { width: 100%; font: inherit; font-size: var(--fs-l); padding: 10px 12px; border: 3px solid #586890; border-radius: 8px; text-align: center; letter-spacing: 1px; }
 .gift-msg { min-height: 1.4em; margin: 6px 2px; color: #a02818; word-break: keep-all; }
 .overlay.full .ditto { flex: 1; display: grid; place-items: center; align-content: center; gap: 18px; color: #fff; padding: 16px; text-align: center; cursor: pointer; }
-.ditto-text { margin: 0; font-size: var(--fs-l); word-break: keep-all; }
+.ditto-text { margin: 0; font-size: var(--fs-l); word-break: keep-all; overflow-wrap: break-word; white-space: pre-line; }
 .rumour { word-break: keep-all; }
 .rumour b { color: #803090; }
 .rumour ul { margin: 4px 0; padding-left: 18px; }
@@ -1222,3 +1241,27 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 @keyframes ff-blink { 50% { opacity: 0; } }
 .ff-mon, .ff-shadow { width: min(72vw, 288px) !important; height: auto !important; aspect-ratio: 1; image-rendering: pixelated; }
 .ditto-c { width: min(60vw, 224px); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
+
+/* 좁은 폰(≤360px): 연습 배틀 버튼 — 글자가 카드 밖으로 나가지 않게 "보상 없음"을 아래 줄로 */
+@media (max-width: 360px) {
+  .btn.big:has(> .btn-sub) { flex-wrap: wrap; row-gap: 0; justify-content: center; }
+  .btn.big > .btn-sub { flex-basis: 100%; text-align: center; }
+}
+/* 0041 별명 · 사진 공유 (share.js) */
+.trainer .card-share { grid-column: 1 / -1; justify-self: end; min-height: 36px; white-space: nowrap; }
+.setting-nick .nick-row { display: flex; gap: 8px; }
+.setting-nick .nick-row input { flex: 1; min-width: 0; }
+.setting-nick .nick-row .btn { flex: none; white-space: nowrap; }
+.setting-nick small { word-break: keep-all; overflow-wrap: break-word; }
+.share-box { display: grid; gap: 10px; }
+.share-pic { display: block; width: 100%; max-width: 420px; max-height: 56dvh; object-fit: contain; justify-self: center; border: 3px solid var(--ink); border-radius: 8px; background: #283048; }
+.share-hint { word-break: keep-all; overflow-wrap: break-word; text-align: center; }
+.share-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+.share-acts .btn { min-height: 48px; }
+.share-bgs { display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px; }
+.share-bgs button { appearance: none; min-height: 40px; padding: 4px; border: 3px solid var(--ink); border-radius: 8px; background: #fff; color: var(--ink); font: inherit; font-size: var(--fs-s); white-space: nowrap; cursor: pointer; }
+.share-bgs button[aria-pressed='true'] { background: var(--gold); box-shadow: inset 0 -3px 0 #c8a048; font-weight: bold; }
+/* 상태 알약 (온라인 · 방금): 좁은 폰에서 줄이 바뀌어도 낱말 중간에서는 안 끊기게 */
+.status { word-break: keep-all; overflow-wrap: normal; min-width: 0; }
+/* 0042: 사파리 글 상자 줄 수 재기 (보이지 않음) */
+.sf-probe { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }

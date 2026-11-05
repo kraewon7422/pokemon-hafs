@@ -3,6 +3,9 @@
 //   화면이 어두워지며 지도 이동, 입구 옆 사육사 (전설 힌트 글 상자), 전설 포켓몬 자리 (조건이 되면 '!' → 잡기 훅),
 //   사파리볼을 다 쓰면 3세대처럼 "눈이 캄캄해졌다…" → 입구로 돌아감. 예전 판: .work/old/safari_v1.js
 //   깊은 동굴의 울트라 워프홀 → 울트라 스페이스 (울트라비스트 전용 구역). 만남 걸음은 구역 (zoneAt) 별로 reportSteps 한 곳에서 보냄.
+// v3 (0040): 끌어서 걷는 조이스틱 (왼쪽 칸 아무 데나 누른 곳이 가운데 · 대각선은 가로세로를 번갈아) · A 버튼 하나 (말 걸기 · 글 넘기기 · 고르기,
+//   메뉴는 '그만두기' 줄이나 바깥을 눌러 닫음) · 스프레이 (2분 동안 만남 없음, 몇 번이든) · 1.6배 빠른 걸음 · 만남 상한 없음 (볼이 0 일 때만 덮개) ·
+//   기다리는 만남은 버튼 없이 자동으로 이어 잡기 · 해변 (zone 'beach') · 레벨은 서버가 구역 + 지도 (p_area) + 입구에서 거리 (p_dist) 로 정함.
 // 키 큰 풀숲 (동굴은 바닥) 을 걸으면 야생 포켓몬이 나오고 사파리볼(하루 N개)로 잡는다.
 // 걸음 판정·볼 개수는 서버 (0033 safari_encounter(p_steps) · safari_result) — 앱은 만남 칸 걸음 수만 보냄.
 // 지도 글자·이동·전설 자리 = safari-maps.js. 그림: safari-tiles.png (16px 타일, 위치표 safari-tiles.js) ·
@@ -23,7 +26,10 @@ export { LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS };
 
 const TS = 16;
 const START = { map: 'safari', x: MAPS.safari.start[0], y: MAPS.safari.start[1], dir: MAPS.safari.start[2] };
-const STEP_MS = 267;               // 한 칸 걷는 시간 = 3세대처럼 16프레임 (60fps) ≈ 267ms (서버 걸음 속도 제한 6걸음/초 안쪽)
+const STEP_MS = 165;               // 한 칸 걷는 시간 (0040: 267 → 165ms, 1.6배 빠르게 ≈ 6걸음/초 · 서버 걸음 속도 제한 10걸음/초 안쪽)
+const SPRAY_MS = 120000;           // 스프레이 한 번 = 2분 동안 야생 포켓몬이 안 나옴 (만남 걸음을 보내지 않음)
+const JOY_DEAD = 10;               // 조이스틱: 이보다 덜 끌면 멈춤 (CSS px)
+const JOY_R = 36;                  // 조이스틱 손잡이가 움직이는 반지름 (CSS px)
 const TURN_MS = 120;               // 새 방향을 짧게 누르면 제자리에서 돌기만 · 이보다 오래 누르면 걷기 시작
 const SEND_EVERY = 3;              // 만남 칸 걸음을 몇 걸음마다 서버로 보낼지
 
@@ -154,6 +160,15 @@ function prerender(sheet, f, m) {
         else if (c === 'K') put(`ucrystal${(x + y) & 1 ? 'B' : 'A'}`, X, Y);
         continue;
       }
+      if (m.kind === 'beach') {      // 0040 해변: 모래 · 얕은 물 (물거품 테두리) · 깊은 바다 · 산호 · 바닷가 풀숲 · 바위 · 조개 (야자나무는 아래에서 따로)
+        const wet = (k) => k === 'w' || k === '~' || k === 'c';
+        if (c === '~') { put(`bdeep${f}`, X, Y); put(`bdeepe${maskOf(x, y, (k) => k === '~', true)}`, X, Y); continue; }
+        if (c === 'w' || c === 'c') { const mk = maskOf(x, y, wet, true); put(`bshal${mk}_${f}`, X, Y); for (const k of corners(x, y, mk, wet, true)) put(`bshalc${k}`, X, Y); if (c === 'c') put((x * 3 + y) % 2 ? 'bcoralB' : 'bcoralA', X, Y); continue; }
+        put(`bsand${(x * 7 + y * 3) % 5 === 0 ? 1 : 0}`, X, Y);
+        const o = { ',': 'tall', R: 'brock', S: 'bsign', h: 'bshell' }[c];
+        if (o) put(o, X, Y);
+        continue;
+      }
       if (m.kind === 'shrine') {     // 전설의 제단: 돌바닥 · 절벽 · 돌계단 · 대리석 제단 (돌기둥은 아래에서 따로)
         const v = (x * 7 + y * 13) % 3;
         if (c === 'P' || c === 'B') {
@@ -208,6 +223,7 @@ function prerender(sheet, f, m) {
   }
   // 나무는 위 줄부터: 뾰족한 머리가 윗칸으로 8px 솟아 윗나무 밑동을 덮음 (숲이 빽빽해 보임)
   if (m.kind === 'out') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('tree', x * TS, y * TS);
+  if (m.kind === 'beach') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('palm', x * TS, y * TS);   // 야자나무 16×24
   if (m.kind === 'shrine') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'I') put('spillar', x * TS, y * TS);   // 16×32, 윗칸으로 솟음
   return cv;
 }
@@ -222,13 +238,20 @@ const P = { x: START.x, y: START.y, dir: START.dir, fx: START.x, fy: START.y, mo
 let mapId = START.map, M = MAPS[mapId];
 const MW = () => M.rows[0].length, MH = () => M.rows.length;
 const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW() || y >= MH() ? ({ cave: 'W', ultra: 'X', shrine: 'P' }[M.kind] || 'T') : M.rows[y][x]);
-// 이 칸의 만남 구역: 'grass' | 'cave' | 'deep' | 'ultra' (만남 칸이 아니면 null)
-export function zoneAt(x, y) { return ENC[M.kind].has(tileAt(x, y)) ? M.zone : null; }
+// 이 칸의 만남 구역: 'grass' | 'pond' | 'cave' | 'deep' | 'ultra' | 'beach' (만남 칸이 아니면 null)
+//   0040: 사파리존 풀숲 중 물 (연못 · 다리) 2칸 안 = 'pond' (물 타입 포켓몬도 나옴)
+export function zoneAt(x, y) {
+  if (!ENC[M.kind].has(tileAt(x, y))) return null;
+  if (M.zone === 'grass') for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) if (isWater(tileAt(x + dx, y + dy))) return 'pond';
+  return M.zone;
+}
 export const currentZone = () => M.zone;
+// 0040: 레벨용 — 지도 입구 (start) 에서 지금 칸까지 거리 (입구가 없는 지도 = 0, 서버가 그 지도의 레벨 범위에서 무작위)
+const areaDist = () => (M.start ? Math.round(Math.hypot(P.x - M.start[0], P.y - M.start[1])) : 0);
 // 만남 칸 걸음 보내기 — 걸음은 모두 여기 한 곳으로 (구역이 바뀌면 그 전에 따로 보냄)
-export async function reportSteps(n, zone) {
-  // 0038: 서버가 구역별 포켓몬을 고름 (ultra = 울트라비스트만 · cave/deep = 바위·땅·고스트·악·강철·물 타입이 더 자주)
-  return rpc('safari_encounter', { p_steps: n, p_zone: zone || currentZone() || 'grass' });
+export async function reportSteps(n, zone, area = mapId, dist = areaDist()) {
+  // 0038: 서버가 구역별 포켓몬을 고름 · 0040: 사는 곳 (해변 = 물·얼음 …) + 레벨 (지도 p_area 의 범위 안에서 입구 거리 p_dist 만큼)
+  return rpc('safari_encounter', { p_steps: n, p_zone: zone || currentZone() || 'grass', p_area: area, p_dist: dist });
 }
 // 사람·전설 포켓몬 (지도마다): { type: 'npc' | 'legend', o }
 function objAt(x, y) {
@@ -256,7 +279,7 @@ function build() {
   Promise.all([loadImg('safari-tiles.png'), loadImg('safari-hero.png'), loadImg('safari-keeper.png')]).then(([sh, hr, kp]) => {
     sheet = sh; hero = hr; keeper = kp; mapsOf(mapId);
   }).catch(() => {});
-  const cv = h('canvas.sf-canvas', { 'aria-label': '사파리존 지도. 아래 방향 버튼이나 키보드 화살표로 걷고, A 버튼으로 말을 걸어요.' });
+  const cv = h('canvas.sf-canvas', { 'aria-label': '사파리존 지도. 아래 왼쪽 칸을 누른 채로 끌거나 키보드 화살표로 걷고, A 버튼으로 말을 걸어요.' });
   const g = cv.getContext('2d');
   const cover = h('div.sf-cover', { hidden: true });
   const msg = h('p.sf-msg', { 'aria-live': 'polite' });          // 맵 아래쪽 짧은 안내 (몇 초 뒤 사라짐)
@@ -268,38 +291,90 @@ function build() {
   const stage = h('div.sf-stage', cv, place, msg, talkEl, menuEl, cover);
   const ballsEl = h('b.sf-num', '-');
   const encEl = h('span.sf-sub', '');
-  const pendBtn = h('button.btn.small.primary.sf-pend', { hidden: true, onclick: () => { if (busy) return; sfx.select(); const e = st?.pending; if (e) startCatch(e); } }, '기다리는 포켓몬 잡기');   // 만남 연출 중에 눌러도 두 번 열리지 않게
   let ballIco = h('span.sf-ball');
   import('./catch.js').then((m) => { const c = m.ballCanvas('safari', 2); ballIco.replaceWith(c); ballIco = c; }).catch(() => {});
-  const held = new Map();       // pointerId → 방향 (손가락 여러 개)
   const keys = [];              // 누르고 있는 키 방향 (마지막 것 우선)
-  const clearPad = () => { held.clear(); keys.length = 0; pad.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); };
-  const pad = h('div.sf-pad', { role: 'group', 'aria-label': '방향 버튼' }, ['up', 'left', 'right', 'down'].map((d) => {
-    const b = h(`button.sf-dir.sf-${d}`, { type: 'button', 'aria-label': { up: '위로', down: '아래로', left: '왼쪽으로', right: '오른쪽으로' }[d] }, h('i'));
-    b.addEventListener('pointerdown', (e) => { e.preventDefault(); held.set(e.pointerId, d); b.classList.add('on'); try { b.releasePointerCapture?.(e.pointerId); } catch { /* */ } kick(d); });
-    b.addEventListener('pointerenter', (e) => { if (held.has(e.pointerId)) { held.set(e.pointerId, d); b.classList.add('on'); } });
-    b.addEventListener('pointerleave', () => b.classList.remove('on'));
-    b.addEventListener('contextmenu', (e) => e.preventDefault());
-    return b;
-  }));
+  // ── 조이스틱 (0040): 왼쪽 칸 아무 데나 누른 곳이 가운데 → 끄는 쪽으로 걷기 · 떼면 멈춤 ──
+  //   격자 걷기라 대각선은 가로 · 세로를 한 칸씩 번갈아 (한쪽이 막히면 다른 쪽), 그 밖에는 더 많이 끈 쪽 (바뀔 때는 1.3배 넘어야 — 덜 떨림)
+  const joy = { id: null, cx: 0, cy: 0, vx: 0, vy: 0, axis: null, lastAxis: 'y', menuDir: null };
+  const joyKnob = h('i.sf-jk');
+  const joyBase = h('span.sf-jb', joyKnob);
+  const joyEl = h('div.sf-joy', { role: 'group', 'aria-label': '이동: 이 칸을 누른 채로 끌면 그쪽으로 걸어요' }, joyBase, h('small.sf-jt', '끌어서 걷기'));
+  const joyCentre = () => { joyBase.style.left = ''; joyBase.style.top = ''; joyKnob.style.transform = ''; joyEl.classList.remove('on'); };
+  const joyClear = () => { joy.id = null; joy.vx = joy.vy = 0; joy.axis = null; joy.menuDir = null; joyCentre(); };
+  const clearPad = () => { keys.length = 0; joyClear(); };
+  joyEl.addEventListener('pointerdown', (e) => {
+    if (joy.id != null) return;
+    e.preventDefault();
+    const r = joyEl.getBoundingClientRect();
+    joy.id = e.pointerId; joy.cx = e.clientX; joy.cy = e.clientY; joy.vx = joy.vy = 0; joy.axis = null; joy.menuDir = null;
+    try { joyEl.setPointerCapture(e.pointerId); } catch { /* */ }
+    joyBase.style.left = `${e.clientX - r.left}px`; joyBase.style.top = `${e.clientY - r.top}px`; joyEl.classList.add('on');
+    if (talkQ && !menuQ) advance();          // 글 상자 중에 누르면 글 넘기기 (A 와 같음)
+  });
+  joyEl.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== joy.id) return;
+    e.preventDefault();
+    joy.vx = e.clientX - joy.cx; joy.vy = e.clientY - joy.cy;
+    const m = Math.hypot(joy.vx, joy.vy), k = m > JOY_R ? JOY_R / m : 1;
+    joyKnob.style.transform = `translate(${Math.round(joy.vx * k)}px, ${Math.round(joy.vy * k)}px)`;
+    if (menuQ) {                               // 메뉴: 위아래로 끌 때마다 한 줄
+      const d = Math.abs(joy.vy) > JOY_DEAD * 2 && Math.abs(joy.vy) > Math.abs(joy.vx) ? (joy.vy > 0 ? 'down' : 'up') : null;
+      if (d && d !== joy.menuDir) menuMove(d);
+      joy.menuDir = d;
+    }
+  });
+  const joyUp = (e) => { if (e.pointerId === joy.id) joyClear(); };
+  joyEl.addEventListener('pointerup', joyUp); joyEl.addEventListener('pointercancel', joyUp); joyEl.addEventListener('lostpointercapture', joyUp);
+  joyEl.addEventListener('contextmenu', (e) => e.preventDefault());
+  // 조이스틱이 가리키는 걸음 방향 (먼저 해 볼 쪽부터)
+  function joyDirs() {
+    const ax = Math.abs(joy.vx), ay = Math.abs(joy.vy), mx = Math.max(ax, ay);
+    if (mx < JOY_DEAD) { joy.axis = null; return []; }
+    const hd = joy.vx > 0 ? 'right' : 'left', vd = joy.vy > 0 ? 'down' : 'up';
+    if (Math.min(ax, ay) / mx > 0.5) return joy.lastAxis === 'x' ? [vd, hd] : [hd, vd];   // 대각선: 번갈아
+    if (joy.axis === 'x' && ay > ax * 1.3) joy.axis = 'y';
+    else if (joy.axis === 'y' && ax > ay * 1.3) joy.axis = 'x';
+    else if (!joy.axis) joy.axis = ax >= ay ? 'x' : 'y';
+    return [joy.axis === 'x' ? hd : vd];
+  }
   const faceBtn = (cls, label, aria, fn) => {
     const b = h(`button.${cls}`, { type: 'button', 'aria-label': aria }, label);
     b.addEventListener('pointerdown', (e) => { e.preventDefault(); fn(); });
     b.addEventListener('contextmenu', (e) => e.preventDefault());
     return b;
   };
-  const aBtn = faceBtn('sf-a', 'A', 'A 버튼: 말 걸기 · 고르기 · 글 넘기기', () => pressA());
-  const bBtn = faceBtn('sf-b', 'B', 'B 버튼: 그만두기 · 글 넘기기', () => pressB());
-  const abWrap = h('div.sf-ab', { role: 'group', 'aria-label': 'A B 버튼' }, bBtn, aBtn);
-  const up = (e) => { if (held.delete(e.pointerId)) pad.querySelectorAll('.on').forEach((x) => x.classList.remove('on')); };
-  window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
-  const info = h('div.sf-info', h('div.sf-balls', ballIco, h('span.sf-bl', h('small', '사파리볼'), ballsEl)), encEl, pendBtn);
-  const ctl = h('div.sf-ctl', info, h('div.sf-btns', pad, abWrap));
+  const aBtn = faceBtn('sf-a', 'A', 'A 버튼: 말 걸기 · 글 넘기기 · 고르기', () => pressA());
+  // ── 스프레이 (0040): 2분 동안 야생 포켓몬이 안 나옴 (만남 걸음을 서버로 보내지 않음) · 몇 번이든 · 전설 · 사람에게는 그대로 말을 걸 수 있음 ──
+  let sprayUntil = Number(localStorage.getItem('sfSprayUntil')) || 0, sprayWas = false;
+  const sprayOn = () => Date.now() < sprayUntil;
+  const sprayTime = h('b.sf-st', '');
+  const sprayBtn = faceBtn('sf-spray', [h('span.sf-sl', '스프레이'), sprayTime], '스프레이: 2분 동안 야생 포켓몬이 나오지 않아요', () => useSpray());
+  function useSpray() {
+    sprayUntil = Date.now() + SPRAY_MS;
+    try { localStorage.setItem('sfSprayUntil', String(sprayUntil)); } catch { /* */ }
+    pend.n = 0; sfx.select();
+    say('스프레이를 뿌렸다! 2분 동안 야생 포켓몬이 나오지 않아요.', 2500);
+    paintSpray();
+  }
+  function paintSpray() {
+    const on = sprayOn(), left = Math.max(0, Math.ceil((sprayUntil - Date.now()) / 1000));
+    sprayTime.textContent = on ? `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` : '2분';
+    sprayBtn.classList.toggle('on', on);
+    sprayBtn.setAttribute('aria-label', on ? `스프레이 효과 ${Math.floor(left / 60)}분 ${left % 60}초 남음 (누르면 다시 2분)` : '스프레이: 2분 동안 야생 포켓몬이 나오지 않아요');
+    if (sprayWas && !on && root.isConnected && S.tab === 'map') say('스프레이 효과가 사라졌다!', 2500);
+    sprayWas = on;
+  }
+  setInterval(() => { if (root.isConnected) paintSpray(); }, 500);
+  const actWrap = h('div.sf-act', { role: 'group', 'aria-label': 'A 버튼 · 스프레이' }, aBtn, sprayBtn);
+  const info = h('div.sf-info', h('div.sf-balls', ballIco, h('span.sf-bl', h('small', '사파리볼'), ballsEl)), encEl);
+  const ctl = h('div.sf-ctl', info, h('div.sf-btns', joyEl, actWrap));
   const root = h('div.sf', stage, ctl);
+  paintSpray();
 
   const KEY = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', s: 'down', a: 'left', d: 'right', W: 'up', S: 'down', A: 'left', D: 'right' };
   const A_KEYS = new Set(['Enter', ' ', 'z', 'Z']);
-  const B_KEYS = new Set(['x', 'X', 'Escape', 'Backspace']);
+  const B_KEYS = new Set(['x', 'X', 'Escape', 'Backspace']);     // PC: 메뉴 닫기 · 글 넘기기 (화면 버튼은 A 하나)
   const active = () => root.isConnected && S.tab === 'map' && !S.overlay && !document.querySelector('.cz-layer');
   window.addEventListener('keydown', (e) => {
     if (!active() || e.target?.closest?.('input,textarea,select')) return;
@@ -312,11 +387,12 @@ function build() {
     if (!keys.includes(d)) keys.push(d); kick(d);
   });
   window.addEventListener('keyup', (e) => { const d = KEY[e.key]; if (d) { const i = keys.indexOf(d); if (i >= 0) keys.splice(i, 1); } });
-  window.addEventListener('blur', () => { keys.length = 0; held.clear(); });
-  const wantDir = () => keys[keys.length - 1] || [...held.values()].pop() || null;
+  window.addEventListener('blur', () => { clearPad(); });
+  // 걸을 방향 후보 (조이스틱이면 대각선 2개까지, 키보드는 마지막에 누른 키)
+  const wantDirs = () => (joy.id != null ? joyDirs() : keys.length ? [keys[keys.length - 1]] : []);
 
   // ── 서버 상태 ──
-  let st = null, loading = false, inflight = false, pend = { n: 0, zone: null }, busy = false, seq = false, flashT = -1, bubbleT = -1, lastSign = '';
+  let st = null, loading = false, inflight = false, pend = { n: 0, zone: null, area: null }, busy = false, seq = false, flashT = -1, bubbleT = -1, lastSign = '';
   let bang = null;              // 전설 포켓몬 머리 위 '!' { x, y }
   let rustle = null;            // 흔들리는 풀숲 { x, y, t0 } (2장 · 0.27초)
   let sayTimer = 0;
@@ -326,7 +402,7 @@ function build() {
   };
   let placeTimer = 0;
   const showPlace = (name) => { place.textContent = name; place.classList.add('on'); clearTimeout(placeTimer); placeTimer = setTimeout(() => place.classList.remove('on'), 1800); };
-  const HINT = { out: '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!', cave: '동굴 바닥을 걸으면 야생 포켓몬이 나와요!', ultra: '울트라 스페이스를 걸으면 울트라비스트가 나와요!', shrine: '전설의 포켓몬이 잠든 제단이다…' };
+  const HINT = { beach: '얕은 물과 바닷가 풀숲을 걸으면 물 포켓몬이 나와요!', out: '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!', cave: '동굴 바닥을 걸으면 야생 포켓몬이 나와요!', ultra: '울트라 스페이스를 걸으면 울트라비스트가 나와요!', shrine: '전설의 포켓몬이 잠든 제단이다…' };
   let hintKind = '';
   const sayHint = () => { if (!closed() && !talkQ && hintKind !== M.kind) { hintKind = M.kind; say(HINT[M.kind]); } };
   setTimeout(sayHint, 900);
@@ -344,23 +420,33 @@ function build() {
       hintsFromServer(st?.legends);          // 0038: 사육사 · 전설 자리 = 서버의 진짜 조건
     } catch (e) { if (!e.offline) say(errorText(e.message)); }
     loading = false; paintInfo();
+    maybeResume();
   };
+  // 0040: 끝내지 않은 만남 (앱을 닫았다 열었거나 글 상자 중에 만남) → 버튼 없이 바로 이어 잡기.
+  //   같은 만남은 15초에 한 번만 (박스가 꽉 참 · 인터넷 끊김이면 catchEncounter 가 알려 주고 만남은 서버에 그대로 남음 → 풀숲을 걸으면 다시)
+  const autoTried = new Map();
+  function maybeResume() {
+    const e = st?.pending;
+    if (!e || busy || talkQ || menuQ || seq || !S.online || !active()) return;
+    const now = performance.now();
+    if (now - (autoTried.get(e.id) || -1e9) < 15000) return;
+    autoTried.set(e.id, now);
+    startCatch(e);
+  }
   window.addEventListener('online', () => { if (root.isConnected) refresh(); });
-  const closed = () => !st ? null : st.pending ? null : st.balls_left <= 0 ? 'balls' : st.encounters_today >= st.max_encounters ? 'max' : null;
+  // 0040: 덮개는 사파리볼을 다 썼을 때만 (만남 상한 없음)
+  const closed = () => (!st || st.pending ? null : st.balls_left <= 0 ? 'balls' : null);
   function paintInfo() {
     ballsEl.textContent = st ? `${st.balls_left}/${st.balls_daily}` : '-';
     ballsEl.nextElementSibling?.remove(); if (st?.next_reset_at) ballsEl.after(h('small.sf-reset', `다음 충전 ${new Date(st.next_reset_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' })}`));   // 0037 (branch-evo): 사파리볼 충전 시각
-    encEl.textContent = !S.online ? '인터넷이 연결되면 포켓몬이 나와요' : st ? `오늘 만난 포켓몬 ${st.encounters_today}/${st.max_encounters}` : '불러오는 중…';
-    encEl.title = '키 큰 풀숲과 동굴 바닥을 걸으면 야생 포켓몬이 나와요';
-    pendBtn.hidden = !st?.pending;
-    pendBtn.textContent = queued && queued.p_id === st?.pending?.id ? '잡기 결과 보내기' : '기다리는 포켓몬 잡기';
+    encEl.textContent = !S.online ? '인터넷이 연결되면 포켓몬이 나와요' : st ? (queued ? '남겨 둔 잡기 결과를 보내는 중…' : '') : '불러오는 중…';
     const why = closed();
     cover.hidden = !why || seq;          // 볼을 다 쓴 장면 (seq) 중에는 글 상자가 보이게 가리지 않음
     if (why) {   // 0037: 충전 주기(1~24시간)마다 다시 채워짐 → 다음 충전 시각을 알려 줌
       const at = st?.next_reset_at ? new Date(st.next_reset_at) : null;
       const hm = at ? at.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
       const sameDay = at && at.toDateString() === new Date().toDateString();
-      cover.replaceChildren(h('b', why === 'balls' ? '사파리볼을 다 썼어요' : '포켓몬이 모두 숨었어요'),
+      cover.replaceChildren(h('b', '사파리볼을 다 썼어요'),
         h('span', !at ? '조금 뒤에 다시 와 주세요!' : sameDay ? `${hm}에 다시 채워져요!` : `내일 ${hm}에 다시 채워져요!`));
     }
   }
@@ -371,14 +457,46 @@ function build() {
     return new Promise((res) => {
       clearPad(); say('');
       if (talkQ) { clearInterval(talkQ.timer); talkQ.res(); }
-      talkQ = { lines: lines.filter(Boolean), i: -1, typing: false, timer: 0, res };
       talkEl.hidden = false;
+      talkQ = { lines: lines.filter(Boolean).flatMap(paginate), i: -1, typing: false, timer: 0, res };
       nextLine();
     });
   }
+  // 0042: 3세대 글 상자처럼 한 상자에 두 줄까지 — 문장 (. ! ? … 뒤) 마다 나눠, 한 줄짜리 두 문장까지 한 상자에 (지금 상자 폭으로 잼).
+  //   한 문장이 두 줄을 넘으면 띄어쓰기에서 나눠 다음 상자로 (단어 중간은 절대 안 끊음 — CSS keep-all).
+  let probe = null;
+  function linesOf(text) {
+    if (!probe) { probe = h('div.sf-probe', { 'aria-hidden': 'true' }); talkEl.append(probe); }
+    const cs = getComputedStyle(talkEl);
+    probe.style.width = `${Math.max(40, talkEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight))}px`;
+    probe.textContent = text;
+    const lh = parseFloat(getComputedStyle(probe).lineHeight) || 24;
+    return Math.max(1, Math.round(probe.offsetHeight / lh));
+  }
+  function paginate(text) {
+    if (!talkEl.clientWidth) return [String(text)];
+    const sents = String(text).replace(/([.!?…]+["'」』)]*)[ \t]+/g, '$1\n').split('\n').map((x) => x.trim()).filter(Boolean);
+    const parts = [];
+    for (const st of sents) {
+      if (linesOf(st) <= 2) { parts.push(st); continue; }
+      let cur = '';
+      for (const w of st.split(' ')) {
+        const t = cur ? `${cur} ${w}` : w;
+        if (cur && linesOf(t) > 2) { parts.push(cur); cur = w; } else cur = t;
+      }
+      if (cur) parts.push(cur);
+    }
+    const out = []; let cur = '';
+    for (const st of parts) {
+      const t = cur ? `${cur}\n${st}` : st;
+      if (cur && linesOf(t) > 2) { out.push(cur); cur = st; } else cur = t;
+    }
+    if (cur) out.push(cur);
+    return out.length ? out : [String(text)];
+  }
   function nextLine() {
     const q = talkQ; q.i++;
-    if (q.i >= q.lines.length) { talkEl.hidden = true; talkQ = null; clearPad(); q.res(); return; }
+    if (q.i >= q.lines.length) { talkEl.hidden = true; talkQ = null; clearPad(); q.res(); setTimeout(maybeResume, 0); return; }
     const text = q.lines[q.i];
     talkMore.style.visibility = 'hidden';
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) { talkTx.textContent = text; talkMore.style.visibility = ''; return; }
@@ -397,14 +515,14 @@ function build() {
   // 풀숲 · 동굴 바닥 걸음 보내기 → 만남이면 잡기
   async function send() {
     if (inflight || pend.n <= 0 || !S.online || !st || closed() || busy) return;
-    const n = Math.min(pend.n, 1000), zone = pend.zone; pend.n -= n; inflight = true;
+    const n = Math.min(pend.n, 1000), zone = pend.zone, area = pend.area || mapId; pend.n -= n; inflight = true;
     let r = null;
-    try { r = await reportSteps(n, zone); } catch (e) { if (!e.offline) say(errorText(e.message)); }
+    try { r = await reportSteps(n, zone, area, areaDist()); } catch (e) { if (!e.offline) say(errorText(e.message)); }
     inflight = false;
     if (!r) return;
     st = { ...st, ...r };
     paintInfo();
-    if (r.encounter && !busy && !talkQ) encounter(r.encounter);   // 글 상자 중이면 '기다리는 포켓몬 잡기' 버튼으로
+    if (r.encounter && !busy && !talkQ && !menuQ) encounter(r.encounter);   // 글 상자 중이면 글이 끝난 뒤 maybeResume 이 이어 잡음
   }
   // 만남: 야생 곡을 먼저 틀고, 곡의 첫 타격에 '!' · 2박 뒤 화면 번쩍 (음악이 꺼져 있으면 예전처럼 효과음 + 정해진 시간)
   async function encounter(e) {
@@ -431,7 +549,7 @@ function build() {
       await refresh();
       if (had > 0 && st && st.balls_left <= 0 && !st.pending) await ballsOut();
       seq = false; busy = false; paintInfo();
-      if (!closed()) say({ cave: '동굴 안을 더 걸어 볼까요?', ultra: '빛나는 발판을 더 걸어 볼까요?' }[M.kind] || '풀숲을 더 걸어 볼까요?', 2500);
+      if (!closed()) say({ cave: '동굴 안을 더 걸어 볼까요?', ultra: '빛나는 발판을 더 걸어 볼까요?', beach: '물가를 더 걸어 볼까요?' }[M.kind] || '풀숲을 더 걸어 볼까요?', 2500);
     }
   }
   // 사파리볼을 다 씀 → 3세대처럼 두 줄 → 화면이 까매지고 사파리존 입구로
@@ -492,7 +610,7 @@ function build() {
             return { kind: 'legend', l, seen, name: seen ? l.name : '???', sub: seen ? '' : l.teaser, mark: l.caught ? '✔' : legendReady(l.dex) ? '!' : '',
               icon: () => spriteCanvas(speciesIdOf(l.dex), 32, seen ? 'normal' : 'silhouette') };
           }),
-          ...ZONE_HINTS.map((z) => ({ kind: 'zone', z, name: z.name, sub: '', mark: '', icon: wormIcon })),
+          ...ZONE_HINTS.map((z) => ({ kind: 'zone', z, name: z.name, sub: '', mark: '', icon: z.zone === 'ultra' ? wormIcon : null })),
           { kind: 'quit', name: '그만두기', sub: '', mark: '' },
         ];
         const i = await choose(first ? '어떤 포켓몬에 대한 이야기를 듣고 싶니?' : '또 궁금한 게 있니?', items);
@@ -552,8 +670,9 @@ function build() {
     const q = menuQ; if (!q) return;
     menuQ = null; menuEl.hidden = true; talkEl.hidden = true; q.res(i);
   }
+  menuEl.addEventListener('pointerdown', (e) => e.stopPropagation());   // 메뉴 상자 안 (줄 사이) 을 눌러도 닫히지 않게
   function pickMenu() { sfx.select(); closeMenu(menuQ.i); }
-  function pressB() {
+  function pressB() {                          // PC 키 (x · Esc): 메뉴 닫기 · 글 넘기기
     if (menuQ) { sfx.blip(); closeMenu(-1); return; }
     advance();
   }
@@ -593,7 +712,7 @@ function build() {
   }
   // 지도에서 사람·전설 포켓몬을 누름 → 그쪽을 보고 말 걸기 (가까이 있을 때만)
   stage.addEventListener('pointerdown', (e) => {
-    if (menuQ) return;                        // 메뉴는 줄을 눌러 고름 (그 밖을 눌러도 아무 일 없음)
+    if (menuQ) { e.preventDefault(); sfx.blip(); closeMenu(-1); return; }   // 0040: 메뉴 바깥을 누르면 그만두기 (B 버튼 대신)
     if (talkQ) { e.preventDefault(); advance(); return; }
     if (busy || P.moving || !active() || e.target !== cv) return;
     const r = cv.getBoundingClientRect(); if (!r.width) return;
@@ -615,19 +734,30 @@ function build() {
     if (P.dir !== d && !closed()) { P.dir = d; P.turnT = performance.now(); return; }
     tryMove(d, performance.now());
   }
-  function tryMove(d, now) {
-    if (busy || talkQ) return;
-    if (closed()) { P.dir = d; return; }
+  // 한 칸 걷기 시작 → true. quiet = 막혀도 조사하지 않음 (조이스틱 대각선의 첫 후보)
+  function tryMove(d, now, quiet = false) {
+    if (busy || talkQ) return false;
+    if (closed()) { P.dir = d; return false; }
     P.dir = d;
     const [dx, dy] = DIRS[d]; const nx = P.x + dx, ny = P.y + dy;
     if (solidAt(nx, ny)) {
       const t = tileAt(nx, ny);
-      if (t === 'S' || t === 'B' || objAt(nx, ny)) interactAt(nx, ny);    // 표지판 · 점자 · 사람 · 전설 = 부딪치면 조사
-      return;
+      if (!quiet && (t === 'S' || t === 'B' || objAt(nx, ny))) interactAt(nx, ny);    // 표지판 · 점자 · 사람 · 전설 = 부딪치면 조사
+      return false;
     }
     lastSign = '';
     P.from = { x: P.x, y: P.y }; P.x = nx; P.y = ny; P.moving = true; P.t0 = now; P.stepN++;
-    if (M.kind === 'out' && tileAt(nx, ny) === ',') rustle = { x: nx, y: ny, t0: now };   // 풀숲에 들어서면 잎이 흔들림
+    if ((M.kind === 'out' || M.kind === 'beach') && tileAt(nx, ny) === ',') rustle = { x: nx, y: ny, t0: now };   // 풀숲에 들어서면 잎이 흔들림
+    return true;
+  }
+  // 후보 방향을 차례로 (대각선: 한쪽이 막히면 다른 쪽) — 걸었으면 그 축을 기억해 다음엔 다른 축
+  function stepDirs(now) {
+    const ds = wantDirs();
+    for (let i = 0; i < ds.length; i++) {
+      if (tryMove(ds[i], now, i < ds.length - 1)) { joy.lastAxis = ds[i] === 'left' || ds[i] === 'right' ? 'x' : 'y'; return true; }
+      if (busy || talkQ) return false;
+    }
+    return false;
   }
   function arrive() {
     P.moving = false; P.fx = P.x; P.fy = P.y;
@@ -635,9 +765,9 @@ function build() {
     const w = M.warps[`${P.x},${P.y}`];
     if (w) { go(w); return; }
     const z = zoneAt(P.x, P.y);
-    if (z && st && !closed()) {
-      if (pend.zone !== z && pend.n > 0) send();          // 다른 구역 걸음은 섞지 않고 먼저 보냄
-      if (!inflight || pend.n === 0) pend.zone = z;
+    if (z && st && !closed() && !sprayOn()) {             // 0040: 스프레이 중에는 만남 걸음을 보내지 않음
+      if ((pend.zone !== z || pend.area !== mapId) && pend.n > 0) send();          // 다른 구역 · 지도 걸음은 섞지 않고 먼저 보냄
+      if (!inflight || pend.n === 0) { pend.zone = z; pend.area = mapId; }
       pend.n++; if (pend.n >= SEND_EVERY) send();
     }
   }
@@ -676,15 +806,15 @@ function build() {
     if (P.moving) {
       const k = Math.min(1, (now - P.t0) / STEP_MS);
       P.fx = P.from.x + (P.x - P.from.x) * k; P.fy = P.from.y + (P.y - P.from.y) * k;
-      if (k >= 1) { arrive(); const d = active() && wantDir(); if (d) tryMove(d, now); }
+      if (k >= 1) { arrive(); if (active() && !P.moving) stepDirs(now); }
     } else if (!busy && !talkQ && !menuQ && active()) {
-      const d = wantDir();
-      if (d && d !== P.dir && !closed()) { P.dir = d; P.turnT = now; }            // 누르고 있는 방향으로 돌고
-      else if (d && now - (P.turnT || 0) >= TURN_MS) tryMove(d, now);             // 잠깐 뒤 걷기 시작
+      const ds = wantDirs();
+      if (ds.length && joy.id == null && ds[0] !== P.dir && !closed()) { P.dir = ds[0]; P.turnT = now; }   // 키보드: 누른 방향으로 돌고
+      else if (ds.length && (joy.id != null || now - (P.turnT || 0) >= TURN_MS)) stepDirs(now);           // 잠깐 뒤 걷기 시작 (조이스틱은 바로)
     }
     draw(now);
   }
-  const shadow = (cx, by, w) => { g.fillStyle = { cave: 'rgba(30,16,8,.3)', ultra: 'rgba(8,0,24,.4)', shrine: 'rgba(90,70,30,.3)' }[M.kind] || 'rgba(20,60,40,.25)'; g.fillRect(cx - w / 2, by - 2, w, 2); g.fillRect(cx - w / 2 + 1, by - 1, w - 2, 1); };
+  const shadow = (cx, by, w) => { g.fillStyle = { beach: 'rgba(120,90,40,.28)', cave: 'rgba(30,16,8,.3)', ultra: 'rgba(8,0,24,.4)', shrine: 'rgba(90,70,30,.3)' }[M.kind] || 'rgba(20,60,40,.25)'; g.fillRect(cx - w / 2, by - 2, w, 2); g.fillRect(cx - w / 2 + 1, by - 1, w - 2, 1); };
   const drawBang = (bx, by) => {
     g.fillStyle = '#283040'; g.fillRect(bx - 1, by - 1, 8, 11);
     g.fillStyle = '#ffffff'; g.fillRect(bx, by, 6, 9);
@@ -697,9 +827,9 @@ function build() {
     camX = mw <= VW ? -Math.floor((VW - mw) / 2) : Math.max(0, Math.min(mw - VW, px - Math.floor(VW / 2)));
     camY = mh <= VH ? -Math.floor((VH - mh) / 2) : Math.max(0, Math.min(mh - VH, py - Math.floor(VH / 2)));
     const maps = mapsOf(mapId);
-    if (!maps || !hero) { g.fillStyle = { cave: '#2c2018', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
+    if (!maps || !hero) { g.fillStyle = { beach: '#3c84d0', cave: '#2c2018', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
     const map = maps[af];
-    if (mw < VW || mh < VH) { g.fillStyle = { cave: '#140c08', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#1c5420'; g.fillRect(0, 0, VW, VH); }
+    if (mw < VW || mh < VH) { g.fillStyle = { beach: '#3c84d0', cave: '#140c08', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#1c5420'; g.fillRect(0, 0, VW, VH); }
     const sx = Math.max(0, camX), sy = Math.max(0, camY);
     const cw = Math.min(mw - sx, VW - (sx - camX)), ch = Math.min(mh - sy, VH - (sy - camY));
     g.drawImage(map, sx, sy, cw, ch, sx - camX, sy - camY, cw, ch);
@@ -708,7 +838,7 @@ function build() {
     const grass = (gx, gy, sy0) => {
       const X = gx * TS - camX, Y = gy * TS - camY;
       if (rustle && rustle.x === gx && rustle.y === gy && now - rustle.t0 < RUSTLE_MS) {
-        const t = TI[`tallR${Math.floor((now - rustle.t0) / (RUSTLE_MS / 2)) % 2}`], gr = TI.ground;
+        const t = TI[`tallR${Math.floor((now - rustle.t0) / (RUSTLE_MS / 2)) % 2}`], gr = M.kind === 'beach' ? TI.bsand0 : TI.ground;
         g.drawImage(sheet, gr[0], gr[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
         g.drawImage(sheet, t[0], t[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
       } else g.drawImage(map, gx * TS, gy * TS + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
@@ -725,7 +855,8 @@ function build() {
       g.drawImage(hero, fi * HW, DIR_ROW[dir] * HH, HW, HH, hx, hy, HW, HH);
       // 풀숲 안이면 다리를 풀잎이 가림 (미리 그린 맵의 그 칸 아랫부분을 다시 덮음)
       const gx = Math.round(P.fx), gy = Math.round(P.fy);
-      if (M.kind === 'out' && tileAt(gx, gy) === ',') grass(gx, gy, 9);      // 3세대처럼 허리 아래 (다리 · 재킷 아랫단 7px) 를 앞쪽 풀잎이 가림
+      if ((M.kind === 'out' || M.kind === 'beach') && tileAt(gx, gy) === ',') grass(gx, gy, 9);      // 3세대처럼 허리 아래 (다리 · 재킷 아랫단 7px) 를 앞쪽 풀잎이 가림
+      else if (M.kind === 'beach' && tileAt(gx, gy) === 'w' && !P.moving) grass(gx, gy, 12);        // 얕은 물: 발목까지 물에 잠김
       if (bubbleT > 0 && now >= bubbleT) drawBang(hx + 5, hy - 8);
     }]);
     const wt = Math.floor(now / 110) % 4;      // 울트라 워프홀: 32×32 소용돌이 4장
@@ -777,6 +908,8 @@ function build() {
     P, maps: () => mapsOf(mapId), state: () => st, tile: tileAt, map: () => M.rows, busy: () => busy, view: () => ({ VW, VH }),
     move: (d) => { if (!P.moving && !busy && !talkQ && !menuQ) { P.dir = d; tryMove(d, performance.now()); } },   // 시험: 돌면서 바로 걷기
     tap: (d) => kick(d), b: () => pressB(), menu: () => (menuQ ? { i: menuQ.i, n: menuQ.items.length } : null),
+    joy: () => ({ ...joy, dirs: joy.id != null ? joyDirs() : [] }), spray: () => ({ on: sprayOn(), left: Math.max(0, sprayUntil - Date.now()), text: sprayTime.textContent }),
+    useSpray: () => useSpray(), stepMs: STEP_MS, area: () => ({ map: mapId, dist: areaDist(), zone: zoneAt(P.x, P.y) }),
     mapId: () => mapId, goto: (id, x, y, dir = 'down') => enterMap(id, x, y, dir), a: () => pressA(), talking: () => !!talkQ,
     zone: () => zoneAt(P.x, P.y), pend: () => ({ ...pend }), ballsOut: () => ballsOut(), setState: (s) => { st = { ...st, ...s }; paintInfo(); }, fade: () => fade.a,
   };

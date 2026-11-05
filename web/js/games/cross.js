@@ -2,7 +2,7 @@
 //   학교(잔디·찻길·개울·기찻길) → 바닷가(모래·보트 물길·서핑보드/거북 등껍질·해변 열차) → 화산(현무암·광차 길·용암 강·광산 열차)
 //   → 우주(달 표면·UFO 길·소행성 뗏목·유성 줄기) → 다시 학교 (한 바퀴 돌 때마다 더 빨라짐). 테마마다 약 70줄.
 // 화면은 천천히 위로 올라가고(갈수록 빨라짐) 내 포켓몬이 아래 끝으로 밀려나면 '지각 괴물'이 올라와 잡아간다.
-// 점수 = 가장 멀리 간 줄(칸) + 주운 상점(★). 서버 상한: 점수 ≤ 초×12+30 → 한 번 뛰기 0.09초(최대 초당 약 11줄),
+// 점수 = 가장 멀리 간 줄(칸) (주운 상점★ 은 따로 세고 점수에 안 더함). 서버 상한: 점수 ≤ 초×12+30 → 한 번 뛰기 0.09초(최대 초당 약 11줄),
 // 끝낼 때 min(점수, 초×11+20) 으로 한 번 더 묶음. 멈춤(mg-pause)·숨긴 탭 시간은 ms 에 안 들어감 (게임 틱마다 dt 를 더함).
 // 그림은 대부분 이 파일에서 도트로 그림. 바닷가 양동이·삽, 우주 소행성·불꽃 몇 개만 CC0 그림(web/img/games/cross/CREDITS.txt).
 import { loadPhaser } from './common.js';
@@ -1307,7 +1307,7 @@ export default {
       let camY = laneCY(0) - PLAYER_SY;
       const parts = [];
       const shown = new Set();
-      const score = () => P.best + P.stars;
+      const score = () => P.best;   // 칸 수만 점수 (상점 별은 따로 모으는 것 — 칸으로 치지 않음)
       const thHere = () => lane(Math.max(0, P.row)).th || 0;
 
       // ─────────── 움직이는 것 ───────────
@@ -1602,7 +1602,7 @@ export default {
           const msg = reason === 'chaser' ? '지각 괴물에게 잡혔다!' : DEATH[reason][th];
           tOver.setText(msg).setVisible(true).setColor(reason === 'chaser' ? '#ffb0a0' : reason === 'water' || reason === 'edge' ? (th === 2 ? '#ffc890' : '#bfe6f8') : '#ffffff');
           tOverM.setText(`${score()}칸`).setVisible(true);
-          tOverS.setText(P.stars ? `${P.best}칸 + 상점 ${P.stars}` : `${P.best}칸 왔어요`).setVisible(true);
+          tOverS.setText(P.stars ? `상점 ${P.stars}개도 모았어요` : `${P.best}칸 왔어요`).setVisible(true);
         } else { tOver.setVisible(false); tOverM.setVisible(false); tOverS.setVisible(false); }
       };
 

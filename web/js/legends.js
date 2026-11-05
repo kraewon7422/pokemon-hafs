@@ -32,7 +32,8 @@ export function clearNoticeTab(tab) { const t = noticeTabs(); if (t.delete(tab))
 export async function playNotices() {
   if (playing || !S.snap?.notices?.length) return;
   const seen = await loadSeen();
-  const list = S.snap.notices.filter((n) => !seen.has(Number(n.id)));
+  // 0042: 빛나는 부적 알림은 같은 때 받은 '도감 완성' 다음에
+  const list = S.snap.notices.filter((n) => !seen.has(Number(n.id))).sort((a, b) => (a.kind === 'charm') - (b.kind === 'charm') || a.id - b.id);
   if (!list.length) { flushSeen(S.snap.notices.map((n) => n.id)); return; }
   if (isBusy() || document.hidden) { clearTimeout(retry); retry = setTimeout(playNotices, 1500); return; }
   playing = true;
@@ -61,11 +62,13 @@ function flushSeen(ids) {
 // 전체 화면: 어두움 → '!' → 그림자 → 번쩍 + 색 + 반짝이 + 곡 → 글
 export async function fanfare(n) {
   const sp = n.species_id ? speciesOf(n.species_id) : null;
-  if (sp) await ensureSprites([sp.id]).catch(() => {});
+  const shiny = !!n.data?.shiny;   // 0042: 반짝이는 색으로 받은 포켓몬
+  if (sp) await ensureSprites([sp.id], shiny).catch(() => {});
   const stage = h('div.ff-stage');
   const bang = h('div.ff-bang', '!');
   const shadow = sp ? spriteCanvas(sp.id, 160, 'silhouette') : null;
-  const mon = sp ? spriteCanvas(sp.id, 160) : h('span.ff-parcel', { html: PARCEL_SVG });
+  const mon = sp ? spriteCanvas(sp.id, 160, shiny ? 'shiny' : 'normal')
+    : h('span.ff-parcel', { html: n.data?.item === 'shiny_charm' ? CHARM_SVG : PARCEL_SVG });
   if (shadow) shadow.classList.add('ff-shadow');
   mon.classList.add('ff-mon');
   const sparks = h('div.ff-sparks', Array.from({ length: 10 }, (_, i) => h('i', { style: { '--a': `${i * 36}deg`, '--d': `${(i % 3) * 60}ms` } })));
@@ -90,6 +93,11 @@ export async function fanfare(n) {
 }
 
 // ─────────────────────── 이상한 소포 ───────────────────────
+// 빛나는 부적 (0042): 도트 별 부적 (가방 · 알림)
+export const CHARM_SVG = '<svg class="icon charm-svg" viewBox="0 0 11 13" shape-rendering="crispEdges" aria-hidden="true">'
+  + '<path fill="#8a6a10" d="M4 0h3v1h1v2H7V1H4v2H3V1h1z"/>'
+  + '<path fill="#f8d030" d="M5 3h1v2h1v1h3v1H8v1h1v3H8v-1H7V9H4v1H3v1H2V8h1V7H1V6h3V5h1z"/>'
+  + '<path fill="#fff8c0" d="M5 5h1v2H5zM4 7h1v1H4z"/></svg>';
 const PARCEL_SVG = '<svg class="icon" viewBox="0 0 9 9" shape-rendering="crispEdges" aria-hidden="true"><path fill="currentColor" d="M2 0h2v1h1V0h2v1H6v1h2v2H7v4H5V4H4v4H2V4H1V2h2V1H2zM3 2v1h3V2z"/></svg>';
 export function giftButton() {
   const n = Number(S.snap?.gifts_open) || 0;

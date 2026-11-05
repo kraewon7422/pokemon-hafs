@@ -69,9 +69,16 @@ await patchSetting('quiz_stone_chance', 1); await patchSetting('battle_stone_cha
 // 0038: 야생 · 사파리 잡기가 아주 가끔 메타몽 — 예전 시험은 잡은 포켓몬이 그대로라고 보므로 시험 동안 0 (끝에서 되돌림)
 const DITTO0 = (await admin.select('settings?key=eq.ditto_disguise_chance')).data?.[0]?.value ?? 0.005;
 await patchSetting('ditto_disguise_chance', 0);
+// 0038: 방랑 전설 (라이코·앤테이·스이쿤) — 한 시간마다 바뀌는 장소 QR 에서 30% 로 티켓 대신 만남이 생김 → 그 시각에 그 QR 을 찍는
+// 예전 시험 (가방 · 셀프 수령 · 레이드 잡기 [12] [41] …) 이 가끔 깨짐. 시험 동안 0 ([45] 는 직접 켜서 봄, 끝에서 되돌림)
+const ROAM0 = (await admin.select('settings?key=eq.roam_chance')).data?.[0]?.value ?? 0.3;
+await patchSetting('roam_chance', 0);
 // 0039: 시간표 칸의 날씨 · 필드 (모래바람 데미지 등) — 예전 배틀 시험이 시각에 따라 달라지지 않게 시험 동안 빈 시간표 (끝에서 되돌림)
 const BF_ORIG = (await admin.select('settings?key=eq.battle_fields')).data?.[0]?.value ?? [];
 await patchSetting('battle_fields', []);
+// 0042: 새로 잡는 포켓몬이 1/512 로 반짝 — 예전 시험 (SHINY_LOCKED 등) 이 흔들리지 않게 시험 동안 0 (끝에서 되돌림)
+const WSHINY0 = (await admin.select('settings?key=eq.wild_shiny_chance')).data?.[0]?.value ?? 0.001953125;
+await patchSetting('wild_shiny_chance', 0);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -203,7 +210,12 @@ ok(r.data?.correct === false && r.data.granted === false && r.data.answer_pos ==
 console.log('\n[8] evolve race (5 parallel taps, 1 ticket)');
 // 3단계 계열 · 진화 레벨 전 (0032/0034: 레벨이 되면 무료, 돌 진화는 100% — 진화의 돌 1개 경쟁을 보려면 둘 다 아니어야)
 const three8 = new Set((await admin.select('lines?select=id&max_stage=eq.3')).data.map((l) => l.id));
-const line = (st.collection.find((c) => c.stage === 1 && three8.has(c.line_id) && c.level < 15) || st.collection[0]).line_id;
+// 0037 갈래 진화 계열 (랄토스 → 킬리아 → 가디안/엘레이드 …) 은 2단계에서 PICK_BRANCH 가 먼저라 경쟁 시험이 안 됨 → 뺌
+const evoFrom = (await admin.select('evolutions?select=from_species')).data || [];
+const evoN = {}; for (const e of evoFrom) evoN[e.from_species] = (evoN[e.from_species] || 0) + 1;
+const branchSp = Object.keys(evoN).filter((k) => evoN[k] > 1);
+const branch8 = new Set(branchSp.length ? ((await admin.select(`species?select=line_id&id=in.(${branchSp.join(',')})`)).data || []).map((x) => x.line_id) : []);
+const line = (st.collection.find((c) => c.stage === 1 && three8.has(c.line_id) && !branch8.has(c.line_id) && c.level < 15) || st.collection[0]).line_id;
 const have = (await S[0].rpc('sync')).data.state.profile.evo_tickets;
 if (have !== 1) await admin.rpc('admin_adjust_tickets', { p_student_id: '022901', p_delta: 1 - have });   // exactly 1 ticket for the race
 const mon8 = await monId(S[0], line);
@@ -286,7 +298,8 @@ await fetch(`${URL_}/rest/v1/qr_rewards`, { method: 'POST', headers: H0, body: J
 let lastStatus;
 for (let i = 0; i < 11; i++) lastStatus = (await S[0].rpc('sync', { p_scans: [{ n: nonce(), q: '_', t: 'ZZZZ' + 'ABCDEFGHJK'[i % 10] }] })).data?.acks?.[0]?.status;
 ok(lastStatus === 'locked', 'manual-code guessing locked after 10 misses', lastStatus);
-ok((await S[1].rpc('self_redeem')).error === 'SELF_REDEEM_OFF', 'self-redeem off by default');
+const sr0 = await S[1].rpc('self_redeem');
+ok(sr0.error === 'SELF_REDEEM_OFF', 'self-redeem off by default', sr0);
 const setS = (k, v) => fetch(`${URL_}/rest/v1/settings?key=eq.${k}`, { method: 'PATCH', headers: H0, body: JSON.stringify({ value: v }) });
 await setS('self_redeem', true);
 r = await S[1].rpc('self_redeem');
@@ -1675,12 +1688,12 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
 
 console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 만남 · 사파리볼 하루 개수 · 잡기/도망');
 {
-  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
                 'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
   const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
   await setS('safari_reset_hours', 24);   // 0037: 충전 주기 — 예전 시험은 하루 (24시간)
-  await setS('safari_balls_daily', 10); await setS('safari_min_steps', 8); await setS('safari_daily_max_encounters', 15); await setS('safari_steps_per_sec', 6);
+  await setS('safari_balls_daily', 10); await setS('safari_min_steps', 8); await setS('safari_steps_per_sec', 6);
   await setS('safari_encounter_rate', 1);              // 시험: 8걸음이 지나면 바로 만남
   await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);   // 0037: 도망은 서버가 굴림 → 아래 예전 시험 동안은 0 ([44] 에서 따로)
   let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sf1234' })).error);
@@ -1743,10 +1756,11 @@ console.log('\n[42] 사파리존 (0033): 풀숲 걸음 → 서버가 굴려서 �
   ok(c4?.caught && e4?.balls === 4 && s4?.balls_left === 0, 'encounter_result without a throw count spends every borrowed ball', [e4, s4]);
   const a5 = await walk();
   ok(a5?.encounter === null && a5.reason === 'no_balls' && a5.balls_left === 0, 'daily ball cap: no balls left → no more encounters today', a5);
-  // 하루 최대 만남
-  await setS('safari_balls_daily', 30); await setS('safari_daily_max_encounters', 4);
+  // 0040: 만남 상한 없음 — 볼만 있으면 계속 만남 (이미 4번 만났어도)
+  await setS('safari_balls_daily', 30);
   const a6 = await walk();
-  ok(a6?.encounter === null && a6.reason === 'max' && a6.balls_left === 20, 'daily encounter cap reached → no encounter', a6);
+  ok(a6?.encounter && a6.reason == null && a6.balls_left === 20 && !('max_encounters' in a6), 'no encounter cap (0040): balls left → still meets Pokémon after 4 encounters', a6);
+  if (a6?.encounter) await F.rpc('safari_result', { p_id: a6.encounter.id, p_throws: 1, p_caught: false });
   for (const k of keys) await setS(k, old[k]);
   await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
 }
@@ -1970,10 +1984,10 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
   ok(bell?.stage === 3 && bellLine?.subject && bellLine.subject !== '야생', '아르코 is a stage-3 branch of a teacher line (counts in the school dex)', { bell, bellLine });
 
   // 7) 사파리존 도망 (서버): 25% + 놓칠 때마다 +5% (전설 +15%), safari_turn · safari_result
-  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
                 'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
-  ok(Number(old.safari_balls_daily) === 20 && Number(old.safari_reset_hours) === 24, 'safari ball defaults: 20 balls, refill every 24 h', old);
+  ok(Number(old.safari_balls_daily) === 20 && Number(old.safari_reset_hours) === 0.5, 'safari ball defaults: 20 balls, refill every 30 min (0040)', old);
   ok(Number(old.safari_flee) === 0.25 && Number(old.safari_flee_step) === 0.05 && Number(old.safari_flee_legend) === 0.15 && Number(old.safari_flee_max) === 0.9,
      'flee settings: 25% base, +5% per turn, +15% legend, max 90%', old);
   const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
@@ -1988,7 +2002,7 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
   };
   try {
     await setS('safari_balls_daily', 30); await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1);
-    await setS('safari_daily_max_encounters', 20); await setS('safari_steps_per_sec', 6);
+    await setS('safari_steps_per_sec', 6); await setS('safari_reset_hours', 24);   // 0040: 기본은 30분 → 아래 예전 시험은 24시간으로
     // 첫 차례 0% (전설 더하기도 0) → 반드시 남음. 그다음 차례의 확률은 굴리지 않고 safari_state 로만 봄 (결정적)
     await setS('safari_flee', 0); await setS('safari_flee_step', 0.05); await setS('safari_flee_legend', 0); await setS('safari_flee_max', 0.9);
     const e1 = (await walk())?.encounter;
@@ -2048,7 +2062,7 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
     const z1 = (await X.c.rpc('safari_state')).data;
     ok(hOf(z1?.period_start) === seoulH && new Date(z1.next_reset_at) - new Date(z1.period_start) === 3600e3, '1 h: refills every hour on the hour', z1);
     await setS('safari_reset_hours', 99);
-    ok((await X.c.rpc('safari_state')).data?.reset_hours === 24, 'reset hours are clamped to 1–24');
+    ok((await X.c.rpc('safari_state')).data?.reset_hours === 24, 'reset hours are clamped to at most 24');
   } finally {
     for (const k of keys) await setS(k, old[k]);
   }
@@ -2070,7 +2084,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
   const L = await mk('전설테스트');
   const M = await mk('소포테스트');
   const st = async (c = L.c) => (await c.rpc('sync')).data.state;
-  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_daily_max_encounters', 'safari_steps_per_sec',
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
                 'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours',
                 'legend_quests', 'roam_chance', 'legend_daily_tries', 'legend_balls', 'gift_fail_limit', 'ditto_disguise_chance', 'wild_chance', 'self_redeem'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
@@ -2084,8 +2098,8 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
   };
   const uidOf = async (sid) => (await admin.select(`profiles?student_id=eq.${sid}&select=user_id`)).data?.[0]?.user_id;
   try {
-    ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
-       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto (0 during the suite), roam 30%, legend 3 tries · 10 balls, 14 quests', old);
+    ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0 && Number(ROAM0) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
+       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto · roam (0 during the suite), roam default 30%, legend 3 tries · 10 balls, 14 quests', old);
     ok(Number(DITTO0) === 0.005, 'ditto_disguise_chance default 0.5% (user choice)', DITTO0);
     // ── 0. 야생 무리: 퀘스트 · 사파리 · 방랑 · 소포 전설과 울트라비스트는 빠짐 ──
     const ln = (await admin.select('lines?select=id,ultra,legend_src&or=(ultra.eq.true,legend_src.not.is.null)')).data;
@@ -2232,7 +2246,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
 
     // ── E · F · G. 사파리: 구역 · 메타몽 · 정리 · 같은 결과 ──
     await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1);
-    await setS('safari_daily_max_encounters', 100); await setS('safari_steps_per_sec', 6);
+    await setS('safari_steps_per_sec', 6);
     await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0);
     const walk = async (zone) => {
       for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
@@ -2672,10 +2686,287 @@ console.log('\n[46] 특성 · 변신 · 날씨 / 필드 (0039): admin_bt_sim (�
   }
 }
 
+console.log('\n[50] 사파리존 v3 (0040): 만남 상한 없음 · 구역 레벨 범위 · 해변 포켓몬 · 걸음 속도 · 또 잡으면 레벨 +1 · 30분 충전');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'safari_reset_hours', 'safari_flee_level', 'ditto_disguise_chance'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  ok(Number(old.safari_reset_hours) === 0.5 && Number(old.safari_steps_per_sec) >= 10 && Number(old.safari_flee_level) === 0.1,
+     'defaults: refill every 30 min, step limit 10/s, level flee bonus 10%', old);
+  ok(!(await admin.select('settings?key=eq.safari_daily_max_encounters&select=key')).data?.length, 'safari_daily_max_encounters setting is gone');
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sv1234' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'sv1234'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '사파리셋' });
+  const walk = async (zone, area, dist) => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const a = (await V.rpc('safari_encounter', { p_steps: 3, p_zone: zone, p_area: area, p_dist: dist })).data;
+      if (a?.encounter || a?.reason) return a;
+      await wait(400);
+    }
+    return null;
+  };
+  const flee = async (a) => V.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+  const spRow = async (id) => (await admin.select(`species?id=eq.${id}&select=line_id,stage,btype`)).data?.[0];
+  try {
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    // 1) 걸음 속도: 앱처럼 1초에 6걸음 (0.5초마다 3걸음) 은 언제나 다 받아들임 · 한 번에 500걸음은 몇 개만
+    await setS('safari_encounter_rate', 0);
+    await V.rpc('safari_encounter', { p_steps: 0 });
+    const acc = [];
+    for (let i = 0; i < 6; i++) { await wait(500); acc.push((await V.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).data?.accepted); }
+    ok(acc.every((n) => n === 3), 'honest fast walking (6 steps/s, STEP_MS 165) is never cut by the speed limit', acc);
+    const big = (await V.rpc('safari_encounter', { p_steps: 500 })).data;
+    ok(big?.accepted <= 20, 'claiming 500 steps at once → only a few accepted', big?.accepted);
+    await setS('safari_encounter_rate', 1);
+    // 2) 만남 상한 없음: 8번 연속 만나도 계속 (이유 'max' 없음, 상태에 max_encounters 없음)
+    const seen = [];
+    for (let i = 0; i < 8; i++) { const a = await walk('grass', 'safari', 0); seen.push(!!a?.encounter && a.reason == null); await flee(a); }
+    const s8 = (await V.rpc('safari_state')).data;
+    ok(seen.every(Boolean) && s8?.encounters_today >= 8 && !('max_encounters' in s8), 'no encounter cap: 8 encounters in a row, no "max" reason', { seen, s8 });
+    // 3) 레벨: 지도 (p_area) 의 범위 안에서 입구 거리만큼 · 맞지 않는 지도 = 그 구역의 가장 낮은 레벨
+    const lv = async (zone, area, dist) => { const a = await walk(zone, area, dist); await flee(a); return a?.encounter?.level; };
+    const L = {
+      entrance: await lv('grass', 'safari', 0), farGrass: await lv('grass', 'safari', 9999), pond: await lv('pond', 'safari', 45),
+      beach0: await lv('beach', 'beach', 0), beachEnd: await lv('beach', 'beach', 58), maze4: await lv('cave', 'maze4', null),
+      liarCave: await lv('grass', 'maze4', 58), liarBeach: await lv('grass', 'beach', 58), noArea: await lv('cave', null, 99), negDist: await lv('beach', 'beach', -50),
+    };
+    ok(L.entrance >= 5 && L.entrance <= 6, 'safari entrance → Lv.5 (±1)', L);
+    ok(L.farGrass >= 15 && L.farGrass <= 16 && L.pond >= 15 && L.pond <= 16, 'far grass / pond grass → top of the safari band (≤16), huge distance clamped', L);
+    ok(L.beach0 >= 10 && L.beach0 <= 11 && L.beachEnd >= 49 && L.beachEnd <= 50, 'beach: Lv.10 at the entrance → Lv.50 at the far end', L);
+    ok(L.maze4 >= 42 && L.maze4 <= 50, 'deepest cave floor (미혹의 동굴 지하 3층) → Lv.42–50', L);
+    ok(L.liarCave === 5 && L.liarBeach === 5 && L.noArea === 14 && L.negDist >= 10 && L.negDist <= 11,
+       'area that does not match the zone / no area → lowest level of that zone (no Lv.50 at the entrance)', L);
+    // 4) 해변 = 물 · 얼음 타입만, 동굴에는 물이 첫 타입인 포켓몬이 없음, 풀숲에는 물 · 얼음 없음
+    const typesOf = async (zone, area) => { const a = await walk(zone, area, 10); await flee(a); return (await spRow(a?.encounter?.species_id))?.btype || ''; };
+    const beachT = [], caveT = [], grassT = [];
+    for (let i = 0; i < 6; i++) beachT.push(await typesOf('beach', 'beach'));
+    for (let i = 0; i < 4; i++) caveT.push(await typesOf('cave', 'shoal2'));
+    for (let i = 0; i < 4; i++) grassT.push(await typesOf('grass', 'safari'));
+    ok(beachT.every((t) => /물|얼음/.test(t)), 'beach pool: only water / ice types', beachT);
+    ok(caveT.every((t) => t && !/^(물|얼음)/.test(t)), 'cave pool: rock/ground/ghost/poison… (never water-first)', caveT);
+    ok(grassT.every((t) => t && !/물|얼음/.test(t)), 'grass pool: no water / ice types', grassT);
+    // 5) 잡으면 그 레벨 그대로 · 또 잡으면 그 계열에서 레벨이 가장 높은 한 마리 +1
+    const e = (await walk('beach', 'beach', 58))?.encounter;
+    const line = (await spRow(e?.species_id))?.line_id;
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: line, p_stage: 1 });
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: line, p_level: 30 });
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: line, p_stage: 1 });
+    const before = (await V.rpc('sync')).data.state.mons.filter((m) => m.line_id === line).sort((a, b) => a.id - b.id);
+    const c = (await V.rpc('safari_result', { p_id: e?.id, p_throws: 1, p_caught: true })).data;
+    const after = (await V.rpc('sync')).data.state.mons.filter((m) => m.line_id === line).sort((a, b) => a.id - b.id);
+    const newMon = after.find((m) => m.id === c?.mon);
+    ok(c?.caught && c.level === e?.level && newMon?.level === e?.level && e.level >= 49, 'caught safari Pokémon keeps its wild level (Lv.49–50 at the far beach)', { e, c, newMon });
+    ok(before.length === 2 && c?.lv_up_mon === before[0].id && after.find((m) => m.id === before[0].id)?.level === 31
+       && after.find((m) => m.id === before[1].id)?.level === before[1].level,
+       'duplicate catch → the highest-level one of that species gets +1 (30 → 31), others unchanged', { before, after, up: c?.lv_up_mon });
+    // 6) 레벨이 진화 레벨을 넘으면 진화의 돌 없이 진화 (0037 evolve 그대로)
+    const evo = (await admin.select('evolutions?how=eq.level&lv=lte.40&select=from_species,to_species,lv&limit=1')).data?.[0];
+    const from = evo && await spRow(evo.from_species);
+    if (from) {
+      await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: from.line_id, p_stage: from.stage });
+      await admin.rpc('admin_set_level', { p_student_id: sid, p_line: from.line_id, p_level: evo.lv });
+      const m = (await V.rpc('sync')).data.state.mons.filter((x) => x.line_id === from.line_id).sort((a, b) => b.id - a.id)[0];
+      const tickets = (await V.rpc('sync')).data.state.profile.evo_tickets;
+      const ev = await V.rpc('evolve', { p_mon: m?.id, p_to: evo.to_species });
+      ok(ev.data?.success && ev.data.by_level && ev.data.evo_tickets === tickets, 'level ≥ evolution level → free evolution (no stone used)', [ev.error, ev.data?.by_level, evo]);
+    } else ok(false, 'found a level evolution for the evolve check');
+    // 7) 사파리볼 충전 30분: 서울 00:00 부터 30분마다 · 0.1 시간은 15분으로 올림 · 99 는 24시간
+    await setS('safari_reset_hours', 0.5);
+    const z = (await V.rpc('safari_state')).data;
+    const mOf = (iso) => Number(new Date(iso).toLocaleString('en-US', { timeZone: 'Asia/Seoul', minute: 'numeric' }));
+    ok(z?.reset_hours === 0.5 && z.reset_minutes === 30 && mOf(z.period_start) % 30 === 0 && new Date(z.next_reset_at) - new Date(z.period_start) === 30 * 60e3,
+       '30 min refill: period starts on :00/:30, next refill 30 min later', z);
+    ok(z?.balls === 100, 'new 30-min period → balls refilled', z?.balls);
+    await setS('safari_reset_hours', 0.1);
+    ok((await V.rpc('safari_state')).data?.reset_minutes === 15, 'reset period clamped to at least 15 min');
+    await setS('safari_reset_hours', 99);
+    ok((await V.rpc('safari_state')).data?.reset_hours === 24, 'reset period clamped to at most 24 h');
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[51] 별명 (0041): set_nickname · 길이/글자/욕설 막기 · 랭킹에 별명 · admin_clear_nickname');
+{
+  const [c1, c2] = [S[0], S[1]];
+  await admin.rpc('admin_clear_nickname', { p_student_id: '022901' });   // 다시 돌려도 처음부터 (nickname_at 도 지움)
+  await admin.rpc('admin_clear_nickname', { p_student_id: '022902' });
+  const NICK = `별명시험${Math.floor(Math.random() * 90 + 10)}`;
+  let r = await c1.rpc('set_nickname', { p_nick: `  ${NICK} ` });
+  ok(r.data?.nickname === NICK && r.data?.display === NICK, 'set_nickname: trimmed, profile.nickname + display = nickname', r);
+  for (const [bad, code, why] of [['가', 'BAD_NICKNAME', '1 char'], ['가나다라마바사아자차카', 'BAD_NICKNAME', '11 chars'], ['별명!!', 'BAD_NICKNAME', 'symbols'],
+    ['트레이너_1', 'BAD_NICKNAME', 'underscore'], ['a1234567', 'BAD_NICKNAME', '5+ digits (student number)'], ['시발놈', 'NICKNAME_BLOCKED', 'bad word'],
+    ['F u c k', 'NICKNAME_BLOCKED', 'spaced english bad word'], ['운영자 김', 'NICKNAME_BLOCKED', 'impersonation']]) {
+    const x = await c1.rpc('set_nickname', { p_nick: bad });
+    ok(x.error?.includes(code), `set_nickname rejects ${why} → ${code}`, x);
+  }
+  r = await c1.rpc('set_nickname', { p_nick: NICK });
+  ok(r.data?.nickname === NICK, 'same nickname again = no-op (not rate limited)', r);
+  r = await c1.rpc('set_nickname', { p_nick: 'Speedy 2' });
+  ok(r.error?.includes('TRY_LATER'), 'changing again within 10s → TRY_LATER', r);
+  const rk = (await c1.rpc('get_ranking_by', { p_gen: null, p_kind: 'score' })).data;
+  const meRow = rk?.top?.find((t) => t.me);
+  ok(meRow?.display === NICK && meRow?.nick === true, 'get_ranking_by: my row shows the nickname (nick=true)', meRow);
+  const other = rk?.top?.find((t) => !t.me);
+  ok(!other || other.nick === false || typeof other.nick === 'boolean', 'get_ranking_by: other rows carry nick flag', other);
+  const cls = (await c1.rpc('class_ranking')).data;
+  ok(!!cls && Array.isArray(cls.classes), 'class_ranking still works with nickname column', cls && Object.keys(cls));
+  // 운영자만 지움
+  const stu = await c2.rpc('admin_clear_nickname', { p_student_id: '022901' });
+  const an = await anon.rpc('admin_clear_nickname', { p_student_id: '022901' });
+  ok(!!stu.error && !!an.error, 'admin_clear_nickname: admins only', [stu.error, an.error]);
+  const anSet = await anon.rpc('set_nickname', { p_nick: '익명시험' });
+  ok(!!anSet.error, 'set_nickname: not for anon', anSet.error);
+  r = await admin.rpc('admin_clear_nickname', { p_student_id: '022901' });
+  ok(r.data?.was === NICK && r.data?.nickname === null, 'admin_clear_nickname clears + returns old nickname', r);
+  const rk2 = (await c1.rpc('get_ranking_by', { p_gen: null, p_kind: 'score' })).data;
+  const me2 = rk2?.top?.find((t) => t.me);
+  ok(me2 && me2.display !== NICK && me2.nick === false, 'after clear: ranking shows the normal display again', me2);
+  const nf = await admin.rpc('admin_clear_nickname', { p_student_id: '029999' });
+  ok(nf.error?.includes('NOT_FOUND'), 'admin_clear_nickname unknown student → NOT_FOUND', nf);
+  // 학생이 스스로 지우기 (빈 칸) — 10초 제한 뒤
+  r = await c2.rpc('set_nickname', { p_nick: 'Tester  Two' });
+  ok(r.data?.nickname === 'Tester Two', 'english + inner spaces collapsed to one', r);
+  await new Promise((res) => setTimeout(res, 10500));
+  r = await c2.rpc('set_nickname', { p_nick: '   ' });
+  ok(r.data && r.data.nickname === null, 'blank → nickname cleared by the student', r);
+}
+
+console.log('\n[52] 반짝이는 포켓몬 · 빛나는 부적 · 알림 이유 (0042)');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_flee', 'safari_flee_step',
+                'safari_flee_legend', 'safari_reset_hours', 'ditto_disguise_chance', 'shiny_charm_mult', 'egg_shiny', 'legend_quests', 'roam_chance'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sh1234' })).error);
+  const X = client(await pwLogin(`${sid}@code.local`, 'sh1234'));
+  await X.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '반짝테스트' });
+  const st = async () => (await X.rpc('sync')).data.state;
+  const walk = async () => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const a = (await X.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).data;
+      if (a?.encounter || a?.reason) return a;
+      await wait(400);
+    }
+    return null;
+  };
+  const flee = (a) => X.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+  try {
+    // 0) 설정 (사용자가 고른 값)
+    ok(Math.abs(Number(WSHINY0) - 1 / 512) < 1e-12 && Number(old.shiny_charm_mult) === 3
+       && Math.abs(old.egg_shiny?.green - 1 / 256) < 1e-12 && Math.abs(old.egg_shiny?.yellow - 1 / 128) < 1e-12 && Math.abs(old.egg_shiny?.purple - 1 / 64) < 1e-12,
+       'settings: wild shiny 1/512 · eggs 1/256 · 1/128 · 1/64 · charm ×3', [WSHINY0, old.shiny_charm_mult, old.egg_shiny]);
+    const item = (await admin.select('items?key=eq.shiny_charm&select=key,name,pocket')).data?.[0];
+    ok(item?.pocket === 'key' && item.name === '빛나는 부적', 'shiny_charm item (key pocket)', item);
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    await setS('safari_encounter_rate', 1);
+    // 1) 반짝 100% → 만날 때부터 반짝 (safari pending.shiny) → 잡으면 박스의 그 한 마리 shiny + shiny_on
+    await setS('wild_shiny_chance', 1);
+    const a1 = await walk();
+    ok(a1?.encounter?.shiny === true, 'wild shiny chance 1 → the safari encounter is shiny when it appears', a1?.encounter);
+    const c1 = (await X.rpc('safari_result', { p_id: a1?.encounter?.id, p_throws: 1, p_caught: true })).data;
+    const m1 = (await X.select(`collection?id=eq.${c1?.mon}&select=id,shiny,shiny_on`)).data?.[0];
+    ok(c1?.caught && c1.shiny === true && m1?.shiny === true && m1.shiny_on === true, 'caught shiny encounter → collection shiny = shiny_on = true', [c1, m1]);
+    const t1 = (await X.select(`tickets?nonce=eq.${c1?.nonce}&select=shiny`)).data?.[0];
+    ok(t1?.shiny === true, 'its ticket records shiny', t1);
+    // 2) 반짝 0% → 반짝 아님
+    await setS('wild_shiny_chance', 0);
+    const a0 = await walk();
+    ok(a0?.encounter && a0.encounter.shiny === false, 'chance 0 → not shiny', a0?.encounter);
+    await flee(a0);
+    // 3) 만남이 없는 길 (소포 → _redeem_ticket) 도 굴림 + state.shiny_t
+    await setS('wild_shiny_chance', 1);
+    const gcode = `shiny${Math.random().toString(36).slice(2, 8)}`;
+    const g = (await admin.rpc('admin_create_gift', { p_code: gcode, p_title: '반짝 소포', p_dex: 25, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null })).data;
+    const gc = (await X.rpc('gift_claim', { p_code: gcode })).data;
+    const gm = (await X.select(`collection?id=eq.${gc?.mon}&select=shiny,shiny_on`)).data?.[0];
+    const s1 = await st();
+    ok(gc?.ok && gm?.shiny === true && gm.shiny_on === true && Object.keys(s1.shiny_t || {}).length >= 2, 'redeem path (gift) rolls shiny too · state.shiny_t lists shiny tickets', [gc, gm, s1.shiny_t]);
+    if (g?.id) await admin.rpc('admin_delete_gift', { p_id: g.id });
+    // 5) 퀘스트 알림 = 해낸 조건 글 · 깨어남 알림 = 조건 + 사파리존 자리
+    const Q = structuredClone(old.legend_quests);
+    Q.find((q) => q.dex === 482).n = 1;
+    Q.find((q) => q.dex === 249).n = 1;
+    await setS('legend_quests', Q);
+    const water = (await admin.select(`lines?select=id&subject=eq.${encodeURIComponent('야생')}&rarity=eq.common&ultra=eq.false&legend_src=is.null&btype=eq.${encodeURIComponent('물')}&order=id&limit=1`)).data?.[0]?.id;
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: water, p_stage: 1 });
+    const s2 = await st();
+    const nq = s2.notices.find((n) => n.kind === 'quest');
+    ok(nq?.body.startsWith('포켓몬을 1마리 잡았어요!') && nq.body.includes('\n') && nq.data?.reason === '포켓몬을 1마리 잡았어요!', 'quest notice body starts with the achieved condition', nq);
+    const nr = s2.notices.find((n) => n.kind === 'legend_ready' && n.data?.dex === 249);
+    ok(nr?.body.startsWith('물 타입 포켓몬을 1마리 잡았어요!') && nr.body.includes('여울의 동굴'), "'깨어났다' notice: condition + where in the Safari", nr);
+    await setS('legend_quests', old.legend_quests);
+    // 6) 방랑 전설: 만난 장소 QR 이름이 알림에 · QR 로 만난 만남도 반짝 (100%)
+    await setS('roam_chance', 1); await setS('wild_shiny_chance', 1);
+    const spots = (await admin.rpc('admin_roam_spots', { p_at: new Date().toISOString() })).data;
+    const rk = spots?.find((x) => x.dex === 243);
+    await X.rpc('sync', { p_scans: [{ n: nonce(), q: rk.qr, t: T[rk.qr].token }] });
+    const re = (await st()).encounters.find((e) => e.kind === 'roam');
+    ok(re?.shiny === true, 'roaming encounter from a QR scan is shiny (chance 1) · encounters carry shiny', re);
+    await X.rpc('encounter_result', { p_id: re?.id, p_caught: true });
+    const nro = (await st()).notices.find((n) => n.kind === 'roam');
+    ok(nro?.body.includes(rk.qr_name) && nro.body.includes('방랑하던') && nro.data?.shiny === true && nro.body.includes('반짝'), 'roam notice says where it was met (QR name) + shiny line', [nro, rk.qr_name]);
+    await setS('roam_chance', old.roam_chance ?? 0.3); await setS('wild_shiny_chance', 0);
+    // 7) 학교 도감 완성 → 빛나는 부적 한 번 + 알림 한 번
+    const elig = (await admin.select(`lines?select=id,max_stage&active=eq.true&withdrawn=eq.false&bonus=eq.false&secret=eq.false&subject=neq.${encodeURIComponent('야생')}&order=id`)).data;
+    for (const l of elig) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: 1 });
+    for (const l of elig) if (l.max_stage > 1) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: l.max_stage });
+    for (const l of elig) if (l.max_stage > 2) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: 2 });
+    const brs = ((await admin.select('species?id=gte.10000&select=id,line_id,stage')).data || []).filter((x) => elig.some((l) => l.id === x.line_id));
+    const evs = (await admin.select('evolutions?to_species=gte.10000&select=from_species,to_species')).data || [];
+    for (const b of brs) {
+      const e = evs.find((x) => x.to_species === b.id);
+      const from = e && (await admin.select(`species?id=eq.${e.from_species}&select=id,stage`)).data?.[0];
+      if (!from || from.id >= 10000) continue;
+      await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: b.line_id, p_stage: from.stage });
+      await admin.rpc('admin_set_level', { p_student_id: sid, p_line: b.line_id, p_level: 100 });
+      await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: 1 });
+      const m = (await myMons(X)).filter((x) => x.line_id === b.line_id && x.stage === from.stage).pop();
+      await X.rpc('evolve', { p_mon: m?.id, p_to: b.id });
+    }
+    const s3 = await st();
+    const charmQty = async () => ((await X.rpc('bag_state', { p_since: 0 })).data?.items || []).find((x) => x.key === 'shiny_charm')?.qty;   // 학생은 inventory 표를 직접 못 읽음 (RLS)
+    const inv = { qty: await charmQty() };
+    const charmN = s3.notices.filter((n) => n.kind === 'charm');
+    ok(inv?.qty === 1 && s3.charm === true && charmN.length === 1 && charmN[0].title === '빛나는 부적을 받았다!' && charmN[0].body.includes('3배') && charmN[0].body.includes('도감을 모두 채웠어요!'),
+       'dex complete → 빛나는 부적 + notice', [inv, charmN, s3.profile?.dex_count]);
+    await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: elig[0].id, p_stage: 1 });
+    const s4 = await st();
+    ok((await charmQty()) === 1 && s4.notices.filter((n) => n.kind === 'charm').length === 1, 'given only once (later catches give nothing more)');
+    const n100 = s4.notices.find((n) => n.kind === 'dex100');
+    ok(!n100 || n100.body.startsWith('학교 도감을 모두 채웠어요!'), 'dex100 notice (if configured) starts with the reason', n100);
+    // 8) 부적 (도감 완성으로 받은 것): 확률 × shiny_charm_mult (최대 1), 0 은 그대로 0 · 쓸 수 없음
+    await setS('wild_shiny_chance', 0.5); await setS('shiny_charm_mult', 2);
+    const withCharm = [];
+    for (let i = 0; i < 4; i++) { const a = await walk(); withCharm.push(a?.encounter?.shiny); await flee(a); }
+    ok(withCharm.every((x) => x === true), 'charm: 1/2 × 2 = 100% → every encounter shiny', withCharm);
+    await setS('wild_shiny_chance', 0);
+    const zero = []; for (let i = 0; i < 3; i++) { const a = await walk(); zero.push(a?.encounter?.shiny); await flee(a); }
+    ok(zero.every((x) => x === false), 'charm multiplies (0 × 2 = 0), never adds', zero);
+    ok((await st()).charm === true, 'state.charm = true while holding the charm');
+    const m0 = (await X.rpc('sync')).data.state.mons?.[0]?.id;
+    ok((await X.rpc('bag_use', { p_item: 'shiny_charm', p_mon: m0 })).error === 'KEY_ITEM', 'the charm cannot be used (KEY_ITEM)');
+    ok((await X.rpc('bag_set_held', { p_mon: m0, p_item: 'shiny_charm' })).error, 'the charm cannot be held');
+    await setS('shiny_charm_mult', old.shiny_charm_mult ?? 3);
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    await setS('wild_shiny_chance', 0);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);
+await patchSetting('roam_chance', ROAM0);
 await patchSetting('battle_fields', BF_ORIG);
+await patchSetting('wild_shiny_chance', WSHINY0);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

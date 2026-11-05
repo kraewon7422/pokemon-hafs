@@ -1516,6 +1516,10 @@ async function studentDetail(sid, reload) {
       try { await rpc('admin_unlink', { p_student_id: sid }); toast(`${sid} 기록을 삭제했어요.`); S.stuSel = null; await reload(); } catch (e) { fail(e); }
     }
   };
+  const clearNick = async () => {
+    const ok = await confirmBox('별명 지우기', [`${sid}의 별명 "${p.nickname}"을(를) 지울까요? 랭킹에는 원래 이름(또는 익명)으로 보여요.`], { ok: '지우기', danger: true });
+    if (ok) act('admin_clear_nickname', { p_student_id: sid }, '별명을 지웠어요.');
+  };
   const cancel = (t) => async () => {
     const ok = await confirmBox('티켓 취소', [`${S.qrById.get(t.qr_id)?.name || t.qr_id} 티켓(대기 중)을 취소할까요?`, '취소하면 그 QR이 다시 열려요.'], { ok: '티켓 취소', danger: true });
     if (ok) act('admin_cancel_ticket', { p_nonce: t.nonce }, '티켓을 취소했어요.');
@@ -1531,12 +1535,15 @@ async function studentDetail(sid, reload) {
       h('dt', '진화의 돌'), h('dd', h('b', p.evo_tickets)),
       h('dt', '랭킹 포함'), h('dd', p.in_ranking === false ? chip('랭킹 제외', 'off') : chip('랭킹 포함', 'ok')),
       h('dt', '랭킹 공개'), h('dd', p.show_on_board ? '공개' : '익명'),
+      h('dt', '별명'), h('dd', p.nickname ? h('b', p.nickname) : h('span.muted', '없음')),
       h('dt', '마지막 접속'), h('dd', p.last_seen ? `${fmtTime(p.last_seen)} (${timeAgo(p.last_seen)})` : '–'),
       h('dt', '가입'), h('dd', fmtTime(p.created_at))),
     h('div.row', h('b', '진화의 돌'), delta, h('button.btn.small', { onclick: adj(-1) }, '빼기 −'), h('button.btn.small.go', { onclick: adj(1) }, '더하기 +')),
     h('div.row', h('b', '역할'), roleSel, h('button.btn.small', { onclick: setRole }, '변경')),
     h('div.row', h('b', '랭킹'), h('button.btn.small', { onclick: toggleRanking }, p.in_ranking === false ? '랭킹에 넣기' : '랭킹에서 빼기'),
-      h('span.small-txt.muted', '선생님·손님(g:) 계정은 처음부터 빠져 있어요.')));
+      h('span.small-txt.muted', '선생님·손님(g:) 계정은 처음부터 빠져 있어요.')),
+    p.nickname && h('div.row', h('b', '별명'), h('button.btn.small', { onclick: clearNick }, '별명 지우기'),
+      h('span.small-txt.muted', '나쁜 말 · 남을 흉내 낸 별명이면 지워요. 학생은 다시 정할 수 있어요.')));
 
   // move all game data to another login (lost phone, new Google login → STUDENT_ID_TAKEN, backup code …)
   const codeEmail = `${isGuest(sid) ? sid.slice(2) : sid}@code.local`;
@@ -1650,7 +1657,7 @@ async function studentDetail(sid, reload) {
   // 가방 물건 주기 · 레벨 정하기 (0020)
   const itemSel = h('select.inp', { 'aria-label': '물건' }, h('option', { value: '' }, '물건 불러오는 중…'));
   sb.from('items').select('key,name,pocket').order('sort').then(({ data }) => {
-    itemSel.replaceChildren(...(data || []).map((x) => h('option', { value: x.key }, `${x.name} (${{ hold: '지닌 물건', med: '회복약', tool: '도구', tm: '기술머신' }[x.pocket]})`)));
+    itemSel.replaceChildren(...(data || []).map((x) => h('option', { value: x.key }, `${x.name} (${{ hold: '지닌 물건', med: '회복약', tool: '도구', tm: '기술머신', key: '소중한 물건' }[x.pocket] || x.pocket})`)));
   });
   const itemQty = h('input.inp', { type: 'number', min: 1, max: 99, value: 1, style: { width: '72px' }, 'aria-label': '개수' });
   const itemBtn = h('button.btn.go', '주기');
@@ -2228,13 +2235,29 @@ async function tabRaid() {
   [...S.species].filter((sp) => sp.stage <= maxStage(S.lineById.get(sp.line_id) || {}))
     .sort((x, y) => (x.dex || 9999) - (y.dex || 9999))
     .forEach((sp) => { const t = String(sp.btype || '노말').split('/')[0]; (spGroups.get(t) || spGroups.get('노말')).push(sp); });
-  const sel = h('select.inp', [...spGroups].filter(([, a]) => a.length).map(([t, a]) => h('optgroup', { label: t }, a.map((sp) => {
+  const spLabel = (sp) => {
     const l = S.lineById.get(sp.line_id);
-    return h('option', { value: sp.id }, `No.${String(sp.dex || 0).padStart(3, '0')} ${sp.name} (${sp.btype || ''}${isSpecialLine(l) ? ' · 전설' : isWildLine(l) ? '' : ` · ${l?.teacher || ''}`})`);
-  }))));
-  sel.value = '3';
+    return `No.${String(sp.dex || 0).padStart(3, '0')} ${sp.name} (${sp.btype || ''}${isSpecialLine(l) ? ' · 전설' : isWildLine(l) ? '' : ` · ${l?.teacher || ''}`})`;
+  };
+  const sel = h('select.inp');
   const pic = h('div', spriteImg(3, 72));
-  sel.onchange = () => pic.replaceChildren(spriteImg(Number(sel.value), 72));
+  const showPic = () => pic.replaceChildren(sel.value ? spriteImg(Number(sel.value), 72) : h('span.muted', '-'));
+  // 이름·번호로 찾기: 글자를 넣으면 맞는 포켓몬만 남기고 첫 번째를 고름
+  const fillSel = (q) => {
+    const want = String(q || '').trim().toLowerCase().replace(/^no\.?\s*/, '');
+    const hit = (sp) => !want || String(sp.name).toLowerCase().includes(want) || String(sp.dex || '') === want.replace(/^0+/, '')
+      || String(sp.btype || '').includes(want) || String(S.lineById.get(sp.line_id)?.teacher || '').toLowerCase().includes(want);
+    const keep = sel.value;
+    sel.replaceChildren(...[...spGroups].map(([t, a]) => [t, a.filter(hit)]).filter(([, a]) => a.length)
+      .map(([t, a]) => h('optgroup', { label: t }, a.map((sp) => h('option', { value: sp.id }, spLabel(sp))))));
+    if (!sel.options.length) sel.append(h('option', { value: '', disabled: true }, '찾는 포켓몬이 없어요'));
+    sel.value = [...sel.options].some((o) => o.value === keep && !o.disabled) ? keep : (sel.options[0]?.value || '');
+    showPic();
+  };
+  const find = h('input.inp', { type: 'search', placeholder: '이름 · 도감 번호 · 타입으로 찾기 (예: 후딘, 65)', oninput: () => fillSel(find.value) });
+  fillSel('');
+  sel.value = '3'; showPic();
+  sel.onchange = showPic;
   // 프리셋 고르기 + "직접 입력" → 숫자 칸
   const preset = (opts, unit, min, max) => {
     const own = h('input.inp', { type: 'number', inputmode: 'numeric', min, max, placeholder: `${min}~${max.toLocaleString()} ${unit}`, hidden: true });
@@ -2251,6 +2274,7 @@ async function tabRaid() {
   const form = h('form.box.stack', {
     onsubmit: (e) => {
       e.preventDefault();
+      if (!sel.value) { toast('보스 포켓몬을 골라 주세요.'); return; }
       for (const [f, name] of [[hp, '보스 체력'], [mins, '시간']]) {
         if (!Number.isInteger(f.value) || f.value < f.min || f.value > f.max) { toast(`${name}은(는) ${f.min}~${f.max.toLocaleString()} 사이 숫자로 넣어 주세요.`); return; }
       }
@@ -2266,7 +2290,7 @@ async function tabRaid() {
   },
     h('h2', '레이드 열기'),
     h('p.small-txt', `아무 포켓몬(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, ${minTaps}번 이상 공격한 모두가 ${catchMode ? '앱에서 그 포켓몬을 잡을 기회' : '그 포켓몬 특별 티켓 (주머니 칸 제한 없음)'}를 받아요 (오른쪽 "보상 방식"). 시간 안에 못 잡으면 실패.`),
-    h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 포켓몬'), sel)),
+    h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 포켓몬'), find, sel)),
     h('div.row', h('label.field', h('span', '보스 체력'), hp.el), h('label.field', h('span', '시간'), mins.el)),
     h('label.field', h('span', 'QR 방식'), mode), title,
     h('label.chk.chk-top', openChk, h('span', h('b', 'QR 없이 참가'), ' — 학생 앱 레이드 탭에 "참가" 버튼이 떠요 (아침·점심·저녁에 모두에게 주는 레이드용)')),
@@ -2303,7 +2327,8 @@ const DEFAULTS = {
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
-  safari_balls_daily: 20, safari_reset_hours: 24, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_daily_max_encounters: 15, safari_flee: 0.25, safari_steps_per_sec: 6,
+  safari_balls_daily: 20, safari_reset_hours: 0.5, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_flee: 0.25, safari_steps_per_sec: 10,   // 0040: 30분 충전 · 만남 상한 없음 · 걸음 10/초
+  safari_flee_level: 0.1,
   safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
   evo_prob: [0, 0.7, 0.35], evo_pity_step: 0.1, evo_pity_max: [0, 1, 2],
   qr_daily_cap: 3, bag_max: 5, ticket_ttl_hours: 10, token_grace_minutes: 30, rotating_window_sec: 30,
@@ -2348,7 +2373,9 @@ const DEFAULTS = {
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
   // 0027_eggs_class_achievements.sql
   egg_steps: { green: 1000, yellow: 2500, purple: 5000 }, egg_qr_bonus: 300, steps_per_min_max: 200, steps_day_max: 30000,
-  egg_hold_max: 9, egg_incubators: 3, egg_drop_place: 0.25, egg_shiny: { green: 0.1, yellow: 0.25, purple: 0.5 }, egg_legend: 0.1,
+  egg_hold_max: 9, egg_incubators: 3, egg_drop_place: 0.25, egg_legend: 0.1,
+  // 0042_shiny.sql (egg_shiny 는 0027 값을 0042 가 바꿈)
+  egg_shiny: { green: 1 / 256, yellow: 1 / 128, purple: 1 / 64 }, wild_shiny_chance: 1 / 512, shiny_charm_mult: 3,
   // 0028_catch.sql
   catch_exp: { none: 0, nice: 20, great: 40, excellent: 80, curve: 20 },
   // 0030_catch_raid_class.sql
@@ -2408,16 +2435,16 @@ const GROUPS = {
       P('wild_daily', '걸어서 만나는 야생 포켓몬 (하루 최대)', 'int', { unit: '마리', min: 0, max: 100 }),
       P('wild_balls', '걸어서 만난 야생 포켓몬: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요.' }),
       P('safari_balls_daily', '사파리존: 사파리볼 개수', 'step', { unit: '개', min: 0, max: 100, help: '충전 주기마다 한 사람이 받는 사파리볼 (기본 20개). 다 쓰면 다음 충전까지 못 만나요 (서버가 셈). 0 = 사파리존 끔.' }),
-      P('safari_reset_hours', '사파리존: 충전 주기', 'seg', { unit: '시간', options: [[1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간']],
-        help: '서울 시각 00:00 부터 이 시간마다 사파리볼과 만남 수가 다시 차요. 예: 6시간 → 00 · 06 · 12 · 18시. 앱에 "다음 충전 15:00" 처럼 보여요. 바꾸면 바로 새 주기로 세요.' }),
+      P('safari_reset_hours', '사파리존: 충전 주기', 'seg', { unit: '시간', options: [[0.25, '15분'], [0.5, '30분'], [1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간']],
+        help: '서울 시각 00:00 부터 이만큼마다 사파리볼이 다시 차요 (기본 30분). 예: 30분 → 00:00 · 00:30 · 01:00 …. 앱에 "다음 충전 15:30" 처럼 보여요. 바꾸면 바로 새 주기로 세요.' }),
       P('safari_min_steps', '사파리존: 풀숲 몇 걸음부터 만날 수 있나', 'int', { unit: '걸음', min: 0, max: 200 }),
       P('safari_encounter_rate', '사파리존: 그다음 풀숲 한 걸음마다 만날 확률', 'pct', { max: 100, help: '기본 12%. 확률은 서버가 굴려요.' }),
-      P('safari_daily_max_encounters', '사파리존: 충전 주기마다 최대 만남', 'int', { unit: '마리', min: 0, max: 100 }),
       P('safari_flee', '사파리존: 공을 처음 놓쳤을 때 도망칠 확률', 'pct', { max: 100, help: '기본 25% (3세대 사파리존처럼). 도망은 서버가 정해요 — 공을 놓칠 때마다 서버에 물어봐요.' }),
       P('safari_flee_step', '사파리존: 놓칠 때마다 도망 확률이 더 오름', 'pct', { max: 100, help: '기본 +5%. 오래 머물수록 잘 도망가요 (25% → 30% → 35% …).' }),
       P('safari_flee_legend', '사파리존: 전설 포켓몬은 도망 확률 더하기', 'pct', { max: 100, help: '기본 +15%.' }),
       P('safari_flee_max', '사파리존: 도망 확률 최대', 'pct', { max: 100, help: '기본 90%. 아무리 올라도 이보다 높아지지 않아요.' }),
-      P('safari_steps_per_sec', '사파리존: 1초에 셀 수 있는 걸음 (속임 막기)', 'int', { unit: '걸음', min: 1, max: 20, help: '앱은 1초에 5걸음 걸어요. 너무 낮추면 걸어도 만나지 못해요.' }),
+      P('safari_flee_level', '사파리존: 레벨이 높으면 도망 확률 더하기 (Lv.50 기준)', 'pct', { max: 100, help: '기본 +10%. Lv.5 = 0 → Lv.50 = 이만큼 (레벨은 입구에서 멀수록 · 깊을수록 높아요, 5~50).' }),
+      P('safari_steps_per_sec', '사파리존: 1초에 셀 수 있는 걸음 (속임 막기)', 'int', { unit: '걸음', min: 1, max: 20, help: '앱은 1초에 6걸음쯤 걸어요 (기본 10). 너무 낮추면 걸어도 만나지 못해요.' }),
     ],
   },
   // 0038 전설 · 메타몽 · 방랑 전설 · 소포
@@ -2474,8 +2501,17 @@ const GROUPS = {
       P('egg_hold_max', '한 사람이 가질 수 있는 알 수', 'int', { unit: '개', min: 1, max: 30 }),
       P('egg_incubators', '부화기 칸 수', 'int', { unit: '칸', min: 1, max: 3, help: '서버가 1~3칸만 써요.' }),
       P('egg_drop_place', '새 장소 QR에서 알이 나올 확률', 'pct'),
-      P('egg_shiny', '알에서 반짝이(색 다른 포켓몬)가 나올 확률', 'obj', { parts: EGG_PARTS, partKind: 'pct' }),
       P('egg_legend', '보라 알에서 전설이 나올 확률', 'pct'),
+    ],
+  },
+  // 0042 반짝이는 포켓몬 (이로치)
+  shiny: {
+    tab: '성장·보상', title: '반짝이는 포켓몬 (색이 다른 포켓몬)',
+    intro: '확률은 "1/N" 의 N 으로 넣어요 (512 = 512마리에 1마리꼴). 0 = 안 나옴. 도감을 모두 채운 학생은 빛나는 부적을 받아 모든 확률이 아래 배수만큼 올라가요.',
+    fields: [
+      P('wild_shiny_chance', '새로 잡는 포켓몬이 반짝일 확률', 'odds', { help: '야생 (걸음 · QR) · 사파리존 · 레이드 · 전설 · 방랑 · 부스 티켓 · 소포 모두. 만날 때 서버가 정해서 잡기 장면부터 반짝여요. 기본 1/512.' }),
+      P('egg_shiny', '알에서 반짝이가 나올 확률', 'obj', { parts: EGG_PARTS, partKind: 'odds', help: '기본 초록 1/256 · 노랑 1/128 · 보라 1/64.' }),
+      P('shiny_charm_mult', '빛나는 부적: 확률 배수', 'num', { unit: '배', min: 1, max: 20, help: '기본 3배 (1/512 → 1/171). 확률은 100%를 넘지 않아요.' }),
     ],
   },
   catchExp: {
@@ -2545,9 +2581,13 @@ const KEY_TITLE = { battle_fields: '배틀 시간표 (날씨 · 필드)', notice
 const keyTitle = (key) => SPEC_BY_KEY[key]?.label || KEY_TITLE[key] || key;
 
 const pctTxt = (v) => `${+(Number(v) * 100).toFixed(2)}%`;
+// 1/N 확률 (0042 반짝이): 0 = 끔
+const oddsN = (v) => (Number(v) > 0 ? Math.round(1 / Number(v)) : 0);
+const oddsTxt = (v) => (Number(v) > 0 ? `1/${oddsN(v).toLocaleString()} (${+(Number(v) * 100).toFixed(3)}%)` : '끔 (0)');
 function fmtPart(kind, v, unit) {
   if (v == null || v === '') return '없음';
   if (kind === 'pct') return pctTxt(v);
+  if (kind === 'odds') return oddsTxt(v);
   if (kind === 'bool') return isOn(v) ? '켜짐' : '꺼짐';
   return `${Number(v).toLocaleString()}${unit ? ' ' + unit : ''}`;
 }
@@ -2590,6 +2630,9 @@ function resetBtn(key, cur, after = rerender) {
 
 // 숫자 칸 (pct 는 % 로 보여 주고 0~1 로 저장)
 function numInput(kind, v, sp, label) {
+  if (kind === 'odds') {
+    return h('input.inp.w-num', { type: 'number', inputmode: 'numeric', step: 1, min: 0, max: 1000000, value: v == null || v === '' ? '' : oddsN(v), 'aria-label': `${label} (1/N 의 N)` });
+  }
   const pct = kind === 'pct';
   const shown = v == null || v === '' ? '' : pct ? +(Number(v) * 100).toFixed(2) : v;
   return h('input.inp.w-num', {
@@ -2600,6 +2643,12 @@ function numInput(kind, v, sp, label) {
 function readNum(inp, kind, sp) {
   const raw = inp.value.trim();
   const n = Number(raw);
+  if (kind === 'odds') {
+    const ok = raw !== '' && Number.isInteger(n) && n >= 0 && n <= 1000000;
+    inp.classList.toggle('bad', !ok);
+    if (!ok) return { ok, err: '0~1,000,000 사이 정수로 넣어 주세요 (1/N 의 N, 0 = 끔)' };
+    return { ok, value: n === 0 ? 0 : 1 / n };
+  }
   const pct = kind === 'pct';
   const lo = pct ? (sp.min ?? 0) : sp.min ?? -Infinity, hi = pct ? (sp.max ?? 100) : sp.max ?? Infinity;
   const ok = raw !== '' && Number.isFinite(n) && (kind !== 'int' || Number.isInteger(n)) && n >= lo && n <= hi;
@@ -2607,7 +2656,7 @@ function readNum(inp, kind, sp) {
   if (!ok) return { ok, err: `${lo.toLocaleString()}~${hi.toLocaleString()}${pct ? '%' : ''} 사이${kind === 'int' ? ' 정수' : ' 숫자'}로 넣어 주세요` };
   return { ok, value: pct ? +(n / 100).toFixed(4) : n };
 }
-const unitSpan = (kind, unit) => (kind === 'pct' ? h('span.unit', '%') : unit ? h('span.unit', unit) : null);
+const unitSpan = (kind, unit) => (kind === 'pct' ? h('span.unit', '%') : kind === 'odds' ? null : unit ? h('span.unit', unit) : null);
 
 // 설정 하나 → { el, read() }
 function makeField(sp, row) {
@@ -2640,7 +2689,8 @@ function makeField(sp, row) {
   if (sp.kind === 'obj') {
     const ins = sp.parts.map(([k, l]) => [k, numInput(sp.partKind, v?.[k], sp, `${sp.label} ${l}`), l]);
     return {
-      el: h('div.parts', ins.map(([, inp, l]) => h('label.part', h('span', l), h('span.part-in', inp, unitSpan(sp.partKind, sp.unit))))),
+      el: h('div.parts', ins.map(([, inp, l]) => h('label.part', h('span', l), sp.partKind === 'odds'
+        ? h('span.part-in', h('span.unit', '1 /'), inp) : h('span.part-in', inp, unitSpan(sp.partKind, sp.unit))))),
       read: () => {
         const out = { ...(v && typeof v === 'object' ? v : {}) };
         for (const [k, inp, l] of ins) {
@@ -2653,6 +2703,7 @@ function makeField(sp, row) {
     };
   }
   const inp = numInput(sp.kind, v, sp, sp.label);
+  if (sp.kind === 'odds') return { el: h('span.part-in', h('span.unit', '1 /'), inp), read: () => readNum(inp, sp.kind, sp) };
   return { el: h('span.part-in', inp, unitSpan(sp.kind, sp.unit)), read: () => readNum(inp, sp.kind, sp) };
 }
 
@@ -3014,7 +3065,7 @@ async function tabGrow() {
   const set = await loadSettings();
   return [
     h('div.cols.wide-left', fieldEditor(set), settingsGroup(GROUPS.battleEnv, set)),
-    h('div.cols', h('div', settingsGroup(GROUPS.eggs, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
+    h('div.cols', h('div', settingsGroup(GROUPS.eggs, set), settingsGroup(GROUPS.shiny, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
     h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
       h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),
   ];
