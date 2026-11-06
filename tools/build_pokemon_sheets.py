@@ -1,5 +1,5 @@
-# 포켓몬 멈춘 그림 809마리 (+ 색이 다른 그림) → web/sprites/pk-*.webp 그림판 몇 장 + web/sprites/pk-index.js (어디에 있는지).
-#  - 그림판은 무손실 WebP. 그림: #1–649 PokeAPI 블랙·화이트 멈춘 PNG, #650–809 smogon gen5 PNG (같은 화풍). 받은 파일은 .work/pokesprites/ 에 저장 (다시 받지 않음)
+# 포켓몬 멈춘 그림 809마리 + 이벤트 포켓몬 (+ 색이 다른 그림) → web/sprites/pk-*.webp 그림판 몇 장 + web/sprites/pk-index.js (어디에 있는지).
+#  - 그림판은 무손실 WebP. 그림: #1–649 PokeAPI 블랙·화이트 멈춘 PNG, #650–809 · 이벤트 폼 (지우개굴닌자 · 지우의 피카츄, pokemon_sprites.json 'forms') smogon gen5 PNG (같은 화풍). 받은 파일은 .work/pokesprites/ 에 저장 (다시 받지 않음)
 #  - 둘레의 빈칸을 잘라서 촘촘히 담음. 앱(sprites.js)은 96×96 칸에 원래 크기 그대로, 가운데·아래 맞춤으로 그림 → 모든 포켓몬 도트 크기가 같음
 #  - 그림판 한 장은 2048×2048 이하 (아이폰 GPU 한계), 필요한 장만 받도록 species.id 순서로 나눔
 # 사용: python tools/build_pokemon_sheets.py      (PIL 필요)
@@ -17,12 +17,15 @@ WIDTH = 1024              # 그림판 폭
 J = json.load(open(os.path.join(ROOT, 'tools', 'pokemon_sprites.json'), encoding='utf8'))
 species = sorted((int(k), int(v)) for k, v in J['species'].items())
 ident = {int(k): v for k, v in J['ident'].items()}
+FORMS = {int(k): v for k, v in J.get('forms', {}).items()}     # 이벤트 포켓몬 (0044, 도감 810~): smogon gen5 폼 그림 이름
 PA = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white'
 SM = 'https://raw.githubusercontent.com/smogon/sprites/master/src/sprites/gen5'
 UNDERSCORE = {772, 782, 783, 784, 785, 786, 787, 788}
 
 
 def url(n, shiny):
+    if n in FORMS:
+        return f"{SM}/s{FORMS[n]}{'-s' if shiny else ''}.png"
     if n <= 649:
         return f"{PA}/{'shiny/' if shiny else ''}{n}.png"
     name = ident[n].replace('-', '_') if n in UNDERSCORE else ident[n].replace('-', '')

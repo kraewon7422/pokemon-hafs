@@ -1168,6 +1168,7 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .dex-pager .btn.small { min-width: 48px; min-height: 44px; }
 .dex-pager .dp-mid { display: grid; justify-items: center; text-align: center; line-height: 1.2; }
 .dex-pager .dp-mid small { font-size: var(--fs-s); color: #4a5268; white-space: nowrap; }
+.dex-event-note { margin: 0; font-size: var(--fs-s); text-align: center; color: #4a5268; word-break: keep-all; }   /* 0044 이벤트 포켓몬 (소포로만) */
 .dex-regions .chip { word-break: keep-all; white-space: nowrap; }
 .dex-regions .chip:disabled { opacity: .45; cursor: default; }
 /* 0037 갈래 진화: 진화 길 칸 + 고르기 */

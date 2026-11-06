@@ -64,6 +64,27 @@ FLAV = defaultdict(dict)
 for r in rd('pokemon_species_flavor_text'):
     if r['language_id'] == KO and int(r['species_id']) <= MAXDEX:
         FLAV[int(r['species_id'])][VERS[r['version_id']]] = ' '.join(r['flavor_text'].split())
+# ── 이벤트 포켓몬 (0044): 이상한 소포로만 받음. 도감 번호 = 809 다음 (새 번호), 계열 하나씩 (진화 없음).
+#    lines.bonus = true + legend_src 'gift' + legendary → 야생 · QR · 사파리 · 알 · 배틀 상대 · 메타몽 변신 어디에도 안 나오고, 도감 완성 수에도 안 들어감.
+#    자료 = 그 폼의 PokeAPI pokemon id (종족값 · 타입 · 특성 · 키/몸무게 · 배우는 기술). 그림 = smogon gen5 폼 그림 (마지막 칸).
+#    (도감 번호, 계열, pokemon id, 이름, 분류, 설명, 고른 기술 4개, smogon 그림 이름)
+#    물수리검 · 일렉트릭볼은 이 게임 기술 목록에 없어서 파도타기 · 번개로.
+EVENT = [
+    (810, 441, 10117, '지우개굴닌자', '닌자포켓몬',
+     '트레이너와의 유대가 깊어져 모습이 바뀐 개굴닌자. 등에 커다란 물수리검을 짊어지고, 트레이너와 같은 것을 보고 같은 것을 느끼며 싸운다.',
+     ['파도타기', '악의파동', '깜짝베기', '섀도클로'], 'greninja-oash'),
+    (811, 442, 10094, '지우의 피카츄', '쥐포켓몬',
+     '오랜 여행을 함께한 트레이너의 모자를 쓴 피카츄. 몬스터볼에 들어가는 것을 싫어하고, 늘 트레이너의 어깨 위에 있다. 진화하지 않는다.',
+     ['10만볼트', '전광석화', '아이언테일', '번개'], 'pikachu-ooriginal'),
+]
+EVENT_DEX = {e[0]: e for e in EVENT}
+EVENT_LINE = {e[1]: e for e in EVENT}
+for _r in rd('pokemon'):
+    for _e in EVENT:
+        if int(_r['id']) == _e[2]:
+            PID[_e[0]], POKE[_e[0]] = _e[2], _r
+for _e in EVENT:
+    NAME[_e[0]], GENUS[_e[0]], FLAV[_e[0]] = _e[3], _e[4], {'event': _e[5]}
 TYPE_KO = {int(r['type_id']): r['name'].strip() for r in rd('type_names') if r['local_language_id'] == KO and int(r['type_id']) <= 18}
 REAL_TYPES = [TYPE_KO[i] for i in range(1, 19)]
 PTYPES = defaultdict(list)
@@ -263,6 +284,10 @@ for p in WILD:
     LINE_PATH[nid] = p
     nid += 1
 assert sorted(s for p in LINE_PATH.values() for s in p) == list(range(1, MAXDEX + 1)), '모든 포켓몬이 한 번씩'
+for _e in EVENT:                     # 이벤트 포켓몬 (0044): 야생 계열 다음 번호
+    assert _e[1] == nid, ('이벤트 계열 번호', _e[1], nid)
+    LINE_PATH[nid] = [_e[0]]
+    nid += 1
 SPECIES_OF_DEX = {}       # 도감 번호 → (line, stage)
 for l, p in LINE_PATH.items():
     for i, s in enumerate(p):
@@ -312,7 +337,7 @@ def evolutions_rows():
 
 
 def rarity_of(line, path):
-    if line in SPECIAL:
+    if line in SPECIAL or line in EVENT_LINE:
         return 'legendary'
     if 20 <= line <= 24 or line == 75:
         return 'rare'
@@ -417,6 +442,8 @@ def pick4(sid, stage, n_stages):
     ts = types_of(sid)
     if sid == DITTO:          # 메타몽: 실제처럼 변신 하나뿐 (0039)
         return ['변신']
+    if sid in EVENT_DEX:      # 이벤트 포켓몬 (0044): 정해 둔 4개
+        return list(EVENT_DEX[sid][6])
     can = [MV[n] for n in sorted(learnable(sid)) if n in MV and n not in GB.SIGNATURE and n not in NEW_MOVES]
     cap = 999 if stage == n_stages else (70 if stage == 1 and n_stages >= 2 else 95)
     atk = [m for m in can if m['kind'] == 'attack' and (m['power'] or 0) <= cap and (m['acc'] or 100) >= 70]
@@ -531,7 +558,7 @@ def main():
         p = LINE_PATH[l]
         n = len(p)
         btype_line = '/'.join(types_of(p[-1]))
-        lines_sql.append((l, len(p), rarity_of(l, p), btype_line, l >= 83))
+        lines_sql.append((l, len(p), rarity_of(l, p), btype_line, l >= 83 and l not in EVENT_LINE))
         lv_line = {}
         evl = evo_levels(p)
         for st, sid in enumerate(p, start=1):
@@ -589,7 +616,13 @@ def main():
     S.append(',\n'.join(f" ({l}, '야생 포켓몬', '야생', {q(r)}, true, {n}, {q(bt)}, false, false, false)" for l, n, r, bt, wild in lines_sql if wild))
     S.append('on conflict (id) do update set max_stage = excluded.max_stage, rarity = excluded.rarity, btype = excluded.btype;')
     S.append('update public.lines l set max_stage = v.n, rarity = v.r, btype = v.bt from (values ' + ', '.join(
-        f'({l}, {n}, {q(r)}, {q(bt)})' for l, n, r, bt, wild in lines_sql if not wild) + ') v(id, n, r, bt) where l.id = v.id;')
+        f'({l}, {n}, {q(r)}, {q(bt)})' for l, n, r, bt, wild in lines_sql if not wild and l not in EVENT_LINE) + ') v(id, n, r, bt) where l.id = v.id;')
+    S.append('-- 이벤트 포켓몬 (0044): 이상한 소포로만. bonus = 도감 수에 안 셈 · 모든 무작위 풀에서 빠짐, legend_src gift')
+    S.append('insert into public.lines (id, teacher, subject, rarity, active, max_stage, btype, bonus, mythic, secret, ultra, legend_src) values '
+             + ', '.join(f"({l}, '이벤트 포켓몬', '야생', {q(r)}, true, {n}, {q(bt)}, true, false, false, false, 'gift')"
+                         for l, n, r, bt, wild in lines_sql if l in EVENT_LINE)
+             + ' on conflict (id) do update set teacher = excluded.teacher, subject = excluded.subject, rarity = excluded.rarity, max_stage = excluded.max_stage,'
+             ' btype = excluded.btype, bonus = true, mythic = false, secret = false, ultra = false, legend_src = excluded.legend_src;')
     S.append("-- 예전 데이터의 '비밀 몬스터' (계열 37 = 뮤) → 포켓몬 이름으로 (도감 상세 '정체' 칸에 보임)")
     S.append("update public.lines set teacher = '비밀 포켓몬' where id = 37 and teacher = '비밀 몬스터';")
     S.append(f'delete from public.lines where id > {max(line_ids)};')
@@ -644,12 +677,17 @@ def main():
     open(out, 'w', encoding='utf-8', newline='\n').write('\n'.join(S) + '\n')
     # 그림 올리기용 표 (tools/upload_pokemon_sprites.mjs): species.id → 전국도감 번호 · 영어 이름
     ident = {int(r['id']): r['identifier'] for r in rd('pokemon_species') if int(r['id']) <= MAXDEX}
-    json.dump({'species': {str(k): v for k, v in sorted(sprites.items())}, 'ident': {str(k): v for k, v in sorted(ident.items())}, 'items': ITEM_ICON},
+    forms = {}                                   # 이벤트 포켓몬 (0044): 도감 번호 → smogon gen5 그림 이름 (s<이름>.png, 색이 다른 것 s<이름>-s.png)
+    for e in EVENT:
+        ident[e[0]] = POKE[e[0]]['identifier']
+        forms[str(e[0])] = e[7]
+    json.dump({'species': {str(k): v for k, v in sorted(sprites.items())}, 'ident': {str(k): v for k, v in sorted(ident.items())}, 'items': ITEM_ICON,
+               'forms': forms},
               open(os.path.join(ROOT, 'tools', 'pokemon_sprites.json'), 'w', encoding='utf-8'), ensure_ascii=False, separators=(',', ':'))
     print(f'갈래 종 {len(BRANCHES)}: ' + ', '.join(f"{NAME[b[3]]}({b[0]}, 계열 {b[1]} {b[2]}단계, {'돌' if b[6] else 'Lv.' + str(b[5])})" for b in BRANCHES))
     print(f'{out}: lines {len(lines_sql)} (wild {sum(1 for x in lines_sql if x[4])}), species {len(species_rows)}, '
           f'moves {len(MOVES)}, learn {len(learn_rows)}, items {len(items)} (TM {len(TMS)})')
-    for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, max(line_ids)]:
+    for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, 440] + [e[1] for e in EVENT]:
         print(' ', l, [NAME[s] for s in LINE_PATH[l]], evo_levels(LINE_PATH[l]), lines_sql[line_ids.index(l)][2:4])
 
 

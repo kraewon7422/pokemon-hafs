@@ -3091,16 +3091,20 @@ function giftCard(items) {
   const code = h('input.inp', { placeholder: '예: 축제 첫날 선물', maxlength: 60, 'aria-label': '소포 코드' });
   const title = h('input.inp', { placeholder: '(선택) 메모 — 학생에게는 안 보여요', maxlength: 60, 'aria-label': '메모' });
   const kind = h('select.inp.w-sel', { 'aria-label': '선물 종류' }, h('option', { value: 'mon' }, '포켓몬'), h('option', { value: 'item' }, '물건'));
-  const dex = h('input.inp.w-num', { type: 'number', min: 1, max: 809, placeholder: '번호', 'aria-label': '포켓몬 도감 번호' });
+  const dex = h('input.inp.w-num', { type: 'number', min: 1, max: Math.max(809, ...S.species.map((x) => x.dex || 0)), placeholder: '번호', 'aria-label': '포켓몬 도감 번호' });
   const dexName = h('span.small-txt.muted');
   dex.oninput = () => { const sp = spByDex(dex.value); dexName.textContent = sp ? sp.name : dex.value ? '없는 번호' : ''; };
+  // 0044 이벤트 포켓몬 (소포로만 받음: 지우개굴닌자 · 지우의 피카츄 …) → 눌러서 고르기
+  const evSp = S.species.filter((x) => x.stage === 1 && x.dex && S.lineById?.get(x.line_id)?.bonus && S.lineById.get(x.line_id).legend_src === 'gift');
+  const evRow = evSp.length ? h('div.row.small-txt', '이벤트 포켓몬:', evSp.map((x) => h('button.btn.small', { type: 'button', onclick: () => { dex.value = x.dex; dex.oninput(); } },
+    `${x.name} (No.${x.dex})`))) : null;
   const item = h('select.inp.w-sel', { 'aria-label': '물건' }, h('option', { value: 'evo_stone' }, '진화의 돌'),
     items.map((it) => h('option', { value: it.key }, it.name)));
   const qty = h('input.inp.w-num', { type: 'number', min: 1, max: 99, value: 1, 'aria-label': '개수' });
   const starts = h('input.inp', { type: 'datetime-local', 'aria-label': '시작 시각' });
   const ends = h('input.inp', { type: 'datetime-local', 'aria-label': '끝 시각' });
   const max = h('input.inp.w-num', { type: 'number', min: 0, placeholder: '0', 'aria-label': '최대 받는 사람 수' });
-  const monRow = h('div.row', h('label', '도감 번호 ', dex), dexName);
+  const monRow = h('div.stack', h('div.row', h('label', '도감 번호 ', dex), dexName), evRow);
   const itemRow = h('div.row', h('label', '물건 ', item));
   itemRow.style.display = 'none';
   kind.onchange = () => { monRow.style.display = kind.value === 'mon' ? '' : 'none'; itemRow.style.display = kind.value === 'mon' ? 'none' : ''; };
