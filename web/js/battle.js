@@ -69,8 +69,9 @@ export const envIcon = (k) => (ENV_ICON[k] ? h('i.env-ico', { html: `<svg viewBo
 export const TEAM_MAX = 6;
 export const FMT = { single: { min: 1, label: '1 대 1' }, double: { min: 2, label: '2 대 2' } };
 const DOUBLE_SHORT = '2 대 2는 배틀 팀에 포켓몬이 2마리 이상 있어야 해요. [팀 바꾸기]에서 더 골라 주세요.';
-// 배경: isaiah658 의 픽셀 팩 #2 (CC0, web/img/battle/CREDITS.txt). 배틀마다 다르게
-export const BT_BG = ['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'];
+// 배틀 배경 (img/battle/bt2-*.png, tools/draw_battle_bg.py): 날씨 · 필드가 있으면 그 배경, 없으면 배틀 번호로 돌아가며
+export const BT_BG = ['plains', 'forest', 'beach', 'desert', 'snowy', 'cave', 'lake'];
+const BT_ENV_BG = { sun: 'sunny', rain: 'rain', sand: 'desert', hail: 'snowy', electric: 'electric', grassy: 'forest', misty: 'lake', psychic: 'psychic' };
 export const moveOf = (id) => (S.catalog.moves || []).find((m) => m.id === id);
 export const BT_WHY = {
   practice: '연습 배틀이라 보상은 없어요.',
@@ -863,7 +864,7 @@ export function openBattle(b0) {
 
   const modeLabel = `${{ cpu: '연습 배틀', team: '친구 팀 (AI)', pvp: '실시간 배틀' }[b.mode]} · ${FMT[b.format]?.label || '1 대 1'}`;
   const pads = h('div.bt-layer');
-  el.field = h(`div.bt-field.bg-${BT_BG[b.id % BT_BG.length]}${dbl ? '.dbl' : ''}`,
+  el.field = h(`div.bt-field.bg-${BT_ENV_BG[b.field?.env] || BT_BG[b.id % BT_BG.length]}${dbl ? '.dbl' : ''}`,
     el.ter, pads, ...SL.map((x) => x.spr), el.wx, el.env,
     h('div.bt-boxes.foe', SL.filter((x) => (x.u >> 1) === fo()).map((x) => x.box)),
     h('div.bt-boxes.me', SL.filter((x) => (x.u >> 1) === me()).map((x) => x.box)));

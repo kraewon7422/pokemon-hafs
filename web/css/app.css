@@ -510,16 +510,20 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bt-timer.hot { color: #ff7060; }
 .warn-txt { color: #b04020; }
 
-/* 배경: isaiah658 픽셀 팩 #2 (CC0) — 159×159 정사각 그림의 위쪽 134줄을 씀. 발판 위치가 그림에 그려져 있음 */
+/* 배경 v2: tools/draw_battle_bg.py 로 그린 159×159 도트 (위쪽 134줄을 씀). 발판 위치가 그림에 그려져 있음 (.bt-spr 자리와 맞춤) */
 .bt-field { position: relative; aspect-ratio: 159 / 134; border: 3px solid #0c1018; border-radius: 8px; overflow: hidden;
   background: #a8d0f0 top center / 100% auto no-repeat; image-rendering: pixelated; }
-.bt-field.bg-plains { background-image: url(../img/battle/plains.png); }
-.bt-field.bg-forest { background-image: url(../img/battle/forest.png); }
-.bt-field.bg-beach { background-image: url(../img/battle/beach.png); }
-.bt-field.bg-desert { background-image: url(../img/battle/desert.png); }
-.bt-field.bg-snowy { background-image: url(../img/battle/snowy.png); }
-.bt-field.bg-underground { background-image: url(../img/battle/underground.png); }
-.bt-field.bg-underwater { background-image: url(../img/battle/underwater.png); }
+.bt-field.bg-plains { background-image: url(../img/battle/bt2-plains.png); }
+.bt-field.bg-sunny { background-image: url(../img/battle/bt2-sunny.png); }
+.bt-field.bg-rain { background-image: url(../img/battle/bt2-rain.png); }
+.bt-field.bg-forest { background-image: url(../img/battle/bt2-forest.png); }
+.bt-field.bg-beach { background-image: url(../img/battle/bt2-beach.png); }
+.bt-field.bg-desert { background-image: url(../img/battle/bt2-desert.png); }
+.bt-field.bg-snowy { background-image: url(../img/battle/bt2-snowy.png); }
+.bt-field.bg-cave { background-image: url(../img/battle/bt2-cave.png); }
+.bt-field.bg-lake { background-image: url(../img/battle/bt2-lake.png); }
+.bt-field.bg-electric { background-image: url(../img/battle/bt2-electric.png); }
+.bt-field.bg-psychic { background-image: url(../img/battle/bt2-psychic.png); }
 
 /* 몬스터: 발이 발판 가운데에 닿게 (translate = 자리, transform = 애니메이션 — 둘이 겹치지 않음) */
 .bt-spr { position: absolute; z-index: 1; translate: -50% -86%; line-height: 0; }
