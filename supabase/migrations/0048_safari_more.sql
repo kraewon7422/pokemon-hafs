@@ -7,7 +7,7 @@
 --     plant = 전기 · 고스트, 물 · 얼음 없음 (+ 또가스 109 · 깨봉이 568, 반만 자주)
 --     dragon = 드래곤 + 600족 계열 (1단계 전국도감 번호 147 미뇽 · 246 애버라스 · 371 아공이 · 374 메탕 · 443 딥상어동 · 633 모노두 · 704 미끄메라 · 782 짜랑꼬)
 --              — 다른 곳처럼 '야생' 계열만 (선생님 과목 계열은 QR · 퀴즈 전용 그대로. 운영자가 선생님을 빼서 야생이 되면 그때부터 저절로 나옴).
---              600족은 희귀도와 상관없이 무게 150, 다른 드래곤은 적어도 60 (희귀 10 → 60) — 보통 풀숲 (100) 보다 600족이 자주.
+--              600족은 희귀도와 상관없이 무게 150, 다른 드래곤은 적어도 60 (희귀 10 → 60, 전설은 그대로 1) — 보통 풀숲 (100) 보다 600족이 자주.
 --     새 전설은 넣지 않음 (전설 · 환상 · 울트라비스트 · 비밀 · 보너스 계열은 예전처럼 빠짐).
 --  C. 레벨: safari_level_bands 에 snow [18, 45, 34] · lava [20, 48, 34] · plant1 [15, 30, 0] · plant2 [28, 42, 0] · dragon [40, 50, 26]
 --     (세 번째 숫자 = 지도 입구에서 가장 먼 만남 칸까지 거리, .work/s7/maps-check.mjs 가 잼).
@@ -127,7 +127,7 @@ begin
           or (p_zone = 'dragon' and public._pseudo_line(l.id)))
    order by -ln(1 - random()) / (case
              when p_zone = 'dragon' and public._pseudo_line(l.id) then 150
-             when p_zone = 'dragon' then greatest(60, coalesce((ww ->> l.rarity)::numeric, 0))
+             when p_zone = 'dragon' and l.rarity <> 'legendary' then greatest(60, coalesce((ww ->> l.rarity)::numeric, 0))   -- 전설 드래곤은 예전처럼 아주 드물게
              else coalesce((ww ->> l.rarity)::numeric, 0)
                   * case when p_zone = 'pond' and '물' = any (string_to_array(coalesce(public._line_btype1(l.id), ''), '/')) then 3
                          when p_zone in ('desert', 'snow', 'lava', 'plant') and not public._habitat_ok(p_zone, public._line_btype1(l.id)) then 0.5
