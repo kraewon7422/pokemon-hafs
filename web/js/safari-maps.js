@@ -14,7 +14,9 @@
 // 설원 (kind 'snow'): T 눈 소나무 · . 눈 · , 눈 속 풀숲 · M 눈 덮인 흙 턱 · = 돌계단 · I 얼어붙은 연못 (미끄러짐) · R 바위 · H 오두막 (2×2) · n 눈사람 · S · E
 // 용암 (kind 'lava'): M 검붉은 절벽 · . 붉은 바위 · , 잿빛 풀숲 · = 바위 계단 · ~ 용암 · V 분기공 · T 마른 나무 · R · S · E
 // 발전소 (kind 'plant'): X 바깥 · W 벽 · p q 관 · . 바닥 · o 스위치 · k 선반 · g 발전기 · c 상자 · G 큰 발전기 (2×2) · U V 계단 · E 문 · S
-// 용의 굴 (kind 'dcave'): W 벽 · . 바닥 · ~ 물 · r O 바위 · K 용의 수정 · U 사다리
+// 용의 굴 (kind 'dcave'): W 벽 · . 바닥 · ~ 물 · r O 바위 · K 용의 수정 · U 사다리 · V 내려가는 사다리 (0050: 용의 굴 깊은 곳)
+// 0050 전설의 특별한 곳 (zone 없음 = 야생 포켓몬이 안 나오는 조용한 곳, 전설 자리만): 해변 글자 + m 초승달 꽃 · Y 수호신의 돌기둥 (꿈의 섬) ·
+//      바깥 글자 + g 그라시데아 꽃 · Y 검이 꽂힌 바위 (성검의 숲) · 울트라 글자 + A 별의 제단 무늬 (별의 제단) · 사막 Y 유적의 내려가는 계단 (→ 고대 유적 = 제단 글자)
 // zone (만남 구역): 'desert' 사막 (모래바람) · 'beach' 해변 · 'pond' (앱이 정함: 물가 2칸 안의 사파리존 풀숲) · 'grass' 사파리존 풀숲 · 'cave' 동굴 바닥 · 'deep' 깊은 바깥 구역 풀숲 · 'ultra' 울트라 스페이스
 // warps: 'x,y' → [지도, x, y, 보는 쪽, 'warp'?]  (그 칸에 들어서면 화면이 어두워지며 옮겨 감. 'warp' = 워프홀 연출)
 // 참고: 3세대 여울의 동굴 (물웅덩이·바위) · 미혹의 동굴 (갈림길 미로·점자·구멍) 느낌으로 새로 그린 지도 (원본 지도를 베끼지 않음)
@@ -24,17 +26,64 @@
 //    서버 (0038 safari_state · sync 의 legends) 가 hintsFromServer → setLegendHints 로 ok · caught · seen · 조건 글 + 진행 (예: '물 타입 4/20') 을 채움.
 import { CAVES, CAVE_PORTS } from './safari-caves.js';
 
+// space = 사육사 메뉴의 묶음 (LEGEND_SPACES). 0050: 아직 얻을 길이 없던 전설 · 환상 33마리 (서버 0050 legend_quests 와 같은 조건 글)
+export const LEGEND_SPACES = [
+  { id: 'regi', name: '거인의 동굴', where: '미혹의 동굴 · 여울의 동굴 깊은 곳', teaser: '점자 벽 아래 잠든 거인들' },
+  { id: 'sea', name: '바다와 대지', where: '여울의 동굴 · 깊은 연못 · 깊은 동굴', teaser: '바다와 땅을 만든 포켓몬' },
+  { id: 'sky', name: '하늘 언덕', where: '깊은 동굴 지하 2층 출구 너머', teaser: '하늘과 날씨의 포켓몬' },
+  { id: 'dream', name: '꿈의 섬', where: '해변 동쪽 끝 나루 너머', teaser: '꿈과 섬을 지키는 포켓몬' },
+  { id: 'forest', name: '성검의 숲', where: '깊은 연못 동쪽 길 너머', teaser: '검의 기사와 꽃의 포켓몬' },
+  { id: 'ddeep', name: '용의 굴 깊은 곳', where: '용의 굴 위쪽 사다리 아래', teaser: '진실과 이상의 용' },
+  { id: 'star', name: '별의 제단', where: '울트라 스페이스 위쪽 워프홀 너머', teaser: '하늘 너머에서 온 포켓몬' },
+  { id: 'ruins', name: '고대 유적', where: '사막 서쪽 유적의 내려가는 계단 아래', teaser: '유적에 숨은 환상의 포켓몬' },
+  { id: 'plant', name: '발전소', where: '발전소 2층', teaser: '기계와 번개의 포켓몬' },
+  { id: 'lava', name: '용암 지대', where: '용암 지대 아래 용암 호숫가', teaser: '불꽃과 강철의 포켓몬' },
+];
 export const LEGEND_HINTS = [
   // 레지 셋 = 점자 동굴 (바위 · 얼음 · 강철 타입을 잡으면 깨어남) → 셋을 모두 잡으면 레지기가스
-  { dex: 377, teaser: '바위로 된 거인', name: '레지락', where: '미혹의 동굴 지하 2층, 점자 벽 아래 방', cond: '바위 타입 포켓몬을 8마리 잡아야 한대', ok: false },
-  { dex: 378, teaser: '얼음으로 된 거인', name: '레지아이스', where: '여울의 동굴 지하 2층, 점자 벽 아래 방', cond: '얼음 타입 포켓몬을 5마리 잡아야 한대', ok: false },
-  { dex: 379, teaser: '강철로 된 거인', name: '레지스틸', where: '미혹의 동굴 지하 3층, 점자 벽 아래 방', cond: '강철 타입 포켓몬을 8마리 잡아야 한대', ok: false },
-  { dex: 486, teaser: '거인들의 왕', name: '레지기가스', where: '미혹의 동굴 지하 3층 사다리 아래 거인의 제단', cond: '레지락·레지아이스·레지스틸을 모두 잡아야 한대', ok: false },
-  { dex: 249, teaser: '깊은 바다의 수호신', name: '루기아', where: '여울의 동굴 지하 3층, 깊은 물가', cond: '물 타입 포켓몬을 20마리 잡아야 한대', ok: false },
-  { dex: 382, teaser: '바다를 넓힌 포켓몬', name: '가이오가', where: '깊은 연못 (여울의 동굴 지하 2층 출구 너머)', cond: '사파리존에서 포켓몬을 15마리 잡아야 한대', ok: false },
-  { dex: 383, teaser: '땅을 넓힌 포켓몬', name: '그란돈', where: '깊은 동굴 지하 2층', cond: '땅 타입 포켓몬을 15마리 잡아야 한대', ok: false },
-  { dex: 250, teaser: '무지개 날개의 새', name: '칠색조', where: '하늘 언덕 (깊은 동굴 지하 2층 출구 너머)', cond: '불꽃·비행 타입 포켓몬을 20마리 잡아야 한대', ok: false },
-  { dex: 384, teaser: '하늘 높이 사는 용', name: '레쿠쟈', where: '하늘 언덕 꼭대기 동굴 너머 하늘의 제단', cond: '가이오가와 그란돈을 모두 잡아야 한대', ok: false },
+  { dex: 377, space: 'regi', teaser: '바위로 된 거인', name: '레지락', where: '미혹의 동굴 지하 2층, 점자 벽 아래 방', cond: '바위 타입 포켓몬을 8마리 잡아야 한대', ok: false },
+  { dex: 378, space: 'regi', teaser: '얼음으로 된 거인', name: '레지아이스', where: '여울의 동굴 지하 2층, 점자 벽 아래 방', cond: '얼음 타입 포켓몬을 5마리 잡아야 한대', ok: false },
+  { dex: 379, space: 'regi', teaser: '강철로 된 거인', name: '레지스틸', where: '미혹의 동굴 지하 3층, 점자 벽 아래 방', cond: '강철 타입 포켓몬을 8마리 잡아야 한대', ok: false },
+  { dex: 486, space: 'regi', teaser: '거인들의 왕', name: '레지기가스', where: '미혹의 동굴 지하 3층 사다리 아래 거인의 제단', cond: '레지락·레지아이스·레지스틸을 모두 잡아야 한대', ok: false },
+  { dex: 249, space: 'sea', teaser: '깊은 바다의 수호신', name: '루기아', where: '여울의 동굴 지하 3층, 깊은 물가', cond: '물 타입 포켓몬을 20마리 잡아야 한대', ok: false },
+  { dex: 382, space: 'sea', teaser: '바다를 넓힌 포켓몬', name: '가이오가', where: '깊은 연못 (여울의 동굴 지하 2층 출구 너머)', cond: '사파리존에서 포켓몬을 15마리 잡아야 한대', ok: false },
+  { dex: 383, space: 'sea', teaser: '땅을 넓힌 포켓몬', name: '그란돈', where: '깊은 동굴 지하 2층', cond: '땅 타입 포켓몬을 15마리 잡아야 한대', ok: false },
+  { dex: 250, space: 'sky', teaser: '무지개 날개의 새', name: '칠색조', where: '하늘 언덕 (깊은 동굴 지하 2층 출구 너머)', cond: '불꽃·비행 타입 포켓몬을 20마리 잡아야 한대', ok: false },
+  { dex: 384, space: 'sky', teaser: '하늘 높이 사는 용', name: '레쿠쟈', where: '하늘 언덕 꼭대기 동굴 너머 하늘의 제단', cond: '가이오가와 그란돈을 모두 잡아야 한대', ok: false },
+  // ── 0050 ──
+  { dex: 641, space: 'sky', teaser: '회오리바람을 부르는 포켓몬', name: '토네로스', where: '하늘 언덕 위쪽 왼편', cond: '비행 타입 포켓몬을 10마리 잡아야 한대', ok: false },
+  { dex: 642, space: 'sky', teaser: '번개를 떨어뜨리는 포켓몬', name: '볼트로스', where: '하늘 언덕 위쪽 오른편', cond: '전기 타입 포켓몬을 10마리 잡아야 한대', ok: false },
+  { dex: 645, space: 'sky', teaser: '땅을 기름지게 하는 포켓몬', name: '랜드로스', where: '하늘 언덕 아래쪽 왼편', cond: '토네로스·볼트로스를 모두 잡아야 한대', ok: false },
+  { dex: 380, space: 'dream', teaser: '마음을 읽는 붉은 용', name: '라티아스', where: '꿈의 섬 가운데 왼편', cond: '에스퍼 타입 포켓몬을 6마리 잡아야 한대', ok: false },
+  { dex: 381, space: 'dream', teaser: '마음을 읽는 푸른 용', name: '라티오스', where: '꿈의 섬 가운데 오른편', cond: '드래곤 타입 포켓몬을 3마리 잡아야 한대', ok: false },
+  { dex: 488, space: 'dream', teaser: '좋은 꿈을 꾸게 하는 포켓몬', name: '크레세리아', where: '꿈의 섬 위쪽 초승달 꽃밭', cond: '페어리 타입 포켓몬을 6마리 잡아야 한대', ok: false },
+  { dex: 491, space: 'dream', teaser: '악몽을 꾸게 하는 포켓몬', name: '다크라이', where: '꿈의 섬 동쪽 어두운 야자숲', cond: '크레세리아를 잡아야 한대', ok: false },
+  { dex: 489, space: 'dream', teaser: '바다를 떠도는 작은 포켓몬', name: '피오네', where: '꿈의 섬 남쪽 물가', cond: '물 타입 포켓몬을 10마리 잡아야 한대', ok: false },
+  { dex: 785, space: 'dream', teaser: '번개의 수호신', name: '카푸꼬꼬꼭', where: '꿈의 섬 위쪽 왼편 수호신의 돌기둥', cond: '전기 타입 포켓몬을 6마리 잡아야 한대', ok: false },
+  { dex: 786, space: 'dream', teaser: '비늘가루의 수호신', name: '카푸나비나', where: '꿈의 섬 위쪽 오른편 수호신의 돌기둥', cond: '배틀에서 5번 이겨야 한대', ok: false },
+  { dex: 787, space: 'dream', teaser: '풀숲의 수호신', name: '카푸브루루', where: '꿈의 섬 아래쪽 왼편 수호신의 돌기둥', cond: '풀 타입 포켓몬을 8마리 잡아야 한대', ok: false },
+  { dex: 788, space: 'dream', teaser: '물의 수호신', name: '카푸느지느', where: '꿈의 섬 아래쪽 오른편 수호신의 돌기둥', cond: '사파리존에서 포켓몬을 25마리 잡아야 한대', ok: false },
+  { dex: 638, space: 'forest', teaser: '강철의 몸을 가진 기사', name: '코바르온', where: '성검의 숲 왼쪽 검이 꽂힌 바위', cond: '강철 타입 포켓몬을 5마리 잡아야 한대', ok: false },
+  { dex: 639, space: 'forest', teaser: '바위를 부수는 기사', name: '테라키온', where: '성검의 숲 오른쪽 검이 꽂힌 바위', cond: '바위 타입 포켓몬을 5마리 잡아야 한대', ok: false },
+  { dex: 640, space: 'forest', teaser: '숲을 달리는 기사', name: '비리디온', where: '성검의 숲 아래쪽 검이 꽂힌 바위', cond: '격투 타입 포켓몬을 5마리 잡아야 한대', ok: false },
+  { dex: 647, space: 'forest', teaser: '물 위를 달리는 어린 기사', name: '케르디오', where: '성검의 숲 호숫가', cond: '코바르온·테라키온·비리디온을 모두 잡아야 한대', ok: false },
+  { dex: 492, space: 'forest', teaser: '꽃밭에 숨은 작은 포켓몬', name: '쉐이미', where: '성검의 숲 왼쪽 아래 그라시데아 꽃밭', cond: '풀·벌레 타입 포켓몬을 15마리 잡아야 한대', ok: false },
+  { dex: 643, space: 'ddeep', teaser: '진실을 좇는 흰 용', name: '레시라무', where: '용의 굴 깊은 곳 왼편', cond: '용의 굴에서 포켓몬을 3마리 잡아야 한대', ok: false },
+  { dex: 644, space: 'ddeep', teaser: '이상을 좇는 검은 용', name: '제크로무', where: '용의 굴 깊은 곳 오른편', cond: '용의 굴에서 포켓몬을 5마리 잡아야 한대', ok: false },
+  { dex: 646, space: 'ddeep', teaser: '얼어붙은 빈 용', name: '큐레무', where: '용의 굴 깊은 곳 위쪽 얼음 제단', cond: '레시라무·제크로무를 모두 잡아야 한대', ok: false },
+  { dex: 789, space: 'star', teaser: '별의 아이', name: '코스모그', where: '별의 제단 가운데', cond: '울트라 스페이스에서 포켓몬을 2마리 잡아야 한대', ok: false },
+  { dex: 800, space: 'star', teaser: '빛을 먹는 검은 포켓몬', name: '네크로즈마', where: '별의 제단 맨 위', cond: '코스모그를 잡아야 한대', ok: false },
+  { dex: 385, space: 'star', teaser: '소원을 들어주는 별', name: '지라치', where: '별의 제단 왼쪽 위', cond: '퀴즈를 7번 연속으로 맞혀야 한대', ok: false },
+  { dex: 386, space: 'star', teaser: '우주에서 온 포켓몬', name: '테오키스', where: '별의 제단 오른쪽 위', cond: '울트라 스페이스에서 포켓몬을 4마리 잡아야 한대', ok: false },
+  { dex: 720, space: 'star', teaser: '고리로 무엇이든 부르는 포켓몬', name: '후파', where: '별의 제단 왼쪽 아래', cond: '서로 다른 시간대의 레이드에 2번 참가해야 한대', ok: false },
+  { dex: 494, space: 'ruins', teaser: '승리를 가져다주는 포켓몬', name: '비크티니', where: '고대 유적 왼쪽 위 제단', cond: '배틀에서 3번 이겨야 한대', ok: false },
+  { dex: 649, space: 'ruins', teaser: '고대에서 되살아난 포켓몬', name: '게노세크트', where: '고대 유적 오른쪽 위 제단', cond: '벌레 타입 포켓몬을 10마리 잡아야 한대', ok: false },
+  { dex: 719, space: 'ruins', teaser: '보석을 만드는 포켓몬', name: '디안시', where: '고대 유적 왼쪽 아래 제단', cond: '사막에서 포켓몬을 8마리 잡아야 한대', ok: false },
+  { dex: 802, space: 'ruins', teaser: '그림자에 숨은 포켓몬', name: '마샤도', where: '고대 유적 오른쪽 아래 제단', cond: '고스트 타입 포켓몬을 8마리 잡아야 한대', ok: false },
+  { dex: 807, space: 'plant', teaser: '번개처럼 빠른 포켓몬', name: '제라오라', where: '발전소 2층 큰 발전기 옆', cond: '발전소에서 포켓몬을 5마리 잡아야 한대', ok: false },
+  { dex: 801, space: 'plant', teaser: '사람이 만든 포켓몬', name: '마기아나', where: '발전소 2층 오른쪽 방 구석', cond: '강철·페어리 타입 포켓몬을 12마리 잡아야 한대', ok: false },
+  { dex: 772, space: 'plant', teaser: '탈을 쓴 인공 포켓몬', name: '타입:널', where: '발전소 2층 아래 큰 방', cond: '포켓몬을 40마리 잡아야 한대', ok: false },
+  { dex: 485, space: 'lava', teaser: '용암 속에 사는 포켓몬', name: '히드런', where: '용암 지대 아래 용암 호숫가', cond: '용암 지대에서 포켓몬을 6마리 잡아야 한대', ok: false },
 ];
 
 // 울트라비스트: 울트라 스페이스 (zone 'ultra') 에서만 나오는 포켓몬 (전국도감 번호). 서버 (0038 lines.ultra) 가 p_zone 으로 고름.
@@ -136,9 +185,9 @@ export const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT',
       'TTTT....,,,....TTTTT...,,,,,...TTTTT....,,,,,.....TTTTT...,,,TTT',
       'TT....,,,,,,,..h....,,,,,,,,.......,,,,,,,,,,....h....,,,,,,,.TT',
-      'TT.S..,,,,,,,......,,,,,,,,,,..R...,,,,,,,,..........,,,,,,,,.TT',
-      'E.........,,,,.........,,,,......h.....,,,,....R.......,,,,,..TT',
-      'E.....h.......................................................TT',
+      'TT.S..,,,,,,,......,,,,,,,,,,..R...,,,,,,,,..........,,,,,,,,STT',
+      'E.........,,,,.........,,,,......h.....,,,,....R.......,,,,,....',
+      'E.....h.........................................................',
       'TT..........R.........h..............R..........h...........RRTT',
       'TT............................................................TT',
       'TTwwwww.....wwwwwwww.......wwwwwwwwww.....wwwwwwwwwwwwwwwwwwRRTT',
@@ -151,8 +200,8 @@ export const MAPS = {
       '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~wwcwwRT',
       '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~T',
     ],
-    warps: { '0,5': ['safari', 62, 36, 'left'], '0,6': ['safari', 62, 37, 'left'] },
-    signs: { '3,4': '해변: 얕은 물과 바닷가 풀숲에 물 · 얼음 타입 포켓몬이 살아요. 동쪽 산호초로 갈수록 강한 포켓몬이 나온대요!' },
+    warps: { '0,5': ['safari', 62, 36, 'left'], '0,6': ['safari', 62, 37, 'left'], '63,5': ['dreamIsle', 1, 8, 'right'], '63,6': ['dreamIsle', 1, 9, 'right'] },
+    signs: { '61,4': '→ 꿈의 섬 나루: 이 길을 따라가면 조용한 섬이 나와요. 전설의 포켓몬이 산다는 소문이 있어요!', '3,4': '해변: 얕은 물과 바닷가 풀숲에 물 · 얼음 타입 포켓몬이 살아요. 동쪽 산호초로 갈수록 강한 포켓몬이 나온대요!' },
     npcs: [], legends: [],
   },
 
@@ -167,7 +216,7 @@ export const MAPS = {
       'MM....,,,,,,,.....MMMM...C.----..,,,,,,,..MMM...c..,,,,,..MMMM',
       'MM.P..P..P..P........b.......----.,,,,,,,........-----......MM',
       'MM..xxxxxxxxx...,,,,.....^^^......,,,,,..R...^^^..-----..C..MM',
-      'MM..xxxxxxxxx..,,,,,,....D^^.........b.......D^^........c...MM',
+      'MM..xxxxYxxxx..,,,,,,....D^^.........b.......D^^........c...MM',
       'MM.PxxxxKxxxxP.,,,,,,,..---.....,,,,,..........---..,,,.....MM',
       'MM..xxxoxxxxx...,,,,,..----....,,,,,,,,..C..-----..,,,,,.S..MM',
       'MM.PxxxxxxxoxP...,,...----.....,,,,,,,,,....---...,,,,,,....MM',
@@ -184,7 +233,7 @@ export const MAPS = {
       'MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM',
       'MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM',
     ],
-    warps: { '61,10': ['safari', 1, 36, 'right'], '61,11': ['safari', 1, 37, 'right'] },
+    warps: { '61,10': ['safari', 1, 36, 'right'], '61,11': ['safari', 1, 37, 'right'], '8,6': ['ancientRuins', 9, 14, 'up'] },
     signs: { '57,8': '모래바람 지대: 모래바람이 거세게 부는 사막이에요. 마른 모래 풀숲에 땅 · 바위 타입 포켓몬이 살아요. 서쪽 유적으로 갈수록 강한 포켓몬이 나온대요!' },
     npcs: [], legends: [],
   },
@@ -281,7 +330,7 @@ export const MAPS = {
       '14,3': '용암 지대: 잿빛 풀숲에 불꽃 · 강철 타입 포켓몬이 살아요. 아래 용암 호수 쪽으로 갈수록 강한 포켓몬이 나온대요!',
       '12,28': '용암 호수: 가까이 가면 뜨거워요! 이 근처 포켓몬은 아주 강하대요.',
     },
-    npcs: [], legends: [],
+    npcs: [], legends: [{ dex: 485, x: 36, y: 26 }],
   },
 
   // 발전소 (동굴처럼 건물 안): 사파리존 왼쪽 위 건물 문 → 1층 → 계단 → 2층 (큰 발전기). 바닥 (. · o 스위치) 어디서나 전기 · 고스트 타입.
@@ -342,7 +391,7 @@ export const MAPS = {
     ],
     warps: { '7,3': ['plant1', 25, 4, 'down'] },
     signs: { '12,17': '발전소 2층: 큰 발전기가 윙윙 돌아가고 있다… 여기 포켓몬은 더 강하대요.' },
-    npcs: [], legends: [],
+    npcs: [], legends: [{ dex: 807, x: 17, y: 5 }, { dex: 801, x: 26, y: 6 }, { dex: 772, x: 3, y: 14 }],
   },
 
   // 용의 굴: 바다 · 사막 · 설원 · 용암을 모두 다녀오면 (서버 safari_state.dragon) 사파리존 호수에 섬과 다리 가운데 계단 (Z) 이 생기고, 그 아래.
@@ -353,7 +402,7 @@ export const MAPS = {
       'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
       'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
       'WWW......WWWWWW.......WWWWW....WWW',
-      'WW...K.....WW.....r.....WW...K..WW',
+      'WW...K.....WW...V.r.....WW...K..WW',
       'WW.......................r......WW',
       'WW..~~~~.......O.......~~~~~....WW',
       'WW.~~~~~~...........~~~~~~~~~...WW',
@@ -377,7 +426,7 @@ export const MAPS = {
       'WWWWWWWWWWWWWWWUWWWWWWWWWWWWWWWWWW',
       'WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW',
     ],
-    warps: { '15,24': ['safari', 13, 11, 'up'] },
+    warps: { '15,24': ['safari', 13, 11, 'up'], '16,3': ['dragonDeep', 13, 14, 'up'] },
     signs: {}, npcs: [], legends: [],
   },
 
@@ -396,12 +445,12 @@ export const MAPS = {
       'TT.ff..~~~~~~~~~~~..TT',
       'TT.....~~~~.L.~~~~..TT',
       'TT,,,....~~...~~~...TT',
-      'TT,,,,..............TT',
+      'TT,,,,................',
       'TT,,,,,,..f.f..,,,,,TT',
       'TTTTTTTTTTTTTTTTTTTTTT',
       'TTTTTTTTTTTTTTTTTTTTTT',
     ],
-    warps: { '4,2': 'shoal3.out' },
+    warps: { '4,2': 'shoal3.out', '21,12': ['swordForest', 1, 12, 'right'] },
     signs: {}, npcs: [], legends: [{ dex: 382, x: 12, y: 10 }],
   },
 
@@ -427,7 +476,7 @@ export const MAPS = {
       'TTTTTTTTTTTTTTTTTTTTTT',
     ],
     warps: { '11,12': 'deep3.out', '10,2': ['skyShrine', 9, 19, 'up'] },
-    signs: {}, npcs: [], legends: [{ dex: 250, x: 16, y: 7 }],
+    signs: {}, npcs: [], legends: [{ dex: 250, x: 16, y: 7 }, { dex: 641, x: 6, y: 4 }, { dex: 642, x: 14, y: 3 }, { dex: 645, x: 4, y: 13 }],
   },
 
   // 전설의 제단 (참고: 3세대 유적 방 — 돌기둥 줄 · 가운데 긴 돌계단 · 위쪽 흰 대리석 제단). 하늘 = 레쿠쟈, 거인 = 레지기가스 (점자 벽)
@@ -490,7 +539,7 @@ export const MAPS = {
       'XXXXXXXXXXXXXXXXXXXXXXXX',
       'XXXXXXXXXXXXXXXXXXXXXXXX',
       'XX....XXXXXXXXXXXX....XX',
-      'XX..K.XXX.....XXXX.K..XX',
+      'XX..K.XXX..Q..XXXX.K..XX',
       'XX....=====...=====...XX',
       'XXX..XXXXX.K..XXXX...XXX',
       'XXXX=XXXXX....XXXXX=XXXX',
@@ -504,8 +553,148 @@ export const MAPS = {
       'XXXXXXXXXX....XXXXXXXXXX',
       'XXXXXXXXXXXXXXXXXXXXXXXX',
     ],
-    warps: { '11,13': ['deep3.worm', 'warp'] },
+    warps: { '11,13': ['deep3.worm', 'warp'], '11,3': ['starAltar', 11, 12, 'up', 'warp'] },
     signs: {}, npcs: [], legends: [],
+  },
+
+  // ── 0050 전설의 특별한 곳 (zone null = 야생 포켓몬이 나오지 않음, 전설 자리만) ──
+  // 꿈의 섬: 해변 동쪽 끝 나루 너머. 초승달 꽃밭 (크레세리아) · 어두운 야자숲 (다크라이) · 라티 남매 · 남쪽 물가 (피오네) · 수호신의 돌기둥 넷 (카푸)
+  dreamIsle: {
+    name: '꿈의 섬', kind: 'beach', zone: null, start: [1, 8, 'right'],
+    rows: [
+      '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+      '~~~~~~~~~~TTTTTTTTTT~~~~~~~~~~',
+      '~~~~~~~TTT..mmmmmm..TTT~~~~~~~',
+      '~~~~~TT..Y..m....m..Y..TT~~~~~',
+      '~~~~T.......mm..mm.......T~~~~',
+      '~~~T..h.......S.......R...T~~~',
+      '~~T......R..........h......T~~',
+      '~T....TT..............TT....T~',
+      'E......TT............TTT.....~',
+      'E...........hh..............R~',
+      '~T......................h...T~',
+      '~~T..R.Y..m.......m...Y....T~~',
+      '~~~T....mmm...R...mmm.....T~~~',
+      '~~~~T.....................T~~~',
+      '~~~~~TT................TT~~~~~',
+      '~~~~~~~TTT....hh....TTT~~~~~~~',
+      '~~~~~~~~~~TTT....TTT~~~~~~~~~~',
+      '~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~',
+    ],
+    warps: { '0,8': ['beach', 62, 5, 'left'], '0,9': ['beach', 62, 6, 'left'] },
+    signs: { '14,5': '꿈의 섬: 초승달 꽃이 피는 조용한 섬이에요. 야생 포켓몬은 나오지 않지만, 꿈을 지키는 전설의 포켓몬과 섬의 수호신이 산대요.' },
+    npcs: [],
+    legends: [{ dex: 488, x: 14, y: 3 }, { dex: 491, x: 26, y: 8 }, { dex: 380, x: 11, y: 9 }, { dex: 381, x: 16, y: 9 }, { dex: 489, x: 14, y: 16 },
+              { dex: 785, x: 9, y: 4 }, { dex: 786, x: 20, y: 4 }, { dex: 787, x: 7, y: 12 }, { dex: 788, x: 22, y: 12 }],
+  },
+
+  // 성검의 숲: 깊은 연못 동쪽 길 너머. 검이 꽂힌 바위 셋 (코바르온 · 테라키온 · 비리디온) · 호숫가 (케르디오) · 그라시데아 꽃밭 (쉐이미)
+  swordForest: {
+    name: '성검의 숲', kind: 'out', zone: null, start: [1, 12, 'right'],
+    rows: [
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+      'TTTTTTT....~~~~~~....TTTTTTT',
+      'TTTTT....~~~~~~~~~~....TTTTT',
+      'TTTT....~~~~~~~~~~~~....TTTT',
+      'TTT......~~~~~~~~~~......TTT',
+      'TTT..........~~..........TTT',
+      'TTT..f...............f...TTT',
+      'TTTT...Y.....S......Y...TTTT',
+      'TTTT....................TTTT',
+      'TTTTT.......TT.........TTTTT',
+      '.........TTTTTTT.........TTT',
+      '.........TTTTTTT.........TTT',
+      'TTTTT.....TTTTT....Y....TTTT',
+      'TTTT.gg.g.............TTTTTT',
+      'TTTT.ggggg.f....f.....TTTTTT',
+      'TTTTT.gg.g.......TTTTTTTTTTT',
+      'TTTTTTTTTTTTTTTTTTTTTTTTTTTT',
+    ],
+    warps: { '0,11': ['deepPond', 20, 12, 'left'], '0,12': ['deepPond', 20, 12, 'left'] },
+    signs: { '13,8': '성검의 숲: 세 바위에 꽂힌 검은 숲을 지키는 기사들의 것이래요. 야생 포켓몬은 나오지 않는 조용한 숲이에요.' },
+    npcs: [],
+    legends: [{ dex: 638, x: 7, y: 9 }, { dex: 639, x: 20, y: 9 }, { dex: 640, x: 19, y: 14 }, { dex: 647, x: 15, y: 6 }, { dex: 492, x: 7, y: 15 }],
+  },
+
+  // 용의 굴 깊은 곳: 용의 굴 위쪽 내려가는 사다리 아래 (용의 굴이 열린 뒤에만). 레시라무 · 제크로무가 마주 보고, 위쪽 얼음 제단에 큐레무
+  dragonDeep: {
+    name: '용의 굴 깊은 곳', kind: 'dcave', zone: null, start: [13, 14, 'up'],
+    rows: [
+      'WWWWWWWWWWWWWWWWWWWWWWWWWW',
+      'WWWWWWWWWWWWWWWWWWWWWWWWWW',
+      'WWWWWWWWW........WWWWWWWWW',
+      'WWWWWWW....K..K....WWWWWWW',
+      'WWWWW......~~~~......WWWWW',
+      'WWWK......~~~~~~......KWWW',
+      'WWW.......~~~~~~.......WWW',
+      'WWW........~~~~........WWW',
+      'WW......................WW',
+      'WW..K....r......r....K..WW',
+      'WW......................WW',
+      'WWW.....O........O.....WWW',
+      'WWW....................WWW',
+      'WWWW....K........K....WWWW',
+      'WWWWW................WWWWW',
+      'WWWWWWW......U.....WWWWWWW',
+      'WWWWWWWWWWWWWWWWWWWWWWWWWW',
+      'WWWWWWWWWWWWWWWWWWWWWWWWWW',
+    ],
+    warps: { '13,15': ['dragon', 16, 4, 'down'] },
+    signs: {}, npcs: [],
+    legends: [{ dex: 646, x: 12, y: 3 }, { dex: 643, x: 5, y: 9 }, { dex: 644, x: 20, y: 9 }],
+  },
+
+  // 별의 제단: 울트라 스페이스 위쪽 둘째 워프홀 너머. 별 무늬 제단 다섯 (코스모그 · 네크로즈마 · 지라치 · 테오키스 · 후파) 을 빛의 길로 이음
+  starAltar: {
+    name: '별의 제단', kind: 'ultra', zone: null, start: [11, 12, 'up'],
+    rows: [
+      'XXXXXXXXXXXXXXXXXXXXXX',
+      'XXXXXXXXX....XXXXXXXXX',
+      'XXXXXXXXX.A..XXXXXXXXX',
+      'XXXXXXXXX....XXXXXXXXX',
+      'XX...XXXXX==XXXXX...XX',
+      'XX.A.=====..=====.A.XX',
+      'XX...XXXX....XXXX...XX',
+      'XXXXXXXXX.KA.KXXXXXXXX',
+      'XXXXXXXXX....XXXXXXXXX',
+      'XXX...XXXX==XXXX...XXX',
+      'XXX.A.====..====.A.XXX',
+      'XXX...XXXX..XXXX...XXX',
+      'XXXXXXXXX....XXXXXXXXX',
+      'XXXXXXXXX..Q.XXXXXXXXX',
+      'XXXXXXXXXXXXXXXXXXXXXX',
+    ],
+    warps: { '11,13': ['ultra', 11, 4, 'down', 'warp'] },
+    signs: {}, npcs: [],
+    legends: [{ dex: 800, x: 10, y: 2 }, { dex: 385, x: 3, y: 5 }, { dex: 386, x: 18, y: 5 }, { dex: 789, x: 11, y: 7 }, { dex: 720, x: 4, y: 10 }],
+  },
+
+  // 고대 유적: 사막 서쪽 유적의 내려가는 계단 아래 (제단 글자). 네 모퉁이 대리석 제단 (비크티니 · 게노세크트 · 디안시 · 마샤도)
+  ancientRuins: {
+    name: '고대 유적', kind: 'shrine', zone: null, start: [9, 14, 'up'],
+    rows: [
+      'PPPPPPPPPPPPPPPPPPPP',
+      'PPPBPPPPPPPPPPPPBPPP',
+      'PP................PP',
+      'PP.AAA..I..I..AAA.PP',
+      'PP.ALA........ALA.PP',
+      'PP.AAA...==...AAA.PP',
+      'PP..I....==....I..PP',
+      'PP.......==.......PP',
+      'PP.AAA...==...AAA.PP',
+      'PP.ALA...==...ALA.PP',
+      'PP.AAA..r==r..AAA.PP',
+      'PP..I....==....I..PP',
+      'PP.......==.......PP',
+      'PPPPPPPP.==.PPPPPPPP',
+      'PPPPPPPP.==.PPPPPPPP',
+      'PPPPPPPPPEEPPPPPPPPP',
+    ],
+    warps: { '9,15': ['desert', 8, 5, 'up'], '10,15': ['desert', 8, 5, 'up'] },
+    signs: { '3,1': '벽에 오래된 글이 새겨져 있다… "승리 · 되살아남 · 보석 · 그림자, 네 개의 제단에 환상이 잠든다."', '16,1': '벽에 오래된 글이 새겨져 있다… "모래바람 속에서 강해진 자에게 보석의 빛이 보이리라."' },
+    npcs: [],
+    legends: [{ dex: 494, x: 4, y: 4 }, { dex: 649, x: 15, y: 4 }, { dex: 719, x: 4, y: 9 }, { dex: 802, x: 15, y: 9 }],
   },
 };
 
@@ -529,8 +718,8 @@ export const DRAGON_ISLE = {
 };
 
 // 이 글자가 막힌 칸인지 (사람·전설 포켓몬 자리는 safari.js 가 따로 막음)
-export const SOLID = { out: new Set(['T', '~', 'F', 'R', 'S', 'G', 'M', 'L', 'H', '^']),
+export const SOLID = { out: new Set(['T', '~', 'F', 'R', 'S', 'G', 'M', 'L', 'H', '^', 'Y']),
   snow: new Set(['T', 'M', 'R', 'S', 'H', '^', 'n']), lava: new Set(['M', '~', 'T', 'V', 'R', 'S']),
-  plant: new Set(['X', 'W', 'p', 'q', 'k', 'g', 'c', 'G', '^', 'S']), dcave: new Set(['W', '~', 'r', 'O', 'K', 'S']), beach: new Set(['T', '~', 'c', 'R', 'S']), desert: new Set(['M', 'D', '^', 'C', 'c', 'R', 'P', 'o', 'K', 'S']), cave: new Set(['W', '~', 'r', 'O', 'B', 'L', 'S']), ultra: new Set(['X', 'K']), shrine: new Set(['P', 'B', 'I', 'r', 'L']) };
+  plant: new Set(['X', 'W', 'p', 'q', 'k', 'g', 'c', 'G', '^', 'S']), dcave: new Set(['W', '~', 'r', 'O', 'K', 'S']), beach: new Set(['T', '~', 'c', 'R', 'S', 'Y']), desert: new Set(['M', 'D', '^', 'C', 'c', 'R', 'P', 'o', 'K', 'S']), cave: new Set(['W', '~', 'r', 'O', 'B', 'L', 'S']), ultra: new Set(['X', 'K']), shrine: new Set(['P', 'B', 'I', 'r', 'L']) };
 // 야생 포켓몬이 나오는 칸
 export const ENC = { snow: new Set([',']), lava: new Set([',']), plant: new Set(['.', 'o']), dcave: new Set(['.']), out: new Set([',']), beach: new Set([',', 'w']), desert: new Set([',']), cave: new Set(['.']), ultra: new Set(['.', '=']), shrine: new Set() };

@@ -181,13 +181,15 @@ function loadPath(path) {
 }
 
 // 갈래 종 (0037, species.id 10000+): 그림판에는 같은 전국도감 번호의 종 (따로 있는 계열) 그림을 씀. 운영자가 그 갈래 종에 그림을 올렸으면 그것
+// 0050 계열 복제본 (lines.clone_of, 종 번호 6001~): 그림판에 칸이 없으면 같은 전국도감 번호의 (그림판에 있는) 종 그림. 운영자가 올린 그림이 있으면 그것
 const ALIAS = new Map();
 export function aliasSprites(species = []) {
   const base = new Map();
+  for (const s of species) if (s.id < 10000 && s.dex && !base.has(s.dex) && IDX.n[s.id]) base.set(s.dex, s.id);
   for (const s of species) if (s.id < 10000 && s.dex && !base.has(s.dex)) base.set(s.dex, s.id);
-  for (const s of species) if (s.id >= 10000 && base.has(s.dex)) ALIAS.set(s.id, base.get(s.dex));
+  for (const s of species) if (s.dex && base.has(s.dex) && base.get(s.dex) !== s.id && (s.id >= 10000 || !IDX.n[s.id])) ALIAS.set(s.id, base.get(s.dex));
 }
-const realId = (d) => (d >= 10000 && !MAP.has(d) ? ALIAS.get(d) ?? d : d);
+const realId = (d) => (ALIAS.has(d) && !customPath(d, false) && (d >= 10000 ? !MAP.has(d) : true) ? ALIAS.get(d) : d);
 
 // 이 포켓몬 그림을 받아 둠 (미니게임·잡기 장면이 시작 전에 부름)
 export const ensureSprites = (list, shiny = false) => Promise.all([...new Set(list.map(Number).map(realId))].map((d) => {
