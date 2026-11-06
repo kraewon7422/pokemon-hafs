@@ -470,21 +470,28 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 .type-table td.x0 { background: #404858; color: #fff; font-weight: bold; }
 
 /* ───────── 배틀 (3세대 느낌) ───────── */
-/* 내 배틀 팀: 3·4마리 모두 같은 너비 칸. 칸마다 그림 → 이름 → Lv → 타입이 같은 높이에 (이름은 한 줄, 단어 안에서 안 끊음) */
-.bt-team { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: start; }
-.bt-mon { container-type: inline-size; display: grid; justify-items: center; align-content: start; gap: 2px; text-align: center; min-width: 0; }
+/* 내 배틀 팀 (0045: 최대 6마리): 3칸 × 2줄, 모두 같은 크기 상자. 칸마다 그림 (아래 맞춤) → 이름 → Lv → 타입 한 줄이 같은 높이에
+   (이름은 한 줄, 단어 안에서 안 끊음). 빈 칸 = 점선 '+' */
+.bt-team { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.bt-mon { container-type: inline-size; display: grid; grid-template-rows: auto 18px 16px 18px; justify-items: center; align-content: start; gap: 2px;
+  text-align: center; min-width: 0; padding: 4px 3px 5px; border: 2px solid #c8d0e0; border-radius: 8px; background: #fff; color: #182030; font: inherit; }
 .bt-tpic { display: flex; align-items: flex-end; justify-content: center; width: 100%; overflow: hidden; }
-/* 긴 이름 (일레도리자드 6글자)은 칸 너비에 맞춰 글자를 줄임: 100cqi = 칸 너비 */
+/* 긴 이름 (일레도리자드 6글자)은 칸 너비에 맞춰 글자를 줄임: 100cqi = 칸 안쪽 너비 */
 .bt-name { display: block; max-width: 100%; white-space: nowrap; word-break: keep-all; font-size: min(var(--fs-s), calc(100cqi / (var(--len, 4) + .3))); height: 18px; line-height: 18px; font-weight: bold; }
 .bt-mlv { font-size: var(--fs-s); white-space: nowrap; height: 16px; line-height: 16px; }
-.bt-team .types { display: flex; flex-direction: column; align-items: center; justify-content: flex-start; gap: 2px; margin-top: 2px; }
-.bt-team .type { padding: 0 4px; line-height: 16px; border-width: 1px; }
-@container (min-width: 112px) { .bt-team .types { flex-direction: row; } }
+/* 타입은 늘 한 줄: 세 글자 타입 두 개 (에스퍼 · 페어리) 도 칸 너비에 맞게 글자를 줄임 */
+.bt-team .types { display: flex; flex-wrap: nowrap; justify-content: center; gap: 2px; max-width: 100%; height: 18px; }
+.bt-team .type { font-size: min(11px, calc((100cqi - 20px) / 6)); padding: 0 3px; line-height: 16px; border-width: 1px; }
+.bt-mon.bt-empty { border: 2px dashed #98a4bc; background: rgba(255, 255, 255, .45); color: #7884a0; cursor: default; }
+button.bt-mon.bt-empty { cursor: pointer; }
+.bt-empty .bt-tpic { align-items: center; }
+.bt-plus { font-size: 26px; line-height: 1; font-weight: bold; }
+.bt-empty .bt-name { font-weight: normal; font-size: var(--fs-s); }
 .bt-invite { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 8px; border: 3px solid var(--ink); border-radius: 8px; background: #fff4c8; }
 .bt-invite b { flex: 1 1 100%; }
 .bt-banner { background: #fff4c8; }
 .bt-alert { font-size: 20px; color: #c03020; }
-.bt-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; max-height: 50vh; overflow-y: auto; }
+.bt-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(78px, 1fr)); gap: 6px; max-height: 40vh; overflow-y: auto; }
 .bt-opt { position: relative; display: grid; justify-items: center; gap: 2px; padding: 6px 2px; border: 3px solid #c8d0e0; border-radius: 8px; background: #fff; font: inherit; }
 .bt-opt.on { border-color: #e04030; background: #ffece4; }
 .bt-opt small { font-size: 11px; word-break: keep-all; }
