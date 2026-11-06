@@ -19,7 +19,7 @@
 // 지도는 그림이 오면 처음 들어갈 때 한 번 큰 캔버스 2장(물·꽃 움직임)에 미리 그려 두고, 매 프레임 카메라 부분만 옮겨 그림. 화면은 기기 픽셀 정수 배.
 // 화면은 한 번 만들고 계속 씀 (sync 가 지도 탭을 다시 그려도 걷던 자리·애니메이션이 이어지게).
 import { rpc, errorText } from './sb.js';
-import { sfx, bgmPush, bgmReady, bgmBeat, bgmPreload } from './sfx.js';
+import { sfx, bgmPush, bgmPreload, encounterCue } from './sfx.js';
 import { h, josa } from './ui.js';
 import { S } from './state.js';
 import { catchEncounter } from './app.js';
@@ -726,12 +726,7 @@ function build() {
   async function encounter(e) {
     busy = true; clearPad();
     const music = bgmPush('wild');
-    const on = await bgmReady('wild', 1200);
-    const hit = on ? bgmBeat('wild') : null;
-    const now = performance.now();
-    if (hit == null) { sfx.scan(); bubbleT = now; flashT = now + 450; }
-    else { bubbleT = now + hit; flashT = now + (bgmBeat('wild', hit + 1) ?? hit + 325) + 325; }   // 타격 다음 박 + 1박 = 2박 뒤
-    await new Promise((res) => setTimeout(res, flashT - now + 850));
+    const q = await encounterCue('wild'); bubbleT = q.bubbleT; flashT = q.flashT; await new Promise((res) => setTimeout(res, q.doneT - performance.now()));   // '!' = 곡 시작, 번쩍 = 곡의 타격 (sfx.js encounterCue)
     flashT = -1; bubbleT = -1;
     await startCatch(e, music);
   }

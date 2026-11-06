@@ -209,7 +209,7 @@ begin
                             'accepted', acc, 'reason', reason, 'zone', z) || public._safari_json(uid);
 end $$;
 
--- rule (0006): every migration that creates functions ends with this block (0046 list + safari_visit(text); helpers
+-- rule (0006): every migration that creates functions ends with this block (0047 list + safari_visit(text); helpers
 --   _safari_open · _safari_visited · _dragon_open · _safari_visit · _zone_extra · _pseudo_line are internal, not granted)
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function
@@ -240,7 +240,7 @@ grant execute on function
   public.admin_grant_monster(text, int, int), public.admin_set_in_ranking(text, boolean), public.admin_list_staff(),
   public.admin_invite_staff(text, text), public.admin_remove_staff(text), public.admin_list_requests(),
   public.admin_decide_reset(bigint, boolean), public.admin_set_inquiry(bigint, boolean),
-  public.admin_create_raid(int, int, int, boolean, text, text), public.admin_end_raid(bigint), public.admin_list_raids(), public.admin_set_raid_open(bigint, boolean),
+  public.admin_create_raid(int, int, int, boolean, text, text, boolean), public.admin_end_raid(bigint), public.admin_list_raids(), public.admin_set_raid_open(bigint, boolean),
   public.admin_delete_students(text[], text), public.admin_count_students(),
   public.admin_create_staff_login(text, text, text), public.admin_reset_staff_password(text),
   public.admin_list_staff_logins(), public.admin_remove_staff_login(text),
