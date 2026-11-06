@@ -534,6 +534,7 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bt-field.dbl .bt-spr.me.k0 { left: 16%; top: 87%; }
 .bt-field.dbl .bt-spr.me.k1 { left: 34%; top: 92%; }
 .bt-spr.hide, .bt-spr.gone, .bt-spr[hidden] { visibility: hidden; }
+.bt-box.hide { visibility: hidden; }   /* 상자도 포켓몬이 공에서 나올 때 함께 (3세대처럼) */
 /* 가만히 있을 때도 앞뒤로 살짝 움직임 */
 .bt-bob { animation: bt-idle 1.8s steps(6) infinite; }
 .bt-spr.foe .bt-bob { animation-duration: 2.1s; animation-delay: -.7s; }

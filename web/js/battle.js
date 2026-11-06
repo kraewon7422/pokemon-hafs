@@ -541,7 +541,7 @@ export function openBattle(b0) {
     const f = el.field.getBoundingClientRect(); const t = x.spr.getBoundingClientRect();
     const tx = t.left + t.width / 2 - f.left - 8; const ty = t.bottom - f.top - 18;
     const sx = mine ? -20 : f.width + 4; const sy = mine ? f.height * 0.75 : f.height * 0.05;
-    x.spr.classList.add('hide');
+    x.spr.classList.add('hide');   // (보통은 이미 숨김 — 그림은 공이 열린 뒤에만)
     const ball = h('div.bt-ball', { html: BALL_SVG });
     el.field.append(ball);
     sfx.ballThrow();
@@ -556,7 +556,7 @@ export function openBattle(b0) {
     const flash = h('div.bt-flash'); flash.style.left = `${tx + 8}px`; flash.style.top = `${ty + 8}px`;
     el.field.append(flash); setTimeout(() => flash.remove(), 450);
     sfx.ballPop();
-    x.spr.classList.remove('hide'); bump(x.spr, 'enter');
+    x.spr.classList.remove('hide'); x.box.classList.remove('hide'); bump(x.spr, 'enter');
     await sleep(reducedMotion() ? 50 : 380);
   };
 
@@ -603,6 +603,7 @@ export function openBattle(b0) {
       if (e.sw) {
         const [u, i] = e.sw;
         const nm = spName(e.sp ?? monAt(u >> 1, i)?.sp, fixNames(e.name, ren));
+        SL[u].spr.classList.add('hide'); SL[u].box.classList.add('hide');   // 새 포켓몬은 공이 열릴 때까지 안 보임 (기절한 자리의 'gone' 을 showMon 이 지워도)
         showMon(u, i, { hp: prev?.sides?.[u >> 1]?.mons?.[i]?.hp, sp: e.sp, name: nm, max: prev?.sides?.[u >> 1]?.mons?.[i]?.max, lv: e.lv });
         await say2(mineSide(u) ? `가랏! ${nm}!` : `${josa(foeName(), '은', '는')} ${josa(nm, '을', '를')} 내보냈다!`, 100);
         await throwBall(u);
@@ -828,6 +829,10 @@ export function openBattle(b0) {
     renameBattle(nb, ren);
     const prev = b; b = nb;
     if (b.status === 'active' && !finished) music.set('battle');   // 신청을 친구가 수락함
+    if (prev.status === 'invite' && b.status === 'active' && !(b.seq > 0)) {   // 수락 직후: 바로 그림을 띄우지 않고 등장 연출부터
+      shownSeq = b.seq; env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv(); drawStatic();
+      await runIntro(); return;
+    }
     if (b.seq !== shownSeq && b.seq > 0) { shownSeq = b.seq; await play(b.log, prev); }
     env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv();
     drawStatic();
@@ -879,38 +884,40 @@ export function openBattle(b0) {
     try { await apply(await rpc('battle_state', { p_id: b.id }, { retries: 0 })); } catch { /* offline: try again */ }
   }, 2000);
   S.btTick = setInterval(tick, 500);
+  // 첫 등장 연출: 빈 자리 → 공 던지기 → 공이 열리면 포켓몬 (+ 상자). 처음 열 때 · 보낸 신청을 친구가 수락했을 때
+  async function runIntro() {
+    playing = true;
+    SL.forEach((x) => { x.spr.classList.add('hide'); x.box.classList.add('hide'); });
+    await sleep(250);
+    const foeSlots = SL.filter((x) => (x.u >> 1) === fo() && !x.spr.hidden);
+    const mySlotsEl = SL.filter((x) => (x.u >> 1) === me() && !x.spr.hidden);
+    const names = (xs) => xs.map((x) => x.name.textContent);
+    const join = (ns) => (ns.length > 1 ? `${josa(ns[0], '과', '와')} ${ns[1]}` : ns[0]);
+    await say2(`${josa(foeName(), '이', '가')} 승부를 걸어왔다!`, 450);
+    const fenv = b.field?.env && ENV[b.field.env] ? b.field.env : null;
+    const intro = b.turn === 0 && Array.isArray(b.log) ? b.log : [];
+    // 등장 특성이 날씨 · 필드를 바꿨으면 시작 화면은 시간표 날씨부터 (특성 알림 때 바뀜)
+    if (intro.length) { env.wx = fenv && ENV[fenv].kind === 'wx' ? fenv : null; env.ter = fenv && ENV[fenv].kind === 'ter' ? fenv : null; drawEnv(); }
+    if (fenv) { envStart(fenv); await say2(`지금은 ${b.field.name}! ${ENV[fenv].start}`, 450); }
+    else if (b.field?.types?.length) await say2(`지금은 ${b.field.name}! ${b.field.types.join('·')} 기술의 위력이 올라간다!`, 450);
+    if (b.fair) await say2('공정 모드! 모두 Lv.50으로 싸운다. (회복약 없음)', 450);
+    await say2(`${josa(foeName(), '은', '는')} ${josa(join(names(foeSlots)), '을', '를')} 내보냈다!`, 100);
+    for (const x of foeSlots) await throwBall(x.u);
+    await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
+    for (const x of mySlotsEl) await throwBall(x.u);
+    // 같은 과 시너지 (0020): 나온 포켓몬의 능력 +1
+    for (const x of [...foeSlots, ...mySlotsEl]) {
+      const m = monAt(x.u >> 1, side(x.u >> 1).act[x.u & 1]);
+      if (m?.syn) { statFx(x.u, 1); await say2(tok(`@${x.u >> 1}${m.name}의 ${m.synname} 시너지! ${SYN[m.syn]} 올라갔다!`), 300); }
+    }
+    // 0039: 등장 특성 (위협 · 가뭄 · 괴짜 …) — 서버가 배틀을 만들 때 쓴 기록
+    if (intro.length) { await play(intro); env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv(); drawStatic(); }
+    playing = false; startPicks(); renderMenu();
+  }
   drawStatic(); tick();
   if (b.status === 'active' && shownSeq === -1) {
     shownSeq = b.seq;
-    (async () => {
-      playing = true;
-      SL.forEach((x) => x.spr.classList.add('hide'));
-      await sleep(250);
-      const foeSlots = SL.filter((x) => (x.u >> 1) === fo() && !x.spr.hidden);
-      const mySlotsEl = SL.filter((x) => (x.u >> 1) === me() && !x.spr.hidden);
-      const names = (xs) => xs.map((x) => x.name.textContent);
-      const join = (ns) => (ns.length > 1 ? `${josa(ns[0], '과', '와')} ${ns[1]}` : ns[0]);
-      await say2(`${josa(foeName(), '이', '가')} 승부를 걸어왔다!`, 450);
-      const fenv = b.field?.env && ENV[b.field.env] ? b.field.env : null;
-      const intro = b.turn === 0 && Array.isArray(b.log) ? b.log : [];
-      // 등장 특성이 날씨 · 필드를 바꿨으면 시작 화면은 시간표 날씨부터 (특성 알림 때 바뀜)
-      if (intro.length) { env.wx = fenv && ENV[fenv].kind === 'wx' ? fenv : null; env.ter = fenv && ENV[fenv].kind === 'ter' ? fenv : null; drawEnv(); }
-      if (fenv) { envStart(fenv); await say2(`지금은 ${b.field.name}! ${ENV[fenv].start}`, 450); }
-      else if (b.field?.types?.length) await say2(`지금은 ${b.field.name}! ${b.field.types.join('·')} 기술의 위력이 올라간다!`, 450);
-      if (b.fair) await say2('공정 모드! 모두 Lv.50으로 싸운다. (회복약 없음)', 450);
-      await say2(`${josa(foeName(), '은', '는')} ${josa(join(names(foeSlots)), '을', '를')} 내보냈다!`, 100);
-      for (const x of foeSlots) await throwBall(x.u);
-      await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
-      for (const x of mySlotsEl) await throwBall(x.u);
-      // 같은 과 시너지 (0020): 나온 포켓몬의 능력 +1
-      for (const x of [...foeSlots, ...mySlotsEl]) {
-        const m = monAt(x.u >> 1, side(x.u >> 1).act[x.u & 1]);
-        if (m?.syn) { statFx(x.u, 1); await say2(tok(`@${x.u >> 1}${m.name}의 ${m.synname} 시너지! ${SYN[m.syn]} 올라갔다!`), 300); }
-      }
-      // 0039: 등장 특성 (위협 · 가뭄 · 괴짜 …) — 서버가 배틀을 만들 때 쓴 기록
-      if (intro.length) { await play(intro); env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv(); drawStatic(); }
-      playing = false; startPicks(); renderMenu();
-    })();
+    runIntro();
   } else {
     startPicks(); renderMenu();
     if (b.status === 'over') { finished = true; el.text.textContent = b.winner === me() ? '이긴 배틀이에요.' : '끝난 배틀이에요.'; el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기')); }
