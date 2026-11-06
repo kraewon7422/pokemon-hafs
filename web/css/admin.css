@@ -353,3 +353,8 @@ button.chip.btnchip[aria-pressed="true"] { background: var(--brand-dark); border
 .seg-ctl .seg-btn[aria-pressed='true'] { background: var(--brand); border-color: var(--brand); color: #fff; }
 .stepper { display: inline-flex; align-items: center; gap: 4px; }
 .stepper .btn.small { min-width: 34px; font-weight: 700; }
+/* 운영진 탭 '운영 화면 주소': 이름 한 줄 + 주소 (/ . - 뒤에서만 줄 바꿈, 그래도 넘치면 아무 데서나) + 복사 */
+.url-item { display: grid; gap: 4px; }
+.url-row { display: flex; align-items: flex-start; gap: 8px; min-width: 0; }
+.url-row .url { flex: 1; min-width: 0; font-size: 13px; word-break: normal; overflow-wrap: anywhere; line-height: 1.5; }
+.url-row .btn { flex: none; }
