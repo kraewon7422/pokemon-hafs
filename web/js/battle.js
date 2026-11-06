@@ -1,7 +1,7 @@
 // 배틀 (0015·0016): 계산은 전부 서버. 폰은 고른 것만 보내고, 서버 기록(log)을 3세대 느낌으로 재생한다.
 import { rpc, errorText } from './sb.js';
 import { drawQR } from './qrfmt.js';
-import { spriteCanvas } from './sprites.js';
+import { spriteCanvas, paintNow } from './sprites.js';
 import { sfx, unlockAudio, bgmPush } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
 import { S, abilityOf, isWithdrawn, monById, mons, monSp, speciesOf, vibrate } from './state.js';
@@ -210,25 +210,55 @@ export function viewBattle() {
 export function teamPicker() {
   sfx.select();
   let sel = myTeam();
-  const grid = h('div.bt-pick');
-  const preview = h('div');
   const count = h('b');
-  const draw = () => {
-    preview.replaceChildren(teamStrip(sel, 40, { slots: true }));
-    count.textContent = `${sel.length}/${TEAM_MAX}마리`;
-    grid.replaceChildren(...mons().filter((c) => !isWithdrawn(c.line_id))
+  // 누를 때마다 전부 다시 만들면 그림 canvas 가 새로 생겨 (1×1 → 화면에 보일 때 그림) 화면 전체가 깜빡임 →
+  // 고르는 칸 · 위 6칸은 한 번만 만들고, 누르면 바뀐 칸만 고침 (그림 canvas 는 포켓몬마다 하나를 만들어 다시 씀)
+  const preview = teamStrip([], 40, { slots: true });
+  const slots = [...preview.children];
+  const pics = new Map();
+  const picOf = (sp) => { if (!pics.has(sp.id)) pics.set(sp.id, spriteCanvas(sp.id, 40)); return pics.get(sp.id); };
+  const paintSlot = (cell, id) => {
+    if (cell.__id === id) return;
+    cell.__id = id;
+    const m = id != null ? monById(id) : null; const sp = m ? monSp(m) : null;
+    const [pic, name, lv, types] = cell.children;
+    cell.classList.toggle('bt-empty', !sp);
+    const c = sp ? picOf(sp) : null;
+    pic.replaceChildren(c || h('span.bt-plus', '+'));
+    if (c && c.width <= 1) paintNow(c);
+    name.textContent = sp ? sp.name : '빈 칸';
+    if (sp) name.style.setProperty('--len', String([...sp.name].length)); else name.style.removeProperty('--len');
+    lv.textContent = sp ? `Lv.${m.level}` : '';
+    types.replaceChildren(...(sp ? [typeChips(sp)].flat() : []));
+  };
+  const opts = new Map();     // 포켓몬 id → { btn, num }
+  const grid = h('div.bt-pick', mons().filter((c) => !isWithdrawn(c.line_id))
     .sort((a, b) => b.stage - a.stage || b.level - a.level || a.line_id - b.line_id || a.id - b.id).map((c) => {
-      const sp = monSp(c); const n = sel.indexOf(c.id);
-      return h(`button.bt-opt${n >= 0 ? '.on' : ''}`, {
+      const sp = monSp(c);
+      const num = h('span.bt-num'); num.hidden = true;
+      const btn = h('button.bt-opt', {
         onclick: () => {
           sfx.blip();
+          const n = sel.indexOf(c.id);
           if (n < 0 && sel.length >= TEAM_MAX) { err.textContent = `배틀 팀은 ${TEAM_MAX}마리까지예요. 먼저 한 마리를 빼 주세요.`; return; }
           err.textContent = '';
           sel = n >= 0 ? sel.filter((x) => x !== c.id) : [...sel, c.id];
           draw();
         },
-      }, n >= 0 ? h('span.bt-num', String(n + 1)) : null, spriteCanvas(sp.id, 48), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
+      }, num, spriteCanvas(sp.id, 48), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
+      opts.set(c.id, { btn, num });
+      return btn;
     }));
+  const draw = () => {
+    sel = sel.filter((id) => monSp(monById(id)));
+    slots.forEach((cell, i) => paintSlot(cell, sel[i] ?? null));
+    count.textContent = `${sel.length}/${TEAM_MAX}마리`;
+    for (const [id, o] of opts) {
+      const n = sel.indexOf(id);
+      if (o.btn.classList.contains('on') !== n >= 0) o.btn.classList.toggle('on', n >= 0);
+      if (o.num.hidden !== n < 0) o.num.hidden = n < 0;
+      if (n >= 0 && o.num.textContent !== String(n + 1)) o.num.textContent = String(n + 1);
+    }
   };
   const err = h('div.err');
   draw();
