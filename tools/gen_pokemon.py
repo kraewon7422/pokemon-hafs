@@ -16,6 +16,7 @@
 import csv
 import json
 import os
+import re
 import sys
 from collections import defaultdict
 
@@ -68,14 +69,14 @@ for r in rd('pokemon_species_flavor_text'):
 #    lines.bonus = true + legend_src 'gift' + legendary → 야생 · QR · 사파리 · 알 · 배틀 상대 · 메타몽 변신 어디에도 안 나오고, 도감 완성 수에도 안 들어감.
 #    자료 = 그 폼의 PokeAPI pokemon id (종족값 · 타입 · 특성 · 키/몸무게 · 배우는 기술). 그림 = smogon gen5 폼 그림 (마지막 칸).
 #    (도감 번호, 계열, pokemon id, 이름, 분류, 설명, 고른 기술 4개, smogon 그림 이름)
-#    물수리검 · 일렉트릭볼은 이 게임 기술 목록에 없어서 파도타기 · 번개로.
+#    물수리검 · 일렉트릭볼 (0047 에서 기술 목록에 넣음; 그 전에는 파도타기 · 번개였음).
 EVENT = [
     (810, 441, 10117, '지우개굴닌자', '닌자포켓몬',
      '트레이너와의 유대가 깊어져 모습이 바뀐 개굴닌자. 등에 커다란 물수리검을 짊어지고, 트레이너와 같은 것을 보고 같은 것을 느끼며 싸운다.',
-     ['파도타기', '악의파동', '깜짝베기', '섀도클로'], 'greninja-oash'),
+     ['물수리검', '악의파동', '깜짝베기', '섀도클로'], 'greninja-oash'),
     (811, 442, 10094, '지우의 피카츄', '쥐포켓몬',
      '오랜 여행을 함께한 트레이너의 모자를 쓴 피카츄. 몬스터볼에 들어가는 것을 싫어하고, 늘 트레이너의 어깨 위에 있다. 진화하지 않는다.',
-     ['10만볼트', '전광석화', '아이언테일', '번개'], 'pikachu-ooriginal'),
+     ['10만볼트', '전광석화', '아이언테일', '일렉트릭볼'], 'pikachu-ooriginal'),
 ]
 EVENT_DEX = {e[0]: e for e in EVENT}
 EVENT_LINE = {e[1]: e for e in EVENT}
@@ -349,6 +350,160 @@ def rarity_of(line, path):
     return 'common'
 
 
+# ── 0047: 기술 넓히기 — 3~7세대 실제 기술을 PokeAPI 에서 골라 덧붙임 (번호 252~, 앞 번호는 그대로) ──
+#   고르는 법: 7세대 게임(썬·문 / 울트라썬·울트라문)에서 이 게임 포켓몬이 레벨업 · 기술머신으로 배우는 기술 중
+#   엔진이 그대로 할 수 있는 효과만 (2턴 모으기 · 숨기 · 일격필살 · 묶기 · 날씨/필드 조건 · 물건 · 특성 바꾸기 등은 뺌).
+#   새 엔진 효과 (0047): spd_pow (일렉트릭볼 · 자이로볼), fixed (나이트헤드 · 지구던지기 = 레벨, 용의분노 40, 소닉붐 20),
+#   double_if (객기 · 베놈쇼크 · 소금물 · 애크러뱃), bond (물수리검: 지우개굴닌자는 위력 20 으로 반드시 3번),
+#   vs_def (사이코쇼크류: 상대 방어로 계산), ignore_stg (상대 능력 변화 무시), ignore_ab (상대 특성 무시), crash (빗나가면 반동).
+#   설명 = 공식 한국어 기술 설명 (울트라썬·울트라문). 효과를 조금 줄인 기술(묶기 · 교체 등)은 설명을 새로 씀.
+#   고르는 기본 기술 4개 (species_moves) 는 예전 그대로 (pick4 에서 새 기술 뺌) → 이미 잡은 포켓몬의 기술이 사라지지 않음.
+EVENT_GRENINJA_LINE = 441
+_ok_eff = {1, 104, 18, 379, 406, 44, 289, 30, 45, 78, 32, 151, 3, 5, 6, 7, 77, 203, 210, 201, 274, 275, 276, 69, 70, 71, 72, 73, 74, 21, 272, 297,
+           139, 140, 277, 141, 183, 219, 205, 230, 4, 49, 199, 254, 263, 270, 81, 2, 67, 68, 50, 168, 34, 200, 33, 133, 215, 372,
+           294, 220, 88, 42, 131, 170, 284, 222, 318, 361, 283, 304, 411, 46}
+_approx_eff = {385, 393, 394, 402, 373, 374, 229}     # 피해는 그대로, 덧붙은 효과 (묶기 · 소리 막기 · 교체 등) 없음 → 설명을 새로 씀
+_skip_eff = {9, 340, 367, 392, 268}                   # 꿈먹기 (잠든 상대만) · 일구기 · 자기장조작 · 어시스트기어 (조건) · 수다
+_BAD = re.compile(r"\bif\b|only|turns|switch|ally|allies|gender|item|berry|faint|next turn|charge|type|abilit|HP|weight|field|Spikes|"
+                  r"terrain|random|every|average|swap|copies|steal|protect", re.I)
+_AIL = {1: 'par', 2: 'slp', 3: 'frz', 4: 'brn', 5: 'psn', 6: 'cnf'}
+_STAT = {2: 'atk', 3: 'def', 4: 'spa', 5: 'spd', 6: 'spe', 7: 'acc', 8: 'eva'}
+_CAT = {'1': 'status', '2': 'physical', '3': 'special'}
+_EN_WORD = {1: '온몸', 2: '격투 기술', 3: '바람', 4: '독', 5: '땅의 힘', 6: '바위', 7: '벌레의 힘', 8: '그림자', 9: '강철', 10: '불꽃', 11: '물',
+            12: '풀', 13: '전기', 14: '염동력', 15: '얼음', 16: '용의 힘', 17: '어둠의 힘', 18: '요정의 힘'}
+_ALIAS0 = {'메탈크로우': '메탈클로', '깨트리기': '깨뜨리다', '섀도크루': '섀도클로', '드릴부리': '회전부리', '드래곤크루': '드래곤클로',
+           '자가재생': 'HP회복', '태만함': '게으름피우기'}   # = 아래 ALIAS
+
+
+def _ro(w):   # (으)로: 받침 있으면 '으로' (ㄹ 받침은 '로')
+    c = w[-1]
+    j = (ord(c) - 0xAC00) % 28 if '가' <= c <= '힣' else 0
+    return w + ('으로' if j and j != 8 else '로')
+
+
+def _new_moves_0047():
+    mv = {int(r['id']): r for r in rd('moves')}
+    meta = {int(r['move_id']): r for r in rd('move_meta')}
+    sc = defaultdict(dict)
+    for r in rd('move_meta_stat_changes'):
+        sc[int(r['move_id'])][_STAT[int(r['stat_id'])]] = int(r['change'])
+    prose = {int(r['move_effect_id']): r['short_effect'] for r in rd('move_effect_prose') if r['local_language_id'] == '9'}
+    ko, ko_id = {}, {}
+    for r in rd('move_names'):
+        if r['local_language_id'] == KO:
+            ko[int(r['move_id'])] = ' '.join(r['name'].split())
+            ko_id.setdefault(' '.join(r['name'].split()), int(r['move_id']))
+    fl = {}
+    for r in rd('move_flavor_text'):
+        if r['language_id'] == KO and r['version_group_id'] == '18':
+            fl[int(r['move_id'])] = ' '.join(r['flavor_text'].split())
+    pids = set(PID.values())
+    used = defaultdict(int)
+    for r in rd('pokemon_moves'):
+        if r['version_group_id'] in ('17', '18') and r['pokemon_move_method_id'] in ('1', '4') and int(r['pokemon_id']) in pids:
+            used[int(r['move_id'])] += 1
+    have_names = {m['name'] for m in GB.M} | {_ALIAS0.get(m['name'], m['name']) for m in GB.M}
+    have_ids = {ko_id.get(n) for n in have_names}
+    out = []
+    for i in sorted(mv):
+        r = mv[i]
+        if i > 742 or int(r['generation_id']) > 7 or i in have_ids or not used[i] or int(r['type_id']) > 18 or i not in meta:
+            continue
+        e_id = int(r['effect_id'])
+        m = meta[i]
+        cat_id = int(m['meta_category_id'])
+        ail = int(m['meta_ailment_id'])
+        ok = e_id in _ok_eff or e_id in _approx_eff or (cat_id in (1, 2, 3, 4, 6, 7, 8) and not _BAD.search(prose.get(e_id, '')) and 0 <= ail <= 6)
+        if not ok or e_id in _skip_eff:
+            continue
+        cat = _CAT[r['damage_class_id']]
+        name = ko[i]
+        assert name not in have_names, name
+        eff = {}
+        chance = None
+        if 1 <= ail <= 6 and cat_id in (1, 4):
+            eff['foe_status'] = _AIL[ail]
+            ch = int(m['ailment_chance'] or 0) or 100
+            if cat != 'status' and ch < 100:
+                chance = ch
+        if int(m['flinch_chance'] or 0):
+            eff['flinch'] = int(m['flinch_chance'])
+        if sc[i] and cat_id in (2, 6, 7):
+            mine = cat_id == 7 or (cat_id == 2 and int(r['target_id']) in (4, 5, 7, 13))
+            eff['self' if mine else 'foe'] = dict(sc[i])
+            s_ch = int(m['stat_chance'] or 0) or 100
+            if cat != 'status':
+                chance = s_ch if chance is None else max(chance, s_ch)
+        if cat != 'status' and ('self' in eff or 'foe' in eff or 'foe_status' in eff):
+            eff['chance'] = chance or 100
+        crit = int(m['crit_rate'] or 0)
+        if crit >= 3:
+            eff['always_crit'] = True
+        elif crit >= 1:
+            eff['high_crit'] = True
+        dr = int(m['drain'] or 0)
+        if dr > 0:
+            eff['drain'] = dr
+        elif dr < 0:
+            eff['recoil'] = round(100 / -dr)
+        if cat_id == 3 and int(m['healing'] or 0) > 0:
+            eff['heal'] = int(m['healing'])
+        if e_id == 81:
+            eff['recharge'] = True
+        if m['min_hits']:
+            lo, hi = int(m['min_hits']), int(m['max_hits'])
+            eff['hits'] = 5 if (lo, hi) == (2, 5) else hi
+        # 0047 새 엔진 효과
+        if e_id in (294, 220):
+            eff['spd_pow'] = 'electro' if e_id == 294 else 'gyro'
+        if e_id in (88, 42, 131):
+            eff['fixed'] = {88: 'lv', 42: 40, 131: 20}[e_id]
+        if e_id in (170, 284, 222, 318):
+            eff['double_if'] = {170: 'self_st', 284: 'foe_psn', 222: 'foe_half', 318: 'no_item'}[e_id]
+        if e_id == 361:
+            eff['bond'] = {'line': EVENT_GRENINJA_LINE, 'hits': 3, 'power': 20}
+        if e_id == 283:
+            eff['vs_def'] = True
+        if e_id == 304:
+            eff['ignore_stg'] = True
+        if e_id == 411:
+            eff['ignore_ab'] = True
+        if e_id == 46:
+            eff['crash'] = 50
+        power = int(r['power']) if r['power'] and cat != 'status' else 0
+        acc = int(r['accuracy']) if r['accuracy'] else None
+        if cat == 'status':
+            if not eff:
+                continue
+            kind = 'defense' if eff.get('heal') or ('self' in eff and set(eff['self']) <= {'def', 'spd', 'eva'}) else 'status'
+        else:
+            kind = 'attack'
+        word = _ro(_EN_WORD[int(r['type_id'])]) + ' 공격한다.'
+        if e_id in _approx_eff or not fl.get(i):
+            desc = word
+        else:
+            desc = fl[i]
+            if eff.get('chance') and eff['chance'] < 100:
+                desc += f" ({eff['chance']}% 확률)"
+            elif 'flinch' in eff and eff['flinch'] < 100:
+                desc += f" (풀죽음 {eff['flinch']}% 확률)"
+            if e_id == 361:
+                desc += ' 지우개굴닌자가 쓰면 위력 20으로 반드시 3번 공격한다.'
+        out.append(dict(name=name, type=TYPE_KO[int(r['type_id'])], cat=cat, kind=kind, power=power, acc=acc, pp=int(r['pp'] or 10),
+                        prio=int(r['priority'] or 0), effect=eff, desc=desc))
+    return out
+
+
+NEW_0047 = []
+for _m in _new_moves_0047():
+    GB.M.append(_m)
+    GB.MOVE_ID[_m['name']] = max(GB.MOVE_ID.values()) + 1
+    NEW_0047.append(_m['name'])
+for _m in GB.M:     # 사이코쇼크 (0047): 특수 기술이지만 상대의 방어로 계산 (실제 효과)
+    if _m['name'] == '사이코쇼크':
+        _m['effect'] = {'vs_def': True}
+        _m['desc'] = '신비한 염동력을 실체화하여 상대를 공격한다. 물리적인 데미지를 준다.'
+
 # ── 기술: gen_battle_data 의 247개를 실제 자료로 ──
 MV_KO = {}
 for r in rd('move_names'):
@@ -444,7 +599,7 @@ def pick4(sid, stage, n_stages):
         return ['변신']
     if sid in EVENT_DEX:      # 이벤트 포켓몬 (0044): 정해 둔 4개
         return list(EVENT_DEX[sid][6])
-    can = [MV[n] for n in sorted(learnable(sid)) if n in MV and n not in GB.SIGNATURE and n not in NEW_MOVES]
+    can = [MV[n] for n in sorted(learnable(sid)) if n in MV and n not in GB.SIGNATURE and n not in NEW_MOVES and n not in NEW_0047]
     cap = 999 if stage == n_stages else (70 if stage == 1 and n_stages >= 2 else 95)
     atk = [m for m in can if m['kind'] == 'attack' and (m['power'] or 0) <= cap and (m['acc'] or 100) >= 70]
     stab = sorted((m for m in atk if m['type'] in ts), key=lambda m: (-score(m, phys), m['name']))
@@ -452,7 +607,7 @@ def pick4(sid, stage, n_stages):
     if stab:
         out.append(stab[0]['name'])
     else:   # 배우는 자속기가 247개 안에 없으면: 같은 타입의 기술 중 위력이 알맞은 것
-        pool = sorted((m for m in MOVES if m['kind'] == 'attack' and m['type'] == ts[0] and m['name'] not in GB.SIGNATURE
+        pool = sorted((m for m in MOVES if m['kind'] == 'attack' and m['type'] == ts[0] and m['name'] not in GB.SIGNATURE and m['name'] not in NEW_0047
                        and (m['power'] or 0) <= cap), key=lambda m: (-score(m, phys), m['name']))
         out.append((pool or [MV['몸통박치기']])[0]['name'])
     first_type = MV[out[0]]['type']
@@ -471,13 +626,17 @@ def pick4(sid, stage, n_stages):
 def tm_list():
     out = []
     for t in REAL_TYPES:
-        atk = sorted((m for m in MOVES if m['type'] == t and m['kind'] == 'attack' and m['name'] not in GB.SIGNATURE and 70 <= (m['power'] or 0) <= 120
+        atk = sorted((m for m in MOVES if m['type'] == t and m['kind'] == 'attack' and m['name'] not in GB.SIGNATURE and m['name'] not in NEW_0047
+                      and 70 <= (m['power'] or 0) <= 120
                       and (m['acc'] or 100) >= 85), key=lambda m: (-((m['power'] or 0) * (m['acc'] or 100)), m['name']))
         out += [m['name'] for m in [x for x in atk if x['cat'] == 'physical'][:1] + [x for x in atk if x['cat'] == 'special'][:1]]
     out += [n for n in GB.TM_GENERAL if n in MV]
-    return list(dict.fromkeys(out))
+    out = list(dict.fromkeys(out))
+    assert len(out) == 51, len(out)          # 기술머신01~51 은 예전 그대로 (가방의 tmNN 이 같은 기술)
+    return out + [n for n in NEW_TMS_0047 if n in MV]     # 0047: 7세대 기술머신 중 새 기술 → 기술머신52~
 
 
+NEW_TMS_0047 = ['객기', '유턴', '베놈쇼크', '차지빔', '애크러뱃', '로킥', '자이로볼', '세차게휘두르기', '스마트혼']
 TMS = tm_list()
 
 # ── 물건: 실제 포켓몬 물건 ──

@@ -7,6 +7,8 @@ import { S, dexOf, isWithdrawn, monById, mons, monSp, owned, speciesOf, vibrate 
 import { catchEncounter, closeOverlay, fmtWait, openScanner, overlay, renderTab, say, sync } from './app.js';
 import { lv50, typeOf, typeMult } from './dex.js';
 
+const rTitle = (r) => `${r.shiny ? '✦ ' : ''}${r.title}`;   // 0047: 이로치 레이드 표시
+
 // ───────── 레이드: 큰 보스를 다 같이 탭해서 쓰러뜨리기 (0013) ─────────
 export const isRaidQr = (q) => /^R\d{1,5}$/.test(q);
 export const curSpecies = (line) => { const c = owned(line); return c ? speciesOf(dexOf(line, c.stage)) : null; };
@@ -50,19 +52,19 @@ export function viewRaid() {
     open.length > 0 && h('div.box.stack.raid-open',
       h('b', pix('spark'), ' QR 없이 바로 참가할 수 있는 레이드'),
       open.map((r) => h('button.raid-row', { onclick: () => joinOpenRaid(r) },
-        spriteCanvas(r.species_id, 56),
-        h('div', h('b', r.title),
+        spriteCanvas(r.species_id, 56, r.shiny ? 'shiny' : 'normal'),
+        h('div', h('b', rTitle(r)),
           h('div.hpbar.small', h('i', { style: { width: `${(r.hp / r.hp_max) * 100}%` } })),
           h('small', '남은 시간 ', left(r.ends_at), ` · ${r.players || 0}명 참가 중`)),
         h('span.chip.hot', r.joined ? '이어 하기' : '참가')))),
     live.length > 0 && h('div.box.stack',
       h('b', '지금 대형 화면에 나타난 보스'),
-      live.map((r) => h('div.raid-row', spriteCanvas(r.species_id, 56), h('div', h('b', r.title), h('small', '남은 시간 ', left(r.ends_at), ' · 메인 부스 대형 화면의 QR을 찍어요'))))),
+      live.map((r) => h('div.raid-row', spriteCanvas(r.species_id, 56, r.shiny ? 'shiny' : 'normal'), h('div', h('b', rTitle(r)), h('small', '남은 시간 ', left(r.ends_at), ' · 메인 부스 대형 화면의 QR을 찍어요'))))),
     mine.length > 0 && h('div.box.stack',
       h('b', '내가 참가한 레이드'),
       mine.map((r) => h('button.raid-row', { onclick: () => (r.status === 'active' ? openRaid(r) : toast(r.status === 'won' ? '이긴 레이드예요! 보상 티켓은 가방에 있어요.' : '끝난 레이드예요.')) },
-        spriteCanvas(r.species_id, 56),
-        h('div', h('b', r.title),
+        spriteCanvas(r.species_id, 56, r.shiny ? 'shiny' : 'normal'),
+        h('div', h('b', rTitle(r)),
           h('div.hpbar.small', h('i', { style: { width: `${(r.hp / r.hp_max) * 100}%` } })),
           h('small', r.status === 'active' ? ['남은 시간 ', left(r.ends_at), ` · 내 데미지 ${r.me?.damage || 0}`] : r.status === 'won' ? (r.me?.rewarded ? '승리! 보상 받음 ★' : '승리 (보상 조건 미달)') : '실패')),
         h(`span.chip${r.status === 'active' ? '.hot' : ''}`, r.status === 'active' ? '참가하기' : r.status === 'won' ? '승리' : '끝')))),
@@ -131,7 +133,7 @@ export function openRaid(r0) {
   let busy = false; let over = false;
   const skew = new Date(r.server_time || Date.now()) - Date.now();
   const per = () => (r.me?.mon_id === mon && r.me?.per_tap) || estimatePerTap(mon, r.species_id);
-  const boss = spriteCanvas(r.species_id, 192);
+  const boss = spriteCanvas(r.species_id, 192, r.shiny ? 'shiny' : 'normal');
   const bossBtn = h('button.raid-boss', { 'aria-label': '보스 공격하기 (계속 탭)' }, boss);
   const fx = h('div.raid-fx', { 'aria-hidden': 'true' });
   const hpFill = h('i'); const hpText = h('span.hp-num'); const timer = h('b.raid-timer');
@@ -225,7 +227,7 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
     }) : [h('small', '아직 포켓몬이 없어요. 포켓몬이 없어도 탭당 3씩 공격할 수 있어요!')]));
   };
   const ov = overlay(h('div.raid-stage',
-    h('div.raid-top', h('b', r.title), timer),
+    h('div.raid-top', h('b', rTitle(r)), timer),
     h('div.raid-hp', h('div.hpbar', hpFill), hpText),
     h('div.raid-arena', bossBtn, fx),
     info,
@@ -245,6 +247,6 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
   const mine = monSp(monById(mon));
   const m = mine ? typeMult(typeOf(mine), typeOf(sp)) : 1;
   typeText(text, r.status !== 'active' ? '이미 끝난 레이드예요.'
-    : `앗! 레이드 보스 ${josa(sp.name, '이', '가')} 나타났다!\n보스를 마구 탭해서 공격해!${m > 1 ? '\n(내 포켓몬은 이 보스에게 효과가 굉장해!)' : m < 1 ? '\n(내 포켓몬은 이 보스에게 효과가 별로야… 다른 포켓몬을 골라 봐)' : ''}`);
+    : `앗! ${r.shiny ? '반짝이는 색의 ' : ''}레이드 보스 ${josa(sp.name, '이', '가')} 나타났다!\n보스를 마구 탭해서 공격해!${m > 1 ? '\n(내 포켓몬은 이 보스에게 효과가 굉장해!)' : m < 1 ? '\n(내 포켓몬은 이 보스에게 효과가 별로야… 다른 포켓몬을 골라 봐)' : ''}`);
   if (r.status !== 'active') finish();
 }
