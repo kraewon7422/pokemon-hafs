@@ -53,7 +53,7 @@ const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
 const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'],
   shore: ['#5e92eb', '#f5d6af'], desert: ['#63b3e1', '#f5d6af'], cave: ['#28414b', '#366a84'] };
 // 구역 배경 (사파리존 만남의 enc.zone): 해변·연못 = 바닷가, 사막 = 모래, 동굴 = 동굴 (img/catch/{shore,desert,cave}.png — tools/draw_catch_zone_bg.py,
-// 배틀 배경 CC0 조각). 울트라 스페이스 = 밤 배경 + 보랏빛. 그 밖 (풀숲·깊은 곳·레이드·전설·QR) = 시간대 배경 (낮·노을·밤)
+// 스크립트로 그린 도트 v2). 울트라 스페이스 = 밤 배경 + 보랏빛. 그 밖 (풀숲·깊은 곳·레이드·전설·QR) = 시간대 배경 (낮·노을·밤)
 const ZONE_BG = { beach: 'shore', pond: 'shore', shore: 'shore', desert: 'desert', cave: 'cave' };
 // 바깥 구역 배경 위에 시간대 빛 (동굴은 늘 같음): [색, 진하기]
 const TOD_TINT = { day: null, sunset: [0xf07848, 0.2], night: [0x16102c, 0.45] };
