@@ -1,7 +1,7 @@
 // 배틀 (0015·0016): 계산은 전부 서버. 폰은 고른 것만 보내고, 서버 기록(log)을 3세대 느낌으로 재생한다.
 import { rpc, errorText } from './sb.js';
 import { drawQR } from './qrfmt.js';
-import { spriteCanvas } from './sprites.js';
+import { spriteCanvas, paintNow } from './sprites.js';
 import { sfx, unlockAudio, bgmPush } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
 import { S, abilityOf, isWithdrawn, monById, mons, monSp, speciesOf, vibrate } from './state.js';
@@ -69,8 +69,9 @@ export const envIcon = (k) => (ENV_ICON[k] ? h('i.env-ico', { html: `<svg viewBo
 export const TEAM_MAX = 6;
 export const FMT = { single: { min: 1, label: '1 대 1' }, double: { min: 2, label: '2 대 2' } };
 const DOUBLE_SHORT = '2 대 2는 배틀 팀에 포켓몬이 2마리 이상 있어야 해요. [팀 바꾸기]에서 더 골라 주세요.';
-// 배경: isaiah658 의 픽셀 팩 #2 (CC0, web/img/battle/CREDITS.txt). 배틀마다 다르게
-export const BT_BG = ['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'];
+// 배틀 배경 (img/battle/bt2-*.png, tools/draw_battle_bg.py): 날씨 · 필드가 있으면 그 배경, 없으면 배틀 번호로 돌아가며
+export const BT_BG = ['plains', 'forest', 'beach', 'desert', 'snowy', 'cave', 'lake'];
+const BT_ENV_BG = { sun: 'sunny', rain: 'rain', sand: 'desert', hail: 'snowy', electric: 'electric', grassy: 'forest', misty: 'lake', psychic: 'psychic' };
 export const moveOf = (id) => (S.catalog.moves || []).find((m) => m.id === id);
 export const BT_WHY = {
   practice: '연습 배틀이라 보상은 없어요.',
@@ -210,25 +211,55 @@ export function viewBattle() {
 export function teamPicker() {
   sfx.select();
   let sel = myTeam();
-  const grid = h('div.bt-pick');
-  const preview = h('div');
   const count = h('b');
-  const draw = () => {
-    preview.replaceChildren(teamStrip(sel, 40, { slots: true }));
-    count.textContent = `${sel.length}/${TEAM_MAX}마리`;
-    grid.replaceChildren(...mons().filter((c) => !isWithdrawn(c.line_id))
+  // 누를 때마다 전부 다시 만들면 그림 canvas 가 새로 생겨 (1×1 → 화면에 보일 때 그림) 화면 전체가 깜빡임 →
+  // 고르는 칸 · 위 6칸은 한 번만 만들고, 누르면 바뀐 칸만 고침 (그림 canvas 는 포켓몬마다 하나를 만들어 다시 씀)
+  const preview = teamStrip([], 40, { slots: true });
+  const slots = [...preview.children];
+  const pics = new Map();
+  const picOf = (sp) => { if (!pics.has(sp.id)) pics.set(sp.id, spriteCanvas(sp.id, 40)); return pics.get(sp.id); };
+  const paintSlot = (cell, id) => {
+    if (cell.__id === id) return;
+    cell.__id = id;
+    const m = id != null ? monById(id) : null; const sp = m ? monSp(m) : null;
+    const [pic, name, lv, types] = cell.children;
+    cell.classList.toggle('bt-empty', !sp);
+    const c = sp ? picOf(sp) : null;
+    pic.replaceChildren(c || h('span.bt-plus', '+'));
+    if (c && c.width <= 1) paintNow(c);
+    name.textContent = sp ? sp.name : '빈 칸';
+    if (sp) name.style.setProperty('--len', String([...sp.name].length)); else name.style.removeProperty('--len');
+    lv.textContent = sp ? `Lv.${m.level}` : '';
+    types.replaceChildren(...(sp ? [typeChips(sp)].flat() : []));
+  };
+  const opts = new Map();     // 포켓몬 id → { btn, num }
+  const grid = h('div.bt-pick', mons().filter((c) => !isWithdrawn(c.line_id))
     .sort((a, b) => b.stage - a.stage || b.level - a.level || a.line_id - b.line_id || a.id - b.id).map((c) => {
-      const sp = monSp(c); const n = sel.indexOf(c.id);
-      return h(`button.bt-opt${n >= 0 ? '.on' : ''}`, {
+      const sp = monSp(c);
+      const num = h('span.bt-num'); num.hidden = true;
+      const btn = h('button.bt-opt', {
         onclick: () => {
           sfx.blip();
+          const n = sel.indexOf(c.id);
           if (n < 0 && sel.length >= TEAM_MAX) { err.textContent = `배틀 팀은 ${TEAM_MAX}마리까지예요. 먼저 한 마리를 빼 주세요.`; return; }
           err.textContent = '';
           sel = n >= 0 ? sel.filter((x) => x !== c.id) : [...sel, c.id];
           draw();
         },
-      }, n >= 0 ? h('span.bt-num', String(n + 1)) : null, spriteCanvas(sp.id, 48), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
+      }, num, spriteCanvas(sp.id, 48), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
+      opts.set(c.id, { btn, num });
+      return btn;
     }));
+  const draw = () => {
+    sel = sel.filter((id) => monSp(monById(id)));
+    slots.forEach((cell, i) => paintSlot(cell, sel[i] ?? null));
+    count.textContent = `${sel.length}/${TEAM_MAX}마리`;
+    for (const [id, o] of opts) {
+      const n = sel.indexOf(id);
+      if (o.btn.classList.contains('on') !== n >= 0) o.btn.classList.toggle('on', n >= 0);
+      if (o.num.hidden !== n < 0) o.num.hidden = n < 0;
+      if (n >= 0 && o.num.textContent !== String(n + 1)) o.num.textContent = String(n + 1);
+    }
   };
   const err = h('div.err');
   draw();
@@ -511,7 +542,7 @@ export function openBattle(b0) {
     const f = el.field.getBoundingClientRect(); const t = x.spr.getBoundingClientRect();
     const tx = t.left + t.width / 2 - f.left - 8; const ty = t.bottom - f.top - 18;
     const sx = mine ? -20 : f.width + 4; const sy = mine ? f.height * 0.75 : f.height * 0.05;
-    x.spr.classList.add('hide');
+    x.spr.classList.add('hide');   // (보통은 이미 숨김 — 그림은 공이 열린 뒤에만)
     const ball = h('div.bt-ball', { html: BALL_SVG });
     el.field.append(ball);
     sfx.ballThrow();
@@ -526,7 +557,7 @@ export function openBattle(b0) {
     const flash = h('div.bt-flash'); flash.style.left = `${tx + 8}px`; flash.style.top = `${ty + 8}px`;
     el.field.append(flash); setTimeout(() => flash.remove(), 450);
     sfx.ballPop();
-    x.spr.classList.remove('hide'); bump(x.spr, 'enter');
+    x.spr.classList.remove('hide'); x.box.classList.remove('hide'); bump(x.spr, 'enter');
     await sleep(reducedMotion() ? 50 : 380);
   };
 
@@ -573,6 +604,7 @@ export function openBattle(b0) {
       if (e.sw) {
         const [u, i] = e.sw;
         const nm = spName(e.sp ?? monAt(u >> 1, i)?.sp, fixNames(e.name, ren));
+        SL[u].spr.classList.add('hide'); SL[u].box.classList.add('hide');   // 새 포켓몬은 공이 열릴 때까지 안 보임 (기절한 자리의 'gone' 을 showMon 이 지워도)
         showMon(u, i, { hp: prev?.sides?.[u >> 1]?.mons?.[i]?.hp, sp: e.sp, name: nm, max: prev?.sides?.[u >> 1]?.mons?.[i]?.max, lv: e.lv });
         await say2(mineSide(u) ? `가랏! ${nm}!` : `${josa(foeName(), '은', '는')} ${josa(nm, '을', '를')} 내보냈다!`, 100);
         await throwBall(u);
@@ -798,6 +830,10 @@ export function openBattle(b0) {
     renameBattle(nb, ren);
     const prev = b; b = nb;
     if (b.status === 'active' && !finished) music.set('battle');   // 신청을 친구가 수락함
+    if (prev.status === 'invite' && b.status === 'active' && !(b.seq > 0)) {   // 수락 직후: 바로 그림을 띄우지 않고 등장 연출부터
+      shownSeq = b.seq; env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv(); drawStatic();
+      await runIntro(); return;
+    }
     if (b.seq !== shownSeq && b.seq > 0) { shownSeq = b.seq; await play(b.log, prev); }
     env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv();
     drawStatic();
@@ -828,7 +864,7 @@ export function openBattle(b0) {
 
   const modeLabel = `${{ cpu: '연습 배틀', team: '친구 팀 (AI)', pvp: '실시간 배틀' }[b.mode]} · ${FMT[b.format]?.label || '1 대 1'}`;
   const pads = h('div.bt-layer');
-  el.field = h(`div.bt-field.bg-${BT_BG[b.id % BT_BG.length]}${dbl ? '.dbl' : ''}`,
+  el.field = h(`div.bt-field.bg-${BT_ENV_BG[b.field?.env] || BT_BG[b.id % BT_BG.length]}${dbl ? '.dbl' : ''}`,
     el.ter, pads, ...SL.map((x) => x.spr), el.wx, el.env,
     h('div.bt-boxes.foe', SL.filter((x) => (x.u >> 1) === fo()).map((x) => x.box)),
     h('div.bt-boxes.me', SL.filter((x) => (x.u >> 1) === me()).map((x) => x.box)));
@@ -849,38 +885,40 @@ export function openBattle(b0) {
     try { await apply(await rpc('battle_state', { p_id: b.id }, { retries: 0 })); } catch { /* offline: try again */ }
   }, 2000);
   S.btTick = setInterval(tick, 500);
+  // 첫 등장 연출: 빈 자리 → 공 던지기 → 공이 열리면 포켓몬 (+ 상자). 처음 열 때 · 보낸 신청을 친구가 수락했을 때
+  async function runIntro() {
+    playing = true;
+    SL.forEach((x) => { x.spr.classList.add('hide'); x.box.classList.add('hide'); });
+    await sleep(250);
+    const foeSlots = SL.filter((x) => (x.u >> 1) === fo() && !x.spr.hidden);
+    const mySlotsEl = SL.filter((x) => (x.u >> 1) === me() && !x.spr.hidden);
+    const names = (xs) => xs.map((x) => x.name.textContent);
+    const join = (ns) => (ns.length > 1 ? `${josa(ns[0], '과', '와')} ${ns[1]}` : ns[0]);
+    await say2(`${josa(foeName(), '이', '가')} 승부를 걸어왔다!`, 450);
+    const fenv = b.field?.env && ENV[b.field.env] ? b.field.env : null;
+    const intro = b.turn === 0 && Array.isArray(b.log) ? b.log : [];
+    // 등장 특성이 날씨 · 필드를 바꿨으면 시작 화면은 시간표 날씨부터 (특성 알림 때 바뀜)
+    if (intro.length) { env.wx = fenv && ENV[fenv].kind === 'wx' ? fenv : null; env.ter = fenv && ENV[fenv].kind === 'ter' ? fenv : null; drawEnv(); }
+    if (fenv) { envStart(fenv); await say2(`지금은 ${b.field.name}! ${ENV[fenv].start}`, 450); }
+    else if (b.field?.types?.length) await say2(`지금은 ${b.field.name}! ${b.field.types.join('·')} 기술의 위력이 올라간다!`, 450);
+    if (b.fair) await say2('공정 모드! 모두 Lv.50으로 싸운다. (회복약 없음)', 450);
+    await say2(`${josa(foeName(), '은', '는')} ${josa(join(names(foeSlots)), '을', '를')} 내보냈다!`, 100);
+    for (const x of foeSlots) await throwBall(x.u);
+    await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
+    for (const x of mySlotsEl) await throwBall(x.u);
+    // 같은 과 시너지 (0020): 나온 포켓몬의 능력 +1
+    for (const x of [...foeSlots, ...mySlotsEl]) {
+      const m = monAt(x.u >> 1, side(x.u >> 1).act[x.u & 1]);
+      if (m?.syn) { statFx(x.u, 1); await say2(tok(`@${x.u >> 1}${m.name}의 ${m.synname} 시너지! ${SYN[m.syn]} 올라갔다!`), 300); }
+    }
+    // 0039: 등장 특성 (위협 · 가뭄 · 괴짜 …) — 서버가 배틀을 만들 때 쓴 기록
+    if (intro.length) { await play(intro); env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv(); drawStatic(); }
+    playing = false; startPicks(); renderMenu();
+  }
   drawStatic(); tick();
   if (b.status === 'active' && shownSeq === -1) {
     shownSeq = b.seq;
-    (async () => {
-      playing = true;
-      SL.forEach((x) => x.spr.classList.add('hide'));
-      await sleep(250);
-      const foeSlots = SL.filter((x) => (x.u >> 1) === fo() && !x.spr.hidden);
-      const mySlotsEl = SL.filter((x) => (x.u >> 1) === me() && !x.spr.hidden);
-      const names = (xs) => xs.map((x) => x.name.textContent);
-      const join = (ns) => (ns.length > 1 ? `${josa(ns[0], '과', '와')} ${ns[1]}` : ns[0]);
-      await say2(`${josa(foeName(), '이', '가')} 승부를 걸어왔다!`, 450);
-      const fenv = b.field?.env && ENV[b.field.env] ? b.field.env : null;
-      const intro = b.turn === 0 && Array.isArray(b.log) ? b.log : [];
-      // 등장 특성이 날씨 · 필드를 바꿨으면 시작 화면은 시간표 날씨부터 (특성 알림 때 바뀜)
-      if (intro.length) { env.wx = fenv && ENV[fenv].kind === 'wx' ? fenv : null; env.ter = fenv && ENV[fenv].kind === 'ter' ? fenv : null; drawEnv(); }
-      if (fenv) { envStart(fenv); await say2(`지금은 ${b.field.name}! ${ENV[fenv].start}`, 450); }
-      else if (b.field?.types?.length) await say2(`지금은 ${b.field.name}! ${b.field.types.join('·')} 기술의 위력이 올라간다!`, 450);
-      if (b.fair) await say2('공정 모드! 모두 Lv.50으로 싸운다. (회복약 없음)', 450);
-      await say2(`${josa(foeName(), '은', '는')} ${josa(join(names(foeSlots)), '을', '를')} 내보냈다!`, 100);
-      for (const x of foeSlots) await throwBall(x.u);
-      await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
-      for (const x of mySlotsEl) await throwBall(x.u);
-      // 같은 과 시너지 (0020): 나온 포켓몬의 능력 +1
-      for (const x of [...foeSlots, ...mySlotsEl]) {
-        const m = monAt(x.u >> 1, side(x.u >> 1).act[x.u & 1]);
-        if (m?.syn) { statFx(x.u, 1); await say2(tok(`@${x.u >> 1}${m.name}의 ${m.synname} 시너지! ${SYN[m.syn]} 올라갔다!`), 300); }
-      }
-      // 0039: 등장 특성 (위협 · 가뭄 · 괴짜 …) — 서버가 배틀을 만들 때 쓴 기록
-      if (intro.length) { await play(intro); env.wx = b.wx ?? null; env.ter = b.ter ?? null; drawEnv(); drawStatic(); }
-      playing = false; startPicks(); renderMenu();
-    })();
+    runIntro();
   } else {
     startPicks(); renderMenu();
     if (b.status === 'over') { finished = true; el.text.textContent = b.winner === me() ? '이긴 배틀이에요.' : '끝난 배틀이에요.'; el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기')); }
