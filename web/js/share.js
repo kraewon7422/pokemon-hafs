@@ -56,8 +56,8 @@ function logo(g, x, y, size) {
     const d = Math.hypot(i - c, j - c);
     if (d > 7.6) continue;
     let col;
-    if (d > 6.7 || Math.abs(j - c) <= 0.5 || (d > 1.9 && d <= 3.1)) col = '#202838';   // 테두리 · 가운데 띠 · 버튼 테두리
-    else if (d <= 1.9) col = '#f8f8f8';                                                // 버튼
+    if (d <= 1.9) col = '#f8f8f8';                                                     // 버튼 (가운데 띠가 버튼을 가로지르지 않게 먼저)
+    else if (d > 6.7 || (Math.abs(j - c) <= 0.5 && d > 3.1) || d <= 3.1) col = '#202838';   // 테두리 · 가운데 띠 (버튼 밖만) · 버튼 테두리
     else if (j < c) col = (i - c) + (j - c) < -6 ? '#ff9a9a' : (i - c) + (j - c) > 3 ? '#b83030' : '#e04848';
     else col = (i - c) + (j - c) > 5 ? '#c8ccd8' : '#f8f8f8';
     g.fillStyle = col; g.fillRect(Math.round(x + i * k), Math.round(y + j * k), Math.ceil(k), Math.ceil(k));
@@ -192,12 +192,8 @@ export async function drawCard() {
   const nick = String(p.nickname || '').trim();
   if (nick && nick !== real) {
     ny += 16 * U;
-    g.font = `bold 30px ${FONT}`;
-    const cw = Math.ceil(g.measureText('별명').width / U) * U + 6 * U;
-    pbox(g, NX, ny - 9 * U, cw, 12 * U, '#2a5cbc', 2);
-    text(g, '별명', NX + cw / 2, ny - U, { size: 30, bold: true, col: '#ffffff', align: 'center' });
-    const nk = fit(g, nick, NW - cw - 4 * U, 44, 30);
-    text(g, nk.s, NX + cw + 4 * U, ny, { size: nk.size, bold: true, col: '#1c3e8c', shadow: '#fff8d8' });
+    const nk = fit(g, nick, NW, 44, 30);   // 별명은 이름 아래 작은 줄로만 (따로 '별명' 표시 없음)
+    text(g, nk.s, NX, ny, { size: nk.size, bold: true, col: '#1c3e8c', shadow: '#fff8d8' });
   }
   ny += 14 * U;
   text(g, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너', NX, ny, { size: 36, col: LBL, shadow: '#fff8d8', maxW: NW });
