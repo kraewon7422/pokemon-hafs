@@ -790,7 +790,8 @@ details.box[open] > summary::after { content: ' ▴'; }
 /* 티켓 주머니: 제목 "티켓 주머니 3/5" 은 한 줄로, 오른쪽 안내만 줄바꿈 */
 section[aria-label="티켓 주머니"] .banner { gap: 8px; }
 section[aria-label="티켓 주머니"] .banner > b { white-space: nowrap; }
-section[aria-label="티켓 주머니"] .banner > span { text-align: right; }
+section[aria-label="티켓 주머니"] .banner { flex-wrap: wrap; row-gap: 2px; }
+section[aria-label="티켓 주머니"] .banner > span { text-align: right; overflow-wrap: normal; margin-left: auto; }   /* 320px: '포켓몬으로' 가 쪼개지지 않게 — 자리가 없으면 다음 줄 오른쪽으로 */
 
 /* ───────── 0023 미니게임 ───────── */
 .mg-btn { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; background: #d8f0e0; border-color: #2a8040; }

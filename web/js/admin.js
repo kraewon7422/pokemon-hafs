@@ -3132,7 +3132,7 @@ function giftCard(items) {
       const l = list.filter((it) => hit(itemLabel(it)) || hit(it.key));
       if (l.length) opts.push(h('optgroup', { label: `${label} (${l.length})` }, l.map((it) => h('option', { value: it.key }, itemLabel(it)))));
     }
-    item.replaceChildren(...(opts.length ? opts : [h('option', { value: '', disabled: true }, '찾는 물건이 없어요')]));
+    item.replaceChildren(...(opts.length ? opts : [h('option', { value: '', disabled: true, selected: true }, '찾는 물건이 없어요')]));
     if ([...item.options].some((o) => o.value === prev)) item.value = prev;
   };
   itemFind.oninput = fillItems;
