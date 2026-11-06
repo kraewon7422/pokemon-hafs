@@ -1149,8 +1149,8 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .pc-moving .btn { flex: none; }
 .pc-foot { display: grid; gap: 2px; justify-items: center; text-align: center; font-size: var(--fs-s); word-break: keep-all; }
 /* 요약 아래 버튼: 카드 · 진화 · 옮기기 · 놓아주기 */
-.sum-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 6px; }
-.sum-acts .btn { min-height: 44px; padding: 4px 6px; font-size: var(--fs-m); white-space: nowrap; }
+.sum-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(132px, 1fr)); gap: 6px; }
+.sum-acts .btn { min-height: 44px; padding: 4px 6px; font-size: var(--fs-m); white-space: normal; word-break: keep-all; overflow-wrap: normal; line-height: 1.2; }   /* 칸이 좁으면 '카드에 / 올리기' 처럼 낱말 사이에서만 줄바꿈 (전에는 글자가 단추 밖으로 잘림) */
 .sum-where { color: #586890; }
 .btn.danger { background: #f8d8d0; color: #a01818; border-color: #a01818; }
 .release-mon { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 3px solid #384050; border-radius: 8px; background: #fffdf4; }
