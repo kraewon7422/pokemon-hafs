@@ -610,9 +610,11 @@ insert into public.lines (id, teacher, subject, rarity, active, max_stage, btype
  (440, '야생 포켓몬', '야생', 'legendary', true, 2, '강철', false, false, false)
 on conflict (id) do update set max_stage = excluded.max_stage, rarity = excluded.rarity, btype = excluded.btype;
 update public.lines l set max_stage = v.n, rarity = v.r, btype = v.bt from (values (1, 3, 'common', '에스퍼'), (2, 3, 'common', '에스퍼/페어리'), (3, 3, 'common', '노말/비행'), (4, 3, 'common', '고스트/독'), (5, 3, 'common', '전기/강철'), (6, 3, 'common', '강철/에스퍼'), (7, 3, 'common', '강철/바위'), (8, 3, 'common', '강철'), (9, 2, 'common', '노말/비행'), (10, 3, 'common', '독/비행'), (11, 2, 'common', '노말/비행'), (12, 3, 'common', '전기'), (13, 3, 'common', '독/땅'), (14, 3, 'common', '벌레/비행'), (15, 3, 'common', '바위/땅'), (16, 3, 'common', '페어리/비행'), (17, 3, 'common', '땅/악'), (18, 3, 'common', '물/격투'), (19, 2, 'common', '악/불꽃'), (20, 3, 'rare', '풀/독'), (21, 3, 'rare', '불꽃/비행'), (22, 3, 'rare', '물'), (23, 3, 'rare', '풀'), (24, 3, 'rare', '불꽃'), (25, 3, 'common', '노말'), (26, 2, 'common', '전기'), (27, 3, 'common', '전기'), (28, 3, 'common', '드래곤/비행'), (29, 3, 'common', '드래곤/비행'), (30, 3, 'common', '드래곤/땅'), (31, 3, 'common', '노말/페어리'), (32, 3, 'common', '격투'), (33, 2, 'common', '격투'), (34, 2, 'common', '격투/강철'), (35, 1, 'legendary', '고스트/드래곤'), (36, 1, 'legendary', '노말'), (37, 1, 'legendary', '에스퍼'), (38, 1, 'legendary', '불꽃/비행'), (39, 1, 'legendary', '전기/비행'), (40, 1, 'legendary', '얼음/비행'), (41, 1, 'legendary', '에스퍼'), (42, 1, 'legendary', '드래곤/땅'), (43, 3, 'common', '노말/비행'), (44, 2, 'common', '에스퍼'), (45, 2, 'common', '풀/에스퍼'), (46, 2, 'common', '물/에스퍼'), (47, 2, 'common', '에스퍼'), (48, 2, 'common', '에스퍼/비행'), (49, 3, 'common', '얼음/땅'), (50, 2, 'common', '얼음'), (51, 3, 'common', '얼음'), (52, 2, 'common', '강철/에스퍼'), (53, 2, 'common', '땅/에스퍼'), (54, 2, 'common', '얼음'), (55, 2, 'common', '풀/얼음'), (56, 2, 'common', '노말/비행'), (57, 2, 'common', '드래곤/비행'), (58, 3, 'common', '노말/비행'), (59, 3, 'common', '페어리'), (60, 2, 'common', '페어리'), (61, 2, 'common', '페어리'), (62, 2, 'common', '노말/비행'), (63, 3, 'common', '전기'), (64, 3, 'common', '전기'), (65, 2, 'common', '벌레/전기'), (66, 3, 'common', '독/땅'), (67, 2, 'common', '독'), (68, 3, 'common', '벌레/독'), (69, 3, 'common', '풀/독'), (70, 3, 'common', '풀/독'), (71, 3, 'common', '바위/악'), (72, 3, 'common', '물/드래곤'), (73, 2, 'common', '에스퍼'), (74, 2, 'common', '악'), (75, 3, 'rare', '물'), (76, 3, 'common', '격투'), (77, 1, 'legendary', '페어리'), (78, 1, 'legendary', '악/비행'), (79, 1, 'legendary', '불꽃/물'), (80, 1, 'legendary', '물'), (81, 1, 'legendary', '노말/에스퍼'), (82, 1, 'legendary', '에스퍼/풀')) v(id, n, r, bt) where l.id = v.id;
+-- 이벤트 포켓몬 (0044): 이상한 소포로만. bonus = 도감 수에 안 셈 · 모든 무작위 풀에서 빠짐, legend_src gift
+insert into public.lines (id, teacher, subject, rarity, active, max_stage, btype, bonus, mythic, secret, ultra, legend_src) values (441, '이벤트 포켓몬', '야생', 'legendary', true, 1, '물/악', true, false, false, false, 'gift'), (442, '이벤트 포켓몬', '야생', 'legendary', true, 1, '전기', true, false, false, false, 'gift') on conflict (id) do update set teacher = excluded.teacher, subject = excluded.subject, rarity = excluded.rarity, max_stage = excluded.max_stage, btype = excluded.btype, bonus = true, mythic = false, secret = false, ultra = false, legend_src = excluded.legend_src;
 -- 예전 데이터의 '비밀 몬스터' (계열 37 = 뮤) → 포켓몬 이름으로 (도감 상세 '정체' 칸에 보임)
 update public.lines set teacher = '비밀 포켓몬' where id = 37 and teacher = '비밀 몬스터';
-delete from public.lines where id > 440;
+delete from public.lines where id > 442;
 -- 특성 (0039): 7세대 기준 한국어 이름 · 설명 (PokeAPI)
 insert into public.abilities (key, name, description) values ('adaptability', '적응력', '자신과 같은 타입의 기술 위력이 올라간다.'),
 ('aftermath', '유폭', '기절했을 때 접촉한 상대에게 데미지를 준다.'),
@@ -626,6 +628,7 @@ insert into public.abilities (key, name, description) values ('adaptability', '�
 ('bad-dreams', '나이트메어', '잠듦 상태의 상대에게 데미지를 준다.'),
 ('battery', '배터리', '같은 편 특수 기술의 위력을 올린다.'),
 ('battle-armor', '전투무장', '단단한 껍질에 보호받아 상대의 공격이 급소에 맞지 않는다.'),
+('battle-bond', '유대변화', '상대를 쓰러뜨리면 트레이너와의 유대감이 깊어져서 지우개굴닌자로 변한다. 물수리검이 강해진다.'),
 ('beast-boost', '비스트부스트', '상대를 기절시켰을 때 자신의 가장 높은 능력이 올라간다.'),
 ('berserk', '발끈', '상대의 공격으로 HP가 절반이 되면 특수공격이 올라간다.'),
 ('big-pecks', '부풀린가슴', '방어를 떨어뜨리는 효과를 받지 않는다.'),
@@ -1664,7 +1667,9 @@ insert into public.species (id, line_id, stage, name, category, flavor, height, 
  (1312, 438, 1, '두파팡', '불꽃놀이포켓몬', '꿈틀거리며 사람에게 다가오다 느닷없이 머리를 폭발시킨다. 울트라비스트의 일종인 듯하다.', '1.8m', '13kg', '불꽃/고스트', 53, 127, 53, 151, 79, 107, 806, null, false, array['beast-boost']::text[], null),
  (1315, 439, 1, '제라오라', '신뢰포켓몬', '양 손발톱에 전기를 머금어 상대를 갈가리 찢는다. 피하더라도 흩날리는 전격으로 감전시킨다.', '1.5m', '44.5kg', '전기', 88, 112, 75, 102, 80, 143, 807, null, false, array['volt-absorb']::text[], null),
  (1318, 440, 1, '멜탄', '너트포켓몬', '걸쭉하게 녹은 강철의 몸을 가졌다. 땅속의 철분이나 금속을 녹여서 흡수한다.', '0.2m', '8kg', '강철', 46, 65, 65, 55, 35, 34, 808, null, false, array['magnet-pull']::text[], null),
- (1319, 440, 2, '멜메탈', '너트포켓몬', '철을 만들어내는 힘을 가졌다고 추앙받았었다. 모종의 이유로 3000년의 세월이 흘러 되살아났다.', '2.5m', '800kg', '강철', 135, 143, 143, 80, 65, 34, 809, 25, false, array['iron-fist']::text[], null)
+ (1319, 440, 2, '멜메탈', '너트포켓몬', '철을 만들어내는 힘을 가졌다고 추앙받았었다. 모종의 이유로 3000년의 세월이 흘러 되살아났다.', '2.5m', '800kg', '강철', 135, 143, 143, 80, 65, 34, 809, 25, false, array['iron-fist']::text[], null),
+ (1321, 441, 1, '지우개굴닌자', '닌자포켓몬', '트레이너와의 유대가 깊어져 모습이 바뀐 개굴닌자. 등에 커다란 물수리검을 짊어지고, 트레이너와 같은 것을 보고 같은 것을 느끼며 싸운다.', '1.5m', '40kg', '물/악', 72, 145, 67, 153, 71, 132, 810, null, false, array['battle-bond']::text[], null),
+ (1324, 442, 1, '지우의 피카츄', '쥐포켓몬', '오랜 여행을 함께한 트레이너의 모자를 쓴 피카츄. 몬스터볼에 들어가는 것을 싫어하고, 늘 트레이너의 어깨 위에 있다. 진화하지 않는다.', '0.4m', '6kg', '전기', 35, 55, 40, 50, 50, 90, 811, null, false, array['static']::text[], 'lightning-rod')
 on conflict (id) do update set line_id = excluded.line_id, stage = excluded.stage, name = excluded.name, category = excluded.category, flavor = excluded.flavor, height = excluded.height, weight = excluded.weight, btype = excluded.btype, hp = excluded.hp, atk = excluded.atk, def = excluded.def, spa = excluded.spa, spd = excluded.spd, spe = excluded.spe, dex = excluded.dex, evo_lv = excluded.evo_lv, evo_item = excluded.evo_item, abilities = excluded.abilities, hidden_ability = excluded.hidden_ability;
 -- 단계가 줄어든 계열: 남는 단계 줄은 (기록이 가리키지 않으면) 지우고, 가리키면 마지막 단계와 똑같이
 delete from public.species s using public.lines l where l.id = s.line_id and s.stage > l.max_stage and not exists (select 1 from public.tickets t where t.result_species = s.id or t.fixed_species = s.id) and not exists (select 1 from public.raids r where r.species_id = s.id) and not exists (select 1 from public.raid_encounters e where e.species_id = s.id);
@@ -5374,7 +5379,15 @@ insert into public.species_moves (species_id, slot, move_id) values (1, 1, 20),
 (1319, 1, 243),
 (1319, 2, 112),
 (1319, 3, 114),
-(1319, 4, 141);
+(1319, 4, 141),
+(1321, 1, 59),
+(1321, 2, 66),
+(1321, 3, 62),
+(1321, 4, 231),
+(1324, 1, 92),
+(1324, 2, 113),
+(1324, 3, 26),
+(1324, 4, 93);
 insert into public.learnset (line_id, move_id, lv, how) values (1, 174, 31, 'level'),
 (1, 6, 1, 'level'),
 (1, 144, 26, 'level'),
@@ -17503,7 +17516,57 @@ insert into public.learnset (line_id, move_id, lv, how) values (1, 174, 31, 'lev
 (440, 243, 20, 'level'),
 (440, 141, 0, 'tm'),
 (440, 169, 0, 'tm'),
-(440, 164, 0, 'tm') on conflict do nothing;
+(440, 164, 0, 'tm'),
+(441, 169, 56, 'level'),
+(441, 62, 77, 'level'),
+(441, 1, 1, 'level'),
+(441, 180, 14, 'level'),
+(441, 231, 1, 'level'),
+(441, 61, 33, 'level'),
+(441, 72, 49, 'level'),
+(441, 66, 1, 'level'),
+(441, 73, 23, 'level'),
+(441, 172, 19, 'level'),
+(441, 114, 1, 'level'),
+(441, 113, 8, 'level'),
+(441, 59, 1, 'level'),
+(441, 60, 68, 'level'),
+(441, 230, 10, 'level'),
+(441, 47, 0, 'tm'),
+(441, 59, 0, 'tm'),
+(441, 14, 0, 'tm'),
+(441, 66, 0, 'tm'),
+(441, 141, 0, 'tm'),
+(441, 169, 0, 'tm'),
+(441, 150, 0, 'tm'),
+(441, 164, 0, 'tm'),
+(441, 161, 0, 'tm'),
+(441, 162, 0, 'tm'),
+(441, 124, 0, 'tm'),
+(442, 92, 42, 'level'),
+(442, 118, 45, 'level'),
+(442, 169, 23, 'level'),
+(442, 115, 1, 'level'),
+(442, 193, 34, 'level'),
+(442, 93, 58, 'level'),
+(442, 145, 53, 'level'),
+(442, 87, 26, 'level'),
+(442, 26, 1, 'level'),
+(442, 89, 50, 'level'),
+(442, 114, 5, 'level'),
+(442, 113, 10, 'level'),
+(442, 90, 1, 'level'),
+(442, 121, 18, 'level'),
+(442, 89, 0, 'tm'),
+(442, 92, 0, 'tm'),
+(442, 141, 0, 'tm'),
+(442, 169, 0, 'tm'),
+(442, 118, 0, 'tm'),
+(442, 150, 0, 'tm'),
+(442, 145, 0, 'tm'),
+(442, 164, 0, 'tm'),
+(442, 121, 0, 'tm'),
+(442, 124, 0, 'tm') on conflict do nothing;
 insert into public.items (key, name, pocket, description, effect, drops, move_id, sort) values
  ('boost01', '실크스카프', 'hold', '지니게 하면 노말 타입 기술의 위력이 1.2배가 된다.', '{"boost": "노말"}', '{"place": 3, "battle": 2}', null, 0),
  ('boost02', '목탄', 'hold', '지니게 하면 불꽃 타입 기술의 위력이 1.2배가 된다.', '{"boost": "불꽃"}', '{"place": 3, "battle": 2}', null, 1),

@@ -20,7 +20,8 @@ const ident = Object.fromEntries(Object.entries(J.ident).map(([k, v]) => [Number
 const PA = 'https://raw.githubusercontent.com/PokeAPI/sprites/master/sprites/pokemon/versions/generation-v/black-white/animated';
 const SM = 'https://raw.githubusercontent.com/smogon/sprites/master/src/sprites/gen5';
 const UNDERSCORE = new Set([772, 782, 783, 784, 785, 786, 787, 788]);   // smogon 파일 이름: type_null, jangmo_o, tapu_koko …
-const src = (n, shiny) => (n <= 649 ? [`${PA}/${shiny ? 'shiny/' : ''}${n}.gif`, 'gif']
+const FORMS = J.forms || {};   // 이벤트 포켓몬 (0044, 도감 810~): smogon gen5 폼 그림 이름
+const src = (n, shiny) => (FORMS[n] ? [`${SM}/s${FORMS[n]}${shiny ? '-s' : ''}.png`, 'png'] : n <= 649 ? [`${PA}/${shiny ? 'shiny/' : ''}${n}.gif`, 'gif']
   : [`${SM}/s${UNDERSCORE.has(n) ? ident[n].replace(/-/g, '_') : ident[n].replace(/-/g, '')}${shiny ? '-s' : ''}.png`, 'png']);
 const only = process.argv[2] ? new Set(process.argv[2].split(',').map(Number)) : null;
 const jobs = Object.entries(J.species).map(([gid, n]) => [Number(gid), n]).filter(([gid]) => !only || only.has(gid));
