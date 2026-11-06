@@ -8,6 +8,10 @@
 //   기다리는 만남은 버튼 없이 자동으로 이어 잡기 · 해변 (zone 'beach') · 레벨은 서버가 구역 + 지도 (p_area) + 입구에서 거리 (p_dist) 로 정함.
 // 0043: 사막 · 모래바람 지대 (zone 'desert', 사파리존 서쪽 끝) — 들어서면 "모래바람이 거세게 분다!" · 지도 위에 늘 모래바람 (캔버스 알갱이, 최대 90개 ·
 //   움직임 줄이기 설정이면 움직이지 않는 옅은 모래빛만) · 마른 모래 풀숲이 풀숲처럼 다리를 가림.
+// 0048: 설원 (zone 'snow', 맨 위 길 · 눈보라 + 얼어붙은 연못에서 미끄러짐) · 용암 지대 ('lava', 왼쪽 아래 길 · 불티 · 아지랑이) ·
+//   발전소 ('plant', 왼쪽 위 건물 안 2층 · 깜빡이는 불빛 · 바닥 어디서나 만남) · 용의 굴 ('dragon') — 바다 · 사막 · 설원 · 용암을 모두 다녀오면
+//   (서버 safari_visit / safari_state.visited · dragon) 호수에 섬과 다리 가운데 계단이 생김. 운영자가 사파리존을 닫으면 (safari_state.locked) 덮개.
+//   나무 · 야자 · 선인장 · 돌기둥 · 건물처럼 위로 솟은 그림은 윗칸에 솟은 부분을 사람 위에 한 번 더 그림 (over 층) — 나무 뒤로 걸어가 보이게.
 // 키 큰 풀숲 (동굴은 바닥) 을 걸으면 야생 포켓몬이 나오고 사파리볼(하루 N개)로 잡는다.
 // 걸음 판정·볼 개수는 서버 (0033 safari_encounter(p_steps) · safari_result) — 앱은 만남 칸 걸음 수만 보냄.
 // 지도 글자·이동·전설 자리 = safari-maps.js. 그림: safari-tiles.png (16px 타일, 위치표 safari-tiles.js) ·
@@ -15,13 +19,13 @@
 // 지도는 그림이 오면 처음 들어갈 때 한 번 큰 캔버스 2장(물·꽃 움직임)에 미리 그려 두고, 매 프레임 카메라 부분만 옮겨 그림. 화면은 기기 픽셀 정수 배.
 // 화면은 한 번 만들고 계속 씀 (sync 가 지도 탭을 다시 그려도 걷던 자리·애니메이션이 이어지게).
 import { rpc, errorText } from './sb.js';
-import { sfx, bgmPush, bgmReady, bgmBeat, bgmPreload } from './sfx.js';
+import { sfx, bgmPush, bgmPreload, encounterCue } from './sfx.js';
 import { h, josa } from './ui.js';
 import { S } from './state.js';
 import { catchEncounter } from './app.js';
 import { monCell, spriteCanvas } from './sprites.js';
 import TI from '../img/safari-tiles.js';
-import { MAPS, SOLID, ENC, LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS } from './safari-maps.js';
+import { MAPS, SOLID, ENC, LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS, DRAGON_ISLE } from './safari-maps.js';
 import { flushResult, queuedResult, savePos, loadPos } from './safari-sync.js';
 
 export { LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS };
@@ -125,13 +129,39 @@ export async function startLegendEncounter(dex, ctx) {
 // ─────────────────────── 도트 그림 (그림판 → 미리 그린 맵) ───────────────────────
 const loadImg = (name) => new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = new URL(`../img/${name}`, import.meta.url).href; });
 const isSand = (c) => c === '#';
-const isWater = (c) => c === '~' || c === 'b';
+const isWater = (c) => c === '~' || c === 'b' || c === 'Z';
 const isFence = (c) => c === 'F';
 const isRock = (c) => c === 'M' || c === 'C';
 const isCWall = (c) => c === 'W' || c === 'B';
 const isPWall = (c) => c === 'P' || c === 'B';
 const isStair = (c) => c === '=' || c === 'E';
 const isMesa = (c) => c === 'M';
+const isPlW = (c) => c === 'W' || c === 'p' || c === 'q';
+// 위로 솟은 그림 (지도 종류 → 글자 → [타일 이름, 바닥 칸 높이]): 바닥 칸보다 위로 솟은 부분은 over 층에 한 번 더 (사람 · 사육사 위)
+const TALLS = {
+  out: { T: ['tree', 1], H: ['plbuild', 5] }, beach: { T: ['palm', 1] }, shrine: { I: ['spillar', 1] },
+  desert: { C: ['dcactus', 1], P: ['dpillar', 1], D: ['ddune', 2] },
+  snow: { T: ['snpine', 1], H: ['sncabin', 2] }, lava: { T: ['lvtree', 1] }, plant: { G: ['plgen', 2] },
+};
+// 풀숲 칸 그림 (만남 풀숲 · 흔들리는 잎 · 그 밑 바닥) — 주인공 다리를 가리는 지도 종류
+const GRASS = { out: ['tall', 'tallR', 'ground'], beach: ['tall', 'tallR', 'bsand0'], desert: ['dgrass', 'dgrassR', 'dsand0'],
+  snow: ['tall', 'tallR', 'snground0'], lava: ['lvgrass', 'lvgrassR', 'lvground0'] };
+// over 층: 위로 솟은 그림의 윗부분만 (없으면 null)
+function prerenderOver(sheet, m) {
+  const tall = TALLS[m.kind]; if (!tall) return null;
+  const R = m.rows, W = R[0].length, H = R.length;
+  const cv = document.createElement('canvas'); cv.width = W * TS; cv.height = H * TS;
+  const g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
+  let any = false;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const d = tall[R[y][x]]; if (!d) continue;
+    const t = TI[d[0]]; if (!t) continue;
+    const up = t[3] - d[1] * TS; if (up <= 0) continue;         // 바닥 칸 위로 솟은 줄 수
+    g.drawImage(sheet, t[0], t[1], t[2], up, x * TS, (y + 1) * TS - t[3], t[2], up);
+    any = true;
+  }
+  return any ? cv : null;
+}
 function prerender(sheet, f, m) {
   const R = m.rows, W = R[0].length, H = R.length, cave = m.kind === 'cave';
   // 이웃 비트 N1 E2 S4 W8 (이웃도 같은 땅이면 1). 맵 밖 = out
@@ -215,12 +245,75 @@ function prerender(sheet, f, m) {
         if (o) put(o, X, Y);
         continue;
       }
+      if (m.kind === 'snow') {       // 0048 설원: 눈 · 눈 덮인 흙 턱 · 돌계단 · 얼어붙은 연못 (소나무 · 오두막은 아래에서 따로)
+        if (c === 'M') {
+          const mk = maskOf(x, y, isMesa, true);
+          put('snground0', X, Y); put(`swall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
+          if (mk & 4) for (const k of corners(x, y, mk, isMesa, true)) put(`swallc${k}`, X, Y);
+          continue;
+        }
+        if (c === 'I') { put(`snice${maskOf(x, y, (k) => k === 'I')}`, X, Y); continue; }
+        if (c === '=') { put('snstairs', X, Y); continue; }
+        if (c === 'E') { put('snexit', X, Y); continue; }
+        put(`snground${(x * 7 + y * 3) % 5 === 0 ? 1 : 0}`, X, Y);
+        const o = { ',': 'tall', R: 'snrock', S: 'snsign', n: 'snman' }[c];
+        if (o) put(o, X, Y);
+        continue;
+      }
+      if (m.kind === 'lava') {       // 0048 용암 지대: 분홍빛 붉은 바위 · 검붉은 절벽 · 바위 계단 · 용암 (2장) · 분기공 (마른 나무는 아래에서 따로)
+        if (c === 'M') {
+          const mk = maskOf(x, y, isMesa, true);
+          put('lvground0', X, Y); put(`lwall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
+          if (mk & 4) for (const k of corners(x, y, mk, isMesa, true)) put(`lwallc${k}`, X, Y);
+          continue;
+        }
+        if (c === '~') {
+          const isL = (k) => k === '~', mk = maskOf(x, y, isL, true);
+          put(`lava${f}`, X, Y); put(`lavae${mk}`, X, Y);
+          for (const k of corners(x, y, mk, isL, true)) put(`lavac${k}`, X, Y);
+          continue;
+        }
+        if (c === '=') { put('lvstairs', X, Y); continue; }
+        if (c === 'E') { put('lvexit', X, Y); continue; }
+        put(`lvground${(x * 7 + y * 3) % 5 === 0 ? 1 : 0}`, X, Y);
+        const o = { ',': 'lvgrass', V: `lvvent${(f + x) & 1}`, R: 'lvrock', S: 'lvsign' }[c];
+        if (o) put(o, X, Y);
+        continue;
+      }
+      if (m.kind === 'plant') {      // 0048 발전소: 바깥 (검정) · 두꺼운 벽 (윗면 · 벽면) · 벽 속 관 · 바닥 타일 + 벽 밑 그늘 · 기계 (큰 발전기는 아래에서 따로)
+        if (c === 'X') { put('plvoid', X, Y); continue; }
+        if (isPlW(c)) {
+          put(`plw${maskOf(x, y, isPlW, false)}`, X, Y);
+          if (c === 'p') put('plpipeB', X, Y); else if (c === 'q') put('plpipeG', X, Y);
+          continue;
+        }
+        if (c === 'U' || c === 'V') { put('plstairs', X, Y); continue; }
+        if (c === 'E') { put('plexit', X, Y); continue; }
+        put(c === 'o' ? 'plswitch' : `plfloor${(x + y) % 7 === 0 ? 1 : 0}`, X, Y);
+        if (same(x, y - 1, isPlW, false)) put('plshadow', X, Y);
+        const o = { k: 'plrack', g: `plcon${(f + x) & 1}`, c: 'plcrate', S: 'plsign' }[c];
+        if (o) put(o, X, Y);
+        continue;
+      }
+      if (m.kind === 'dcave') {      // 0048 용의 굴: 보랏빛 바위벽 · 바닥 · 물 · 바위 · 용의 수정 · 사다리
+        if (isCWall(c)) {
+          const mk = maskOf(x, y, isCWall, true);
+          put('efloor0', X, Y); put(`ewall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
+          if (mk & 4) for (const k of corners(x, y, mk, isCWall, true)) put(`ewallc${k}`, X, Y);
+          continue;
+        }
+        if (c === '~') { water(x, y, X, Y); continue; }
+        put(c === 'U' ? 'eladder' : `efloor${(x * 7 + y * 3) % 3 === 0 ? 1 : 0}`, X, Y);
+        const o = { r: 'erock', O: 'eboulder', K: 'ecrystal', S: 'sign' }[c];
+        if (o) put(o, X, Y);
+        continue;
+      }
       if (c === '#') {
         const mk = maskOf(x, y, isSand, true); put(`sand${mk}`, X, Y);
         for (const k of corners(x, y, mk, isSand, true)) put(`sandc${k}`, X, Y);
         continue;
       }
-      if (isWater(c)) { water(x, y, X, Y); if (c === 'b') put('bridge', X, Y); continue; }
+      if (isWater(c)) { water(x, y, X, Y); if (c === 'b' || c === 'Z') put('bridge', X, Y); if (c === 'Z') put('bstair', X, Y); continue; }
       if (isRock(c)) {
         const mk = maskOf(x, y, isRock);
         put('ground', X, Y); put(`mwall${mk}_${(x * 7 + y * 13) % 3}`, X, Y);
@@ -239,6 +332,11 @@ function prerender(sheet, f, m) {
   }
   // 나무는 위 줄부터: 뾰족한 머리가 윗칸으로 8px 솟아 윗나무 밑동을 덮음 (숲이 빽빽해 보임)
   if (m.kind === 'out') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('tree', x * TS, y * TS);
+  if (m.kind === 'out') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'H') put('plbuild', x * TS, y * TS);   // 0048 발전소 단지 96×88 (H = 왼쪽 아래 칸)
+  if (m.kind === 'snow' || m.kind === 'lava' || m.kind === 'plant') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {   // 0048 눈 소나무 · 오두막 · 마른 나무 · 큰 발전기
+    const n = TALLS[m.kind][R[y][x]]?.[0];
+    if (n) put(n, x * TS, y * TS);
+  }
   if (m.kind === 'beach') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('palm', x * TS, y * TS);   // 야자나무 16×24
   if (m.kind === 'shrine') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'I') put('spillar', x * TS, y * TS);   // 16×32, 윗칸으로 솟음
   if (m.kind === 'desert') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {   // 기둥 선인장 16×24 · 사암 돌기둥 16×32 · 모래 언덕 48×32 (D = 왼쪽 아래 칸)
@@ -257,7 +355,7 @@ let V = null;            // 화면 · 상태
 const P = { x: START.x, y: START.y, dir: START.dir, fx: START.x, fy: START.y, moving: false, t0: 0, from: null, stepN: 0 };
 let mapId = START.map, M = MAPS[mapId];
 const MW = () => M.rows[0].length, MH = () => M.rows.length;
-const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW() || y >= MH() ? ({ cave: 'W', ultra: 'X', shrine: 'P', desert: 'M' }[M.kind] || 'T') : M.rows[y][x]);
+const tileAt = (x, y) => (x < 0 || y < 0 || x >= MW() || y >= MH() ? ({ cave: 'W', ultra: 'X', shrine: 'P', desert: 'M', lava: 'M', plant: 'X', dcave: 'W' }[M.kind] || 'T') : M.rows[y][x]);
 // 이 칸의 만남 구역: 'grass' | 'pond' | 'cave' | 'deep' | 'ultra' | 'beach' | 'desert' (만남 칸이 아니면 null)
 //   0040: 사파리존 풀숲 중 물 (연못 · 다리) 2칸 안 = 'pond' (물 타입 포켓몬도 나옴)
 export function zoneAt(x, y) {
@@ -294,8 +392,8 @@ export function viewSafari() {
 
 function build() {
   let sheet = null, hero = null, keeper = null;   // 그림이 오기 전엔 빈 배경
-  const cache = {};                                // 지도 id → [미리 그린 맵 2장]
-  const mapsOf = (id) => (sheet ? (cache[id] ||= [prerender(sheet, 0, MAPS[id]), prerender(sheet, 1, MAPS[id])]) : null);
+  const cache = {};                                // 지도 id → [미리 그린 맵 2장, over 층 (없으면 null)]
+  const mapsOf = (id) => (sheet ? (cache[id] ||= [prerender(sheet, 0, MAPS[id]), prerender(sheet, 1, MAPS[id]), prerenderOver(sheet, MAPS[id])]) : null);
   Promise.all([loadImg('safari-tiles.png'), loadImg('safari-hero.png'), loadImg('safari-keeper.png')]).then(([sh, hr, kp]) => {
     sheet = sh; hero = hr; keeper = kp; mapsOf(mapId);
   }).catch(() => {});
@@ -422,16 +520,19 @@ function build() {
   };
   let placeTimer = 0;
   const showPlace = (name) => { place.textContent = name; place.classList.add('on'); clearTimeout(placeTimer); placeTimer = setTimeout(() => place.classList.remove('on'), 1800); };
-  const HINT = { desert: '마른 모래 풀숲을 걸으면 땅 · 바위 포켓몬이 나와요!', beach: '얕은 물과 바닷가 풀숲을 걸으면 물 포켓몬이 나와요!', out: '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!', cave: '동굴 바닥을 걸으면 야생 포켓몬이 나와요!', ultra: '울트라 스페이스를 걸으면 울트라비스트가 나와요!', shrine: '전설의 포켓몬이 잠든 제단이다…' };
+  const HINT = { snow: '눈 속 풀숲을 걸으면 얼음 · 페어리 포켓몬이 나와요!', lava: '잿빛 풀숲을 걸으면 불꽃 · 강철 포켓몬이 나와요!',
+    plant: '발전소 바닥을 걸으면 전기 · 고스트 포켓몬이 나와요!', dcave: '용의 굴 바닥을 걸으면 드래곤 포켓몬이 나와요!', desert: '마른 모래 풀숲을 걸으면 땅 · 바위 포켓몬이 나와요!', beach: '얕은 물과 바닷가 풀숲을 걸으면 물 포켓몬이 나와요!', out: '키 큰 풀숲을 걸으면 야생 포켓몬이 나와요!', cave: '동굴 바닥을 걸으면 야생 포켓몬이 나와요!', ultra: '울트라 스페이스를 걸으면 울트라비스트가 나와요!', shrine: '전설의 포켓몬이 잠든 제단이다…' };
   let hintKind = '';
   const sayHint = () => { if (!closed() && !talkQ && hintKind !== M.kind) { hintKind = M.kind; say(HINT[M.kind]); } };
-  setTimeout(() => (M.kind === 'desert' ? sandMsg() : sayHint()), 900);
+  setTimeout(() => (AREA_MSG[M.kind] ? sandMsg() : sayHint()), 900);
   // 0043 사막: 3세대처럼 글 상자에 "모래바람이 거세게 분다!" (A · 화면을 누르거나 2.4초 뒤 저절로 닫힘) → 그 땅의 안내
-  const SAND_MSG = '모래바람이 거세게 분다!';
+  //   0048: 설원 · 용암 지대 · 발전소 · 용의 굴도 들어설 때 한 줄
+  const AREA_MSG = { desert: '모래바람이 거세게 분다!', snow: '눈이 펑펑 내리고 있다!', lava: '후끈한 열기가 느껴진다!',
+    plant: '전기가 찌릿찌릿 흐르고 있다… 불빛이 깜빡인다!', dcave: '어디선가 용의 기운이 느껴진다…' };
   function sandMsg() {
-    if (M.kind !== 'desert' || !root.isConnected) return;
+    if (!AREA_MSG[M.kind] || !root.isConnected) return;
     if (talkQ || menuQ || busy || seq) { sayHint(); return; }
-    const p = talk([SAND_MSG]);
+    const p = talk([AREA_MSG[M.kind]]);
     const q = talkQ;
     const close = () => { if (talkQ !== q) return; if (q.typing) { advance(); setTimeout(close, 500); } else advance(); };
     setTimeout(close, 2400);
@@ -450,9 +551,71 @@ function build() {
       st = await rpc('safari_state', {});
       hintsFromServer(st?.legends);          // 0038: 사육사 · 전설 자리 = 서버의 진짜 조건
     } catch (e) { if (!e.offline) say(errorText(e.message)); }
-    loading = false; paintInfo();
+    loading = false;
+    try { localStorage.setItem('sfLocked', st?.locked ? '1' : '0'); } catch { /* */ }
+    applyDragon(); paintInfo();
+    if (st && !st.pending && (st.locked || (mapId === 'dragon' && !st.dragon)) && mapId !== START.map && !busy) leaveToStart();
+    else noteVisit(mapId);
     maybeResume();
   };
+  // ── 0048 방문 기록 · 용의 굴 · 잠금 ──
+  // 지도 id → 서버 방문 구역 (바다 · 사막 · 설원 · 용암 네 곳을 모두 다녀오면 용의 굴이 열림)
+  const AREA_OF = { beach: 'beach', desert: 'desert', snow: 'snow', lava: 'lava', plant1: 'plant', plant2: 'plant', dragon: 'dragon' };
+  const visiting = new Set();
+  function noteVisit(id) {
+    const a = AREA_OF[id];
+    if (!a || !st || st.locked || !S.online || visiting.has(a) || (st.visited || []).includes(a)) return;
+    visiting.add(a);
+    rpc('safari_visit', { p_area: a }, { retries: 1 }).then((r) => {
+      if (!r) return;
+      st = { ...st, visited: r.visited, dragon: r.dragon };
+      applyDragon();
+      if (r.opened) dragonOpened();
+    }).catch((e) => { if (e?.message === 'SAFARI_CLOSED') refresh(); }).finally(() => visiting.delete(a));
+  }
+  // 열리면 사파리존 호수에 섬 + 다리 가운데 계단 (Z → 용의 굴). 열리기 전엔 없음.
+  const BASE_ROWS = MAPS.safari.rows;
+  let dragonOn = false;
+  function applyDragon() {
+    const on = !!st?.dragon;
+    if (on === dragonOn) return;
+    dragonOn = on;
+    MAPS.safari.rows = on ? DRAGON_ISLE.rows : BASE_ROWS;
+    if (on) MAPS.safari.warps[DRAGON_ISLE.at] = [...DRAGON_ISLE.warp]; else delete MAPS.safari.warps[DRAGON_ISLE.at];
+    delete cache.safari;
+    if (mapId === 'safari') { mapsOf('safari'); if (solidAt(P.x, P.y)) { P.x = P.fx = START.x; P.y = P.fy = START.y; } }
+  }
+  const seenKey = () => `sfDragonSeen:${S.snap?.profile?.student_id || ''}`;
+  let sparkT = -1;                // 섬이 처음 보일 때 반짝반짝 (performance.now)
+  // 네 곳째를 다녀와 방금 열림 → 멀리서 땅이 울림
+  async function dragonOpened() {
+    while ((busy || talkQ || menuQ) && root.isConnected) await new Promise((r) => setTimeout(r, 400));
+    if (!root.isConnected) return;
+    busy = true;
+    try { try { sfx.fanfare(); } catch { /* */ } await talk(['어딘가 멀리서 땅이 울리는 소리가 들렸다…', '사파리존 호수에 무언가 나타난 것 같다!']); } finally { busy = false; }
+  }
+  // 열린 뒤 사파리존 호수 가까이에 처음 오면 (기기마다 한 번) 섬이 반짝이며 나타남
+  function maybeSeeIsle() {
+    if (!dragonOn || mapId !== 'safari' || busy || talkQ || menuQ) return;
+    const [ix, iy] = DRAGON_ISLE.centre;
+    if (Math.abs(P.x - ix) > 8 || Math.abs(P.y - iy) > 6) return;
+    try { if (localStorage.getItem(seenKey())) return; localStorage.setItem(seenKey(), '1'); } catch { /* */ }
+    busy = true; clearPad(); sparkT = performance.now();
+    try { sfx.fanfare(); } catch { /* */ }
+    talk(['호수 한가운데에 풀이 무성한 섬이 나타났다!', '다리 가운데에 아래로 내려가는 계단이 생겼다…', '용의 굴로 이어지는 것 같다! 아주 강한 포켓몬이 산다는데…'])
+      .finally(() => { busy = false; });
+  }
+  // 닫혔거나 (운영자) 열리지 않은 용의 굴에 있으면 → 입구로 (화면이 어두워졌다 밝아짐)
+  async function leaveToStart() {
+    busy = true;
+    try {
+      await fadeTo(1, 400);
+      enterMap(START.map, START.x, START.y, START.dir, false);
+      await new Promise((r) => setTimeout(r, 300));
+      await fadeTo(0, 400);
+    } finally { busy = false; }
+    if (st?.locked) say('사파리존이 닫혔어요. 지금은 학교 곳곳의 QR을 찾아보세요!', 5000);
+  }
   // 0040: 끝내지 않은 만남 (앱을 닫았다 열었거나 글 상자 중에 만남) → 버튼 없이 바로 이어 잡기.
   //   같은 만남은 15초에 한 번만 (박스가 꽉 참 · 인터넷 끊김이면 catchEncounter 가 알려 주고 만남은 서버에 그대로 남음 → 풀숲을 걸으면 다시)
   const autoTried = new Map();
@@ -466,14 +629,18 @@ function build() {
   }
   window.addEventListener('online', () => { if (root.isConnected) refresh(); });
   // 0040: 덮개는 사파리볼을 다 썼을 때만 (만남 상한 없음)
-  const closed = () => (!st || st.pending ? null : st.balls_left <= 0 ? 'balls' : null);
+  let lockedHint = (() => { try { return localStorage.getItem('sfLocked') === '1'; } catch { return false; } })();   // 0048: 지난번에 닫혀 있었으면 상태를 받기 전에도 덮개
+  const closed = () => (st?.pending ? null : (st ? st.locked : lockedHint) ? 'locked' : !st ? null : st.balls_left <= 0 ? 'balls' : null);
   function paintInfo() {
     ballsEl.textContent = st ? `${st.balls_left}/${st.balls_daily}` : '-';
     ballsEl.nextElementSibling?.remove(); if (st?.next_reset_at) ballsEl.after(h('small.sf-reset', `다음 충전 ${new Date(st.next_reset_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' })}`));   // 0037 (branch-evo): 사파리볼 충전 시각
     encEl.textContent = !S.online ? '인터넷이 연결되면 포켓몬이 나와요' : st ? (queued ? '남겨 둔 잡기 결과를 보내는 중…' : '') : '불러오는 중…';
     const why = closed();
     cover.hidden = !why || seq;          // 볼을 다 쓴 장면 (seq) 중에는 글 상자가 보이게 가리지 않음
-    if (why) {   // 0037: 충전 주기(1~24시간)마다 다시 채워짐 → 다음 충전 시각을 알려 줌
+    if (st) lockedHint = !!st.locked;
+    if (why === 'locked') {   // 0048: 운영자가 사파리존을 닫음
+      cover.replaceChildren(h('b', '사파리존은 아직 닫혀 있어요'), h('span', '지금은 학교 곳곳의 QR을 찾아보세요!'));
+    } else if (why) {   // 0037: 충전 주기(1~24시간)마다 다시 채워짐 → 다음 충전 시각을 알려 줌
       const at = st?.next_reset_at ? new Date(st.next_reset_at) : null;
       const hm = at ? at.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
       const sameDay = at && at.toDateString() === new Date().toDateString();
@@ -548,7 +715,7 @@ function build() {
     if (inflight || pend.n <= 0 || !S.online || !st || closed() || busy) return;
     const n = Math.min(pend.n, 1000), zone = pend.zone, area = pend.area || mapId; pend.n -= n; inflight = true;
     let r = null;
-    try { r = await reportSteps(n, zone, area, areaDist()); } catch (e) { if (!e.offline) say(errorText(e.message)); }
+    try { r = await reportSteps(n, zone, area, areaDist()); } catch (e) { if (e.message === 'SAFARI_CLOSED') { inflight = false; pend.n = 0; refresh(); return; } if (!e.offline) say(errorText(e.message)); }
     inflight = false;
     if (!r) return;
     st = { ...st, ...r };
@@ -559,12 +726,7 @@ function build() {
   async function encounter(e) {
     busy = true; clearPad();
     const music = bgmPush('wild');
-    const on = await bgmReady('wild', 1200);
-    const hit = on ? bgmBeat('wild') : null;
-    const now = performance.now();
-    if (hit == null) { sfx.scan(); bubbleT = now; flashT = now + 450; }
-    else { bubbleT = now + hit; flashT = now + (bgmBeat('wild', hit + 1) ?? hit + 325) + 325; }   // 타격 다음 박 + 1박 = 2박 뒤
-    await new Promise((res) => setTimeout(res, flashT - now + 850));
+    const q = await encounterCue('wild'); bubbleT = q.bubbleT; flashT = q.flashT; await new Promise((res) => setTimeout(res, q.doneT - performance.now()));   // '!' = 곡 시작, 번쩍 = 곡의 타격 (sfx.js encounterCue)
     flashT = -1; bubbleT = -1;
     await startCatch(e, music);
   }
@@ -580,7 +742,7 @@ function build() {
       await refresh();
       if (had > 0 && st && st.balls_left <= 0 && !st.pending) await ballsOut();
       seq = false; busy = false; paintInfo();
-      if (!closed()) say({ cave: '동굴 안을 더 걸어 볼까요?', ultra: '빛나는 발판을 더 걸어 볼까요?', beach: '물가를 더 걸어 볼까요?', desert: '모래 풀숲을 더 걸어 볼까요?' }[M.kind] || '풀숲을 더 걸어 볼까요?', 2500);
+      if (!closed()) say({ snow: '눈 속 풀숲을 더 걸어 볼까요?', lava: '잿빛 풀숲을 더 걸어 볼까요?', plant: '발전소 안을 더 걸어 볼까요?', dcave: '용의 굴을 더 걸어 볼까요?', cave: '동굴 안을 더 걸어 볼까요?', ultra: '빛나는 발판을 더 걸어 볼까요?', beach: '물가를 더 걸어 볼까요?', desert: '모래 풀숲을 더 걸어 볼까요?' }[M.kind] || '풀숲을 더 걸어 볼까요?', 2500);
     }
   }
   // 사파리볼을 다 씀 → 3세대처럼 두 줄 → 화면이 까매지고 사파리존 입구로
@@ -603,12 +765,13 @@ function build() {
     if (!raf) { fade.a = to; fade.res = null; res(); }          // 화면이 안 그려지는 중이면 바로
   });
   function enterMap(id, x, y, dir, banner = true) {
-    const wasDesert = M.kind === 'desert';
+    const wasKind = M.kind;
     mapId = id; M = MAPS[id];
     P.x = P.fx = x; P.y = P.fy = y; P.dir = dir; P.moving = false; P.from = null;
     mapsOf(id);
     savePos({ map: id, x, y, dir });
-    if (banner) { showPlace(M.name); setTimeout(M.kind === 'desert' && !wasDesert ? sandMsg : sayHint, 700); }   // 바깥 → 동굴 → 울트라 스페이스처럼 땅이 바뀌면 그 땅의 안내
+    if (banner) { showPlace(M.name); setTimeout(AREA_MSG[M.kind] && wasKind !== M.kind ? sandMsg : sayHint, 700); }   // 바깥 → 동굴 → 울트라 스페이스처럼 땅이 바뀌면 그 땅의 안내
+    noteVisit(id);                                                                    // 0048: 바다 · 사막 · 설원 · 용암 · 발전소 · 용의 굴 방문 기록
   }
   async function go([id, x, y, dir, fx]) {
     busy = true; clearPad();
@@ -643,6 +806,7 @@ function build() {
               icon: () => spriteCanvas(speciesIdOf(l.dex), 32, seen ? 'normal' : 'silhouette') };
           }),
           ...ZONE_HINTS.map((z) => ({ kind: 'zone', z, name: z.name, sub: '', mark: '', icon: z.zone === 'ultra' ? wormIcon : null })),
+          { kind: 'dragon', name: dragonOn ? '용의 굴' : '호수의 소문', sub: dragonOn ? '' : `다녀온 곳 ${DRAGON_ISLE.need.filter(([a]) => (st?.visited || []).includes(a)).length}/4`, mark: dragonOn ? '!' : '' },
           { kind: 'quit', name: '그만두기', sub: '', mark: '' },
         ];
         const i = await choose(first ? '어떤 포켓몬에 대한 이야기를 듣고 싶니?' : '또 궁금한 게 있니?', items);
@@ -650,6 +814,14 @@ function build() {
         const it = items[i];
         if (!it || it.kind === 'quit') { await talk(['조심해서 다녀오렴! 동굴 바닥에서도 야생 포켓몬이 나온단다.']); break; }
         if (it.kind === 'zone') { await talk([`${josa(it.z.name, "은", "는")} ${it.z.where}에 있다는구나.`, `${it.z.cond}.`, it.z.more]); continue; }
+        if (it.kind === 'dragon') {        // 0048: 바다 · 사막 · 설원 · 용암을 모두 다녀오면 호수에 섬과 계단 → 용의 굴
+          const v = st?.visited || [];
+          const prog = DRAGON_ISLE.need.map(([a, n]) => `${n} ${v.includes(a) ? '✔' : '·'}`).join('  ');
+          await talk(dragonOn
+            ? ['호수 한가운데에 섬이 나타났지? 다리 가운데 계단 아래가 용의 굴이란다.', '드래곤 타입과 아주 강한 포켓몬 (삼삼드래 · 미끄래곤 · 짜랑고우거 같은) 이 산다는구나. Lv.40이 넘는대!']
+            : ['바다 · 사막 · 설원 · 용암을 모두 다녀오면 호수에 무언가 나타난대…', `지금까지 다녀온 곳: ${prog}`]);
+          continue;
+        }
         const l = it.l, nm = it.seen ? l.name : '그 포켓몬';
         await talk([
           it.seen ? `${l.name}…` : `${l.teaser}… 아직 아무도 제대로 본 적이 없다는 포켓몬이란다.`,
@@ -778,8 +950,8 @@ function build() {
       return false;
     }
     lastSign = '';
-    P.from = { x: P.x, y: P.y }; P.x = nx; P.y = ny; P.moving = true; P.t0 = now; P.stepN++;
-    if ((M.kind === 'out' || M.kind === 'beach' || M.kind === 'desert') && tileAt(nx, ny) === ',') rustle = { x: nx, y: ny, t0: now };   // 풀숲에 들어서면 잎이 흔들림
+    P.from = { x: P.x, y: P.y }; P.x = nx; P.y = ny; P.moving = true; P.t0 = now; P.stepN++; P.slide = false;
+    if (GRASS[M.kind] && tileAt(nx, ny) === ',') rustle = { x: nx, y: ny, t0: now };   // 풀숲에 들어서면 잎이 흔들림
     return true;
   }
   // 후보 방향을 차례로 (대각선: 한쪽이 막히면 다른 쪽) — 걸었으면 그 축을 기억해 다음엔 다른 축
@@ -795,7 +967,13 @@ function build() {
     P.moving = false; P.fx = P.x; P.fy = P.y;
     savePos({ map: mapId, x: P.x, y: P.y, dir: P.dir });
     const w = M.warps[`${P.x},${P.y}`];
-    if (w) { go(w); return; }
+    if (w) { P.slide = false; go(w); return; }
+    if (M.kind === 'snow' && tileAt(P.x, P.y) === 'I') {    // 0048: 얼어붙은 연못 — 막힐 때까지 같은 쪽으로 미끄러짐 (서 있는 모습, 만남 칸 아님)
+      const [dx, dy] = DIRS[P.dir];
+      if (!solidAt(P.x + dx, P.y + dy)) { P.from = { x: P.x, y: P.y }; P.x += dx; P.y += dy; P.moving = true; P.t0 = performance.now(); P.slide = true; return; }
+    }
+    P.slide = false;
+    maybeSeeIsle();
     const z = zoneAt(P.x, P.y);
     if (z && st && !closed() && !sprayOn()) {             // 0040: 스프레이 중에는 만남 걸음을 보내지 않음
       if ((pend.zone !== z || pend.area !== mapId) && pend.n > 0) send();          // 다른 구역 · 지도 걸음은 섞지 않고 먼저 보냄
@@ -846,7 +1024,7 @@ function build() {
     }
     draw(now);
   }
-  const shadow = (cx, by, w) => { g.fillStyle = { desert: 'rgba(130,80,30,.3)', beach: 'rgba(120,90,40,.28)', cave: 'rgba(30,16,8,.3)', ultra: 'rgba(8,0,24,.4)', shrine: 'rgba(90,70,30,.3)' }[M.kind] || 'rgba(20,60,40,.25)'; g.fillRect(cx - w / 2, by - 2, w, 2); g.fillRect(cx - w / 2 + 1, by - 1, w - 2, 1); };
+  const shadow = (cx, by, w) => { g.fillStyle = { snow: 'rgba(80,84,140,.25)', lava: 'rgba(90,20,10,.3)', plant: 'rgba(40,50,40,.3)', dcave: 'rgba(10,10,30,.35)', desert: 'rgba(130,80,30,.3)', beach: 'rgba(120,90,40,.28)', cave: 'rgba(30,16,8,.3)', ultra: 'rgba(8,0,24,.4)', shrine: 'rgba(90,70,30,.3)' }[M.kind] || 'rgba(20,60,40,.25)'; g.fillRect(cx - w / 2, by - 2, w, 2); g.fillRect(cx - w / 2 + 1, by - 1, w - 2, 1); };
   const drawBang = (bx, by) => {
     g.fillStyle = '#283040'; g.fillRect(bx - 1, by - 1, 8, 11);
     g.fillStyle = '#ffffff'; g.fillRect(bx, by, 6, 9);
@@ -859,9 +1037,9 @@ function build() {
     camX = mw <= VW ? -Math.floor((VW - mw) / 2) : Math.max(0, Math.min(mw - VW, px - Math.floor(VW / 2)));
     camY = mh <= VH ? -Math.floor((VH - mh) / 2) : Math.max(0, Math.min(mh - VH, py - Math.floor(VH / 2)));
     const maps = mapsOf(mapId);
-    if (!maps || !hero) { g.fillStyle = { desert: '#e8c070', beach: '#3c84d0', cave: '#2c2018', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
+    if (!maps || !hero) { g.fillStyle = { snow: '#eceef8', lava: '#d8968a', plant: '#101014', dcave: '#1c1e2c', desert: '#e8c070', beach: '#3c84d0', cave: '#2c2018', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#8cd6b8'; g.fillRect(0, 0, VW, VH); return; }
     const map = maps[af];
-    if (mw < VW || mh < VH) { g.fillStyle = { desert: '#64301a', beach: '#3c84d0', cave: '#140c08', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#1c5420'; g.fillRect(0, 0, VW, VH); }
+    if (mw < VW || mh < VH) { g.fillStyle = { snow: '#24402c', lava: '#40100c', plant: '#101014', dcave: '#202438', desert: '#64301a', beach: '#3c84d0', cave: '#140c08', ultra: '#120a24', shrine: '#583838' }[M.kind] || '#1c5420'; g.fillRect(0, 0, VW, VH); }
     const sx = Math.max(0, camX), sy = Math.max(0, camY);
     const cw = Math.min(mw - sx, VW - (sx - camX)), ch = Math.min(mh - sy, VH - (sy - camY));
     g.drawImage(map, sx, sy, cw, ch, sx - camX, sy - camY, cw, ch);
@@ -870,8 +1048,8 @@ function build() {
     const grass = (gx, gy, sy0) => {
       const X = gx * TS - camX, Y = gy * TS - camY;
       if (rustle && rustle.x === gx && rustle.y === gy && now - rustle.t0 < RUSTLE_MS) {
-        const ph = Math.max(0, Math.floor((now - rustle.t0) / (RUSTLE_MS / 2))) % 2, dz = M.kind === 'desert';   // ≥ 0: rAF 시각이 걸음 시작 (performance.now) 보다 조금 이를 수 있음
-        const t = TI[`${dz ? 'dgrassR' : 'tallR'}${ph}`], gr = dz ? TI.dsand0 : M.kind === 'beach' ? TI.bsand0 : TI.ground;
+        const ph = Math.max(0, Math.floor((now - rustle.t0) / (RUSTLE_MS / 2))) % 2, gk = GRASS[M.kind] || GRASS.out;   // ≥ 0: rAF 시각이 걸음 시작 (performance.now) 보다 조금 이를 수 있음
+        const t = TI[`${gk[1]}${ph}`], gr = TI[gk[2]];
         g.drawImage(sheet, gr[0], gr[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
         g.drawImage(sheet, t[0], t[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
       } else g.drawImage(map, gx * TS, gy * TS + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
@@ -882,13 +1060,13 @@ function build() {
     list.push([P.fy, () => {
       const hx = Math.round(P.fx * TS) - camX, hy = Math.round(P.fy * TS) - camY + TS - HH;
       const k = P.moving ? (now - P.t0) / STEP_MS : 0;
-      const fi = P.moving && k > 0.15 && k < 0.85 ? (P.stepN % 2 ? 1 : 2) : 0;
+      const fi = P.moving && !P.slide && k > 0.15 && k < 0.85 ? (P.stepN % 2 ? 1 : 2) : 0;
       shadow(hx + 8, hy + HH, 10);
       const dir = spinT > 0 ? ['down', 'left', 'up', 'right'][Math.floor((now - spinT) / 90) % 4] : P.dir;
       g.drawImage(hero, fi * HW, DIR_ROW[dir] * HH, HW, HH, hx, hy, HW, HH);
       // 풀숲 안이면 다리를 풀잎이 가림 (미리 그린 맵의 그 칸 아랫부분을 다시 덮음)
       const gx = Math.round(P.fx), gy = Math.round(P.fy);
-      if ((M.kind === 'out' || M.kind === 'beach' || M.kind === 'desert') && tileAt(gx, gy) === ',') grass(gx, gy, 9);      // 3세대처럼 허리 아래 (다리 · 재킷 아랫단 7px) 를 앞쪽 풀잎이 가림
+      if (GRASS[M.kind] && tileAt(gx, gy) === ',') grass(gx, gy, 9);      // 3세대처럼 허리 아래 (다리 · 재킷 아랫단 7px) 를 앞쪽 풀잎이 가림
       else if (M.kind === 'beach' && tileAt(gx, gy) === 'w' && !P.moving) grass(gx, gy, 12);        // 얕은 물: 발목까지 물에 잠김
       if (bubbleT > 0 && now >= bubbleT) drawBang(hx + 5, hy - 8);
     }]);
@@ -919,7 +1097,12 @@ function build() {
       }]);
     }
     list.sort((a, b) => a[0] - b[0]).forEach((e) => e[1]());
+    if (maps[2]) g.drawImage(maps[2], sx, sy, cw, ch, sx - camX, sy - camY, cw, ch);     // 0048: 나무 · 건물의 솟은 윗부분이 사람 위로 (나무 뒤로 걸어가 보임)
+    if (sparkT > 0) isleSparkle(now);
     if (M.kind === 'desert') sandstorm(now);
+    else if (M.kind === 'snow') snowfall(now);
+    else if (M.kind === 'lava') embers(now);
+    else if (M.kind === 'plant') flicker(now);
     // 만남: 화면 번쩍
     if (flashT > 0 && now > flashT) {
       const ph = Math.floor((now - flashT) / 110);
@@ -961,12 +1144,77 @@ function build() {
       }
     }
   }
+  // ── 0048 설원 눈보라: 흰 눈송이가 좌우로 흔들리며 내림 (최대 FLAKE_N 개, 화면 픽셀 기준) · 움직임 줄이기 = 멈춘 눈송이 몇 개 + 옅은 흰빛 ──
+  const FLAKE_N = 70;
+  const fl = { x: new Float32Array(FLAKE_N), y: new Float32Array(FLAKE_N), v: new Float32Array(FLAKE_N), s: new Uint8Array(FLAKE_N), t: 0 };
+  for (let i = 0; i < FLAKE_N; i++) { fl.x[i] = Math.random() * 512; fl.y[i] = Math.random() * 512; fl.v[i] = 0.5 + Math.random(); fl.s[i] = Math.random() < 0.3 ? 2 : 1; }
+  function snowfall(now) {
+    const dt = Math.min(0.1, fl.t ? (now - fl.t) / 1000 : 0); fl.t = now;
+    const still = rmq.matches;
+    g.fillStyle = 'rgba(236,240,255,.12)'; g.fillRect(0, 0, VW, VH);
+    const n = Math.min(FLAKE_N, Math.round((VW * VH) / (still ? 1200 : 380)));
+    const pw = VW + 16, ph = VH + 16, ox = camX * 0.5, oy = camY * 0.5;
+    for (let i = 0; i < n; i++) {
+      if (!still) { fl.y[i] += 28 * fl.v[i] * dt; fl.x[i] += Math.sin(now / 700 + i) * 10 * dt - 6 * dt; }
+      const x = ((((fl.x[i] - ox) % pw) + pw) % pw) - 8, y = ((((fl.y[i] - oy) % ph) + ph) % ph) - 8;
+      g.fillStyle = fl.s[i] === 2 ? 'rgba(255,255,255,.95)' : 'rgba(244,246,255,.8)';
+      g.fillRect(Math.round(x), Math.round(y), fl.s[i], fl.s[i]);
+    }
+  }
+  // ── 0048 용암 지대: 붉은 열기 빛 (천천히 일렁임) + 아래에서 올라오는 불티 (최대 EMBER_N 개) · 움직임 줄이기 = 멈춘 붉은빛 + 불티 몇 개 ──
+  const EMBER_N = 40;
+  const em = { x: new Float32Array(EMBER_N), y: new Float32Array(EMBER_N), v: new Float32Array(EMBER_N), t: 0 };
+  for (let i = 0; i < EMBER_N; i++) { em.x[i] = Math.random() * 512; em.y[i] = Math.random() * 512; em.v[i] = 0.5 + Math.random(); }
+  function embers(now) {
+    const dt = Math.min(0.1, em.t ? (now - em.t) / 1000 : 0); em.t = now;
+    const still = rmq.matches;
+    const pulse = still ? 0 : (Math.sin(now / 900) + 1) * 0.5;
+    g.fillStyle = `rgba(255,96,40,${(0.07 + pulse * 0.05).toFixed(3)})`; g.fillRect(0, 0, VW, VH);
+    if (!still) {                       // 아지랑이: 옅은 밝은 가로 띠가 위로 천천히
+      for (let j = 0; j < 3; j++) {
+        const yy = VH - ((now / (40 + j * 13) + j * 47) % (VH + 20)) + 10;
+        g.fillStyle = 'rgba(255,200,150,.06)'; g.fillRect(0, Math.round(yy), VW, 2);
+      }
+    }
+    const n = Math.min(EMBER_N, Math.round((VW * VH) / (still ? 2400 : 700)));
+    const pw = VW + 8, ph = VH + 8, ox = camX * 0.4, oy = camY * 0.4;
+    for (let i = 0; i < n; i++) {
+      if (!still) { em.y[i] -= 22 * em.v[i] * dt; em.x[i] += Math.sin(now / 500 + i * 1.7) * 8 * dt; }
+      const x = ((((em.x[i] - ox) % pw) + pw) % pw) - 4, y = ((((em.y[i] - oy) % ph) + ph) % ph) - 4;
+      const on = still || ((now / 120 + i) | 0) % 5 !== 0;
+      if (!on) continue;
+      g.fillStyle = i % 3 ? 'rgba(255,170,60,.9)' : 'rgba(255,236,120,.95)';
+      g.fillRect(Math.round(x), Math.round(y), 1, i % 4 ? 1 : 2);
+    }
+  }
+  // ── 0048 발전소: 형광등이 가끔 깜빡임 (잠깐 어두워짐) · 움직임 줄이기 = 늘 같은 옅은 그늘 ──
+  function flicker(now) {
+    let a = 0.06;
+    if (!rmq.matches) {
+      const k = Math.floor(now / 90), r = Math.sin(k * 12.9898) * 43758.5453, rr = r - Math.floor(r);
+      if (rr > 0.94) a = 0.3; else if (rr > 0.88) a = 0.16;
+    }
+    g.fillStyle = `rgba(8,12,20,${a})`; g.fillRect(0, 0, VW, VH);
+  }
+  // ── 0048 용의 굴이 처음 보일 때: 섬 둘레에 반짝이 (2.6초) ──
+  function isleSparkle(now) {
+    const t = now - sparkT; if (t > 2600) { sparkT = -1; return; }
+    const [ix, iy] = DRAGON_ISLE.centre;
+    for (let i = 0; i < 14; i++) {
+      const a = i * 0.45 + t / 400, r = 18 + ((i * 7) % 20);
+      const x = ix * TS + 8 + Math.cos(a) * r * 1.6 - camX, y = iy * TS + 8 + Math.sin(a) * r - camY;
+      if (((t / 100 + i) | 0) % 3 === 0) continue;
+      g.fillStyle = i % 2 ? '#fff8c0' : '#ffffff';
+      g.fillRect(Math.round(x) - 1, Math.round(y), 3, 1); g.fillRect(Math.round(x), Math.round(y) - 1, 1, 3);
+    }
+  }
   // 새로 고침 · 앱을 다시 열면 걷던 지도 · 자리에서 이어서 (그 칸을 걸을 수 있을 때만)
   loadPos().then((pp) => {
     const m = pp && MAPS[pp.map];
     if (!m || P.moving || busy || P.stepN || mapId !== START.map || P.x !== START.x || P.y !== START.y) return;   // 이미 다른 곳으로 옮겼으면 그대로
     const c = m.rows[pp.y]?.[pp.x];
     if (c == null || SOLID[m.kind].has(c) || m.warps[`${pp.x},${pp.y}`]) return;
+    if (pp.map === 'dragon' && !dragonOn && !(st && st.dragon)) return;     // 0048: 용의 굴은 열린 뒤에만 (상태가 오면 refresh 가 다시 확인)
     enterMap(pp.map, pp.x, pp.y, DIRS[pp.dir] ? pp.dir : 'down', pp.map !== START.map);
   }).catch(() => {});
   const start = () => { requestAnimationFrame(() => { fit(); if (!raf && root.isConnected) raf = requestAnimationFrame(frame); }); };
@@ -978,7 +1226,7 @@ function build() {
     joy: () => ({ ...joy, dirs: joy.id != null ? joyDirs() : [] }), spray: () => ({ on: sprayOn(), left: Math.max(0, sprayUntil - Date.now()), text: sprayTime.textContent }),
     useSpray: () => useSpray(), stepMs: STEP_MS, area: () => ({ map: mapId, dist: areaDist(), zone: zoneAt(P.x, P.y) }),
     mapId: () => mapId, goto: (id, x, y, dir = 'down') => enterMap(id, x, y, dir), a: () => pressA(), talking: () => !!talkQ,
-    zone: () => zoneAt(P.x, P.y), pend: () => ({ ...pend }), sandMsg: () => sandMsg(), ballsOut: () => ballsOut(), setState: (s) => { st = { ...st, ...s }; paintInfo(); }, fade: () => fade.a,
+    zone: () => zoneAt(P.x, P.y), pend: () => ({ ...pend }), sandMsg: () => sandMsg(), dragon: () => dragonOn, closed: () => closed(), ballsOut: () => ballsOut(), setState: (s) => { st = { ...st, ...s }; applyDragon(); paintInfo(); }, fade: () => fade.a,
   };
   return { root, start, refresh };
 }

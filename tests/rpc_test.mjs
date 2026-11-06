@@ -3405,6 +3405,120 @@ console.log('\n[56] 이로치 레이드 (0047 B): admin_create_raid p_shiny → 
   }
 }
 
+console.log('\n[57] 사파리존 더 넓게 (0048): 설원 · 용암 · 발전소 · 용의 굴 (구역 · 타입 · 레벨) · 방문 기록 · 네 곳 다녀오면 용의 굴 · 사파리존 잠금');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_reset_hours',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'ditto_disguise_chance', 'wild_shiny_chance', 'safari_open'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  ok(old.safari_open === true, 'safari_open setting exists and is on (staging default)', old.safari_open);
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const bands = (await admin.select('settings?key=eq.safari_level_bands&select=value')).data?.[0]?.value;
+  ok(JSON.stringify([bands?.snow, bands?.lava, bands?.plant1, bands?.plant2, bands?.dragon])
+     === JSON.stringify([[18, 45, 34, 'snow'], [20, 48, 34, 'lava'], [15, 30, 0, 'plant'], [28, 42, 0, 'plant'], [40, 50, 26, 'dragon']])
+     && Array.isArray(bands?.desert) && Array.isArray(bands?.beach), 'safari_level_bands: snow · lava · plant1 · plant2 · dragon (desert · beach kept)', bands);
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sm1234' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'sm1234'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '설원시험' });
+  const walk = async (zone, area, dist) => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const r = await V.rpc('safari_encounter', { p_steps: 3, p_zone: zone, p_area: area, p_dist: dist });
+      if (r.error) return { error: r.error };
+      if (r.data?.encounter || r.data?.reason) return r.data;
+      await wait(400);
+    }
+    return null;
+  };
+  const flee = async (a) => V.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+  const spRow = async (id) => (await admin.select(`species?id=eq.${id}&select=dex,name,btype`)).data?.[0];
+  const pool = async (zone, area, n) => { const seen = []; for (let i = 0; i < n; i++) { const a = await walk(zone, area, 10); seen.push({ ...(await spRow(a?.encounter?.species_id)), zone: a?.encounter?.zone, lv: a?.encounter?.level }); await flee(a); } return seen; };
+  const lv = async (zone, area, dist) => { const a = await walk(zone, area, dist); await flee(a); return a?.encounter?.level; };
+  const has = (s, re) => re.test(s?.btype || '');
+  const PSEUDO = [147, 246, 371, 374, 443, 633, 704, 782];
+  try {
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 300); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    await setS('wild_shiny_chance', 0); await setS('safari_encounter_rate', 1); await setS('safari_open', true);
+    ok((await anon.rpc('safari_visit', { p_area: 'snow' })).error, 'anon cannot call safari_visit');
+    ok((await V.rpc('_dragon_open', { uid: '00000000-0000-0000-0000-000000000000' })).error && (await V.rpc('_safari_visit', { uid: '00000000-0000-0000-0000-000000000000', p_area: 'snow' })).error,
+       'internal helpers (_dragon_open · _safari_visit) are not callable');
+    const s0 = (await V.rpc('safari_state')).data;
+    ok(Array.isArray(s0?.visited) && s0.visited.length === 0 && s0.dragon === false && s0.locked === false, 'safari_state: visited [] · dragon false · locked false', [s0?.visited, s0?.dragon, s0?.locked]);
+    // 1) 용의 굴: 열리기 전엔 grass 로 (용의 굴 포켓몬 · 레벨 없음), 방문 기록도 안 됨
+    const d0 = await walk('dragon', 'dragon', 26);
+    ok(d0?.zone === 'grass' && d0?.encounter?.zone === 'grass' && d0?.encounter?.level === 5, 'dragon zone before unlock → grass, lowest grass level 5 (refused / clamped)', [d0?.zone, d0?.encounter?.level]);
+    await flee(d0);
+    const vd = (await V.rpc('safari_visit', { p_area: 'dragon' })).data;
+    ok(vd?.new === false && vd.dragon === false && !vd.visited.includes('dragon'), 'safari_visit(dragon) before unlock → not recorded', vd);
+    ok((await V.rpc('safari_visit', { p_area: 'mars' })).error === 'BAD_AREA', 'safari_visit unknown area → BAD_AREA');
+    // 2) 설원: 얼음 · 페어리 (+ 노라키 · 팽도리)
+    const sn = await pool('snow', 'snow', 12);
+    ok(sn.every((s) => s.zone === 'snow' && (has(s, /얼음|페어리/) || [234, 393].includes(s.dex))), 'snow pool: ice / fairy (+ 노라키 · 팽도리) only', sn.map((s) => `${s.name}:${s.btype}`));
+    ok(sn.filter((s) => has(s, /얼음|페어리/)).length >= 8, 'snow pool: mostly ice / fairy', sn.map((s) => s.btype));
+    const LS = { entrance: await lv('snow', 'snow', 0), far: await lv('snow', 'snow', 34), huge: await lv('snow', 'snow', 9999), other: await lv('snow', 'safari', 34) };
+    ok(LS.entrance >= 18 && LS.entrance <= 19 && LS.far >= 44 && LS.far <= 45 && LS.huge <= 45 && LS.other === 18, 'snow levels: Lv.18 entrance → Lv.45 top, clamped; other map → 18', LS);
+    // 3) 용암: 불꽃 · 강철 (+ 뿔카노 · 단굴), 물 · 얼음 없음
+    const lvp = await pool('lava', 'lava', 12);
+    ok(lvp.every((s) => s.zone === 'lava' && (has(s, /불꽃|강철/) || [111, 524].includes(s.dex)) && !has(s, /물|얼음/)), 'lava pool: fire / steel (+ 뿔카노 · 단굴), never water / ice', lvp.map((s) => `${s.name}:${s.btype}`));
+    const LL = { entrance: await lv('lava', 'lava', 0), far: await lv('lava', 'lava', 34), neg: await lv('lava', 'lava', -5) };
+    ok(LL.entrance >= 20 && LL.entrance <= 21 && LL.far >= 47 && LL.far <= 48 && LL.neg >= 20 && LL.neg <= 21, 'lava levels: Lv.20 entrance → Lv.48 lava lake, negative distance clamped', LL);
+    // 4) 발전소: 전기 · 고스트 (+ 또가스 · 깨봉이), 물 · 얼음 없음 · 1층 15–30 · 2층 28–42
+    const pl = await pool('plant', 'plant1', 12);
+    ok(pl.every((s) => s.zone === 'plant' && (has(s, /전기|고스트/) || [109, 568].includes(s.dex)) && !has(s, /물|얼음/)), 'plant pool: electric / ghost (+ 또가스 · 깨봉이), never water / ice', pl.map((s) => `${s.name}:${s.btype}`));
+    ok(pl.every((s) => s.lv >= 15 && s.lv <= 30), 'plant 1F levels 15–30', pl.map((s) => s.lv));
+    const p2 = []; for (let i = 0; i < 4; i++) p2.push(await lv('plant', 'plant2', 0));
+    ok(p2.every((l) => l >= 28 && l <= 42), 'plant 2F levels 28–42', p2);
+    // 5) 방문 기록: 설원 · 용암 · 발전소는 만남 걸음으로 기록됨, 바다 · 사막은 safari_visit 으로 → 네 곳째에 열림
+    const s1 = (await V.rpc('safari_state')).data;
+    ok(['snow', 'lava', 'plant'].every((a) => s1.visited.includes(a)) && s1.dragon === false, 'encounter steps record snow · lava · plant visits; still closed (no beach / desert)', s1.visited);
+    const vb = (await V.rpc('safari_visit', { p_area: 'beach' })).data;
+    const vb2 = (await V.rpc('safari_visit', { p_area: 'beach' })).data;
+    ok(vb?.new === true && vb.opened === false && vb.dragon === false && vb2?.new === false, 'safari_visit(beach): first time new, again not new; 3 of 4 → still closed', [vb, vb2?.new]);
+    const d1 = await walk('dragon', 'dragon', 0);
+    ok(d1?.zone === 'grass', 'dragon still refused with 3 of 4 areas', d1?.zone);
+    await flee(d1);
+    const vds = (await V.rpc('safari_visit', { p_area: 'desert' })).data;
+    ok(vds?.new === true && vds.opened === true && vds.dragon === true, 'safari_visit(desert) = 4th area → opened (dragon true)', vds);
+    const s2 = (await V.rpc('safari_state')).data;
+    ok(s2?.dragon === true && ['beach', 'desert', 'snow', 'lava'].every((a) => s2.visited.includes(a)), 'safari_state.dragon true after all four', s2?.visited);
+    ok((await V.rpc('safari_visit', { p_area: 'desert' })).data?.opened === false, 'opened only once');
+    // 6) 용의 굴: 드래곤 + 600족 계열, Lv.40 → 50
+    const dg = await pool('dragon', 'dragon', 24);
+    ok(dg.every((s) => s.zone === 'dragon' && (has(s, /드래곤/) || PSEUDO.includes(s.dex))), 'dragon den: dragon types + pseudo-legend lines only', dg.map((s) => `${s.name}:${s.btype}`));
+    ok(dg.filter((s) => PSEUDO.includes(s.dex)).length >= 2, 'dragon den: wild pseudo-legend lines appear often (≥2 of 24)', dg.filter((s) => PSEUDO.includes(s.dex)).map((s) => s.name));
+    const dgSub = (await admin.select(`species?dex=in.(${[...new Set(dg.map((s) => s.dex))].join(',')})&stage=eq.1&select=dex,lines(subject)`)).data || [];
+    ok(dgSub.length > 0 && dgSub.every((r) => r.lines?.subject === '야생'), 'dragon den: wild lines only (teacher-subject lines like 미뇽 · 아공이 stay QR / quiz only)', dgSub.map((r) => `${r.dex}:${r.lines?.subject}`));
+    ok(dg.every((s) => s.lv >= 40 && s.lv <= 50), 'dragon den levels within 40–50', dg.map((s) => s.lv));
+    const LD = { entrance: await lv('dragon', 'dragon', 0), far: await lv('dragon', 'dragon', 26), otherArea: await lv('dragon', 'safari', 26) };
+    ok(LD.entrance >= 40 && LD.entrance <= 41 && LD.far >= 49 && LD.far <= 50 && LD.otherArea === 40, 'dragon levels: Lv.40 at the ladder → Lv.50 far end; other map → 40', LD);
+    ok((await V.rpc('safari_state')).data?.visited.includes('dragon'), 'dragon den visit recorded after unlock');
+    // 7) 사파리존 잠금: 새 걸음 · 방문 = SAFARI_CLOSED, 시작한 잡기는 끝낼 수 있음, 다시 열면 그대로
+    const pend = await walk('snow', 'snow', 5);
+    ok(!!pend?.encounter?.id, 'an encounter is pending before locking', pend?.encounter?.id);
+    await setS('safari_open', false);
+    const sl = (await V.rpc('safari_state')).data;
+    ok(sl?.locked === true && sl.pending?.id === pend?.encounter?.id, 'locked: safari_state.locked = true and the pending encounter is still shown', [sl?.locked, sl?.pending?.id]);
+    ok((await V.rpc('safari_encounter', { p_steps: 3, p_zone: 'snow', p_area: 'snow', p_dist: 0 })).error === 'SAFARI_CLOSED', 'locked: safari_encounter → SAFARI_CLOSED');
+    ok((await V.rpc('safari_visit', { p_area: 'lava' })).error === 'SAFARI_CLOSED', 'locked: safari_visit → SAFARI_CLOSED');
+    const tl = await V.rpc('safari_turn', { p_id: pend?.encounter?.id });
+    ok(!tl.error && tl.data?.fled === false, 'locked: an in-progress catch can still roll a miss (safari_turn)', tl.error || tl.data);
+    const rl = await V.rpc('safari_result', { p_id: pend?.encounter?.id, p_throws: 2, p_caught: true });
+    ok(!rl.error && rl.data?.caught === true, 'locked: an in-progress catch can still finish (safari_result)', rl.error || rl.data?.caught);
+    await setS('safari_open', true);
+    const after = await walk('lava', 'lava', 0);
+    ok(after?.encounter?.zone === 'lava' && (await V.rpc('safari_state')).data?.locked === false, 'unlocked again → encounters work', after?.encounter?.zone);
+    await flee(after);
+    // 8) 모르는 구역은 예전처럼 grass
+    const bad = await walk('volcano', 'lava', 0);
+    ok(bad?.zone === 'grass', 'unknown zone name → grass (whitelist)', bad?.zone);
+    await flee(bad);
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    if (!('safari_open' in old)) await setS('safari_open', true);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);
