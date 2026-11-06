@@ -212,11 +212,11 @@ function evoInfo(c, e, p, chance) {
            reason: e.lv ? `${josa(`Lv.${e.lv}`, '이', '가')} 되면 진화해요 (진화의 돌 없음)` : '진화의 돌이 필요해요', btn: `진화의 돌로 진화 (성공 ${pct})` };
 }
 
-// 진화: 진화 레벨이 되면 진화의 돌 없이 100%, 그 전에는 진화의 돌로 (확률). 갈래가 여럿이면 고르기 (evoChooser)
+// 진화: 진화 레벨이 되면 진화의 돌 없이 100%, 그 전에는 진화의 돌로 (확률). 갈래가 여럿이면 서버가 무작위로 (evoRandom, 0049)
 function evoPanel(c, chance, p) {
   const opts = evoOpts(c);
   const off = !S.online ? '진화는 인터넷이 필요해요' : !S.snap.festival_open ? '지금은 진화할 수 없어요' : null;
-  if (opts.length > 1) return evoChooser(c, opts, chance, p, off);
+  if (opts.length > 1) return evoRandom(c, opts, chance, p, off);
   const e = opts[0];
   if (!e) return h('div.box.evo-panel', '이 포켓몬은 더 진화하지 않아요.');
   const x = evoInfo(c, e, p, chance);
@@ -243,18 +243,31 @@ function evoPanel(c, chance, p) {
       : '진화의 돌은 실패해도 다음 확률이 올라가고, 몇 번 실패하면 반드시 성공해요.'));
 }
 
-// 갈래 진화 고르기 (이브이 → 8가지 …): 그림 + 이름 + 조건. 지금 못 하는 갈래는 흐리게 + 이유
-function evoChooser(c, opts, chance, p, off) {
+// 갈래 진화 (0049): 고르지 않음 — 서버가 갈 수 있는 갈래 중 하나를 같은 확률로 고름 (결과는 진화 장면에서).
+//   진화 레벨이 된 레벨 갈래가 있으면 그중에서 돌 없이, 없으면 진화의 돌 1개로 모든 갈래 중에서 (돌 갈래 = 반드시, 레벨 갈래를 일찍 = 확률)
+function evoRandom(c, opts, chance, p, off) {
+  const lv = c.level || 1;
+  const free = opts.filter((e) => e.how === 'level' && e.lv && lv >= e.lv);
+  const pool = free.length ? free : opts;
+  const seen = seenKeys();
+  const pct = chance >= 1 ? '반드시' : `${Math.round(chance * 100)}%`;
+  const allItem = opts.every((e) => e.how === 'item');
+  const lvs = opts.filter((e) => e.how === 'level' && e.lv).map((e) => e.lv);
+  const nextLv = lvs.length ? Math.min(...lvs) : null;
+  const why = off || (!free.length && !p.evo_tickets ? '진화의 돌이 필요해요 (퀴즈·배틀·룰렛에서 가끔 받아요)' : null);
   return h('div.box.evo-panel',
-    h('div.banner', h('b', '어떤 모습으로 진화할까?'), h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
-    h('div.evo-choices', opts.map((e) => {
-      const x = evoInfo(c, e, p, chance);
-      const why = off || (!x.ok ? x.reason : null);
-      return h('button.evo-choice', { type: 'button', disabled: !!why, 'aria-label': `${x.sp?.name || '?'}: ${why || x.cond}`,
-        onclick: () => doEvolve(c, e.to_species) },
-      spriteCanvas(e.to_species, 56), h('b', x.sp?.name || '?'), h('small', why || x.cond));
+    h('div.banner', h('b', `${pool.length}가지 중 하나로 진화!`), h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
+    h('div.evo-choices', { 'aria-label': '진화할 수 있는 모습' }, pool.map((e) => {
+      const sp = speciesOf(e.to_species); const known = !!sp && seen.has(dexKey(sp));   // 도감에서 본 모습만 이름 · 색
+      return h('div.evo-choice', spriteCanvas(e.to_species, 56, known ? 'normal' : 'silhouette'), h('b', known ? sp.name : '???'),
+        h('small', e.how === 'item' ? '진화의 돌' : `Lv.${e.lv}`));
     })),
-    h('small', `지금 Lv.${c.level || 1}. 돌 진화는 진화의 돌 1개로 반드시, 레벨 진화는 그 레벨이 되면 돌 없이 반드시 진화해요.`));
+    h('button.btn.big.gold', { disabled: !!why, onclick: () => doEvolve(c) },
+      why || (free.length ? '진화시키기! (진화의 돌 없이)' : allItem ? '진화의 돌로 진화 (100%)' : '진화의 돌로 진화')),
+    h('small', free.length
+      ? `진화 레벨이 되어서 진화의 돌 없이 반드시 진화해요. 어떤 모습이 될지는 진화해 봐야 알아요 (모두 같은 확률).`
+      : `진화의 돌 1개로 ${opts.length}가지 중 하나가 같은 확률로 정해져요.${allItem ? ' 반드시 진화해요.' : ` 돌로 진화하는 모습이면 반드시, 레벨로 진화하는 모습이면 ${pct} 확률이에요.`}`
+        + (nextLv ? ` ${josa(`Lv.${nextLv}`, '이', '가')} 되면 레벨로 진화하는 모습 중 하나로 돌 없이 진화해요.` : '')));
 }
 
 export function openDetail(sp) {

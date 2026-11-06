@@ -80,7 +80,7 @@
 | FESTIVAL_CLOSED / SELF_REDEEM_OFF | 운영 시간 아님 / 셀프 지급 꺼짐 |
 | NO_TICKET / MAX_STAGE / NOT_OWNED | 진화권 없음 / 최종 진화 / 미보유 |
 | BOX_FULL / LAST_MON / MON_PARTNER / MON_IN_TEAM / MON_BUSY / BAD_POS | (0036) 박스 꽉 참 / 마지막 한 마리 / 카드 포켓몬 / 저장한 배틀 팀 / 배틀·레이드 중 / 없는 칸 |
-| PICK_BRANCH / BAD_BRANCH / NO_BALLS | (0037) 갈래가 여럿이라 고르지 않음 / 그 종으로는 진화 못 함 / 사파리: 빌린 볼보다 많이 놓침 |
+| PICK_BRANCH / BAD_BRANCH / NO_BALLS / BRANCH_LINE | (0037) 갈래가 여럿이라 고르지 않음 (0049 부터 안 나옴: 서버가 무작위) / 그 종으로는 진화 못 함 / 사파리: 빌린 볼보다 많이 놓침 / (0049) 갈래 계열은 선생님 포켓몬 불가 |
 | NOT_STAFF / NOT_ADMIN / NO_STUDENT / BAD_PAYLOAD | 부스·운영자 권한 / 학번 없음 / 가방 QR 아님 |
 | 스캔 ack: invalid_token, already_pending, daily_cap, bag_full, locked, closed, bad_format | 앱이 토스트로 안내 |
 
@@ -190,12 +190,15 @@
 
 ## 6-8. 갈래 진화 · 사파리 도망 · 도감 쪽 (0037)
 - 진화 길 = `evolutions` (from_species → to_species, how `level` | `item`, lv). 곧은 진화도 갈래도 모두 이 표 (seed_pokemon.sql 이 만듦). `evolve(p_mon, p_to)`:
-  갈래가 둘 이상이면 `p_to` 필수 (`PICK_BRANCH`), 그 종의 갈래가 아니면 `BAD_BRANCH`. 규칙은 0034 그대로 — level: `lv` 이상이면 진화의 돌 없이 100%, 전에는 진화의 돌 + 확률 / item: 진화의 돌 1개로 100%.
+  0049: 갈래가 둘 이상이면 고르지 않음 — 서버가 같은 확률로 고름 (`p_to` 무시, `PICK_BRANCH` 없음): 진화 레벨이 된 레벨 갈래가 있으면 그중에서 (돌 없이), 없으면 진화의 돌 1개로 모든 갈래 중에서. 결과 `branched` · `options`.
+  한 길뿐인 종에 다른 `p_to` 를 주면 `BAD_BRANCH`. 규칙은 0034 그대로 — level: `lv` 이상이면 진화의 돌 없이 100%, 전에는 진화의 돌 + 확률 / item: 진화의 돌 1개로 100%.
+  갈래 계열 (`_branch_line`) 은 선생님 포켓몬으로 안 씀: `admin_assign_teacher` · lines 직접 수정 (트리거) 모두 `BRANCH_LINE`.
 - 갈래 종 = `species` 줄 하나 더 (id = 10000 + 전국도감 번호, 원래 계열 · 다음 단계). 따로 1단계 계열로 있던 같은 포켓몬 (야생 쥬피썬더, 전설 계열 425 루나아라 …) 은 그대로 → 야생에서 바로 만날 수도 있음.
   그림은 같은 번호의 종 그림 (`sprites.js aliasSprites`). 갈래 종의 레벨 기술은 계열의 배우는 기술에 합침 + 그 종의 고른 기술 4개.
 - `collection.species_id` = 그 포켓몬의 지금 종. 트리거 (`_col_species`) 가 (계열, 단계) 와 맞지 않으면 그 단계의 첫 종으로 맞춤 → 진화만 갈래 종을 적음.
 - **도감 = 전국도감 번호마다 한 칸.** 본 적 있는 종 = 가진 (놓아준 것 포함) 포켓몬의 지금 종 + 앞 단계들 (`_sp_path`, sync 의 `seen`). 같은 번호면 어느 길로 만나도 발견.
   `dex_count` = 발견한 번호 수. 학교 도감 (50/100% 보상) = 선생님 · 특별 계열 종의 번호 213칸 (갈래 7: 엘레이드 · 왕구리 · 홍수몬 · 카포에라 · 야도킹 · 눈여아 · 아르코 포함) → 100% 는 갈래까지 모두 진화시켜야 함.
+  0049: 학교 도감 = 도감 '학교' 탭에 늘 보이는 칸 (`_school_keys`: 야생 아님 · active · not withdrawn · 비밀/환상 아님 · 보상 계열 (dex_rewards 50/100) 아님) — 탐구 · 야자 전설 포함. sync `rules.school_keys` 로 앱도 같은 목록. 갈래 종 칸은 같은 번호의 야생 계열로도 채워짐.
   점수는 예전처럼 계열마다 가장 높은 단계 하나.
 - 사파리존 도망 = **서버가 정함** (3세대처럼): 공을 놓칠 때마다 앱이 `safari_turn(p_id)` → 도망칠 확률 = `safari_flee` (25%) + 놓친 차례마다 `safari_flee_step` (+5%) + 전설 `safari_flee_legend` (+15%), 최대 `safari_flee_max` (90%).
   도망치면 그 만남은 끝 (던진 볼 = 놓친 수). 앱이 `safari_turn` 을 건너뛰고 '잡았다' 고 보내도 `safari_result` 가 아직 안 굴린 놓친 공의 도망을 굴림 (`server_fled`). 잡힐지는 예전처럼 앱이 정함 (볼 수는 서버가 셈).
@@ -224,7 +227,7 @@
 - **이상한 소포**: `gift_codes` (code = 띄어쓰기 빼고 소문자, 포켓몬 (도감 번호, 1~6마리) 또는 물건 (items.key · 'evo_stone' = 진화의 돌, 1~99), 시작 · 끝, 최대 받는 사람, 켜기/끄기), `gift_claims` (한 사람 한 번).
   학생: 위 막대 설정 단추 왼쪽의 소포 단추 (받을 수 있는 소포가 있으면 ★ — `sync.gifts_open` 은 수만) → 코드 → `gift_claim(p_code)` → `{ ok, … }` 또는 `{ ok:false, error }`
   (BAD_GIFT · GIFT_EXPIRED · GIFT_NOT_YET · GIFT_CLAIMED · GIFT_GONE · TRY_LATER = 10분에 `gift_fail_limit` 번 틀림). 포켓몬은 special 'gift' 티켓을 바로 바꿈 (박스가 꽉 차면 티켓 주머니에 남음), 잡기 장면 없이 알림 연출.
-  환상의 포켓몬 13종 (지라치 · 테오키스 · 쉐이미 · 비크티니 · 다크라이 · 케르디오 · 게노세크트 · 디안시 · 후파 · 마기아나 · 마샤도 · 제라오라 · 멜탄) = 소포로만.
+  환상의 포켓몬 12종 (지라치 · 테오키스 · 쉐이미 · 비크티니 · 다크라이 · 케르디오 · 게노세크트 · 디안시 · 후파 · 마기아나 · 마샤도 · 제라오라) = 소포로만. (멜탄 · 멜메탈은 0049 에서 뺌, 계열 440 은 빈 번호)
 - **울트라비스트 · 구역**: `safari_encounter(p_steps, p_zone)` — 앱이 걸은 칸의 구역 (`zoneAt`) 을 보냄. 'ultra' = 울트라비스트만, 'cave' · 'deep' = 바위 · 땅 · 고스트 · 악 · 강철 · 물 타입 × `safari_cave_type_mult` (4),
   'grass' · 모르는 값 = 보통 야생. 구역은 앱 말을 믿는 것이지만 울트라비스트는 ultra 에서만 (다른 구역에서는 절대 안 나옴).
 - **메타몽 변신**: 야생 (걸음) · QR 야생 · 사파리 잡기에서 `ditto_disguise_chance` (기본 0.5%) → 메타몽 (dex 132) 으로 들어옴, `tickets.disguised_as` = 원래 종.
