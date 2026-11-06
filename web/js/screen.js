@@ -46,9 +46,10 @@ async function start() {
       h('div.raid-row-tv#raids'),
       h('div.legend-row#legend'),
       h('div', h('h2', '기수 대항전'), h('div.gens#gens')),
-      h('div.grow', h('h2', '방금 잡힌 포켓몬'), h('div.feed#feed')))),
-    h('p.fan-note.tv', CONFIG.FAN_NOTICE),
-    h('button.btn.small.fs-btn', { onclick: () => document.documentElement.requestFullscreen?.() }, '전체 화면'));
+      h('div.grow', h('h2', '방금 잡힌 포켓몬'), h('div.feed#feed'))),
+    h('div.tv-foot',
+      h('p.fan-note.tv', CONFIG.FAN_NOTICE),
+      h('button.btn.small.fs-btn', { onclick: () => document.documentElement.requestFullscreen?.() }, '전체 화면'))));
   tick();
   setInterval(tick, 8000);
   tickRaids();
@@ -57,6 +58,8 @@ async function start() {
 
 // 레이드: 보스 체력바 + 30초마다 바뀌는 참가 QR (현장에 있어야 참가). 시간대 전설 레이드도 이 호출이 자동으로 연다.
 const raidCards = new Map();   // raid id → { el, token }
+// 글자 크기가 화면 크기를 따라가므로 (staff.css --fs) 포켓몬 그림도 글자 크기 기준으로 (1em = 1920x1080 에서 24px)
+const em = () => parseFloat(getComputedStyle($('.screen') || document.body).fontSize) || 24;
 async function tickRaids() {
   let d;
   try { d = await rpc('screen_raids', {}, { retries: 0 }); } catch { return; }
@@ -76,7 +79,7 @@ async function tickRaids() {
     c.el.classList.toggle('won', r.status === 'won');
     if (r.status === 'active' && c.token !== r.t) { drawQR(c.qr, placeUrl(site, r.q, r.t), { cell: 6, margin: 2 }); c.token = r.t; }
     c.el.replaceChildren(
-      spriteCanvas(r.species_id, 128),
+      spriteCanvas(r.species_id, Math.round(em() * 5.33)),
       h('div',
         h('h3', r.status === 'won' ? `${r.title} — 격파!` : r.status === 'failed' ? `${r.title} — 도망쳤다…` : `⚡ ${r.title}`),
         h('div.hpbar', h(`i${ratio < 0.2 ? '.red' : ratio < 0.5 ? '.yellow' : ''}`, { style: { width: `${ratio * 100}%` } })),
@@ -103,7 +106,7 @@ async function tick() {
   ].filter(Boolean));
   $('#gens').replaceChildren(...d.gens.filter((g) => g.players > 0).map((g) => h('div', h('b', `${g.gen}기 `), `${g.score}점`, h('small', ` · ${g.players}명`))));
   $('#feed').replaceChildren(...d.feed.map((f) => h('div',
-    spriteCanvas(f.species_id, 48), h('span', `${f.display}님이 `, h('b', josa(name(f.species_id), '을', '를')), ' 잡았다!'),
+    spriteCanvas(f.species_id, Math.round(em() * 2)), h('span', `${f.display}님이 `, h('b', josa(name(f.species_id), '을', '를')), ' 잡았다!'),
     h('small', { style: { marginLeft: 'auto', opacity: '.7' } }, timeAgo(f.at)))));
 
   // legendary QRs: one card per active rotating QR

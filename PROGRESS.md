@@ -134,4 +134,4 @@
 - 함수 만드는 마이그레이션 끝에 **권한 블록**(0006/0007 참고) 없으면 로그인 안 한 사람도 호출 가능 — 테스트가 잡아냄.
 - `web/sw.js` `VERSION`을 안 올리면 학생 폰에 옛 화면이 계속 뜸.
 - 서비스워커 때문에 내 컴퓨터에서도 옛 화면이 보일 수 있음 → 개발자도구 Application → Service Workers → Unregister + 캐시 삭제.
-- 선생님 원본 사진, 인터넷에서 받은 그림은 git에 올리지 않음 (`art-src/`, `web/img/booth-ball.gif`는 gitignore).
+- 선생님 원본 사진, 인터넷에서 받은 그림은 git에 올리지 않음 (`art-src/`, `web/img/booth-ball.gif`는 gitignore — 쓰려면 `config.js` `BOOTH_GIF` 에 경로를 적고 직접 배포, 비우면 CSS 몬스터볼).

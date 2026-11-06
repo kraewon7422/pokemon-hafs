@@ -2033,8 +2033,16 @@ async function tabStaff() {
   const links = h('div.box.stack',
     h('h2', '운영 화면 주소'),
     h('p.small-txt', '운영진에게 이 주소를 보내 주세요.'),
-    ...[['admin', '운영자 페이지'], ['booth', '부스 화면 (태블릿·노트북)'], ['screen', 'TV 대형 화면']].map(([p, t]) =>
-      h('div', h('b', t, ': '), h('a.mono', { href: `${site}/${p}.html`, target: '_blank', rel: 'noopener' }, `${site}/${p}.html`))));
+    ...[['admin', '운영자 페이지'], ['booth', '부스 화면 (태블릿·노트북)'], ['screen', 'TV 대형 화면']].map(([p, t]) => {
+      const url = `${site}/${p}.html`;
+      // 긴 주소: / . - 뒤에서만 줄을 바꿈 (<wbr>) — 좁은 폰에서 단어 가운데가 잘리지 않게. [복사] 로 통째로
+      const parts = url.split(/(?<=[/.-])/).flatMap((x, i) => (i ? [h('wbr'), x] : [x]));
+      const copy = h('button.btn.small', { type: 'button', 'aria-label': `${t} 주소 복사` }, '복사');
+      copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(url); toast('주소를 복사했어요.'); } catch { toast('복사하지 못했어요. 주소를 길게 눌러 복사해 주세요.'); }
+      };
+      return h('div.url-item', h('b', t), h('div.url-row', h('a.mono.url', { href: url, target: '_blank', rel: 'noopener' }, ...parts), copy));
+    }));
 
   // ── 운영진 아이디 (0018): 운영자가 만들고, 비밀번호는 한 번만 보여 준다 ──
   const ids = h('div');
