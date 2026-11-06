@@ -1,7 +1,7 @@
 // 사진 공유 (인스타그램 등): 트레이너 카드 PNG (1080×1344, 4:5) · 포켓몬 사진 PNG (1080×1080, 배경 고르기).
 // 처음 누를 때만 불러옴 (app.js 홈 트레이너 카드 '카드 공유' · bag.js 포켓몬 요약 '사진 만들기').
 // 공유: 폰이 파일 공유를 지원하면 navigator.share({ files }) (취소 = 조용히), 아니면 '저장' = PNG 내려받기.
-// 개인정보: 카드에 고유번호 · 이메일 · 실명은 넣지 않음 (별명 또는 서버가 가린 이름 _display_name 만).
+// 개인정보: 카드에 고유번호 · 이메일은 넣지 않음. 트레이너 카드는 학생 자기 카드라 자기 진짜 이름 (profile.name — 서버가 가린 display 말고) + 별명 (있으면 작은 줄).
 import { h, toast } from './ui.js';
 import { sfx } from './sfx.js';
 import { ensureSprites, monCell } from './sprites.js';
@@ -86,7 +86,7 @@ const toBlob = (c) => new Promise((res, rej) => c.toBlob((b) => (b ? res(b) : re
 // 미리보기 칸 + [공유] [저장]. render() → canvas 를 다시 그릴 때마다 preview(c)
 function exportPanel(name, title) {
   const pic = h('img.share-pic', { alt: title });
-  const status = h('small.share-hint', '만드는 중…');
+  const status = h('small.share-hint', { style: { whiteSpace: 'pre-line' } }, '만드는 중…');   // 문장마다 줄을 나눔 (좁은 폰에서 '저장 →' 만 따로 떨어지지 않게)
   let blob = null; let url = null;
   const probe = new File([new Blob([''], { type: 'image/png' })], name, { type: 'image/png' });
   const share = canShareFiles(probe);
@@ -99,7 +99,7 @@ function exportPanel(name, title) {
       blob = await toBlob(c);
       if (url) URL.revokeObjectURL(url);
       url = URL.createObjectURL(blob); pic.src = url;
-      status.textContent = share ? '공유 → 인스타그램 · 메시지로 보내요. 저장 → 사진첩에.' : '저장 → 사진 파일로 받아요. 인스타그램에서 그 사진을 올려요.';
+      status.textContent = share ? '공유 → 인스타그램 · 메시지로 보내요.\n저장 → 사진첩에.' : '저장 → 사진 파일로 받아요.\n인스타그램에서 그 사진을 올려요.';
     } catch (e) { status.textContent = '사진을 만들지 못했어요.'; console.warn(e); }
   };
   return { el: [pic, status, btns], set, done: () => url && URL.revokeObjectURL(url) };
@@ -114,10 +114,31 @@ async function featuredMons() {
   if (!ids.length) {
     try { const { loadBag } = await import('./bag.js'); await loadBag({ notify: false }); ids = (S.bag?.team || []).filter((id) => byId.has(id)); } catch { /* 오프라인 */ }
   }
-  const pick = ids.map((id) => byId.get(id));
+  // 배틀 팀이 있으면 그 팀만 (빈 자리는 카드에서 점선 칸), 없으면 강한 순 6마리
+  if (ids.length) return { list: ids.slice(0, TEAM_MAX).map((id) => byId.get(id)), team: true };
   const rest = [...all].sort((a, b) => b.stage - a.stage || b.level - a.level || a.id - b.id);
-  for (const m of rest) { if (pick.length >= TEAM_MAX) break; if (!pick.includes(m)) pick.push(m); }
-  return { list: pick.slice(0, TEAM_MAX), team: ids.length > 0 };
+  return { list: rest.slice(0, TEAM_MAX), team: false };
+}
+
+// 글자를 maxW 안에: 먼저 크기를 minSize 까지 줄이고, 그래도 길면 뒤를 '…' 로. 반환 { s, size }
+function fit(g, s, maxW, size, minSize, bold = true) {
+  s = String(s ?? '');
+  let sz = size;
+  const set = () => { g.font = `${bold ? 'bold ' : ''}${sz}px ${FONT}`; };
+  set();
+  while (g.measureText(s).width > maxW && sz > minSize) { sz -= 2; set(); }
+  if (g.measureText(s).width > maxW) {
+    const ch = [...s];
+    while (ch.length > 1 && g.measureText(`${ch.join('')}…`).width > maxW) ch.pop();
+    s = `${ch.join('')}…`;
+  }
+  return { s, size: sz };
+}
+// 점선 테두리 (빈 칸): 도트 한 칸짜리 선을 3칸 칠하고 2칸 쉼
+function dashed(g, x, y, w, hh, col) {
+  g.fillStyle = col;
+  for (let i = 2 * U; i < w - 2 * U; i += 5 * U) { const l = Math.min(3 * U, w - 2 * U - i); g.fillRect(x + i, y, l, U); g.fillRect(x + i, y + hh - U, l, U); }
+  for (let j = 2 * U; j < hh - 2 * U; j += 5 * U) { const l = Math.min(3 * U, hh - 2 * U - j); g.fillRect(x, y + j, U, l); g.fillRect(x + w - U, y + j, U, l); }
 }
 
 export async function drawCard() {
@@ -125,8 +146,8 @@ export async function drawCard() {
   const p = S.snap.profile;
   const D = dexStats();
   const titles = titlesOf(p, D).slice(0, 3);
-  const partner = partnerMon();
   const { list, team } = await featuredMons();
+  const partner = partnerMon() || list[0] || null;
   const W = 1080, H = 1344;
   const [c, g] = canvas(W, H);
   // 바탕: 남색 + 도트 별
@@ -138,88 +159,126 @@ export async function drawCard() {
   pbox(g, X + 3 * U, Y + 3 * U, CW - 6 * U, CH - 6 * U, '#fff8d8', 3);
   g.save();
   g.beginPath(); g.rect(X + 5 * U, Y + 5 * U, CW - 10 * U, CH - 10 * U); g.clip();
-  const bands = [['#f8e8a8', 0], ['#f8d878', 0.3], ['#f0c860', 0.6]];
-  for (const [col, t] of bands) {
+  for (const [col, t] of [['#f8e8a8', 0], ['#f8d878', 0.3], ['#f0c860', 0.6]]) {
     g.fillStyle = col; g.beginPath();
     const o = t * (W + H);
     g.moveTo(o, 0); g.lineTo(W + H, 0); g.lineTo(W + H, H); g.lineTo(o - H, H); g.closePath(); g.fill();
   }
   g.restore();
-  // 머리띠: HAFS 파랑 + 몬스터볼 + 이름
-  const IX = X + 6 * U, IW = CW - 12 * U;
-  pbox(g, IX, Y + 6 * U, IW, 34 * U, '#1c3e8c', 2);
-  pbox(g, IX, Y + 6 * U, IW, 32 * U, '#2a5cbc', 2);
-  logo(g, IX + 4 * U, Y + 8 * U, 28 * U);
-  text(g, 'HAFS 몬스터', IX + 36 * U, Y + 29 * U, { size: 66, bold: true, col: '#ffffff', shadow: '#182030', maxW: 116 * U });
-  text(g, 'TRAINER CARD', IX + IW - 5 * U, Y + 28 * U, { size: 44, bold: true, col: '#f8d048', shadow: '#182030', align: 'right', maxW: 80 * U });
-  // 이름 · 기수 · 칭호
-  const NX = IX + 4 * U; let ny = Y + 66 * U;
-  const name = p.nickname || p.display || '트레이너';
-  text(g, name, NX, ny, { size: 88, bold: true, shadow: '#fff8d8', maxW: 150 * U });
-  ny += 18 * U;
-  const sub = p.gen ? `${p.gen}기 트레이너` : '특별 트레이너';
-  text(g, name.startsWith(`${p.gen}기 `) ? 'HAFS 트레이너' : sub, NX, ny, { size: 44, shadow: '#fff8d8', maxW: 150 * U });
-  ny += 8 * U;
+  const IX = X + 6 * U, IW = CW - 12 * U, IR = IX + IW;          // 안쪽 여백 24px (64 ~ 1016)
+  const LBL = '#586890', PAPER = '#fffcec', GOLD = '#c8a048';
+
+  // ── 1. 머리띠: 몬스터볼 + HAFS 몬스터 · TRAINER CARD ──
+  const HY = Y + 6 * U, HH = 32 * U;
+  pbox(g, IX, HY, IW, HH + 2 * U, '#1c3e8c', 2);
+  pbox(g, IX, HY, IW, HH, '#2a5cbc', 2);
+  logo(g, IX + 5 * U, HY + 4 * U, 24 * U);
+  text(g, 'HAFS 몬스터', IX + 34 * U, HY + 22 * U, { size: 66, bold: true, col: '#ffffff', shadow: '#182030', maxW: 120 * U });
+  text(g, 'TRAINER CARD', IR - 6 * U, HY + 21 * U, { size: 33, bold: true, col: '#f8d048', shadow: '#182030', align: 'right', maxW: 70 * U });
+
+  // ── 2. 이름 (왼쪽) + 카드 포켓몬 (오른쪽 액자) ──
+  const PS = 70 * U, PX = IR - PS, PY = HY + HH + 6 * U;            // 액자 280px
+  pbox(g, PX, PY, PS, PS, GOLD, 3);
+  pbox(g, PX + 2 * U, PY + 2 * U, PS - 4 * U, PS - 4 * U, PAPER, 3);
+  if (partner) await drawMon(g, partner, PX + PS / 2, PY + PS - 6 * U, 4);
+  else text(g, '?', PX + PS / 2, PY + PS / 2 + 18 * U, { size: 160, bold: true, col: '#ead39a', align: 'center' });
+  const NX = IX + 4 * U, NW = PX - 8 * U - NX;                      // 이름 칸 너비 ≈ 620px
+  const nick0 = String(p.nickname || '').trim();
+  // 이름 덩어리를 액자 높이 가운데쯤에 (별명 · 칭호가 없으면 그만큼 아래로)
+  let ny = PY + 26 * U + Math.round(((nick0 && nick0 !== String(p.name || '').trim() ? 0 : 16) + (titles.length ? 0 : 20)) / 2) * U;
+  const real = String(p.name || '').trim() || '트레이너';            // 내 카드 = 내 진짜 이름 (서버가 가린 display 말고)
+  const nm = fit(g, real, NW, 96, 60);
+  text(g, nm.s, NX, ny, { size: nm.size, bold: true, shadow: '#fff8d8' });
+  const nick = String(p.nickname || '').trim();
+  if (nick && nick !== real) {
+    ny += 16 * U;
+    g.font = `bold 30px ${FONT}`;
+    const cw = Math.ceil(g.measureText('별명').width / U) * U + 6 * U;
+    pbox(g, NX, ny - 9 * U, cw, 12 * U, '#2a5cbc', 2);
+    text(g, '별명', NX + cw / 2, ny - U, { size: 30, bold: true, col: '#ffffff', align: 'center' });
+    const nk = fit(g, nick, NW - cw - 4 * U, 44, 30);
+    text(g, nk.s, NX + cw + 4 * U, ny, { size: nk.size, bold: true, col: '#1c3e8c', shadow: '#fff8d8' });
+  }
+  ny += 14 * U;
+  text(g, p.gen ? `${p.gen}기 트레이너` : '특별 트레이너', NX, ny, { size: 36, col: LBL, shadow: '#fff8d8', maxW: NW });
+  // 칭호 (최대 2줄, 액자 아래로는 넘치지 않게)
+  ny += 6 * U;
   let tx = NX, trow = 0;
-  g.font = `bold 33px ${FONT}`;
   for (const t of titles) {
-    const tw = Math.ceil(g.measureText(t).width / U) * U + 8 * U;
-    if (tx + tw > NX + 152 * U) { if (trow) break; trow++; tx = NX; }
+    const tt = fit(g, t, NW - 8 * U, 30, 30);
+    const tw = Math.ceil(g.measureText(tt.s).width / U) * U + 8 * U;
+    if (tx > NX && tx + tw > NX + NW) { if (trow) break; trow++; tx = NX; }
     const ty = ny + trow * 14 * U;
+    if (ty + 12 * U > PY + PS) break;
     pbox(g, tx, ty, tw, 12 * U, '#9a6a10', 2); pbox(g, tx + U, ty + U, tw - 2 * U, 10 * U, '#fffbe0', 2);
-    text(g, t, tx + 4 * U, ty + 9 * U, { size: 33, bold: true, col: '#6a4808' });
+    text(g, tt.s, tx + 4 * U, ty + 9 * U, { size: 30, bold: true, col: '#6a4808' });
     tx += tw + 3 * U;
   }
-  // 카드 포켓몬 (오른쪽 액자)
-  const PX = X + CW - 6 * U - 72 * U, PY = Y + 46 * U;
-  pbox(g, PX, PY, 72 * U, 72 * U, '#c8a048', 3);
-  pbox(g, PX + 2 * U, PY + 2 * U, 68 * U, 68 * U, '#fffcec', 3);
-  if (partner) await drawMon(g, partner, PX + 36 * U, PY + 66 * U, 4);
-  // 기록 상자
-  const SY = Y + 126 * U, SH = 36 * U;
+
+  // ── 3. 기록: 4칸 한 줄 (도감 · 점수 · 도전과제 · 순위) ──
+  const SY = PY + PS + 6 * U, SH = 30 * U;
   pbox(g, IX, SY, IW, SH, '#384868', 2); pbox(g, IX + U, SY + U, IW - 2 * U, SH - 2 * U, '#f8f8f8', 2);
   const ach = S.ach?.length ? `${S.ach.filter((a) => a.claimed).length}/${S.ach.length}` : '-';
   const stats = [['도감', `${D.found}/${D.total}`], ['점수', `${p.score ?? 0}`], ['도전과제', ach],
     ['순위', p.in_ranking === false ? '-' : p.rank ? `#${p.rank}` : '-']];
-  const colW = (IW - 12 * U) / 2;
+  const cw4 = IW / 4;
   stats.forEach(([k, v], i) => {
-    const sx = IX + 6 * U + (i % 2) * colW, sy = SY + 15 * U + Math.floor(i / 2) * 14 * U;
-    text(g, k, sx, sy, { size: 44, col: '#586890' });
-    text(g, v, sx + colW - 14 * U, sy, { size: 44, bold: true, align: 'right', maxW: colW - 48 * U });
+    const cx = IX + cw4 * i + cw4 / 2;
+    if (i) rect(g, Math.round(IX + cw4 * i), SY + 6 * U, U, SH - 12 * U, '#d0d4e0');
+    text(g, k, cx, SY + 11 * U, { size: 30, col: LBL, align: 'center', maxW: cw4 - 8 * U });
+    const vv = fit(g, v, cw4 - 8 * U, 52, 30);
+    text(g, vv.s, cx, SY + 25 * U, { size: vv.size, bold: true, align: 'center' });
   });
-  // 팀 6마리 (3 × 2)
-  let ty = SY + SH + 14 * U;
-  text(g, team ? '나의 배틀 팀' : '나의 포켓몬', IX + 2 * U, ty, { size: 44, bold: true, shadow: '#fff8d8' });
-  ty += 4 * U;
-  const slotW = (IW - 4 * U) / 3, slotH = 48 * U;
-  for (let i = 0; i < TEAM_MAX; i++) {
-    const sx = IX + (i % 3) * (slotW + 2 * U), sy = ty + Math.floor(i / 3) * (slotH + 2 * U);
-    pbox(g, sx, sy, slotW, slotH, '#c8a048', 2); pbox(g, sx + U, sy + U, slotW - 2 * U, slotH - 2 * U, list[i] ? '#fffcec' : '#f4e2a0', 2);
+
+  // ── 4. 배틀 팀: 2 × 3, 똑같은 6칸 (빈 칸은 점선) ──
+  let ty = SY + SH + 16 * U;
+  const n = list.length;
+  text(g, team ? '나의 배틀 팀' : '나의 포켓몬', IX + U, ty, { size: 40, bold: true, shadow: '#fff8d8' });
+  text(g, team ? `${n}/${TEAM_MAX}` : '강한 순', IR - U, ty, { size: 30, bold: true, col: LBL, align: 'right', shadow: '#fff8d8' });
+  ty += 5 * U;
+  const GAP = 4 * U, slotW = Math.floor((IW - 2 * GAP) / 3 / U) * U, slotH = 48 * U;
+  const gx = IX + Math.floor((IW - (3 * slotW + 2 * GAP)) / 2 / U) * U;
+  for (let i = 0; i < (n ? TEAM_MAX : 0); i++) {
+    const sx = gx + (i % 3) * (slotW + GAP), sy = ty + Math.floor(i / 3) * (slotH + GAP);
     const m = list[i];
-    if (!m) continue;
-    const sp = monSp(m);
-    await drawMon(g, m, sx + slotW / 2, sy + 34 * U, 2);
-    text(g, `${sp?.name || '???'}`, sx + slotW / 2, sy + 44 * U, { size: 33, bold: true, align: 'center', maxW: slotW - 6 * U });
-    text(g, `Lv.${m.level}`, sx + slotW - 3 * U, sy + 8 * U, { size: 22, bold: true, col: '#586890', align: 'right' });
-    if (m.shiny_on) text(g, '★', sx + 3 * U, sy + 8 * U, { size: 22, bold: true, col: '#d89a10' });
+    if (!m) { pbox(g, sx, sy, slotW, slotH, 'rgba(255, 252, 236, .45)', 2); dashed(g, sx, sy, slotW, slotH, '#b08a38'); continue; }
+    pbox(g, sx, sy, slotW, slotH, GOLD, 2); pbox(g, sx + U, sy + U, slotW - 2 * U, slotH - 2 * U, PAPER, 2);
+    await drawMon(g, m, sx + slotW / 2, sy + 35 * U, 2);
+    text(g, `Lv.${m.level}`, sx + slotW - 4 * U, sy + 9 * U, { size: 26, bold: true, col: LBL, align: 'right' });
+    if (m.shiny_on) text(g, '★', sx + 4 * U, sy + 9 * U, { size: 26, bold: true, col: '#d89a10' });
+    const sn = fit(g, monSp(m)?.name || '???', slotW - 8 * U, 32, 24);
+    text(g, sn.s, sx + slotW / 2, sy + slotH - 4 * U, { size: sn.size, bold: true, align: 'center' });
   }
-  // 배지 (최종 진화시킨 쌤 포켓몬)
+
+  if (!n) {   // 포켓몬이 하나도 없음: 큰 점선 칸 하나 + 안내
+    const bw2 = 3 * slotW + 2 * GAP, bh2 = 2 * slotH + GAP;
+    pbox(g, gx, ty, bw2, bh2, 'rgba(255, 252, 236, .45)', 2); dashed(g, gx, ty, bw2, bh2, '#b08a38');
+    text(g, '아직 포켓몬이 없어요', gx + bw2 / 2, ty + bh2 / 2 - 2 * U, { size: 44, bold: true, col: '#9a7a30', align: 'center' });
+    text(g, 'QR을 찍어 첫 포켓몬을 만나 봐요!', gx + bw2 / 2, ty + bh2 / 2 + 12 * U, { size: 30, col: '#9a7a30', align: 'center' });
+  }
+
+  // ── 5. 배지 (최종 진화시킨 쌤 포켓몬): 가운데 정렬 띠, 많으면 2줄 ──
   const lines = S.catalog.lines.filter((l) => !l.secret && !l.bonus && l.subject !== '야생');
-  const owned = new Map();
-  for (const m of mons()) owned.set(m.line_id, Math.max(owned.get(m.line_id) || 0, m.stage));
-  const done = lines.filter((l) => (owned.get(l.id) || 0) >= (l.max_stage ?? 3)).length;
-  let by = ty + 2 * (slotH + 2 * U) + 10 * U;
-  text(g, '배지', IX + 2 * U, by, { size: 44, bold: true, shadow: '#fff8d8' });
-  text(g, `${done}/${lines.length}`, IX + IW - 2 * U, by, { size: 44, bold: true, align: 'right', shadow: '#fff8d8' });
-  by += 4 * U;
-  const per = Math.max(1, Math.ceil(lines.length / 2)); const bw = Math.min(8 * U, Math.floor((IW / per) / U) * U);
-  const ox = IX + Math.floor((IW - per * bw) / 2 / U) * U;
-  lines.forEach((l, i) => {
-    const on = (owned.get(l.id) || 0) >= (l.max_stage ?? 3);
-    const bx = ox + (i % per) * bw, byy = by + Math.floor(i / per) * bw;
-    rect(g, bx, byy, bw - U, bw - U, on ? '#9a6a10' : '#d8bc78');
-    rect(g, bx + U, byy + U, bw - 3 * U, bw - 3 * U, on ? '#f8d048' : '#ead39a');
-  });
+  if (lines.length) {
+    const owned = new Map();
+    for (const m of mons()) owned.set(m.line_id, Math.max(owned.get(m.line_id) || 0, m.stage));
+    const isOn = (l) => (owned.get(l.id) || 0) >= (l.max_stage ?? 3);
+    const done = lines.filter(isOn).length;
+    let by = ty + 2 * slotH + GAP + 16 * U;
+    text(g, '배지', IX + U, by, { size: 40, bold: true, shadow: '#fff8d8' });
+    text(g, `${done}/${lines.length}`, IR - U, by, { size: 30, bold: true, col: LBL, align: 'right', shadow: '#fff8d8' });
+    by += 5 * U;
+    const rows = lines.length > 24 ? 2 : 1;
+    const per = Math.ceil(lines.length / rows);
+    const bw = Math.max(3 * U, Math.min(9 * U, Math.floor(IW / per / U) * U));
+    const ox = IX + Math.floor((IW - per * bw) / 2 / U) * U;
+    lines.forEach((l, i) => {
+      const on = isOn(l);
+      const bx = ox + (i % per) * bw, byy = by + Math.floor(i / per) * bw;
+      rect(g, bx, byy, bw - U, bw - U, on ? '#9a6a10' : '#d8bc78');
+      rect(g, bx + U, byy + U, bw - 3 * U, bw - 3 * U, on ? '#f8d048' : '#ead39a');
+    });
+  }
   return c;
 }
 
@@ -229,7 +288,7 @@ export async function openCardShare() {
   const p = S.snap.profile;
   const ov = sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '트레이너 카드 공유'),
     h('section.box.stack.share-box', ...panel.el,
-      !p.nickname && h('small.share-hint', '설정에서 별명을 정하면 카드에 별명이 나와요. 고유번호 · 이메일은 카드에 나오지 않아요.')),
+      h('small.share-hint', { style: { whiteSpace: 'pre-line' } }, p.nickname ? '카드에는 내 이름과 별명이 나와요.\n고유번호 · 이메일은 나오지 않아요.' : '카드에는 내 이름이 나와요.\n설정에서 별명을 정하면 이름 아래에 같이 나와요.\n고유번호 · 이메일은 나오지 않아요.')),
     h('button.btn', { type: 'button', onclick: () => closeOverlay() }, '닫기')]);
   ov.classList.add('share-overlay');
   ov.onclose = panel.done;

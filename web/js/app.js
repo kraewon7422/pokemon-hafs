@@ -1247,42 +1247,59 @@ export async function catchEncounter(enc) {
     }
     let turnRes = null;   // 사파리: safari_turn 에서 도망친 결과
     const onMiss = safari ? async () => { const t = await rpc('safari_turn', { p_id: enc.id }, { retries: 1 }); if (t?.fled) turnRes = t; return !!t?.fled; } : null;
+    // 결과 보내기: 잡기 장면이 끝나기 직전에 (confirm) → 장면은 서버 답대로 '잡았다!' / 도망 (사파리는 서버가 남은 도망 판정을 굴릴 수 있음)
+    //   돌려줌 { f } (사파리 sendResult) | { r } | { e } (오류)
+    const send = async (caught, x) => {
+      if (safari) return { f: await ss.sendResult({ p_id: enc.id, p_throws: prior + (x.throws || 0), p_caught: caught, p_grade: x.grade || 'none', p_curve: !!x.curve }) };
+      try { return { r: await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: caught, p_grade: x.grade || 'none', p_curve: !!x.curve }, { retries: 1 }) }; } catch (e) { return { e }; }
+    };
+    let sentP = null;   // 장면 안에서 보낸 결과 (약속 — 장면이 중간에 깨져도 두 번 보내지 않게 바로 적어 둠)
+    const confirm = (caught, x) => {
+      sentP = send(caught, x);
+      return sentP.then((o) => { const r = safari ? o.f?.r : o.r; return r ? !(r.fled || r.caught === false) : null; });
+    };
     try {
       const { catchScene } = await import('./catch.js');
       if (c) { /* 이어서 보내기만 */ } else
       c = safari
         ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior), level: Number(enc.level) || undefined, shiny, sand: enc.zone === 'desert',   // 0040: 서버가 정한 야생 레벨 (잡기 난이도) · 0043: 사막이면 모래빛 배경
           fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true,
-          onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss })
+          onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss, confirm })
         : legend
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true, shiny,
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true, shiny, confirm,
           intro: `전설의 포켓몬 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` })
         : wild
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true, shiny,
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true, shiny, confirm,
           intro: roam ? `방랑 전설 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` : null })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
-          balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false, shiny });
+          balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false, shiny, confirm });
     } catch { /* */ }
     // 장면을 못 띄웠으면 (레이드엔 바로 잡기 버튼이 없으니 skipped = 실패) 결과를 보내지 않음 → 기회는 그대로 남음
-    if (!c || c.skipped) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
+    //   (장면 안에서 이미 결과를 보냈으면 (sent) 그 결과를 씀)
+    const sent = sentP ? await sentP : null;
+    if (!sent && (!c || c.skipped)) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
+    c ||= { grade: 'none', curve: false, throws: 0 };
     let r;
     if (turnRes) {
       r = turnRes;   // 0037: 서버가 이미 도망을 정함 (만남 끝남) → 결과를 따로 보내지 않음
     } else if (safari) {
       // 먼저 기기에 적고 보냄: 끊기면 남겨 두었다가 다시 연결되면 보냄 · 같은 만남은 한 번만 (서버도 끝난 만남은 NOT_FOUND)
-      const f = await ss.sendResult({ p_id: enc.id, p_throws: prior + (c.throws || 0), p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve });
+      const f = (sent || await send(!c.fled, c)).f;
       if (f?.queued) { toast('인터넷이 끊겨서 결과를 기기에 적어 두었어요. 연결되면 바로 보낼게요.', { kind: 'error' }); return { queued: true }; }
       if (f?.kept) { toast(errorText(f.error.message), { kind: 'error' }); return; }
       if (f?.gone) { toast(errorText(f.error.message)); (S.encDone ||= new Set()).add(enc.id); return; }
       r = f?.r;
-    } else try {
-      r = await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
-    } catch (e) {
+    } else {
+      const o = sent || await send(!c.fled, c);
+      r = o.r;
+      const e = o.e;
+      if (e) {
       if (e.offline) toast('결과를 보내지 못했어요. 인터넷이 연결되면 홈에서 다시 도전할 수 있어요.', { kind: 'error' });
       else { toast(errorText(e.message)); if (e.message !== 'BOX_FULL') (S.encDone ||= new Set()).add(enc.id); }
       return;
+      }
     }
     (S.encDone ||= new Set()).add(enc.id);
     // 서버가 잡은 보스를 특별 티켓으로 바로 바꿔 줌 → 다음 sync 에서 또 축하하지 않게 미리 표시
