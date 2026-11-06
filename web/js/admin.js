@@ -62,7 +62,7 @@ const SETTING_HELP = {
   drop_place: '물건: 장소 QR을 찍으면 물건이 나올 확률 (기본 0.3 = 30%)', drop_quiz: '물건: 퀴즈 정답 때 확률 (기본 0.4)',
   drop_battle: '물건: 친구·실시간 배틀 승리 때 확률 (기본 0.5)', drop_practice: '물건: 연습 배틀 승리 때 확률 (기본 0.15)',
   drop_raid_tm: '물건: 레이드 승리 때 특별 기술머신 확률 (기본 0.3, 이상한사탕은 항상)',
-  battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20)',
+  battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20, 3마리 · 2 대 2는 4마리 기준 — 팀이 크면 비례해서 늘어남)',
   battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","env":"grassy"}, …] — 그 시간에 시작한 배틀의 날씨·필드 (sun·rain·sand·hail·electric·grassy·misty·psychic)',
   battle_field_mult: '필드 (일렉트릭·그래스·사이코필드): 그 타입 기술 위력 배율 (기본 1.3)',
   ability_hidden_chance: '특성: 잡을 때 숨겨진 특성이 나올 확률 (기본 0.05 = 5%)',
