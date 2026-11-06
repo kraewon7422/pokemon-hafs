@@ -100,6 +100,8 @@ export const isMythic = (line) => !!lineOf(line)?.mythic;
 export const isBonus = (line) => !!lineOf(line)?.bonus || isSecret(line) || isMythic(line);
 // 야생 포켓몬 = 선생님이 없는 계열 (QR 의 야생 · 걸음 · 알 · 레이드로 만남)
 export const isWild = (line) => lineOf(line)?.subject === '야생';
+// 이벤트 포켓몬 (0044: 지우개굴닌자 · 지우의 피카츄, 도감 810~) = 이상한 소포로만 받음. 야생 계열 + bonus (도감 수에 안 셈)
+export const isEvent = (line) => isWild(line) && !!lineOf(line)?.bonus;
 // 학교 도감 = 선생님 포켓몬 + 특별 전설 (야생·비밀·환상·비공개 제외) → 도감 50%·100% 보상과 '도감 완성' 은 이것 기준
 // 전국 도감 = 야생까지 모든 포켓몬 (비밀·환상·비공개 제외)
 // 0037: 칸 = 전국도감 번호 (서버 _dex_rewards 와 같은 셈)

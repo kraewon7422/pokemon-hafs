@@ -24,9 +24,13 @@
   tallR<0-1>                   풀숲을 밟을 때 흔들리는 잎 2장
   bsand<0-1> bshal<0-15>_<0-1> bdeep<0-1> bdeepe<0-15> bshalc<..>  해변 모래 · 얕은 물 (물거품 테두리, 2장) · 깊은 바다 · 깊은 바다 테두리
   bcoralA bcoralB bshell brock bsign palm   산호 (분홍 / 노랑) · 조개+불가사리 · 모래 위 바위 · 표지판 · 야자나무 16×24
+  dsand<0-1> dripple<0-1> dwall<0-15>_<0-2> dwallc<..>  사막 모래 · 모래 물결 · 붉은 사암 절벽 (0043)
+  dgrass dgrassR<0-1> dcactusS drock drubble dskull dbones druin<0-1> dsign  마른 모래 풀숲 (+흔들림) · 술통 선인장 · 사암 바위 · 돌 부스러기 · 머리뼈 · 뼈 · 유적 바닥 · 표지판
+  dcactus dpillar ddune        기둥 선인장 16×24 · 유적 사암 돌기둥 16×32 · 모래 언덕 48×32 (3×2 칸)
 주인공 safari-hero.png · 사육사 safari-keeper.png: 16×24 칸, 줄 = 아래·위·왼쪽·오른쪽, 칸 = 서기·걸음1·걸음2.
 """
 import json
+import math
 import os
 import sys
 
@@ -889,34 +893,35 @@ def sstairs(rail):
     return t
 
 
-def spillar():
+def spillar(P=None):
     """16×32 부서진 돌기둥: 받침 + 기둥 (왼쪽 밝음 · 오른쪽 어두움) + 뾰족하게 부서진 머리 + 오른쪽 아래 그림자."""
+    P = P or SH
     t = Tile(16, 32)
     top = [9, 7, 6, 5, 6, 8, 7, 9, 10, 11]          # 기둥 열 (x 3..12) 마다 부서진 높이
     for i, x in enumerate(range(3, 13)):
         for y in range(top[i], 27):
             if x == 3 or x == 12:
-                c = SH['c3']
+                c = P['c3']
             elif x <= 5:
-                c = SH['c1']
+                c = P['c1']
             elif x >= 10:
-                c = SH['c2']
+                c = P['c2']
             else:
-                c = SH['c0']
+                c = P['c0']
             if y == top[i]:
-                c = SH['c3'] if x in (3, 12) else SH['c1']
+                c = P['c3'] if x in (3, 12) else P['c1']
             if x == 7 and y > top[i] + 2 and y % 6 == 0:
-                c = SH['c2']                         # 기둥 홈
+                c = P['c2']                         # 기둥 홈
             t.px(x, y, c)
-        t.px(x, top[i] - 1, SH['c3'])                # 머리 테두리
+        t.px(x, top[i] - 1, P['c3'])                # 머리 테두리
     for y in range(26, 31):                          # 받침
         for x in range(1, 15):
             edge = x in (1, 14) or y in (26, 30)
-            t.px(x, y, SH['c3'] if edge else SH['c1'] if y == 27 else SH['c0'] if x < 11 else SH['c2'])
+            t.px(x, y, P['c3'] if edge else P['c1'] if y == 27 else P['c0'] if x < 11 else P['c2'])
     for x in range(3, 16):                           # 그림자 (오른쪽 아래)
-        t.px(x, 31, SH['cs'])
+        t.px(x, 31, P['cs'])
     for y in range(18, 31):
-        t.px(15, y, SH['cs'])
+        t.px(15, y, P['cs'])
     return t
 
 
@@ -1139,6 +1144,291 @@ def beach_tiles():
     return out
 
 
+# ─────────── 사막 · 모래바람 지대 (0043): 주황빛 모래 · 모래 물결 · 모래 언덕 · 붉은 사암 절벽 · 마른 모래 풀숲 · 선인장 · 뼈 · 유적 ───────────
+# 3세대 111번 도로 사막 느낌으로 새로 그림 (원본 타일을 베끼지 않음). 모래는 해변보다 진하고 따뜻한 주황 · 절벽은 붉은 사암 (메사).
+#   dsand<0-1> dripple<0-1> dwall<0-15>_<0-2> dwallc<..> dgrass dgrassR<0-1> dcactusS drock drubble dskull dbones
+#   druin<0-1> dsign · dcactus 16×24 · dpillar 16×32 · ddune 48×32 (돌기둥 = 제단 기둥과 같은 모양, 사암 색)
+DC = {k: hx(v) for k, v in dict(
+    ds0='#e8c070', ds1='#f8dc98', ds2='#d4a458', ds3='#b8843c', rl='#f8dc98', rp='#d0a050',       # 모래 · 물결
+    du1='#fff0c0', du0='#f4d490', du2='#d09c50', du3='#a8743a',                                  # 모래 언덕 (빛 · 가운데 · 그늘 · 진한 그늘)
+    gk='#5c4c14', g0='#94882c', g1='#bcb040', g2='#e4d878',                                      # 마른 모래 풀
+    ck='#1c4424', c0='#3c8840', c1='#64b04c', c2='#a4d878', cd='#2c6430', cs='#f4f0c8', cp='#f070a0', cP='#c04070', cy='#f8e070',  # 선인장
+    bo0='#f8f4e4', bo1='#dcd0b0', bo2='#b0a080', bK='#6c5c40', bh='#3c2c1c',                     # 뼈
+    rk='#5c3018', r1='#f0a870', r0='#d07c48', r2='#a0582c',                                      # 사암 바위
+).items()}
+CAVE['d'] = dict(top0='#c8784c', top1='#b0683c', top2='#e0965c', top3='#7c4024', rim0='#f8d09c', rim1='#e4a46c',
+                 face0='#c47a4c', face1='#e09a64', face2='#9c5834', face3='#64301a')
+RUIN = {k: hx(v) for k, v in dict(f0='#dcb47c', f1='#c8a066', f2='#f0d4a0', fg='#a07648', fc='#8c6438',
+                                  c0='#d8ac78', c1='#f4d4a0', c2='#a87c50', c3='#64442a', cs='#c8964c').items()}
+
+
+def dsand(v):
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            t.px(x, y, DC['ds0'])
+    pts = [(3, 2), (12, 5), (7, 11), (1, 9), (13, 13)] if v == 0 else [(5, 1), (10, 8), (2, 5), (14, 11), (6, 14)]
+    for (x, y) in pts:                      # 알갱이 (밝은 2점 + 그늘 1점)
+        t.px(x, y, DC['ds1']); t.px(x + 1, y, DC['ds1']); t.px(x + 1, y + 1, DC['ds2'])
+    for (x, y) in ([(9, 3), (4, 7), (11, 14)] if v == 0 else [(8, 4), (12, 2), (3, 11)]):
+        t.px(x, y, DC['ds2'])
+    t.px(*((6, 5) if v == 0 else (10, 12)), DC['ds3'])
+    return t
+
+
+def dripple(v):
+    """바람이 만든 모래 물결: 16px 마다 이어지는 굽은 줄 (밝은 등 + 그늘)."""
+    t = dsand(v)
+    for i, base in enumerate((3, 9, 14) if v == 0 else (2, 7, 12)):
+        for x in range(16):
+            y = base + round(math.sin((x + i * 5 + v * 3) * math.pi / 8) * 1.3)
+            t.px(x, y, DC['rl']); t.px(x, y + 1, DC['rp'])
+    return t
+
+
+def ddune():
+    """48×32 모래 언덕 (3×2 칸, 막힌 칸): 바람 받는 왼쪽은 완만하고 밝음 · 능선 오른쪽은 가파른 그늘 (미끄럼면) · 오른쪽 아래 모래 그림자."""
+    t = Tile(48, 32)
+    cx, cy, rx, ry = 23.0, 18.5, 22.5, 14.0
+    inside = lambda x, y: ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2 <= 1 and y <= 29 and y >= 3 + abs(x - 28) * 0.42
+    crest = lambda y: 28 + (y - 4) * 0.42             # 능선 (꼭대기에서 아래로 살짝 오른쪽)
+    for y in range(32):                               # 그림자 (오른쪽 아래 모래 위, 점무늬)
+        for x in range(48):
+            if not inside(x, y) and inside(x - 2, y - 2) and (x + y) % 2 == 0:
+                t.px(x, y, DC['ds2'])
+    for y in range(32):
+        for x in range(48):
+            if not inside(x, y):
+                continue
+            xc = crest(y)
+            edge = not (inside(x - 1, y) and inside(x + 1, y) and inside(x, y - 1) and inside(x, y + 1))
+            if x < xc - 0.5:                          # 바람 받는 비탈
+                k = (xc - x) / max(1.0, xc - (cx - rx))
+                c = DC['du1'] if k < 0.18 else DC['du0']
+                if (x * 3 + y * 7) % 13 == 0 and 0.25 < k < 0.8:
+                    c = DC['du1']                     # 반짝 알갱이
+                if y > cy + ry * 0.45 and (x + y) % 2 == 0:
+                    c = DC['du2']                     # 언덕 발치는 살짝 어둡게
+            elif x < xc + 1:
+                c = DC['du1']                         # 능선 밝은 줄
+            else:
+                c = DC['du3'] if x < xc + 2.5 else DC['du2']
+                if (x - xc) > 6 and (x + y) % 3 == 0:
+                    c = DC['du3']
+            if edge:
+                c = DC['du3'] if (x > xc or y > cy) else DC['du2']
+            t.px(x, y, c)
+    for (bx, by, n) in [(9, 16, 6), (14, 21, 7), (19, 11, 5), (5, 24, 6), (21, 26, 5)]:   # 바람 물결 (비탈 위 가는 줄)
+        for i in range(n):
+            x, y = bx + i, by + (1 if i in (0, n - 1) else 0)
+            if inside(x, y) and x < crest(y) - 1:
+                t.px(x, y, DC['du2'])
+    return t
+
+
+DGRASS = [  # 마른 모래 풀: 뾰족한 잎 다발 (진한 테두리 · 올리브 · 밝은 끝). 이어 붙이면 빽빽한 풀숲
+    '..k.....k....k..',
+    '.kLk...kLk..kLk.',
+    '.knk.k.knk..knk.',
+    'k.knkLkknk.kntk.',
+    'kLktknkntkkLntk.',
+    '.kntkntkntkkntk.',
+    '..ktnttktnkntkk.',
+    '.k.kttntnttkk.k.',
+    'kLk.ktttttk..kLk',
+    'knkk.ktntk.k.knk',
+    'kntkLkttk.kLkntk',
+    '.kttnkntkkknktk.',
+    '..kttnttnkntnk..',
+    '.k.kktttttttk.k.',
+    'kLk..kkkkkkk.kLk',
+    '.kk..........kk.',
+]
+DGRASS_PAL = {'k': DC['gk'], 't': DC['g0'], 'n': DC['g1'], 'L': DC['g2']}
+
+
+def dgrass(f=None):
+    t = Tile()
+    rows = DGRASS
+    if f is not None:      # 밟을 때 흔들리는 2장: 위쪽 잎 끝이 좌우로 1px
+        rows = [(r[1:] + '.') if (i < 8 and f == 0) else ('.' + r[:-1]) if (i < 8 and f == 1) else r for i, r in enumerate(DGRASS)]
+    t.art(rows, DGRASS_PAL)
+    return t
+
+
+CACTUS = [  # 16×24 기둥 선인장 (사와로): 위 8줄은 윗칸으로 솟음. 1 밝은 쪽 · 0 가운데 · d 그늘 · s 가시
+    '......kkkk......',
+    '.....k2110k.....',
+    '.....k1s0dk.....',
+    '.....k100dk.....',
+    '.kkk.k10sdk.....',
+    'k21dkk100dk.kkk.',
+    'k1sdkk1s0dkk21dk',
+    'k10dkk100dkk1sdk',
+    'k1sdkk10sdkk10dk',
+    'k10dkk100dkk1sdk',
+    'k10ddk1s0dkk10dk',
+    '.k100k100dkd10dk',
+    '..kk00100d00ddk.',
+    '....kk100dkkkk..',
+    '.....k10sdk.....',
+    '.....k100dk.....',
+    '.....k1s0dk.....',
+    '.....k100dk.....',
+    '.....k10sdk.....',
+    '.....k100dk.....',
+    '.....k1s0dk.....',
+    '...ggk100dkgg...',
+    '....ggkkkkggg...',
+    '................',
+]
+
+
+def dcactus():
+    t = Tile(16, 24)
+    t.art(CACTUS, {'k': DC['ck'], '0': DC['c0'], '1': DC['c1'], '2': DC['c2'], 'd': DC['cd'], 's': DC['cs'], 'g': DC['ds3']})
+    return t
+
+
+BARREL = [  # 둥근 술통 선인장 + 분홍 꽃
+    '................',
+    '......kkk.......',
+    '.....kpPpk......',
+    '....kpYyPpk.....',
+    '....kkpPpkk.....',
+    '...k21s0s0dk....',
+    '..k210s0s0ddk...',
+    '..k1s0s0s0sdk...',
+    '.k210s0s0s0ddk..',
+    '.k1s0s0s0s0sdk..',
+    '.k210s0s0s0ddk..',
+    '..k10s0s0s0dk...',
+    '..kk0s0s0sdkk...',
+    '...kkkkkkkkk....',
+    '..ggggggggggg...',
+    '................',
+]
+
+
+def dcactus_s():
+    t = Tile()
+    t.art(BARREL, {'k': DC['ck'], '0': DC['c0'], '1': DC['c1'], '2': DC['c2'], 'd': DC['cd'], 's': DC['cs'],
+                   'p': DC['cP'], 'P': DC['cp'], 'Y': DC['cy'], 'y': DC['cs'], 'g': DC['ds2']})
+    return t
+
+
+SKULL = [  # 뿔 달린 짐승 머리뼈 (막힌 칸)
+    '................',
+    '.hh..........hh.',
+    'hHHh........hHHh',
+    'hHbHh......hbHHh',
+    '.hHbHhhhhhhHbHh.',
+    '..hhBBBBBBBBhh..',
+    '...hBBBBBBBbh...',
+    '..hBBkkBBkkBbh..',
+    '..hBkKKkkKKkbh..',
+    '..hBkKKkBKKkbh..',
+    '...hBkkBBkkbh...',
+    '...hBBBkkBBbh...',
+    '....hBBKKBbh....',
+    '....hBbBbBbh....',
+    '...gghhhhhhgg...',
+    '................',
+]
+
+
+def dskull():
+    t = Tile()
+    t.art(SKULL, {'h': DC['bK'], 'H': DC['bo1'], 'B': DC['bo0'], 'b': DC['bo2'], 'k': DC['bK'], 'K': DC['bh'], 'g': DC['ds3']})
+    return t
+
+
+BONES = [  # 모래에 반쯤 묻힌 뼈 · 갈비뼈 (걸을 수 있는 장식)
+    '................',
+    '................',
+    '..........hh....',
+    '.........hBbh...',
+    '..hh....hBbh....',
+    '.hBBh..hBbh.....',
+    '.hBBBhhBbh......',
+    '..hbBBBBh.......',
+    '.hBBhhhh..h.h.h.',
+    '.hbbh....hBhBhBh',
+    '..hh.....hBhBhBh',
+    '.........hbhbhbh',
+    '........gghghghg',
+    '................',
+    '................',
+    '................',
+]
+
+
+def dbones():
+    t = Tile()
+    t.art(BONES, {'h': DC['bK'], 'B': DC['bo0'], 'b': DC['bo2'], 'g': DC['ds2']})
+    return t
+
+
+def drock():
+    t = Tile()
+    t.art(ROCK, {'k': DC['rk'], '1': DC['r1'], '2': DC['r0'], '3': DC['r2'], 'g': DC['ds3']})
+    return t
+
+
+def drubble():
+    t = Tile()
+    t.art(CROCK, {'k': hx('#64442a'), '1': hx('#f4d4a0'), '2': hx('#d0a670'), '3': hx('#a07648'), 'g': RUIN['fc']})
+    return t
+
+
+def druin(v):
+    """무너진 유적 바닥: 사암 돌판 (벽돌 쌓기) + 바람에 날려 쌓인 모래."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            off = 4 if (y // 8) % 2 else 0
+            gx, gy = (x + off) % 8, y % 8
+            if gy == 7 or gx == 7:
+                c = RUIN['fg']
+            elif gy == 0 or gx == 0:
+                c = RUIN['f2']
+            else:
+                c = RUIN['f1'] if (x * 3 + y * 5) % 11 == 0 else RUIN['f0']
+            t.px(x, y, c)
+    drift = [(11, 12, 4.2), (2, 3, 2.6)] if v == 0 else [(4, 13, 3.6), (13, 2, 3.0)]
+    for (cx, cy, r) in drift:
+        for y in range(16):
+            for x in range(16):
+                d = ((x - cx) ** 2 + ((y - cy) * 1.4) ** 2) ** 0.5
+                if d < r - 0.8:
+                    t.px(x, y, DC['ds0'] if (x + y) % 5 else DC['ds1'])
+                elif d < r and (x + y) % 2 == 0:
+                    t.px(x, y, DC['ds0'])
+    if v:
+        for (x, y) in [(3, 3), (4, 4), (4, 5), (5, 6)]:
+            t.px(x, y, RUIN['fc'])
+    return t
+
+
+def dsign():
+    t = Tile()
+    t.art(SIGN, dict(SIGN_PAL, g=DC['ds3']))
+    return t
+
+
+def desert_tiles():
+    out = [('dsand0', dsand(0)), ('dsand1', dsand(1)), ('dripple0', dripple(0)), ('dripple1', dripple(1))]
+    for m in range(16):
+        for v in range(3):
+            out.append((f'dwall{m}_{v}', wall('d', m, v)))
+    for c in ('nw', 'ne', 'sw', 'se'):
+        out.append((f'dwallc{c}', wall_corner('d', c)))
+    out += [('dgrass', dgrass()), ('dgrassR0', dgrass(0)), ('dgrassR1', dgrass(1)), ('dcactusS', dcactus_s()),
+            ('drock', drock()), ('drubble', drubble()), ('dskull', dskull()), ('dbones', dbones()),
+            ('druin0', druin(0)), ('druin1', druin(1)), ('dsign', dsign())]
+    return out
+
+
 def grass_rustle(f):
     """풀숲을 밟을 때 잎이 흔들리는 2장: 위쪽 잎 끝이 좌우로 1px."""
     t = Tile()
@@ -1356,6 +1646,7 @@ def build():
     tiles += shrine_tiles()
     tiles += [('tallR0', grass_rustle(0)), ('tallR1', grass_rustle(1))]
     tiles += beach_tiles()
+    tiles += desert_tiles()
     tree = Tile(16, 24); tree.art(TREE, TREE_PAL)
 
     cols = 16
@@ -1375,6 +1666,12 @@ def build():
     idx['spillar'] = [144, rows * TS, 16, 32]
     sheet.paste(palm().im, (160, rows * TS))            # 해변 야자나무 16×24
     idx['palm'] = [160, rows * TS, 16, 24]
+    sheet.paste(dcactus().im, (176, rows * TS))         # 사막 기둥 선인장 16×24
+    idx['dcactus'] = [176, rows * TS, 16, 24]
+    sheet.paste(spillar(RUIN).im, (192, rows * TS))     # 사막 유적 사암 돌기둥 16×32
+    idx['dpillar'] = [192, rows * TS, 16, 32]
+    sheet.paste(ddune().im, (208, rows * TS))           # 사막 모래 언덕 48×32 (3×2 칸, 왼쪽 위 칸 D 에 그림)
+    idx['ddune'] = [208, rows * TS, 48, 32]
     return sheet, idx
 
 

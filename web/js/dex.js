@@ -4,7 +4,7 @@ import { kv } from './db.js';
 import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, vibrate } from './state.js';
+import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isEvent, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, vibrate } from './state.js';
 import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
 import { rumourBox } from './legends.js';
 
@@ -97,7 +97,8 @@ export const TYPES = ['노말', '불꽃', '물', '풀', '전기', '얼음', '격
 
 // 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸 + 지방으로 바로 가기. 범위 · 타입을 바꾸면 첫 쪽부터
 export const DEX_PER_PAGE = 60;
-export const REGIONS = [['관동', 1], ['성도', 152], ['호연', 252], ['신오', 387], ['하나', 494], ['칼로스', 650], ['알로라', 722]];
+export const REGIONS = [['관동', 1], ['성도', 152], ['호연', 252], ['신오', 387], ['하나', 494], ['칼로스', 650], ['알로라', 722], ['이벤트', 810]];   // 이벤트 = 0044 소포 포켓몬
+export const EVENT_NOTE = '이상한 소포로만 받을 수 있어요.';
 const regionOf = (d) => REGIONS.reduce((r, x) => (d >= x[1] ? x : r), REGIONS[0])[0];
 // 같은 전국도감 번호의 종이 여럿이면 (갈래 종 · 따로 있는 야생 계열) 한 칸: 내가 가진 종 → 진화 갈래 쪽 (계열 안의 종) → 첫 종
 const monsOfKey = (k) => mons().filter((m) => dexKey(monSp(m)) === k);
@@ -170,6 +171,7 @@ export function viewDex() {
       return h(`button.dex-cell${got ? '.caught' : '.unknown'}`, {
         'aria-label': got ? sp.name : '미발견',
         onclick: () => (got ? openDetail(sp) : toast(isSecret(sp.line_id) ? '지도에 없는 곳에 숨어 있다는 소문이… 학교를 구석구석 찾아보세요!'
+          : isEvent(sp.line_id) ? EVENT_NOTE + ' 축제 중에 알려 주는 소포 코드를 기다려 주세요!'
           : isWild(sp.line_id) ? '야생 포켓몬이에요. QR을 찍거나, 많이 걷거나, 알을 부화하면 만날 수 있어요!' : '아직 발견하지 못했어요. 학교 곳곳을 찾아보세요!')),
       },
       h('span.no', dexNo(sp)),
@@ -177,6 +179,7 @@ export function viewDex() {
       h('span.nm', got ? sp.name : '???'),
       canEvo && h('span.evo-dot', '진화'));
     })),
+    shown.some((sp) => isEvent(sp.line_id)) && h('p.dex-event-note', pix('gift'), ` 이벤트 포켓몬 (${dexNo(shown.find((sp) => isEvent(sp.line_id)))}~): ${EVENT_NOTE}`),
     pager(true),
   ];
 }
@@ -293,7 +296,7 @@ export function openDetail(sp) {
         h('span', '분류'), h('span', sp.category),
         h('span', '키 / 몸무게'), h('span', `${sp.height} / ${sp.weight}`),
         isWild(sp.line_id) ? h('span', '만나는 곳') : h('span', '정체'),
-        h('span', isWild(sp.line_id) ? '야생 (QR · 걷기 · 알 · 레이드)' : line.teacher),
+        h('span', isEvent(sp.line_id) ? EVENT_NOTE : isWild(sp.line_id) ? '야생 (QR · 걷기 · 알 · 레이드)' : line.teacher),
         h('span', '잡은 횟수'), h('span', `${c?.catch_count || 0}번`),
         h('span', '가진 수'), h('span', `${mine.length}마리`))),
     mine.length > 0 && h('div.box.my-mons', h('b', `내 ${sp.name} ${mine.length}마리`),
@@ -425,7 +428,7 @@ export function sumInfo(sp, type) {
       h('dt', '이름'), h('dd', sp.name),
       h('dt', '타입'), h('dd', h('span.types', typeChips(type))),   // span.types = 칩 사이 간격 (붙어 보이던 문제)
       h('dt', '분류'), h('dd', sp.category),
-      h('dt', isWild(sp.line_id) ? '만나는 곳' : '정체'), h('dd', isWild(sp.line_id) ? '야생' : line?.teacher || '?'),
+      h('dt', isWild(sp.line_id) ? '만나는 곳' : '정체'), h('dd', isEvent(sp.line_id) ? '이상한 소포 (이벤트)' : isWild(sp.line_id) ? '야생' : line?.teacher || '?'),
       h('dt', '성향'), h('dd', statNote(sp))),
     sp.abilities?.length ? h('div.sum-ab', h('small', '특성 (눌러서 설명)'), abilityBox(sp.abilities, sp.hidden_ability)) : null,
     h('div.sum-match', h('small', '효과가 굉장한 상대'), h('div', ...chips(m.strong))),
