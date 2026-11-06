@@ -95,11 +95,9 @@ export const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour
 const SCOPES = [['all', '전체'], ['school', '학교'], ['wild', '야생'], ['mine', '잡은 포켓몬']];
 export const TYPES = ['노말', '불꽃', '물', '풀', '전기', '얼음', '격투', '독', '땅', '비행', '에스퍼', '벌레', '바위', '고스트', '드래곤', '악', '강철', '페어리'];
 
-// 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸 + 지방으로 바로 가기. 범위 · 타입을 바꾸면 첫 쪽부터
+// 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸. 범위 · 타입을 바꾸면 첫 쪽부터 (지방 바로 가기 줄은 ui8 에서 뺌 — 실제 구성과 안 맞았음)
 export const DEX_PER_PAGE = 60;
-export const REGIONS = [['관동', 1], ['성도', 152], ['호연', 252], ['신오', 387], ['하나', 494], ['칼로스', 650], ['알로라', 722], ['이벤트', 810]];   // 이벤트 = 0044 소포 포켓몬
 export const EVENT_NOTE = '이상한 소포로만 받을 수 있어요.';
-const regionOf = (d) => REGIONS.reduce((r, x) => (d >= x[1] ? x : r), REGIONS[0])[0];
 // 같은 전국도감 번호의 종이 여럿이면 (갈래 종 · 따로 있는 야생 계열) 한 칸: 내가 가진 종 → 진화 갈래 쪽 (계열 안의 종) → 첫 종
 const monsOfKey = (k) => mons().filter((m) => dexKey(monSp(m)) === k);
 function pickRep(group) {
@@ -134,15 +132,6 @@ export function viewDex() {
     h('button.btn.small', { type: 'button', disabled: page === 0, onclick: () => go(page - 1, bottom), 'aria-label': '이전 쪽' }, '◀'),
     h('span.dp-mid', h('b', `${page + 1} / ${pages}`), shown.length ? h('small', `${dexNo(shown[0])} ~ ${dexNo(shown[shown.length - 1])}`) : null),
     h('button.btn.small', { type: 'button', disabled: page >= pages - 1, onclick: () => go(page + 1, bottom), 'aria-label': '다음 쪽' }, '▶'));
-  // 누른 지방이 이 쪽에 있으면 그것, 아니면 이 쪽 첫 칸의 지방
-  const here = new Set(shown.map((sp) => regionOf(sp.dex || 1)));
-  const cur = here.has(S.dexRegion) ? S.dexRegion : shown.length ? regionOf(shown[0].dex || 1) : null;
-  const regions = pages > 1 && h('div.filters.dex-regions', { role: 'toolbar', 'aria-label': '지방으로 가기' },
-    REGIONS.map(([n, from], i) => {
-      const to = REGIONS[i + 1]?.[1] ?? 99999;
-      const at = list.findIndex((sp) => (sp.dex || 99999) >= from && (sp.dex || 99999) < to);
-      return h('button.chip', { type: 'button', disabled: at < 0, 'aria-pressed': String(cur === n), onclick: () => { S.dexRegion = n; go(Math.floor(at / DEX_PER_PAGE)); } }, n);
-    }));
   const p = S.snap.profile;
   const evoReady = mons().filter((c) => canLevelEvolve(c)).length;
   return [
@@ -160,7 +149,6 @@ export function viewDex() {
         'aria-pressed': String(tf === t),
         onclick: () => { S.dexFilter = t; renderTab(); },
       }, t === 'all' ? '모든 타입' : t))),
-    regions,
     pager(false),
     list.length ? null : h('p.muted', { style: { textAlign: 'center' } }, '여기에 맞는 포켓몬이 없어요.'),
     h('div.dex-grid', shown.map((sp) => {
