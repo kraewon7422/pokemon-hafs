@@ -22,7 +22,7 @@ const CORE = [
 const EXTRA = [
   // 포켓몬 그림판 (보통 4장 먼저, 다음 색이 다른 4장 — 장 수를 바꾸면 여기도)
   ...['n', 's'].flatMap((k) => [0, 1, 2, 3].map((i) => `sprites/pk-${k}${i}.webp`)),
-  'vendor/jsQR.js', 'js/share.js', 'img/map.webp', 'img/eggs.png', 'js/catch.js', 'js/safari.js', 'js/safari-maps.js', 'js/safari-caves.js', 'js/safari-sync.js', 'img/safari-tiles.png', 'img/safari-tiles.js', 'img/safari-hero.png', 'img/safari-keeper.png', 'img/catch/day.png', 'img/catch/sunset.png', 'img/catch/night.png', 'img/catch/shore.png', 'img/catch/desert.png', 'img/catch/cave.png', 'img/fx/status.png',
+  'vendor/jsQR.js', 'js/share.js', 'img/map.webp', 'img/eggs.png', 'js/catch.js', 'js/safari.js', 'js/safari-maps.js', 'js/safari-caves.js', 'js/safari-sync.js', 'img/safari-tiles.png', 'img/safari-tiles.js', 'img/safari-hero.png', 'img/safari-keeper.png', 'img/catch/day.png', 'img/catch/sunset.png', 'img/catch/night.png', 'img/catch/shore.png', 'img/catch/desert.png', 'img/catch/cave.png', 'img/catch/snow.png', 'img/catch/lava.png', 'img/catch/plant.png', 'img/catch/dragon.png', 'img/fx/status.png',
   ...['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'].map((n) => `img/battle/${n}.png`),   // share.js 사진 배경
   ...['plains', 'sunny', 'rain', 'forest', 'beach', 'desert', 'snowy', 'cave', 'lake', 'electric', 'psychic'].map((n) => `img/battle/bt2-${n}.png`),   // 배틀 화면 배경 v2
   'js/games/surf.js', 'js/games/dodge.js', 'js/games/maze.js', 'js/games/land.js', 'js/games/cross.js', 'img/games/cross/cross-props.png',
