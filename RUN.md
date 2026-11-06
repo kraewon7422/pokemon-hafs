@@ -10,7 +10,7 @@ web/                 ← 배포되는 정적 사이트 (빌드 없음)
   s/index.html       장소 QR 주소(/s#ID.TOKEN) → 앱으로 넘김
   js/  css/  vendor/  fonts/  sprites/atlas.png  img/  icons/  sw.js  manifest.webmanifest
 supabase/
-  migrations/0001~0044       DB 구조 + 보안 규칙 + 서버 함수 (번호 순서대로 실행)
+  migrations/0001~0047       DB 구조 + 보안 규칙 + 서버 함수 (번호 순서대로 실행)
   seed.sql                   데모 데이터 (임시 몬스터 34라인 + 전설·비밀·탐구 전설, QR)
   seed_battle.sql            배틀 데이터 (상성·기술·능력치·배틀 타입) — seed.sql 다음에 실행. 손으로 고치지 말고 `python tools/gen_battle_data.py` 로 다시 만들기
   (계열 목록 = tools/roster.py. 43~76 계열 SQL = `python tools/gen_roster_sql.py` → seed.sql 의 '명단에 맞춰 늘린 계열' 블록)
@@ -95,6 +95,20 @@ python tools/build_atlas.py                                                   # 
 - 서버: `node tests/rpc_test.mjs` → [53] (구역 desert · 땅/바위 (+ 선인왕 · 마라카치 · 데스마스 · 목도리키텔) 만, 물 · 얼음 없음 · Lv.15 → 45 · 자르기). 레벨 범위는 설정 `safari_level_bands` 의 "desert".
 - 그림: `python tools/build_safari_tiles.py --preview` (사막 타일 desert_tiles · 기둥 선인장 · 사암 돌기둥 · 모래 언덕 48×32).
 - 화면: 사파리존 서쪽 끝 모래길 (입구에서 왼쪽 아래) → 사막. 들어서면 "모래바람이 거세게 분다!" 글 상자 · 지도 위 모래바람 (움직임 줄이기 설정이면 멈춘 옅은 모래빛) · 마른 풀숲이 다리를 가림 · 사막에서 만난 포켓몬은 잡기 장면도 모래빛.
+
+## 0047 기술 넓히기 · 이로치 레이드 확인 (스테이징)
+- 만들기: `python tools/gen_pokemon.py` (PokeAPI CSV `.work/pokeapi/` + `move_meta.csv` · `move_meta_stat_changes.csv` · `move_effect_prose.csv`) → `supabase/seed_pokemon.sql`, 그다음 `python .work/moves/build_0047.py` → `supabase/migrations/0047_moves.sql`.
+  새 기술 152개 = 번호 252~403 (앞 번호는 그대로). 기본 기술 4개 (species_moves) 는 예전 그대로 (이벤트 포켓몬 2마리만 물수리검 · 일렉트릭볼). 기술머신01~51 그대로, 52~60 새로.
+  2턴 기술 (공중날기 · 솔라빔 · 구멍파기 …) · 일격필살 · 묶기 · 무게/날씨/물건 조건 기술은 넣지 않음.
+- 실전 순서: `0047_moves.sql` → `supabase/seed_pokemon.sql` 다시 (같은 결과, 사람이 없을 때).
+- 서버: `node tests/rpc_test.mjs` → [55] (새 기술 자료 · 물수리검 2~5번 / 지우개굴닌자 3번 · 선공 · 일렉트릭볼 · 고정 데미지 · 객기 · 레벨업으로 배움 · 기술머신52~), [56] (이로치 레이드 → 보상 반짝, 보통 레이드는 그대로).
+- 화면: 운영자 [레이드] → '✦ 이로치 레이드' 체크 (미리보기가 반짝이는 색) → TV · 학생 레이드 탭 / 레이드 화면에 반짝이는 보스 + ✦.
+
+## 0048 설원 · 용암 지대 · 발전소 · 용의 굴 · 사파리존 잠금 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [57] (구역 snow · lava · plant · dragon 의 타입 · 레벨 범위와 자르기 · 방문 기록 · 네 곳 다녀오기 전 용의 굴은 grass 로 · 600족 계열 · 잠금 SAFARI_CLOSED). 레벨 범위는 설정 `safari_level_bands` 의 snow · lava · plant1 · plant2 · dragon.
+- 그림: `python tools/build_safari_tiles.py --preview` (0048 타일은 맨 뒤에 붙음 → 예전 타일 자리 그대로). 지도 점검: `node .work/s7/maps-check.mjs` (막는 칸 · 모든 칸 닿는지 · 얼음 미끄러짐 · warp).
+- 화면: 사파리존 맨 위 모래길 → 설원 ("눈이 펑펑 내리고 있다!", 얼어붙은 연못은 미끄러짐) · 왼쪽 아래 모래길 → 용암 지대 ("후끈한 열기가 느껴진다!") · 왼쪽 위 발전소 문 → 1층 → 계단 → 2층. 네 곳 (해변 · 사막 · 설원 · 용암) 을 다녀오면 호수에 섬 + 다리 가운데 계단 → 용의 굴.
+- **축제 시작할 때**: 학생들이 먼저 QR 을 찾게 하려면 운영자 [축제 운영] → 야생 포켓몬 → '사파리존 열기' 를 끔 (학생 앱 사파리존 = "아직 닫혀 있어요" 덮개, 현황판에 '사파리존 닫힘'). 스테이징 기본은 켜짐.
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.

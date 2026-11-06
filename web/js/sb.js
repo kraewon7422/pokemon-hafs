@@ -112,6 +112,8 @@ const MESSAGES = {
   BAD_QTY: '개수가 이상해요 (포켓몬 1~6, 물건 1~99).',
   BAD_RANGE: '끝나는 시각이 시작 시각보다 뒤여야 해요.',
   BAD_STEPS: '걸음 수가 이상해요.',
+  SAFARI_CLOSED: '사파리존은 아직 닫혀 있어요 — 지금은 학교 곳곳의 QR을 찾아보세요!',
+  BAD_AREA: '그런 사파리존 구역은 없어요.',
   BAD_SCORE: '기록이 이상해서 저장하지 않았어요.',
   CONFIRM_MISMATCH: '확인 글자가 달라요.',
   DEV_LOGIN_OFF: '개발용 로그인이 꺼져 있어요.',

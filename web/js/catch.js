@@ -51,10 +51,12 @@ const PW_LO = -Math.log(0.945), PW_HI = Math.log(1.10);
 const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
 // 배경 그림 맨 위 / 맨 아래 색 (화면이 그림보다 길 때 위아래를 채움)
 const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'],
-  shore: ['#5e92eb', '#f5d6af'], desert: ['#63b3e1', '#f5d6af'], cave: ['#28414b', '#366a84'] };
-// 구역 배경 (사파리존 만남의 enc.zone): 해변·연못 = 바닷가, 사막 = 모래, 동굴 = 동굴 (img/catch/{shore,desert,cave}.png — tools/draw_catch_zone_bg.py,
-// 배틀 배경 CC0 조각). 울트라 스페이스 = 밤 배경 + 보랏빛. 그 밖 (풀숲·깊은 곳·레이드·전설·QR) = 시간대 배경 (낮·노을·밤)
-const ZONE_BG = { beach: 'shore', pond: 'shore', shore: 'shore', desert: 'desert', cave: 'cave' };
+  shore: ['#5e92eb', '#f5d6af'], desert: ['#63b3e1', '#f5d6af'], cave: ['#28414b', '#366a84'],
+  snow: ['#a9c3e0', '#eef4fa'], lava: ['#2a1a1c', '#3a2a2a'], plant: ['#1c2630', '#4a5a68'], dragon: ['#140f24', '#2a2448'] };
+// 구역 배경 (사파리존 만남의 enc.zone): 해변·연못 = 바닷가, 사막 = 모래, 동굴 = 동굴, 눈밭 · 용암 · 발전소 · 용의 굴 (img/catch/{shore,desert,cave,snow,lava,plant,dragon}.png — tools/draw_catch_zone_bg.py,
+// 스크립트로 그린 도트 v2). 울트라 스페이스 = 밤 배경 + 보랏빛. 그 밖 (풀숲·깊은 곳·레이드·전설·QR) = 시간대 배경 (낮·노을·밤)
+const ZONE_BG = { beach: 'shore', pond: 'shore', shore: 'shore', desert: 'desert', cave: 'cave', snow: 'snow', lava: 'lava', plant: 'plant', dragon: 'dragon' };
+const INDOOR_BG = new Set(['cave', 'lava', 'plant', 'dragon']);   // 시간대 빛을 얹지 않는 배경 (동굴 · 실내 · 용암 하늘은 늘 같음)
 // 바깥 구역 배경 위에 시간대 빛 (동굴은 늘 같음): [색, 진하기]
 const TOD_TINT = { day: null, sunset: [0xf07848, 0.2], night: [0x16102c, 0.45] };
 const RING = { common: 0x58d858, rare: 0xf8a830, legendary: 0xf04848, mythic: 0xf04848 };
@@ -215,7 +217,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
   const zn = sand ? 'desert' : String(zone || '');
   const bgKey = ZONE_BG[zn] || (zn === 'ultra' ? 'night' : tod);
   // 화면 위에 덮는 빛: 바깥 구역 배경 = 시간대 빛 · 울트라 스페이스 = 보랏빛 · 사막 = 옅은 모래바람
-  const tints = [zn === 'ultra' ? [0x8030c0, 0.32] : null, ZONE_BG[zn] && bgKey !== 'cave' ? TOD_TINT[tod] : null, zn === 'desert' ? [0xe0a050, 0.16] : null].filter(Boolean);
+  const tints = [zn === 'ultra' ? [0x8030c0, 0.32] : null, ZONE_BG[zn] && !INDOOR_BG.has(bgKey) ? TOD_TINT[tod] : null, zn === 'desert' ? [0xe0a050, 0.16] : null].filter(Boolean);
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
   const fleeP = clamp(Number(fleeChance) || 0, 0, 1);

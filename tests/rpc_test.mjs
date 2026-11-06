@@ -3162,7 +3162,7 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
     const sm = (await X.select('species_moves?species_id=in.(1321,1324)&select=species_id,slot,move_id&order=species_id,slot')).data || [];
     const mv = Object.fromEntries(((await X.select(`moves?id=in.(${sm.map((x) => x.move_id).join(',') || 0})&select=id,name`)).data || []).map((x) => [x.id, x.name]));
     const names = (id) => sm.filter((x) => x.species_id === id).map((x) => mv[x.move_id]).join(',');
-    ok(names(1321) === '파도타기,악의파동,깜짝베기,섀도클로' && names(1324) === '10만볼트,전광석화,아이언테일,번개', 'starting moves', [names(1321), names(1324)]);
+    ok(names(1321) === '물수리검,악의파동,깜짝베기,섀도클로' && names(1324) === '10만볼트,전광석화,아이언테일,일렉트릭볼', 'starting moves (0047: 물수리검 · 일렉트릭볼)', [names(1321), names(1324)]);
     const ls = (await X.select('learnset?line_id=in.(441,442)&select=line_id')).data || [];
     ok(EVL.every((l) => ls.filter((x) => x.line_id === l).length >= 10), 'learnsets loaded', ls.length);
     const evo = (await X.select('evolutions?or=(from_species.in.(1321,1324),to_species.in.(1321,1324))&select=from_species')).data || [];
@@ -3237,6 +3237,284 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
   } finally {
     for (const id of gifts) await admin.rpc('admin_delete_gift', { p_id: id });
     for (const k of keys) if (k in old) await setS(k, old[k]);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[55] 기술 넓히기 (0047): 새 기술 152개 · 물수리검 (2~5번 / 지우개굴닌자 3번) · 선공 · 일렉트릭볼 · 고정 데미지 · 객기 · 레벨업으로 배움 · 기술머신52~');
+{
+  const mvRows = (await admin.select('moves?select=id,name,type,category,kind,power,accuracy,pp,priority,effect&order=id&limit=600')).data || [];
+  const MVN = Object.fromEntries(mvRows.map((m) => [m.name, m]));
+  const MV = Object.fromEntries(mvRows.map((m) => [m.name, m.id]));
+  const byId = Object.fromEntries(mvRows.map((m) => [m.id, m]));
+  ok(mvRows.length >= 397 && mvRows.filter((m) => m.id >= 252).length >= 150 && Math.max(...mvRows.map((m) => m.id)) === 403, `moves: ${mvRows.length} (new ids 252–403)`, mvRows.length);
+  ok(byId[59]?.name === '파도타기' && byId[93]?.name === '번개' && byId[111]?.name === '용성군' && byId[251]?.name === '변신' && byId[4]?.name === '이판사판태클',
+     'old move ids unchanged (59 파도타기 · 93 번개 · 111 용성군 · 251 변신)');
+  const W = MVN['물수리검'];
+  ok(W && W.id >= 252 && W.type === '물' && W.category === 'special' && W.power === 15 && W.accuracy === 100 && W.pp === 20 && W.priority === 1
+     && W.effect?.hits === 5 && W.effect?.bond?.line === 441 && W.effect?.bond?.hits === 3 && W.effect?.bond?.power === 20, '물수리검 data (물 · 특수 · 15 · 100 · PP20 · 선공+1 · 2~5번 · bond)', W);
+  const E = MVN['일렉트릭볼'];
+  ok(E?.type === '전기' && E.category === 'special' && E.power === 0 && E.effect?.spd_pow === 'electro', '일렉트릭볼 data (speed-based power)', E);
+  const chk = [['지옥찌르기', '악', 'physical', 80], ['엄청난힘', '격투', 'physical', 120], ['객기', '노말', 'physical', 70], ['괴상한바람', '고스트', 'special', 60],
+               ['아이스해머', '얼음', 'physical', 100], ['나이트헤드', '고스트', 'special', 0], ['액셀록', '바위', 'physical', 40]];
+  ok(chk.every(([n, t, c, p]) => MVN[n]?.type === t && MVN[n]?.category === c && MVN[n]?.power === p), 'some new moves have real type / category / power', chk.map(([n]) => MVN[n]));
+  ok(MVN['엄청난힘']?.effect?.self?.atk === -1 && MVN['액셀록']?.priority === 1 && MVN['나이트헤드']?.effect?.fixed === 'lv' && MVN['객기']?.effect?.double_if === 'self_st',
+     'effects: 엄청난힘 self −1 · 액셀록 선공 · 나이트헤드 fixed · 객기 double_if');
+  const tms = (await admin.select('items?key=in.(tm01,tm51,tm52,tm60)&select=key,move_id&order=key')).data || [];
+  const tm = (k) => tms.find((x) => x.key === k)?.move_id;
+  ok(tm('tm01') === MV['이판사판태클'] && byId[tm('tm51')] && tm('tm52') === MV['객기'] && tm('tm60') === MV['스마트혼'], 'TM01–51 unchanged, TM52 객기 … TM60 스마트혼', tms);
+
+  const spRows = (await admin.select('species?select=id,dex&id=lt.10000&order=id&limit=1000')).data || [];
+  const SP = Object.fromEntries(spRows.filter((r) => r.dex <= 809).map((r) => [r.dex, r.id]));
+  const SIMR = async (p) => { const r = await admin.rpc('admin_bt_sim', { p }); if (r.error) console.log('   sim error', r.error); return r.data; };
+  const BASE = { r: 0.5, crit: false, roll: 100, nopar: true };
+  const M = (sp, o = {}) => ({ sp, lv: 50, ...o, moves: (o.moves || ['고속이동']).map((n) => MV[n]) });
+  const turn = { 0: [{ move: 1, target: 0 }], 1: [{ move: 1, target: 0 }] };
+  const sim = (s0, s1, o = {}) => SIMR({ sides: [s0, s1], sim: { ...BASE, ...(o.sim || {}) }, turns: [turn], no_entry: true, ...(o.p || {}) });
+  const lg0 = (x) => x?.logs?.[0] || [];
+  const hitsOf = (lg) => lg.filter((e) => e.hp && e.hp[0] === 2 && e.dmg).length;
+  const dmgTo = (lg, u) => lg.filter((e) => e.hp && e.hp[0] === u && e.dmg).reduce((a, e) => a + e.dmg, 0);
+  const BLISSEY = SP[242], GREN = SP[658], ASH = 1321;
+  // 1) 물수리검: 보통 개굴닌자 = 2~5번 (여러 번), 지우개굴닌자 = 반드시 3번
+  const counts = [];
+  for (let k = 0; k < 14; k++) {
+    const lg = lg0(await sim([M(GREN, { moves: ['물수리검'] })], [M(BLISSEY, { lv: 100 })], { p: { seed: (k + 1) / 20 } }));
+    counts.push(hitsOf(lg));
+    if (k === 0) ok(lg.some((e) => e.m && /^\d번 맞았다!$/.test(e.m)), '물수리검 log: "N번 맞았다!"', lg.map((e) => e.m).filter(Boolean));
+  }
+  ok(counts.every((c) => c >= 2 && c <= 5) && new Set(counts).size >= 2, `개굴닌자 물수리검 hits 2–5 (${counts.join(',')})`, counts);
+  const ashC = [];
+  let ashDmg = [];
+  for (let k = 0; k < 6; k++) {
+    const lg = lg0(await sim([M(ASH, { moves: ['물수리검'] })], [M(BLISSEY, { lv: 100 })], { p: { seed: (k + 1) / 10 } }));
+    ashC.push(hitsOf(lg));
+    if (k === 0) ashDmg = lg.filter((e) => e.hp && e.hp[0] === 2 && e.dmg).map((e) => e.dmg);
+  }
+  const gunDmg = dmgTo(lg0(await sim([M(ASH, { moves: ['물대포'] })], [M(BLISSEY, { lv: 100 })])), 2);
+  ok(ashC.every((c) => c === 3), `지우개굴닌자 물수리검 always 3 hits (${ashC.join(',')})`, ashC);
+  ok(ashDmg.length === 3 && gunDmg > 0 && Math.abs(ashDmg[0] / gunDmg - 0.5) < 0.12, `지우개굴닌자 물수리검 per hit ≈ power 20 (vs 물대포 40: ${ashDmg[0]}/${gunDmg})`, [ashDmg, gunDmg]);
+  // 2) 선공: 느린 코뿌리의 물수리검 / 액셀록이 빠른 크로뱃보다 먼저
+  for (const n of ['물수리검', '액셀록']) {
+    const lg = lg0(await sim([M(SP[111], { moves: [n] })], [M(SP[169], { moves: ['몸통박치기'] })]));
+    const uses = lg.filter((e) => e.use).map((e) => e.use[0]);
+    ok(uses[0] === 0 && uses.includes(2), `priority +1: slow 코뿌리 ${n} moves before fast 크로뱃`, uses);
+  }
+  const lgN = lg0(await sim([M(SP[111], { moves: ['몸통박치기'] })], [M(SP[169], { moves: ['몸통박치기'] })]));
+  ok(lgN.filter((e) => e.use)[0]?.use?.[0] === 2, 'control: without priority the faster 크로뱃 moves first', lgN.filter((e) => e.use).map((e) => e.use));
+  // 3) 일렉트릭볼 (레벨 50 피카츄): 위력 = 스피드 비율 → 같은 상대에게 10만볼트 (90) 와 비교
+  //    해피너스 (느림, 비율 ≥1 → 60) · 야도란 (아주 느림, ≥2 → 80) · 크로뱃 (빠름, <1 → 40)
+  const rEB = async (dex) => {
+    const a = dmgTo(lg0(await sim([M(SP[25], { moves: ['일렉트릭볼'] })], [M(SP[dex])])), 2);
+    const b = dmgTo(lg0(await sim([M(SP[25], { moves: ['10만볼트'] })], [M(SP[dex])])), 2);
+    return b ? a / b : null;
+  };
+  const eb = { blissey: await rEB(242), slowbro: await rEB(80), crobat: await rEB(169) };
+  ok(Math.abs(eb.blissey - 60 / 90) < 0.1 && Math.abs(eb.slowbro - 80 / 90) < 0.1 && Math.abs(eb.crobat - 40 / 90) < 0.1,
+     `일렉트릭볼 power by speed ratio (vs 10만볼트: ${Object.values(eb).map((x) => x?.toFixed(2)).join(' / ')} ≈ 0.67 / 0.89 / 0.44)`, eb);
+  // 4) 고정 데미지: 지구던지기 = 레벨 (50), 나이트헤드는 노말 해피너스에게 효과 없음
+  const st1 = lg0(await sim([M(SP[68], { moves: ['지구던지기'] })], [M(BLISSEY, { lv: 100 })]));
+  ok(dmgTo(st1, 2) === 50 && !st1.some((e) => e.m?.includes('효과가')), '지구던지기 = exactly user level (50), no effectiveness text', st1.map((e) => e.m || e.dmg));
+  const ns = lg0(await sim([M(SP[94], { moves: ['나이트헤드'] })], [M(BLISSEY, { lv: 100 })]));
+  ok(dmgTo(ns, 2) === 0 && ns.some((e) => e.m?.includes('효과가 없는')), '나이트헤드 vs Normal: no effect', ns.map((e) => e.m).filter(Boolean));
+  // 5) 객기: 화상이면 위력 2배 (화상으로 반이 되지도 않음)
+  const fc = async (st) => dmgTo(lg0(await sim([M(SP[20], { moves: ['객기'], ...(st ? { st } : {}) })], [M(BLISSEY, { lv: 100 })])), 2);
+  const fBrn = await fc('brn'), fOk = await fc(null);
+  ok(fOk > 0 && Math.abs(fBrn / fOk - 2) < 0.15, `객기: burned ×2 (${fBrn} vs ${fOk})`, [fBrn, fOk]);
+
+  // 6) 레벨업으로 새 기술을 배움 (learnset 의 새 기술 · 레벨 12~40)
+  const row = (await admin.select('learnset?move_id=gte.252&how=eq.level&lv=gte.12&lv=lte.40&line_id=gte.83&line_id=lte.440&select=line_id,move_id,lv&order=line_id&limit=1')).data?.[0];
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'mv1234' })).error);
+  try {
+    const X = client(await pwLogin(`${sid}@code.local`, 'mv1234'));
+    await X.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '기술테스트' });
+    const g = await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: row?.line_id, p_stage: 1 });
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: row?.line_id, p_level: row.lv - 1 });
+    const mon = async () => ((await X.rpc('bag_state')).data?.box || []).find((m) => m.line === row.line_id);
+    const k0 = (await mon())?.known || [];
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: row.line_id, p_level: row.lv });
+    const m1 = await mon();
+    const k1 = m1?.known || [];
+    ok(!g.error && row && k0.length > 0 && !k0.includes(row.move_id) && k1.includes(row.move_id),
+       `line ${row?.line_id}: Lv.${row?.lv - 1} doesn't know ${byId[row?.move_id]?.name}, Lv.${row?.lv} does`, [g.error, row, k0.length, k1.length]);
+    const set = await X.rpc('bag_set_moves', { p_mon: m1?.id, p_moves: [row.move_id, ...(m1?.moves || []).filter((x) => x !== row.move_id).slice(0, 3)] });
+    ok(!set.error && (await mon())?.moves?.[0] === row.move_id, 'can put the new move into the 4 moves', set.error);
+  } finally {
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[56] 이로치 레이드 (0047 B): admin_create_raid p_shiny → raid json shiny · 이기면 보상 반드시 반짝 (티켓 · 잡기) · 보통 레이드는 그대로');
+{
+  const MODE0 = (await admin.select('settings?key=eq.raid_reward_mode')).data?.[0]?.value ?? 'ticket';
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'shy1234' })).error);
+  const X = client(await pwLogin(`${sid}@code.local`, 'shy1234'));
+  await X.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '이로치테스트' });
+  await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 32, p_stage: 3 });
+  const rids = [];
+  const win = async (shiny, title) => {
+    const rd = (await admin.rpc('admin_create_raid', { p_species: 3, p_hp: 30, p_minutes: 5, p_tv: false, p_title: title, ...(shiny == null ? {} : { p_shiny: shiny }) })).data;
+    rids.push(rd?.id);
+    await X.rpc('raid_join', { p_q: rd.q, p_t: rd.t });
+    let r;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((res) => setTimeout(res, 700));
+      r = await X.rpc('raid_attack', { p_raid: rd.id, p_taps: 8 });
+      if (r.data?.status !== 'active') break;
+    }
+    return { rd, r: (await X.rpc('raid_state', { p_raid: rd.id })).data };
+  };
+  try {
+    await patchSetting('raid_reward_mode', 'ticket');
+    // 1) 티켓 방식
+    const a = await win(true, '이로치 레이드 테스트');
+    ok(a.rd?.shiny === true && a.r?.shiny === true && a.r.status === 'won' && a.r.me?.rewarded, 'shiny raid: json shiny = true, won + rewarded', { rd: a.rd?.shiny, st: a.r?.status });
+    const lst = (await admin.rpc('admin_list_raids')).data || [];
+    ok(lst.find((x) => x.id === a.rd.id)?.shiny === true, 'admin_list_raids shows shiny');
+    let s = (await X.rpc('sync')).data.state;
+    const n1 = s.notices.find((n) => n.kind === 'raid' && n.body.includes('이로치 레이드 테스트'));
+    ok(n1?.data?.shiny === true && n1.body.includes('✦ 반짝이는 색이에요! ✦'), 'shiny raid ticket → notice with the shiny line', n1);
+    const b = await win(null, '보통 레이드 테스트');
+    ok(b.rd?.shiny === false && b.r?.status === 'won', 'normal raid (no p_shiny): shiny = false');
+    s = (await X.rpc('sync')).data.state;
+    const n2 = s.notices.find((n) => n.kind === 'raid' && n.body.includes('보통 레이드 테스트'));
+    ok(n2 && n2.data?.shiny === false && !n2.body.includes('반짝'), 'normal raid ticket not shiny (wild_shiny_chance 0 during tests)', n2);
+    // 부스에서 바꾸면 박스의 포켓몬이 반짝
+    const pend = s.tickets.filter((t) => t.status === 'pending' && t.qr_id === 'RAID');
+    const res = (await booth.rpc('booth_redeem', { p_payload: bag(sid, pend.map((t) => ({ n: t.nonce, q: t.qr_id, t: t.token }))) })).data;
+    const box = (await X.rpc('bag_state')).data?.box || [];
+    const l1 = box.filter((m) => m.line === 1);
+    ok(pend.length === 2 && l1.length === 2 && l1.filter((m) => m.shiny && m.shiny_on).length === 1,
+       'redeemed: one shiny (shiny_on) 문장곤 from the shiny raid, one normal', [pend.length, res?.results?.map((x) => x.species_id), l1.map((m) => [m.shiny, m.shiny_on])]);
+    // 2) 잡기 방식
+    await patchSetting('raid_reward_mode', 'catch');
+    const c = await win(true, '이로치 잡기 레이드');
+    const enc = (await X.rpc('my_encounters')).data || [];
+    const e = enc.find((x) => x.raid_title === '이로치 잡기 레이드');
+    ok(c.r?.status === 'won' && e?.shiny === true, 'catch mode: pending encounter is shiny', enc);
+    const got = (await X.rpc('encounter_result', { p_id: e?.id, p_caught: true, p_grade: 'nice' })).data;
+    const box2 = (await X.rpc('bag_state')).data?.box || [];
+    ok(got?.caught && box2.filter((m) => m.line === 1 && m.shiny && m.shiny_on).length === 2, 'caught → shiny + shiny_on in the box', [got, box2.filter((m) => m.line === 1).map((m) => m.shiny)]);
+    const d = await win(false, '보통 잡기 레이드');
+    const e2 = ((await X.rpc('my_encounters')).data || []).find((x) => x.raid_title === '보통 잡기 레이드');
+    ok(d.rd?.shiny === false && e2 && e2.shiny === false, 'normal raid (p_shiny false) in catch mode: encounter not shiny', e2);
+    if (e2) await X.rpc('encounter_result', { p_id: e2.id, p_caught: false });
+    ok((await X.rpc('admin_create_raid', { p_species: 3, p_hp: 30, p_minutes: 5, p_shiny: true })).error === 'NOT_ADMIN', 'students cannot open (shiny) raids');
+  } finally {
+    await patchSetting('raid_reward_mode', MODE0);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[57] 사파리존 더 넓게 (0048): 설원 · 용암 · 발전소 · 용의 굴 (구역 · 타입 · 레벨) · 방문 기록 · 네 곳 다녀오면 용의 굴 · 사파리존 잠금');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_reset_hours',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'ditto_disguise_chance', 'wild_shiny_chance', 'safari_open'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  ok(old.safari_open === true, 'safari_open setting exists and is on (staging default)', old.safari_open);
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const bands = (await admin.select('settings?key=eq.safari_level_bands&select=value')).data?.[0]?.value;
+  ok(JSON.stringify([bands?.snow, bands?.lava, bands?.plant1, bands?.plant2, bands?.dragon])
+     === JSON.stringify([[18, 45, 34, 'snow'], [20, 48, 34, 'lava'], [15, 30, 0, 'plant'], [28, 42, 0, 'plant'], [40, 50, 26, 'dragon']])
+     && Array.isArray(bands?.desert) && Array.isArray(bands?.beach), 'safari_level_bands: snow · lava · plant1 · plant2 · dragon (desert · beach kept)', bands);
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'sm1234' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'sm1234'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '설원시험' });
+  const walk = async (zone, area, dist) => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const r = await V.rpc('safari_encounter', { p_steps: 3, p_zone: zone, p_area: area, p_dist: dist });
+      if (r.error) return { error: r.error };
+      if (r.data?.encounter || r.data?.reason) return r.data;
+      await wait(400);
+    }
+    return null;
+  };
+  const flee = async (a) => V.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+  const spRow = async (id) => (await admin.select(`species?id=eq.${id}&select=dex,name,btype`)).data?.[0];
+  const pool = async (zone, area, n) => { const seen = []; for (let i = 0; i < n; i++) { const a = await walk(zone, area, 10); seen.push({ ...(await spRow(a?.encounter?.species_id)), zone: a?.encounter?.zone, lv: a?.encounter?.level }); await flee(a); } return seen; };
+  const lv = async (zone, area, dist) => { const a = await walk(zone, area, dist); await flee(a); return a?.encounter?.level; };
+  const has = (s, re) => re.test(s?.btype || '');
+  const PSEUDO = [147, 246, 371, 374, 443, 633, 704, 782];
+  try {
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 300); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    await setS('wild_shiny_chance', 0); await setS('safari_encounter_rate', 1); await setS('safari_open', true);
+    ok((await anon.rpc('safari_visit', { p_area: 'snow' })).error, 'anon cannot call safari_visit');
+    ok((await V.rpc('_dragon_open', { uid: '00000000-0000-0000-0000-000000000000' })).error && (await V.rpc('_safari_visit', { uid: '00000000-0000-0000-0000-000000000000', p_area: 'snow' })).error,
+       'internal helpers (_dragon_open · _safari_visit) are not callable');
+    const s0 = (await V.rpc('safari_state')).data;
+    ok(Array.isArray(s0?.visited) && s0.visited.length === 0 && s0.dragon === false && s0.locked === false, 'safari_state: visited [] · dragon false · locked false', [s0?.visited, s0?.dragon, s0?.locked]);
+    // 1) 용의 굴: 열리기 전엔 grass 로 (용의 굴 포켓몬 · 레벨 없음), 방문 기록도 안 됨
+    const d0 = await walk('dragon', 'dragon', 26);
+    ok(d0?.zone === 'grass' && d0?.encounter?.zone === 'grass' && d0?.encounter?.level === 5, 'dragon zone before unlock → grass, lowest grass level 5 (refused / clamped)', [d0?.zone, d0?.encounter?.level]);
+    await flee(d0);
+    const vd = (await V.rpc('safari_visit', { p_area: 'dragon' })).data;
+    ok(vd?.new === false && vd.dragon === false && !vd.visited.includes('dragon'), 'safari_visit(dragon) before unlock → not recorded', vd);
+    ok((await V.rpc('safari_visit', { p_area: 'mars' })).error === 'BAD_AREA', 'safari_visit unknown area → BAD_AREA');
+    // 2) 설원: 얼음 · 페어리 (+ 노라키 · 팽도리)
+    const sn = await pool('snow', 'snow', 12);
+    ok(sn.every((s) => s.zone === 'snow' && (has(s, /얼음|페어리/) || [234, 393].includes(s.dex))), 'snow pool: ice / fairy (+ 노라키 · 팽도리) only', sn.map((s) => `${s.name}:${s.btype}`));
+    ok(sn.filter((s) => has(s, /얼음|페어리/)).length >= 8, 'snow pool: mostly ice / fairy', sn.map((s) => s.btype));
+    const LS = { entrance: await lv('snow', 'snow', 0), far: await lv('snow', 'snow', 34), huge: await lv('snow', 'snow', 9999), other: await lv('snow', 'safari', 34) };
+    ok(LS.entrance >= 18 && LS.entrance <= 19 && LS.far >= 44 && LS.far <= 45 && LS.huge <= 45 && LS.other === 18, 'snow levels: Lv.18 entrance → Lv.45 top, clamped; other map → 18', LS);
+    // 3) 용암: 불꽃 · 강철 (+ 뿔카노 · 단굴), 물 · 얼음 없음
+    const lvp = await pool('lava', 'lava', 12);
+    ok(lvp.every((s) => s.zone === 'lava' && (has(s, /불꽃|강철/) || [111, 524].includes(s.dex)) && !has(s, /물|얼음/)), 'lava pool: fire / steel (+ 뿔카노 · 단굴), never water / ice', lvp.map((s) => `${s.name}:${s.btype}`));
+    const LL = { entrance: await lv('lava', 'lava', 0), far: await lv('lava', 'lava', 34), neg: await lv('lava', 'lava', -5) };
+    ok(LL.entrance >= 20 && LL.entrance <= 21 && LL.far >= 47 && LL.far <= 48 && LL.neg >= 20 && LL.neg <= 21, 'lava levels: Lv.20 entrance → Lv.48 lava lake, negative distance clamped', LL);
+    // 4) 발전소: 전기 · 고스트 (+ 또가스 · 깨봉이), 물 · 얼음 없음 · 1층 15–30 · 2층 28–42
+    const pl = await pool('plant', 'plant1', 12);
+    ok(pl.every((s) => s.zone === 'plant' && (has(s, /전기|고스트/) || [109, 568].includes(s.dex)) && !has(s, /물|얼음/)), 'plant pool: electric / ghost (+ 또가스 · 깨봉이), never water / ice', pl.map((s) => `${s.name}:${s.btype}`));
+    ok(pl.every((s) => s.lv >= 15 && s.lv <= 30), 'plant 1F levels 15–30', pl.map((s) => s.lv));
+    const p2 = []; for (let i = 0; i < 4; i++) p2.push(await lv('plant', 'plant2', 0));
+    ok(p2.every((l) => l >= 28 && l <= 42), 'plant 2F levels 28–42', p2);
+    // 5) 방문 기록: 설원 · 용암 · 발전소는 만남 걸음으로 기록됨, 바다 · 사막은 safari_visit 으로 → 네 곳째에 열림
+    const s1 = (await V.rpc('safari_state')).data;
+    ok(['snow', 'lava', 'plant'].every((a) => s1.visited.includes(a)) && s1.dragon === false, 'encounter steps record snow · lava · plant visits; still closed (no beach / desert)', s1.visited);
+    const vb = (await V.rpc('safari_visit', { p_area: 'beach' })).data;
+    const vb2 = (await V.rpc('safari_visit', { p_area: 'beach' })).data;
+    ok(vb?.new === true && vb.opened === false && vb.dragon === false && vb2?.new === false, 'safari_visit(beach): first time new, again not new; 3 of 4 → still closed', [vb, vb2?.new]);
+    const d1 = await walk('dragon', 'dragon', 0);
+    ok(d1?.zone === 'grass', 'dragon still refused with 3 of 4 areas', d1?.zone);
+    await flee(d1);
+    const vds = (await V.rpc('safari_visit', { p_area: 'desert' })).data;
+    ok(vds?.new === true && vds.opened === true && vds.dragon === true, 'safari_visit(desert) = 4th area → opened (dragon true)', vds);
+    const s2 = (await V.rpc('safari_state')).data;
+    ok(s2?.dragon === true && ['beach', 'desert', 'snow', 'lava'].every((a) => s2.visited.includes(a)), 'safari_state.dragon true after all four', s2?.visited);
+    ok((await V.rpc('safari_visit', { p_area: 'desert' })).data?.opened === false, 'opened only once');
+    // 6) 용의 굴: 드래곤 + 600족 계열, Lv.40 → 50
+    const dg = await pool('dragon', 'dragon', 24);
+    ok(dg.every((s) => s.zone === 'dragon' && (has(s, /드래곤/) || PSEUDO.includes(s.dex))), 'dragon den: dragon types + pseudo-legend lines only', dg.map((s) => `${s.name}:${s.btype}`));
+    ok(dg.filter((s) => PSEUDO.includes(s.dex)).length >= 2, 'dragon den: wild pseudo-legend lines appear often (≥2 of 24)', dg.filter((s) => PSEUDO.includes(s.dex)).map((s) => s.name));
+    const dgSub = (await admin.select(`species?dex=in.(${[...new Set(dg.map((s) => s.dex))].join(',')})&stage=eq.1&select=dex,lines(subject)`)).data || [];
+    ok(dgSub.length > 0 && dgSub.every((r) => r.lines?.subject === '야생'), 'dragon den: wild lines only (teacher-subject lines like 미뇽 · 아공이 stay QR / quiz only)', dgSub.map((r) => `${r.dex}:${r.lines?.subject}`));
+    ok(dg.every((s) => s.lv >= 40 && s.lv <= 50), 'dragon den levels within 40–50', dg.map((s) => s.lv));
+    const LD = { entrance: await lv('dragon', 'dragon', 0), far: await lv('dragon', 'dragon', 26), otherArea: await lv('dragon', 'safari', 26) };
+    ok(LD.entrance >= 40 && LD.entrance <= 41 && LD.far >= 49 && LD.far <= 50 && LD.otherArea === 40, 'dragon levels: Lv.40 at the ladder → Lv.50 far end; other map → 40', LD);
+    ok((await V.rpc('safari_state')).data?.visited.includes('dragon'), 'dragon den visit recorded after unlock');
+    // 7) 사파리존 잠금: 새 걸음 · 방문 = SAFARI_CLOSED, 시작한 잡기는 끝낼 수 있음, 다시 열면 그대로
+    const pend = await walk('snow', 'snow', 5);
+    ok(!!pend?.encounter?.id, 'an encounter is pending before locking', pend?.encounter?.id);
+    await setS('safari_open', false);
+    const sl = (await V.rpc('safari_state')).data;
+    ok(sl?.locked === true && sl.pending?.id === pend?.encounter?.id, 'locked: safari_state.locked = true and the pending encounter is still shown', [sl?.locked, sl?.pending?.id]);
+    ok((await V.rpc('safari_encounter', { p_steps: 3, p_zone: 'snow', p_area: 'snow', p_dist: 0 })).error === 'SAFARI_CLOSED', 'locked: safari_encounter → SAFARI_CLOSED');
+    ok((await V.rpc('safari_visit', { p_area: 'lava' })).error === 'SAFARI_CLOSED', 'locked: safari_visit → SAFARI_CLOSED');
+    const tl = await V.rpc('safari_turn', { p_id: pend?.encounter?.id });
+    ok(!tl.error && tl.data?.fled === false, 'locked: an in-progress catch can still roll a miss (safari_turn)', tl.error || tl.data);
+    const rl = await V.rpc('safari_result', { p_id: pend?.encounter?.id, p_throws: 2, p_caught: true });
+    ok(!rl.error && rl.data?.caught === true, 'locked: an in-progress catch can still finish (safari_result)', rl.error || rl.data?.caught);
+    await setS('safari_open', true);
+    const after = await walk('lava', 'lava', 0);
+    ok(after?.encounter?.zone === 'lava' && (await V.rpc('safari_state')).data?.locked === false, 'unlocked again → encounters work', after?.encounter?.zone);
+    await flee(after);
+    // 8) 모르는 구역은 예전처럼 grass
+    const bad = await walk('volcano', 'lava', 0);
+    ok(bad?.zone === 'grass', 'unknown zone name → grass (whitelist)', bad?.zone);
+    await flee(bad);
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    if (!('safari_open' in old)) await setS('safari_open', true);
     await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
   }
 }

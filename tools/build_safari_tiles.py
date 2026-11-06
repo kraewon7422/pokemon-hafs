@@ -27,6 +27,7 @@
   dsand<0-1> dripple<0-1> dwall<0-15>_<0-2> dwallc<..>  사막 모래 · 모래 물결 · 붉은 사암 절벽 (0043)
   dgrass dgrassR<0-1> dcactusS drock drubble dskull dbones druin<0-1> dsign  마른 모래 풀숲 (+흔들림) · 술통 선인장 · 사암 바위 · 돌 부스러기 · 머리뼈 · 뼈 · 유적 바닥 · 표지판
   dcactus dpillar ddune        기둥 선인장 16×24 · 유적 사암 돌기둥 16×32 · 모래 언덕 48×32 (3×2 칸)
+  (0048) 설원 sn*/swall* · 용암 lv*/lwall*/lava* · 발전소 pl* · 용의 굴 e*/ewall* · 다리 계단 bstair — 이름표는 아래 '0048' 부분
 주인공 safari-hero.png · 사육사 safari-keeper.png: 16×24 칸, 줄 = 아래·위·왼쪽·오른쪽, 칸 = 서기·걸음1·걸음2.
 """
 import json
@@ -1437,6 +1438,890 @@ def grass_rustle(f):
     return t
 
 
+# ─────────── 0048: 설원 · 용암 지대 · 발전소 · 용의 굴 (+ 사파리존 호수 다리 계단 · 발전소 건물) ───────────
+# 참고: DP/Pt 눈 덮인 마을·길 (연보랏빛 흰 눈 · 눈 모자 쓴 둥근 소나무 · 눈 덮인 흙 턱 · 얼어붙은 연못 · 눈 속 초록 풀숲 · 눈 지붕 오두막),
+#   3세대 굴뚝산 · 불바다 동굴 (분홍빛 붉은 바위 · 검붉은 계단식 절벽 · 용암 못 + 노란 거품 · 재 덮인 마른 나무),
+#   3세대 뉴보라 (발전소: 연회색 초록 바닥 타일 · 베이지/올리브 벽 + 리벳 · 파랑/초록 관 · 기계 선반 · 초록 발전기 · 노란 상자 · 바닥 스위치 · 큰 주황 발전기).
+#   원본 타일을 베끼지 않고 새로 그림. 이름:
+#   설원 sn*: snground<0-1> swall<0-15>_<0-2> swallc<..> snice<0-15> snstairs snrock snsign snman snexit · snpine 16×24 · sncabin 32×40 (2×2 칸)
+#   용암 lv*: lvground<0-1> lwall<0-15>_<0-2> lwallc<..> lava<0-1> lavae<0-15> lavac<..> lvgrass lvgrassR<0-1> lvvent<0-1> lvrock lvsign lvstairs lvexit · lvtree 16×24
+#   발전소 pl*: plfloor<0-1> plshadow plw<0-15> plvoid plpipeB plpipeG plrack plcon<0-1> plcrate plswitch plstairs plexit plsign · plgen 32×40 (2×2 칸) · plbuild 96×88 (6×5 칸, 사파리존 바깥 발전소 단지)
+#   용의 굴 e*: efloor<0-1> ewall<0-15>_<0-2> ewallc<..> erock eboulder ecrystal eladder · 다리 계단 bstair
+CAVE['s'] = dict(top0='#eef0f8', top1='#e4e7f4', top2='#fafbff', top3='#ccd0e6', rim0='#ffffff', rim1='#d4d8ec',
+                 face0='#8c6448', face1='#a87c5c', face2='#6c4834', face3='#40281c')
+CAVE['l'] = dict(top0='#b4564a', top1='#9c463c', top2='#cc6c5c', top3='#6c241c', rim0='#f0b0a0', rim1='#d8806c',
+                 face0='#943428', face1='#b04c3c', face2='#701e16', face3='#40100c')
+CAVE['e'] = dict(top0='#3c4058', top1='#30344a', top2='#4e5470', top3='#1c1e2c', rim0='#a8b0d8', rim1='#7880a8',
+                 face0='#525a7c', face1='#6c76a0', face2='#3c4260', face3='#202438')
+SN = {k: hx(v) for k, v in dict(
+    s0='#eceef8', s1='#ffffff', s2='#d8dcf0', s3='#c0c4e0', s4='#a8acd0',
+    pk='#24402c', p0='#3c6c44', p1='#5c9454', p2='#84b864', pw='#ffffff', ps='#d4d8f0', pS='#aab0d8', pt='#6c4c38', pT='#4c3424',
+    i0='#a4dcf8', i1='#d4f2ff', i2='#7cc0e8', iE='#5c9cd0', iR='#f4fbff',
+    ck='#3c2c24', c0='#a8704c', c1='#c88c60', c2='#7c4c30', cw='#f8f8ff', cs='#c8cce8', cg='#88c8e8', cd='#4c3428',
+).items()}
+LV = {k: hx(v) for k, v in dict(
+    g0='#d8968a', g1='#eab0a4', g2='#c27c70', g3='#a8645a', ash='#f6f0f0',
+    l0='#e84a1c', l1='#f87c2c', l2='#fcb444', l3='#fce870', lD='#c4300c', rK='#4c140c', r0='#8c3a2c', r1='#c06450',
+    gk='#4a3e36', ga='#8a7a68', gb='#b2a48e', gc='#ece4da',
+    tk='#3c3434', t0='#8c8484', t1='#b8b0b0', t2='#625a5a',
+    vk='#3c1c18', v0='#6c3c34', v1='#8c544a', vg='#f8a040', vy='#fce870', sm='#e8e0e0', sM='#c8c0c0',
+).items()}
+PL = {k: hx(v) for k, v in dict(
+    f0='#c8d4c0', f1='#dce6d4', f2='#a8b8a4', f3='#b8c6b2', sh='#9cac98',
+    cap='#f0ecd8', capL='#fffcec', capK='#8c7c58', w0='#b4ac84', w1='#c8c098', w2='#968e6c', wr='#78704f', wt='#6c5c40', wb='#8c7454',
+    void='#101014',
+    b0='#5888b8', b1='#88b0d8', b2='#38608c', g0='#88b840', g1='#b0dc68', g2='#5c8c28', pk='#28384c',
+    rk='#4c5060', r0='#9ca0ac', r1='#c4c8d0', r2='#6c7080', rs='#3c4454',
+    ck='#2c4c30', c0='#78c070', c1='#a8e098', c2='#4c9050', cs='#284034', cS='#58c8a0', cR='#f05050', cY='#f8e060',
+    xk='#6c4c14', x0='#f0b838', x1='#f8d870', x2='#c08820',
+    sk='#3c4c60', s0='#5898c8', s1='#9cc8f0', s2='#8c949c', s3='#c4ccd4',
+    st0='#e4ecf4', st1='#b8c4d4', st2='#8c9cb4', mt0='#c84c3c', mt1='#e87c5c',
+    ok='#6c3010', o0='#e88838', o1='#f8b868', o2='#b85c20', o3='#fce0a0',
+    rf0='#7c8894', rf1='#a0acb8', rf2='#5c6874', bd='#3c3830', ly='#f8d838',
+).items()}
+EC = {k: hx(v) for k, v in dict(f0='#8a8aa4', f1='#7a7a94', f2='#a0a2bc', f3='#686880',
+                                 k0='#f8c048', k1='#fce890', k2='#c88820', kK='#5c3c10', kT='#58d0c0', kt='#a8f0e8').items()}
+
+
+def _fill(t, c):
+    for y in range(t.h):
+        for x in range(t.w):
+            t.px(x, y, c)
+
+
+def _specks(t, pts, c, c2=None):
+    for (x, y) in pts:
+        t.px(x, y, c)
+        if c2 is not None:
+            t.px(x + 1, y + 1, c2)
+
+
+# ── 설원 ──
+def snground(v):
+    """연보랏빛 흰 눈: 바탕 + 듬성한 반짝이 · 옅은 눈 그늘 물결."""
+    t = Tile(); _fill(t, SN['s0'])
+    for (x, y) in ([(2, 3), (11, 2), (6, 9), (13, 12), (1, 13)] if v == 0 else [(4, 1), (12, 6), (8, 11), (2, 8), (14, 14)]):
+        t.px(x, y, SN['s1']); t.px(x + 1, y, SN['s1'])
+    for (x, y) in ([(8, 5), (4, 6), (12, 8), (9, 14)] if v == 0 else [(6, 4), (10, 2), (13, 10), (3, 13)]):
+        t.px(x, y, SN['s2']); t.px(x + 1, y, SN['s2'])
+    if v:
+        for x in range(5, 11):
+            t.px(x, 7 + (x % 2), SN['s2'])
+    return t
+
+
+SNPINE = [  # 16×24: 위 8줄은 윗칸으로 솟음. 눈 모자 쓴 둥근 소나무 (DP 느낌: 층마다 둥근 눈 덩이 · 아래로 초록이 드러남)
+    '......kkkk......',
+    '....kkwwwwkk....',
+    '...kwwwwwwwsk...',
+    '..kwwwwwwwwssk..',
+    '..kwwwwwwwsssk..',
+    '.kswwwwwssssSsk.',
+    '.kgsswsssSSSsgk.',
+    '.kggsSSSSgggGgk.',
+    'kwwggGGgggGGwwsk',
+    'kwwwwgGGgwwwwssk',
+    'kswwwwwgwwwwsssk',
+    'kgsswwssssssSSgk',
+    'kggSsSSSSSSSgggk',
+    '.kgggGGgGGGgggk.',
+    'kwwwgggGgggwwwsk',
+    'kwwwwwwgwwwwwssk',
+    'ksswwwwwwwwsssSk',
+    'kgSssssssssSSSgk',
+    'kggGSSSSSSSSgGgk',
+    '.kgggGGGGGGgggk.',
+    '..kkkkgttTgkkk..',
+    '....hhkttTkhhh..',
+    '.....hhkkkhhh...',
+    '................',
+]
+
+
+def snpine():
+    t = Tile(16, 24)
+    t.art(SNPINE, {'k': SN['pk'], 'g': SN['p0'], 'G': SN['p1'], 'w': SN['pw'], 's': SN['ps'], 'S': SN['pS'],
+                   't': SN['pt'], 'T': SN['pT'], 'h': SN['s3']})
+    return t
+
+
+def snice(mask):
+    """얼어붙은 연못 (걸으면 미끄러짐): 연하늘 얼음 + 밝은 금 · 열린 쪽은 흰 눈 테두리."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            c = SN['i0']
+            if (x + 2 * y) % 11 == 0 or (x - y) % 13 == 0:
+                c = SN['i1']
+            if (x * 3 + y) % 17 == 0:
+                c = SN['i2']
+            d = edge_dist(x, y, mask, 3)
+            if d < 1.0:
+                c = SN['s1'] if (x + y) % 3 else SN['s0']
+            elif d < 2.0:
+                c = SN['iE']
+            elif d < 3.0:
+                c = SN['iR']
+            t.px(x, y, c)
+    return t
+
+
+def snstairs():
+    """눈 쌓인 흙 턱 사이 돌계단 (위아래로 오름)."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            k = y % 4
+            c = SN['s1'] if k == 0 else SN['s0'] if k == 1 else SN['s2'] if k == 2 else SN['c2']
+            if x in (0, 15):
+                c = SN['c2']
+            elif x in (1, 14):
+                c = SN['c0']
+            t.px(x, y, c)
+    return t
+
+
+def snrock():
+    t = Tile(); t.art(ROCK, {'k': hx('#4c5070'), '1': SN['s1'], '2': hx('#a8acc4'), '3': hx('#7c809c'), 'g': SN['s3']})
+    for x in range(4, 12):                  # 위에 쌓인 눈
+        for y in range(2, 6):
+            if t.get(x, y)[3] and (y < 4 or (x + y) % 2):
+                t.px(x, y, SN['s1'] if y < 4 else SN['s2'])
+    return t
+
+
+def snsign():
+    t = Tile(); t.art(SIGN, dict(SIGN_PAL, g=SN['s3']))
+    for x in range(2, 14):
+        if t.get(x, 2)[3]:
+            t.px(x, 2, SN['s1'])
+    return t
+
+
+SNMAN = [  # 눈사람 (막힌 칸)
+    '................',
+    '......kkkk......',
+    '.....kwwwwk.....',
+    '....kwwewews....',
+    '....kwwwwwsk....',
+    '....kwwoowsk....',
+    '...rrkwwwskrr...',
+    '..krrrrrrrrrk...',
+    '...kwwwwwwssk...',
+    '..kwwwwbwwwssk..',
+    '..kwwwwwwwwssk..',
+    '..kwwwwbwwwssk..',
+    '..kswwwwwwsssk..',
+    '...kssssssssk...',
+    '....kkkkkkkk....',
+    '...hhhhhhhhhh...',
+]
+
+
+def snman():
+    t = Tile(); t.art(SNMAN, {'k': hx('#5c6084'), 'w': SN['s1'], 's': SN['s3'], 'e': hx('#28283c'), 'o': hx('#f08838'),
+                              'r': hx('#d83c3c'), 'b': hx('#3c3c50'), 'h': SN['s3']})
+    return t
+
+
+def snexit():
+    """설원 아래쪽 나가는 길: 발자국이 찍힌 눈길."""
+    t = snground(0)
+    for (x, y) in [(4, 2), (10, 6), (5, 10), (11, 14)]:
+        t.px(x, y, SN['s3']); t.px(x + 1, y, SN['s3']); t.px(x, y + 1, SN['s4']); t.px(x + 1, y + 1, SN['s3'])
+    return t
+
+
+def sncabin():
+    """32×40 눈 지붕 오두막 (2×2 칸 + 위로 8px): 두꺼운 눈 지붕 · 통나무 벽 · 문 · 불 켜진 창."""
+    t = Tile(32, 40)
+    for y in range(4, 22):                    # 지붕 (가운데가 높은 삼각 + 처마)
+        half = 3 + (y - 4) * 0.75
+        for x in range(32):
+            if abs(x - 15.5) <= half + 0.5 and x < 32:
+                edge = abs(x - 15.5) > half - 1
+                c = SN['cs'] if (x > 15.5 and not edge) else SN['cw']
+                if y >= 19:
+                    c = SN['s3'] if y == 21 else SN['cs'] if x > 15.5 else SN['cw']
+                if edge or y == 4:
+                    c = SN['ck']
+                t.px(x, y, c)
+    for y in range(22, 38):                    # 벽 (통나무 가로줄)
+        for x in range(3, 29):
+            c = SN['c0'] if (y - 22) % 4 else SN['c2']
+            if (y - 22) % 4 == 1:
+                c = SN['c1']
+            if x in (3, 28):
+                c = SN['ck']
+            t.px(x, y, c)
+    for x in range(1, 31):                     # 처마 밑 그늘
+        t.px(x, 21, SN['ck']); t.px(x, 22, SN['cd'])
+    for y in range(27, 38):                    # 문
+        for x in range(13, 19):
+            c = SN['cd'] if x in (13, 18) or y == 27 else hx('#6c4428')
+            t.px(x, y, c)
+    t.px(17, 33, hx('#f8d838'))
+    for (wx, wy) in [(6, 27), (22, 27)]:       # 불 켜진 창
+        for y in range(wy, wy + 5):
+            for x in range(wx, wx + 5):
+                c = SN['ck'] if x in (wx, wx + 4) or y in (wy, wy + 4) else hx('#f8e080') if (x + y) % 3 else hx('#f8c040')
+                t.px(x, y, c)
+        for x in range(wx - 1, wx + 6):
+            t.px(x, wy - 1, SN['cw'])          # 창틀 위 눈
+    for x in range(2, 30):
+        t.px(x, 38, SN['s3']); t.px(x, 39, SN['s3'] if x % 2 else SN['s2'])
+    for x in range(5, 9):                      # 굴뚝 (눈 모자)
+        for y in range(2, 10):
+            t.px(x, y, SN['ck'] if x in (5, 8) else SN['c2'])
+        t.px(x, 1, SN['cw']); t.px(x, 2, SN['cw'])
+    return t
+
+
+# ── 용암 지대 ──
+def lvground(v):
+    """분홍빛 붉은 바위 바닥 + 흩날린 흰 재."""
+    t = Tile(); _fill(t, LV['g0'])
+    pts = [(2, 2), (9, 1), (13, 6), (5, 8), (11, 12), (1, 12), (7, 14)] if v == 0 else [(4, 3), (12, 2), (8, 7), (2, 10), (14, 11), (6, 13)]
+    for (x, y) in pts:
+        t.px(x, y, LV['g2']); t.px(x + 1, y, LV['g1']); t.px(x, y + 1, LV['g3'])
+    for (x, y) in ([(10, 9), (3, 5)] if v == 0 else [(10, 14), (13, 8), (5, 1)]):
+        t.px(x, y, LV['ash'])
+    return t
+
+
+def lava(f):
+    """용암: 주황 바탕 + 밝은 물결 + 노란 거품 (2장)."""
+    t = Tile(); _fill(t, LV['l0'])
+    for y in range(16):
+        for x in range(16):
+            w = math.sin((x + f * 4) * math.pi / 5 + y * 0.9)
+            if w > 0.82:
+                t.px(x, y, LV['l1'])
+            elif w < -0.9:
+                t.px(x, y, LV['lD'])
+    for (x, y) in ([(3, 4), (11, 9), (6, 13)] if f == 0 else [(9, 3), (4, 10), (13, 13)]):
+        t.px(x, y, LV['l3']); t.px(x + 1, y, LV['l2']); t.px(x, y - 1, LV['l2'])
+    return t
+
+
+def lava_edge(mask):
+    """용암 둘레 (덧그림): 열린 쪽은 바위 테두리 (진한 선 + 밝은 바위)."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            d = edge_dist(x, y, mask, 3)
+            if d < 1.0:
+                t.px(x, y, LV['r1'])
+            elif d < 2.0:
+                t.px(x, y, LV['rK'])
+            elif d < 3.0:
+                t.px(x, y, LV['lD'])
+    return t
+
+
+def lava_corner(corner):
+    t = Tile()
+    pts = {(0, 0): 'r1', (1, 0): 'rK', (0, 1): 'rK', (1, 1): 'rK', (2, 0): 'lD', (0, 2): 'lD', (2, 1): 'lD', (1, 2): 'lD'}
+    for (x, y), c in pts.items():
+        X = x if 'w' in corner else 15 - x
+        Y = y if 'n' in corner else 15 - y
+        t.px(X, Y, LV[c])
+    return t
+
+
+def lvgrass(f=None):
+    """재가 앉은 잿빛 풀숲 (만남 칸): 키 큰 풀숲 모양 그대로 · 잿빛."""
+    t = Tile()
+    rows = TALL
+    if f is not None:
+        rows = [(r[1:] + '.') if (i < 8 and f == 0) else ('.' + r[:-1]) if (i < 8 and f == 1) else r for i, r in enumerate(TALL)]
+    t.art(rows, {'k': LV['gk'], 't': LV['ga'], 'n': LV['gb'], 'L': LV['gc']})
+    return t
+
+
+LVTREE = [  # 16×24 재 덮인 마른 나무 (잎 없음, 가지가 갈라짐)
+    '.......k........',
+    '..k...k1k...k...',
+    '.k1k..k1k..k1k..',
+    '..k1k.k1k.k1k...',
+    '...k1kk1kk1k..k.',
+    'k...k11111k..k1k',
+    '1k...k111k..k1k.',
+    'k1k..k11dk.k1k..',
+    '.k1k.k1ddkk1k...',
+    '..k1kk1ddk1k....',
+    '...k11dddk1k....',
+    '....k1ddddk.....',
+    '.....k1ddk......',
+    '.....k1ddk......',
+    '.....k1ddk......',
+    '.....k11dk......',
+    '.....k1ddk......',
+    '.....k1ddk......',
+    '....k11dddk.....',
+    '...k11dddddk....',
+    '...kkkkkkkkk....',
+    '...hhhhhhhhhh...',
+    '................',
+    '................',
+]
+
+
+def lvtree():
+    t = Tile(16, 24); t.art(LVTREE, {'k': LV['tk'], '1': LV['t1'], 'd': LV['t0'], 'h': LV['g3']})
+    for (x, y) in [(2, 1), (13, 1), (7, 0), (0, 6), (15, 5)]:      # 가지 끝에 앉은 흰 재
+        t.px(x, y, LV['ash'])
+    return t
+
+
+def lvvent(f):
+    """화산 분기공 (막힌 칸): 검붉은 바위 고리 + 안쪽 주황 빛 + 피어오르는 김 (2장)."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            r = ((x - 7.5) / 6.5) ** 2 + ((y - 10) / 4.5) ** 2
+            if r < 0.35:
+                t.px(x, y, LV['vy'] if r < 0.12 else LV['vg'])
+            elif r < 0.7:
+                t.px(x, y, LV['vk'])
+            elif r < 1.0:
+                t.px(x, y, LV['v1'] if y < 10 else LV['v0'])
+            elif r < 1.25 and y > 9:
+                t.px(x, y, LV['g3'])
+    puffs = [(5, 4, 2.2), (9, 2, 1.8), (7, 6, 1.6)] if f == 0 else [(8, 4, 2.2), (5, 1, 1.6), (10, 6, 1.5)]
+    for (cx, cy, rr) in puffs:
+        for y in range(16):
+            for x in range(16):
+                d = ((x - cx) ** 2 + (y - cy) ** 2) ** 0.5
+                if d < rr - 0.6:
+                    t.px(x, y, LV['sm'])
+                elif d < rr:
+                    t.px(x, y, LV['sM'])
+    return t
+
+
+def lvrock():
+    t = Tile(); t.art(ROCK, {'k': LV['rK'], '1': LV['g1'], '2': LV['r1'], '3': LV['r0'], 'g': LV['g3']}); return t
+
+
+def lvsign():
+    t = Tile(); t.art(SIGN, dict(SIGN_PAL, g=LV['g3'])); return t
+
+
+def lvstairs():
+    """절벽 사이 바위 계단 (위아래)."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            k = y % 4
+            c = LV['g1'] if k == 0 else LV['g0'] if k == 1 else LV['g2'] if k == 2 else LV['r0']
+            if x in (0, 15):
+                c = LV['rK']
+            elif x in (1, 14):
+                c = LV['r0']
+            t.px(x, y, c)
+    return t
+
+
+def lvexit():
+    t = lvground(0)
+    for y in range(16):
+        for x in range(16):
+            if abs(x - 7.5) < 5 and (x + y) % 2 == 0:
+                t.px(x, y, LV['g1'])
+    return t
+
+
+# ── 발전소 ──
+def plfloor(v):
+    """연회색 초록 바닥 타일 (8px 판 · 밝은 위왼쪽 줄 · 어두운 아래오른쪽 줄)."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            gx, gy = x % 8, y % 8
+            c = PL['f0']
+            if gx == 7 or gy == 7:
+                c = PL['f2']
+            elif gx == 0 or gy == 0:
+                c = PL['f1']
+            elif v and (x // 8 + y // 8) % 2 == 0:
+                c = PL['f3']
+            t.px(x, y, c)
+    return t
+
+
+def plshadow():
+    """벽 바로 아래 바닥 그늘 (덧그림, 반투명 대신 점무늬)."""
+    t = Tile()
+    for y in range(6):
+        for x in range(16):
+            if y < 3 or (x + y) % 2 == 0:
+                t.px(x, y, (0x7c, 0x8c, 0x78, 110))
+    return t
+
+
+def plwall(mask):
+    """발전소 벽 (위에서 본 두꺼운 벽): 아래가 벽이면 크림색 윗면 (열린 쪽 진한 테두리),
+    아래가 열리면 벽면 = 크림 턱 + 올리브 판 (세로 이음 · 리벳) + 아래 진한 띠."""
+    t = Tile()
+    N, E, S, W = mask & 1, mask & 2, mask & 4, mask & 8
+    if S:
+        _fill(t, PL['cap'])
+        for y in range(16):
+            for x in range(16):
+                if (not W and x == 0) or (not E and x == 15) or (not N and y == 0):
+                    t.px(x, y, PL['capK'])
+                elif (not W and x == 1) or (not N and y == 1):
+                    t.px(x, y, PL['capL'])
+        return t
+    y0 = 0
+    for y in range(16):
+        for x in range(16):
+            if y < 3:
+                c = PL['capK'] if (y == 0 and not N) else PL['capL'] if y == 1 else PL['cap']
+                if y == 2:
+                    c = PL['capK']
+            elif y == 3:
+                c = PL['wb']
+            elif y >= 14:
+                c = PL['wt']
+            else:
+                c = PL['w0']
+                if y == 4:
+                    c = PL['w1']
+                if x % 8 == 7:
+                    c = PL['w2']
+                elif x % 8 == 0:
+                    c = PL['w1']
+                if x % 8 in (3, 4) and y in (5, 12):
+                    c = PL['wr']
+            t.px(x, y, c)
+    for y in range(16):
+        if not W:
+            t.px(0, y, PL['capK'] if y < 3 else PL['wt'])
+        if not E:
+            t.px(15, y, PL['capK'] if y < 3 else PL['wt'])
+    return t
+
+
+def plpipe(green):
+    """벽에 박힌 세로 관 (덧그림, 칸 위아래로 이어짐)."""
+    t = Tile()
+    a, b, c = (PL['g0'], PL['g1'], PL['g2']) if green else (PL['b0'], PL['b1'], PL['b2'])
+    for y in range(16):
+        for x in range(5, 11):
+            col = PL['pk'] if x in (5, 10) else b if x == 6 else c if x == 9 else a
+            if y % 8 == 0 and 5 < x < 10:
+                col = c
+            t.px(x, y, col)
+    return t
+
+
+def plrack():
+    """기계 선반 (막힌 칸): 회색 틀 · 칸마다 색 다른 부품."""
+    t = Tile()
+    for y in range(1, 15):
+        for x in range(1, 15):
+            c = PL['r0']
+            if x in (1, 14) or y in (1, 14):
+                c = PL['rk']
+            elif y in (5, 9, 13):
+                c = PL['r1']
+            elif y in (4, 8, 12):
+                c = PL['rs']
+            t.px(x, y, c)
+    parts = [(3, 2, 'cS'), (7, 2, 'r2'), (10, 2, 'cR'), (4, 6, 'cY'), (8, 6, 'cS'), (11, 6, 'r2'), (3, 10, 'r2'), (6, 10, 'cR'), (10, 10, 'cS')]
+    for (x, y, k) in parts:
+        for dx in range(2):
+            for dy in range(2):
+                t.px(x + dx, y + dy, PL[k])
+    for x in range(2, 16):
+        t.px(x, 15, PL['sh'])
+    return t
+
+
+def plcon(f):
+    """초록 발전기 · 계기판 (막힌 칸): 둥근 초록 몸통 + 화면 + 깜빡이는 불 (2장)."""
+    t = Tile()
+    for y in range(1, 15):
+        for x in range(2, 14):
+            c = PL['c0']
+            if x in (2, 13) or y in (1, 14):
+                c = PL['ck']
+            elif x == 3 or y == 2:
+                c = PL['c1']
+            elif x == 12 or y == 13:
+                c = PL['c2']
+            t.px(x, y, c)
+    for y in range(4, 8):
+        for x in range(5, 11):
+            t.px(x, y, PL['cs'] if (x + y + f) % 3 else PL['cS'])
+    for i, k in enumerate(['cR', 'cY', 'cS']):
+        on = (i + f) % 2 == 0
+        t.px(5 + i * 2, 10, PL[k] if on else PL['c2']); t.px(5 + i * 2, 11, PL['c2'])
+    for x in range(3, 16):
+        t.px(x, 15, PL['sh'])
+    return t
+
+
+def plcrate():
+    t = Tile()
+    for y in range(3, 14):
+        for x in range(2, 14):
+            c = PL['x0']
+            if x in (2, 13) or y in (3, 13):
+                c = PL['xk']
+            elif y == 4:
+                c = PL['x1']
+            elif x == 12 or y == 12:
+                c = PL['x2']
+            elif y == 8:
+                c = PL['x2']
+            t.px(x, y, c)
+    for x in range(3, 15):
+        t.px(x, 14, PL['sh'])
+    return t
+
+
+def plswitch():
+    """바닥 스위치 (걸을 수 있음): 회색 받침 + 파란 단추."""
+    t = plfloor(0)
+    for y in range(16):
+        for x in range(16):
+            r = ((x - 7.5) / 5.5) ** 2 + ((y - 8) / 4.5) ** 2
+            if r < 0.4:
+                t.px(x, y, PL['s1'] if (x < 7 and y < 8) else PL['s0'])
+            elif r < 0.6:
+                t.px(x, y, PL['sk'])
+            elif r < 1.0:
+                t.px(x, y, PL['s3'] if y < 8 else PL['s2'])
+    return t
+
+
+def plstairs():
+    """다른 층으로 가는 밝은 계단."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            k = y % 4
+            c = PL['st0'] if k < 2 else PL['st1'] if k == 2 else PL['st2']
+            if x in (0, 15):
+                c = PL['wt']
+            t.px(x, y, c)
+    return t
+
+
+def plexit():
+    """밖으로 나가는 문 앞 깔개."""
+    t = plfloor(0)
+    for y in range(3, 15):
+        for x in range(2, 14):
+            c = PL['mt0'] if x in (2, 13) or y in (3, 14) else PL['mt1'] if (x + y) % 4 else PL['mt0']
+            t.px(x, y, c)
+    return t
+
+
+def plgen():
+    """32×40 큰 주황 발전기 (2×2 칸 + 위로 8px): 위에서 비스듬히 본 둥근 원통 (타원 윗면 + 가운데 축 + 빛나는 코일) ·
+    몸통 고리 3줄 · 옆 관 · 계기판 · 회색 받침판."""
+    t = Tile(32, 40)
+    K = PL['ok']
+    for y in range(30, 40):                    # 받침판 (위에서 본 회색 판)
+        for x in range(0, 32):
+            c = PL['r1'] if y == 30 else PL['r0'] if y < 38 else PL['r2']
+            if x in (0, 31) or y == 39:
+                c = PL['rk']
+            t.px(x, y, c)
+    cx, rx = 15.5, 13.5
+    for y in range(9, 36):                     # 몸통 (원통 옆면, 아래는 둥근 타원)
+        for x in range(32):
+            dx = (x - cx) / rx
+            if abs(dx) > 1:
+                continue
+            bottom = 31 + 4 * math.sqrt(max(0, 1 - dx * dx))
+            if y > bottom:
+                continue
+            c = PL['o1'] if dx < -0.5 else PL['o0'] if dx < 0.35 else PL['o2']
+            if y in (16, 22, 28):
+                c = PL['o2'] if dx > -0.6 else PL['o0']
+            if y in (17, 23, 29) and dx < 0.2:
+                c = PL['o3']
+            if abs(dx) > 0.93 or y >= bottom - 0.8:
+                c = K
+            t.px(x, y, c)
+    for y in range(3, 16):                     # 윗면 (타원) + 가운데 축
+        for x in range(32):
+            e = ((x - cx) / rx) ** 2 + ((y - 9) / 5.5) ** 2
+            if e <= 1:
+                c = PL['o3'] if e < 0.35 else PL['o1'] if e < 0.8 else PL['o0']
+                if e > 0.86:
+                    c = K
+                t.px(x, y, c)
+    for y in range(0, 10):                     # 코일 기둥 (빛나는 노란 고리)
+        for x in range(13, 19):
+            c = K if x in (13, 18) or y == 0 else PL['ly'] if y % 2 else PL['o3']
+            t.px(x, y, c)
+    for y in range(19, 27):                    # 옆 관 (오른쪽)
+        t.px(29, y, PL['b2']); t.px(30, y, PL['b0']); t.px(31, y, PL['pk'])
+    for y in range(22, 27):                    # 계기판
+        for x in range(10, 22):
+            t.px(x, y, K if x in (10, 21) or y in (22, 26) else PL['cs'])
+    t.px(12, 24, PL['cS']); t.px(15, 24, PL['cY']); t.px(18, 24, PL['cR'])
+    return t
+
+
+def plbuild():
+    """96×88 발전소 단지 (사파리존 바깥 왼쪽 위, 6×5 칸 + 위로 8px, H = 왼쪽 아래 칸 · 문 = 넷째 칸 맨 아래 줄 D):
+    뒤 = 냉각탑 (김) · 빨강/흰 굴뚝 · 철탑 + 전선, 앞 = 콘크리트 본관 (짙은 지붕 · 환기구 · 노랑/검정 경고 띠 · 큰 셔터 문 + 번개 간판),
+    왼쪽 앞 = 울타리 친 변압기 마당 (변압기 · 애자), 맨 앞 = 철망 울타리 (문 앞만 열림)."""
+    t = Tile(96, 88)
+    K = hx('#34343c')
+    c0, c1, c2, c3 = hx('#c8c8c0'), hx('#e4e4dc'), hx('#a4a49c'), hx('#7c7c74')
+    r0, r1, r2 = hx('#5c6c80'), hx('#7c8ca0'), hx('#44505e')
+    Y, B, R, Wt = hx('#f8d030'), hx('#2c2c2c'), hx('#d04838'), hx('#f4f4f4')
+    st0, st1 = hx('#f8f8fc'), hx('#d4d8e4')
+    px = t.px
+
+    def rect(x0, y0, x1, y1, col, edge=None):
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                e = edge is not None and (x in (x0, x1 - 1) or y in (y0, y1 - 1))
+                px(x, y, edge if e else col)
+
+    # 바닥 콘크리트 마당 (본관 · 변압기 마당 아래)
+    for y in range(44, 86):
+        for x in range(2, 94):
+            px(x, y, hx('#b0b0a4') if (x // 8 + y // 8) % 2 else hx('#bcbcb0'))
+    # 냉각탑 (왼쪽 뒤): 허리가 잘록한 콘크리트 통 + 꼭대기 김
+    for y in range(6, 46):
+        k = (y - 6) / 40
+        half = 15 - 5 * math.sin(k * math.pi) * 0.9 + (2 if y > 40 else 0)
+        for x in range(0, 40):
+            dx = x - 19.5
+            if abs(dx) <= half:
+                edge = abs(dx) > half - 1 or y == 6
+                s = dx / half
+                col = c1 if s < -0.45 else c0 if s < 0.35 else c2
+                if (y - 6) % 9 == 8:
+                    col = c3 if s > 0 else c2
+                px(x, y, K if edge else col)
+    for y in range(6, 9):                       # 냉각탑 입구 (어두운 속)
+        for x in range(9, 31):
+            if t.get(x, y) != K:
+                px(x, y, hx('#5c5c64'))
+    for (cx, cy, rr) in [(14, 4, 4.5), (22, 2, 5.5), (29, 5, 4), (18, 0, 4)]:   # 김 (윗칸으로 솟음)
+        for y in range(0, 12):
+            for x in range(0, 40):
+                d = ((x - cx) ** 2 + ((y - cy) * 1.3) ** 2) ** 0.5
+                if d < rr - 1:
+                    px(x, y, st0)
+                elif d < rr:
+                    px(x, y, st1)
+    # 굴뚝 (빨강/흰 줄)
+    for y in range(2, 40):
+        for x in range(44, 51):
+            col = K if x in (44, 50) or y == 2 else (R if ((y - 2) // 6) % 2 == 0 else Wt)
+            if x == 45 and col not in (K,):
+                col = hx('#f08070') if col == R else hx('#ffffff')
+            px(x, y, col)
+    # 철탑 (오른쪽 뒤): 격자 탑 + 팔 + 전선
+    for y in range(4, 44):
+        w = 2 + (y - 4) * 0.16
+        for x in (round(87 - w), round(87 + w)):
+            px(x, y, hx('#5c606c'))
+        if y % 6 == 0:
+            for x in range(round(87 - w), round(87 + w) + 1):
+                px(x, y, hx('#7c808c'))
+        if y % 6 == 3:
+            px(87, y, hx('#7c808c'))
+    for x in range(78, 96):
+        px(x, 10, hx('#5c606c')); px(x, 18, hx('#5c606c'))
+    for x in (79, 95, 80, 94):
+        px(x, 11, hx('#e8e8f0')); px(x, 19, hx('#e8e8f0'))
+    for x in range(52, 80):                      # 전선 (본관 지붕으로 처짐)
+        sag = round(((x - 66) / 14.0) ** 2 * 4)
+        px(x, 15 + 4 - sag, K); px(x, 23 + 4 - sag, K)
+    # 본관: 지붕 (짙은 청회색 · 환기구) + 경고 띠 + 콘크리트 벽
+    rect(22, 34, 94, 50, r0, K)
+    for y in range(35, 49):
+        for x in range(23, 93):
+            if (y - 35) % 4 == 0:
+                px(x, y, r1)
+            if x > 84:
+                px(x, y, r2 if (y - 35) % 4 else r0)
+    for (vx, vy) in [(30, 38), (40, 38), (70, 38)]:
+        rect(vx, vy, vx + 7, vy + 6, hx('#a0a8b4'), K)
+        for x in range(vx + 1, vx + 6):
+            px(x, vy + 2, hx('#58606c')); px(x, vy + 4, hx('#58606c'))
+    for x in range(22, 94):                      # 경고 띠
+        for y in range(50, 54):
+            px(x, y, K if y in (50, 53) else (Y if ((x + y) // 3) % 2 == 0 else B))
+    rect(22, 54, 94, 86, c0, K)
+    for y in range(55, 85):
+        for x in range(23, 93):
+            if x % 12 == 10:
+                px(x, y, c2)
+            elif x % 12 == 11:
+                px(x, y, c1)
+            if y == 55:
+                px(x, y, c1)
+            if y >= 82:
+                px(x, y, c3)
+    for (wx, wy) in [(26, 58), (74, 58), (84, 58)]:   # 창 (초록빛 유리)
+        rect(wx, wy, wx + 7, wy + 6, hx('#88d8b0'), K)
+        px(wx + 1, wy + 1, hx('#e0fff0')); px(wx + 2, wy + 1, hx('#e0fff0'))
+    # 번개 간판 (문 위)
+    rect(48, 56, 64, 64, Y, K)
+    BOLT = ['....kk', '...kk.', '..kkkk', '...kk.', '..kk..', '.kk...']
+    for j, r in enumerate(BOLT):
+        for i, ch in enumerate(r):
+            if ch == 'k':
+                px(53 + i, 57 + j, B)
+    # 큰 셔터 문 (넷째 칸 = x 48..63, 맨 아래 줄)
+    rect(47, 65, 65, 88, hx('#606874'), K)
+    for y in range(66, 88):
+        for x in range(48, 64):
+            px(x, y, hx('#8890a0') if (y - 66) % 3 == 0 else hx('#6c7484'))
+    for x in range(48, 64):
+        px(x, 86, hx('#3c4048')); px(x, 87, hx('#3c4048'))
+    # 변압기 마당 (왼쪽 앞): 변압기 2대 + 애자
+    for (tx, ty) in [(4, 56), (14, 56)]:
+        rect(tx, ty, tx + 8, ty + 12, hx('#8c9c8c'), K)
+        for y in range(ty + 2, ty + 11, 2):
+            px(tx + 1, y, hx('#6c7c6c')); px(tx + 6, y, hx('#6c7c6c'))
+        for i in range(3):
+            px(tx + 2 + i * 2, ty - 1, hx('#e8e8f0')); px(tx + 2 + i * 2, ty - 2, hx('#b06040'))
+        rect(tx + 2, ty + 4, tx + 6, ty + 7, Y, K)
+    for x in range(8, 48):                       # 변압기 → 본관 전선
+        px(x, 52 - round(((x - 28) / 20.0) ** 2 * -3 + 3), K)
+    # 철망 울타리: 변압기 마당 둘레 + 맨 앞 (문 앞만 열림)
+    def fence_h(x0, x1, y):
+        for x in range(x0, x1):
+            px(x, y, hx('#5c6068')); px(x, y + 5, hx('#5c6068'))
+            for yy in range(y + 1, y + 5):
+                if (x + yy) % 3 == 0:
+                    px(x, yy, hx('#8c909c'))
+            if x % 6 == 0:
+                for yy in range(y - 1, y + 7):
+                    px(x, yy, hx('#44484f'))
+    fence_h(1, 21, 50)
+    for y in range(50, 82):
+        px(1, y, hx('#5c6068')); px(21, y, hx('#5c6068'))
+    fence_h(1, 46, 80)
+    fence_h(66, 95, 80)
+    return t
+
+
+# ── 용의 굴 ──
+def efloor(v):
+    t = Tile(); _fill(t, EC['f0'])
+    pts = [(2, 3), (9, 1), (13, 6), (5, 9), (11, 12), (1, 13), (7, 14)] if v == 0 else [(4, 2), (12, 3), (8, 7), (2, 10), (14, 11), (6, 13)]
+    for (x, y) in pts:
+        t.px(x, y, EC['f1']); t.px(x + 1, y, EC['f2'])
+    for (x, y) in ([(10, 9), (3, 6)] if v == 0 else [(10, 14), (13, 8)]):
+        t.px(x, y, EC['f3']); t.px(x + 1, y, EC['f1'])
+    return t
+
+
+ECRYSTAL = [  # 빛나는 용의 수정 (막힌 칸): 호박빛 큰 기둥 + 청록 작은 기둥
+    '................',
+    '.......k........',
+    '......k1k.......',
+    '.....k112k......',
+    '.....k1102k.....',
+    '..k..k1102k.....',
+    '.ktk.k1002k..k..',
+    '.kTtkk1002k.kTk.',
+    '.kTtkk1002kktTk.',
+    '.kTtk.k002kkttk.',
+    '.kTtk.k02k.kttk.',
+    '..kkkkk02kkkkk..',
+    '...kgggkkggggk..',
+    '....gggggggggg..',
+    '................',
+    '................',
+]
+
+
+def ecrystal():
+    t = Tile(); t.art(ECRYSTAL, {'k': EC['kK'], '1': EC['k1'], '0': EC['k0'], '2': EC['k2'], 'T': EC['kt'], 't': EC['kT'], 'g': EC['f3']})
+    return t
+
+
+def eladder():
+    t = efloor(1)
+    W0, W1, WK = hx('#e8b478'), hx('#c88c50'), hx('#5c3820')
+    for y in range(16):
+        for x in (4, 11):
+            t.px(x - 1, y, WK); t.px(x, y, W0); t.px(x + 1, y, W1); t.px(x + 2, y, WK)
+    for y in range(2, 15, 3):
+        for x in range(5, 11):
+            t.px(x, y, W0); t.px(x, y + 1, WK)
+    return t
+
+
+def bstair():
+    """사파리존 호수 다리 가운데 아래로 내려가는 계단 (다리 위 덧그림): 나무 틀 + 어두운 계단."""
+    t = Tile()
+    for y in range(1, 15):
+        for x in range(2, 14):
+            if x in (2, 13) or y in (1, 14):
+                c = C['bK']
+            elif y < 4:
+                c = C['b2']
+            else:
+                k = (y - 4) % 3
+                shade = (y - 4) / 10
+                c = hx('#8c7a6a') if k == 0 and shade < 0.5 else hx('#5c4c40') if k == 0 else hx('#3c3028') if shade > 0.6 else hx('#4c3c30')
+            t.px(x, y, c)
+    for y in range(2, 14):
+        t.px(3, y, C['b1']); t.px(12, y, C['b2'])
+    return t
+
+
+def more_tiles():
+    out = [('snground0', snground(0)), ('snground1', snground(1))]
+    for m in range(16):
+        for v in range(3):
+            out.append((f'swall{m}_{v}', wall('s', m, v)))
+    for c in ('nw', 'ne', 'sw', 'se'):
+        out.append((f'swallc{c}', wall_corner('s', c)))
+    for m in range(16):
+        out.append((f'snice{m}', snice(m)))
+    out += [('snstairs', snstairs()), ('snrock', snrock()), ('snsign', snsign()), ('snman', snman()), ('snexit', snexit())]
+    out += [('lvground0', lvground(0)), ('lvground1', lvground(1))]
+    for m in range(16):
+        for v in range(3):
+            out.append((f'lwall{m}_{v}', wall('l', m, v)))
+    for c in ('nw', 'ne', 'sw', 'se'):
+        out.append((f'lwallc{c}', wall_corner('l', c)))
+    out += [('lava0', lava(0)), ('lava1', lava(1))]
+    for m in range(16):
+        out.append((f'lavae{m}', lava_edge(m)))
+    for c in ('nw', 'ne', 'sw', 'se'):
+        out.append((f'lavac{c}', lava_corner(c)))
+    out += [('lvgrass', lvgrass()), ('lvgrassR0', lvgrass(0)), ('lvgrassR1', lvgrass(1)), ('lvvent0', lvvent(0)), ('lvvent1', lvvent(1)),
+            ('lvrock', lvrock()), ('lvsign', lvsign()), ('lvstairs', lvstairs()), ('lvexit', lvexit())]
+    out += [('plfloor0', plfloor(0)), ('plfloor1', plfloor(1)), ('plshadow', plshadow())]
+    for m in range(16):
+        out.append((f'plw{m}', plwall(m)))
+    vt = Tile(); _fill(vt, PL['void'])
+    out += [('plvoid', vt), ('plpipeB', plpipe(False)), ('plpipeG', plpipe(True)), ('plrack', plrack()), ('plcon0', plcon(0)), ('plcon1', plcon(1)),
+            ('plcrate', plcrate()), ('plswitch', plswitch()), ('plstairs', plstairs()), ('plexit', plexit()), ('plsign', plsign_t())]
+    out += [('efloor0', efloor(0)), ('efloor1', efloor(1))]
+    for m in range(16):
+        for v in range(3):
+            out.append((f'ewall{m}_{v}', wall('e', m, v)))
+    for c in ('nw', 'ne', 'sw', 'se'):
+        out.append((f'ewallc{c}', wall_corner('e', c)))
+    out += [('erock', rock_art(9, 7, 'e')), ('eboulder', rock_art(14, 12, 'e')), ('ecrystal', ecrystal()), ('eladder', eladder()), ('bstair', bstair())]
+    return out
+
+
+def plsign_t():
+    t = Tile(); t.art(SIGN, dict(SIGN_PAL, g=PL['sh'])); return t
+
+
 # ─────────── 주인공: HAFS 교복 (남색 재킷 + 금색 테두리) · 사육사 ───────────
 # v3 (2026-11-05): 참고 그림 (3세대 FRLG 남자아이 3×4 · 16장 시트) 처럼 큰 머리 (키의 절반쯤) · 짧은 몸,
 #   눈 = 1칸 폭 × 2칸 높이, 둘 사이 2칸 (코 위 가운데), 모자 챙 바로 아래 · 양옆 머리카락.
@@ -1647,11 +2532,12 @@ def build():
     tiles += [('tallR0', grass_rustle(0)), ('tallR1', grass_rustle(1))]
     tiles += beach_tiles()
     tiles += desert_tiles()
+    tiles += more_tiles()            # 0048: 맨 뒤에 붙임 → 앞 타일 자리 그대로
     tree = Tile(16, 24); tree.art(TREE, TREE_PAL)
 
     cols = 16
     rows = (len(tiles) + cols - 1) // cols
-    sheet = Image.new('RGBA', (cols * TS, rows * TS + 32), CLEAR)
+    sheet = Image.new('RGBA', (cols * TS, rows * TS + 32 + 88), CLEAR)
     idx = {}
     for i, (name, t) in enumerate(tiles):
         x, y = (i % cols) * TS, (i // cols) * TS
@@ -1672,6 +2558,10 @@ def build():
     idx['dpillar'] = [192, rows * TS, 16, 32]
     sheet.paste(ddune().im, (208, rows * TS))           # 사막 모래 언덕 48×32 (3×2 칸, 왼쪽 위 칸 D 에 그림)
     idx['ddune'] = [208, rows * TS, 48, 32]
+    y2 = rows * TS + 32                                 # 0048: 둘째 줄 큰 그림 (설원 · 용암 · 발전소)
+    for name, im, x in [('snpine', snpine(), 0), ('lvtree', lvtree(), 16), ('sncabin', sncabin(), 32), ('plgen', plgen(), 64), ('plbuild', plbuild(), 96)]:
+        sheet.paste(im.im, (x, y2))
+        idx[name] = [x, y2, im.w, im.h]
     return sheet, idx
 
 

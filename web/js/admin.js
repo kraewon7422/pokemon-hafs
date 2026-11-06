@@ -504,7 +504,7 @@ function legendCard() {
     const btn = h('button.btn.go', `${label} 레이드 시작`);
     btn.onclick = () => busy(btn, async () => {
       if (!confirm(`${label} 레이드를 TV 대형 화면에 띄울까요? (체력 30,000 · 10분)`)) return;
-      await rpc('admin_create_raid', { p_species: sp, p_hp: 30000, p_minutes: 10, p_tv: true, p_title: `${label} 선생님 레이드`, p_kind: 'legend' });
+      await rpc('admin_create_raid', { p_species: sp, p_hp: 30000, p_minutes: 10, p_tv: true, p_title: `${label} 선생님 레이드`, p_kind: 'legend', p_shiny: false });
       toast(`${label} 레이드를 열었어요. TV 화면에 QR이 떠요.`);
     });
     return h('div.stack', spriteImg(sp), btn);
@@ -519,6 +519,7 @@ async function refreshStats(redraw = true) {
   try {
     S.stats = await rpc('admin_stats');
     S.game = await rpc('admin_game_stats').catch(() => S.game);   // 오늘 배틀·레이드·진화의 돌 (0019)
+    S.safariOpen = await tq(sb.from('settings').select('value').eq('key', 'safari_open')).then((r) => (r?.[0] ? isOn(r[0].value) : null)).catch(() => S.safariOpen);   // 0048
     S.statsFailed = false;
   } catch (e) {
     if (!S.statsFailed) fail(e);               // toast once per failure streak
@@ -563,6 +564,7 @@ function dashBody() {
   const tiles = h('div.tiles',
     tile('게임 상태', open ? 'ON' : 'OFF', open ? '운영 중' : '정지됨 (축제 운영 탭)', open ? 'good' : 'alert'),
     tile('셀프 지급', selfOn ? 'ON' : 'OFF', selfOn ? '셀프 지급 모드 켜짐' : '부스에서만 지급', selfOn ? 'alert' : ''),
+    S.safariOpen == null ? null : tile('사파리존', S.safariOpen ? '열림' : '닫힘', S.safariOpen ? '학생이 사파리존에 들어갈 수 있음' : 'QR만 (축제 운영 → 야생 포켓몬)', S.safariOpen ? '' : 'alert'),
     tile('포켓몬 미설정 QR', emptyPool.length, '활성인데 풀이 비어 있음', emptyPool.length ? 'alert' : ''),
     tile('학생 수', s.students),
     tile('5분 내 접속', s.active_5m),
@@ -2249,8 +2251,8 @@ async function tabRaid() {
       qr.onclick = () => showRaidQr(r);
       const [label, cls] = STATUS[r.status] || [r.status, 'off'];
       return h('tr',
-        h('td', spriteImg(r.species_id, 40)),
-        h('td', h('b', r.title), h('br'), h('small.muted', `${r.q} · ${r.kind === 'slot' ? '시간대 전설' : r.kind === 'legend' ? '교장·교감' : '운영자'} · ${r.tv ? 'TV' : '인쇄 QR'}`)),
+        h('td', spriteCanvas(r.species_id, 40, r.shiny ? 'shiny' : 'normal')),
+        h('td', h('b', `${r.shiny ? '✦ ' : ''}${r.title}`), h('br'), h('small.muted', `${r.q} · ${r.kind === 'slot' ? '시간대 전설' : r.kind === 'legend' ? '교장·교감' : '운영자'} · ${r.tv ? 'TV' : '인쇄 QR'}`)),
         h('td', chip(label, cls)),
         h('td.mono', `${r.hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`),
         h('td.num', r.players), h('td.num', r.rewarded ?? 0), h('td', fmtTime(r.ends_at)),
@@ -2269,7 +2271,8 @@ async function tabRaid() {
   };
   const sel = h('select.inp');
   const pic = h('div', spriteImg(3, 72));
-  const showPic = () => pic.replaceChildren(sel.value ? spriteImg(Number(sel.value), 72) : h('span.muted', '-'));
+  const shinyChk = h('input', { type: 'checkbox', onchange: () => showPic() });   // 0047: 이로치 레이드
+  const showPic = () => pic.replaceChildren(sel.value ? spriteCanvas(Number(sel.value), 72, shinyChk.checked ? 'shiny' : 'normal') : h('span.muted', '-'));
   // 이름·번호로 찾기: 글자를 넣으면 맞는 포켓몬만 남기고 첫 번째를 고름
   const fillSel = (q) => {
     const want = String(q || '').trim().toLowerCase().replace(/^no\.?\s*/, '');
@@ -2307,10 +2310,10 @@ async function tabRaid() {
         if (!Number.isInteger(f.value) || f.value < f.min || f.value > f.max) { toast(`${name}은(는) ${f.min}~${f.max.toLocaleString()} 사이 숫자로 넣어 주세요.`); return; }
       }
       busy(go, async () => {
-        const r = await rpc('admin_create_raid', { p_species: Number(sel.value), p_hp: Number(hp.value), p_minutes: Number(mins.value), p_tv: mode.value === 'tv', p_title: title.value });
+        const r = await rpc('admin_create_raid', { p_species: Number(sel.value), p_hp: Number(hp.value), p_minutes: Number(mins.value), p_tv: mode.value === 'tv', p_title: title.value, p_shiny: shinyChk.checked });
         if (openChk.checked) await rpc('admin_set_raid_open', { p_id: r.id, p_open: true });
-        toast(`${r.title}을(를) 열었어요.${openChk.checked ? ' (QR 없이 앱에서 참가 가능)' : ''}`);
-        title.value = '';
+        toast(`${r.shiny ? '✦ 이로치 ' : ''}${r.title}을(를) 열었어요.${openChk.checked ? ' (QR 없이 앱에서 참가 가능)' : ''}`);
+        title.value = ''; shinyChk.checked = false; showPic();
         draw(await rpc('admin_list_raids'));
         if (!r.tv) showRaidQr(r);
       });
@@ -2319,6 +2322,7 @@ async function tabRaid() {
     h('h2', '레이드 열기'),
     h('p.small-txt', `아무 포켓몬(3단계 진화형도 가능)로 레이드를 열 수 있어요. QR을 찍은 학생들이 다 같이 보스를 탭해서 체력을 0으로 만들면, ${minTaps}번 이상 공격한 모두가 ${catchMode ? '앱에서 그 포켓몬을 잡을 기회' : '그 포켓몬 특별 티켓 (주머니 칸 제한 없음)'}를 받아요 (오른쪽 "보상 방식"). 시간 안에 못 잡으면 실패.`),
     h('div.row', pic, h('label.field', { style: { flex: 1 } }, h('span', '보스 포켓몬'), find, sel)),
+    h('label.chk.chk-top', shinyChk, h('span', h('b', '✦ 이로치 레이드'), ' — 보스가 반짝이는 색으로 나오고, 이기면 받는 포켓몬도 반드시 반짝이는 색이에요')),
     h('div.row', h('label.field', h('span', '보스 체력'), hp.el), h('label.field', h('span', '시간'), mins.el)),
     h('label.field', h('span', 'QR 방식'), mode), title,
     h('label.chk.chk-top', openChk, h('span', h('b', 'QR 없이 참가'), ' — 학생 앱 레이드 탭에 "참가" 버튼이 떠요 (아침·점심·저녁에 모두에게 주는 레이드용)')),
@@ -2355,6 +2359,7 @@ const DEFAULTS = {
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
+  safari_open: true,   // 0048 사파리존 잠금
   safari_balls_daily: 20, safari_reset_hours: 0.5, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_flee: 0.25, safari_steps_per_sec: 10,   // 0040: 30분 충전 · 만남 상한 없음 · 걸음 10/초
   safari_flee_level: 0.1,
   safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
@@ -2462,6 +2467,7 @@ const GROUPS = {
       P('wild_steps', '걸음마다 야생 포켓몬 1마리', 'int', { unit: '걸음', min: 0, max: 100000, help: '0 = 걸어서 만나기 끔. 앱 홈에 "야생 포켓몬이 나타났다!" 가 뜨고 잡기 장면에서 잡아요.' }),
       P('wild_daily', '걸어서 만나는 야생 포켓몬 (하루 최대)', 'int', { unit: '마리', min: 0, max: 100 }),
       P('wild_balls', '걸어서 만난 야생 포켓몬: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요.' }),
+      P('safari_open', '사파리존 열기', 'bool', { help: '꺼짐 = 사파리존이 닫혀요 (학생 앱에 "아직 닫혀 있어요 — 학교 곳곳의 QR을 찾아보세요!"). 축제 첫머리에 QR부터 찾게 할 때 끄세요. 이미 시작한 잡기는 끝낼 수 있어요.' }),
       P('safari_balls_daily', '사파리존: 사파리볼 개수', 'step', { unit: '개', min: 0, max: 100, help: '충전 주기마다 한 사람이 받는 사파리볼 (기본 20개). 다 쓰면 다음 충전까지 못 만나요 (서버가 셈). 0 = 사파리존 끔.' }),
       P('safari_reset_hours', '사파리존: 충전 주기', 'seg', { unit: '시간', options: [[0.25, '15분'], [0.5, '30분'], [1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간']],
         help: '서울 시각 00:00 부터 이만큼마다 사파리볼이 다시 차요 (기본 30분). 예: 30분 → 00:00 · 00:30 · 01:00 …. 앱에 "다음 충전 15:30" 처럼 보여요. 바꾸면 바로 새 주기로 세요.' }),
