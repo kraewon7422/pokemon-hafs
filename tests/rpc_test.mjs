@@ -2961,6 +2961,66 @@ console.log('\n[52] 반짝이는 포켓몬 · 빛나는 부적 · 알림 이유 
   }
 }
 
+console.log('\n[53] 사막 · 모래바람 지대 (0043): desert 구역 · 땅 · 바위 (+ 사막 몇 종) 만 · 물 · 얼음 없음 · Lv.15 → 45 · 자르기');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_reset_hours',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'ditto_disguise_chance', 'wild_shiny_chance'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const bands = (await admin.select('settings?key=eq.safari_level_bands&select=value')).data?.[0]?.value;
+  ok(JSON.stringify(bands?.desert) === JSON.stringify([15, 45, 55, 'desert']) && Array.isArray(bands?.beach), 'safari_level_bands has desert [15, 45, 55] (beach etc. kept)', bands?.desert);
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'ds1234' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'ds1234'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '사막시험' });
+  const walk = async (zone, area, dist) => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const a = (await V.rpc('safari_encounter', { p_steps: 3, p_zone: zone, p_area: area, p_dist: dist })).data;
+      if (a?.encounter || a?.reason) return a;
+      await wait(400);
+    }
+    return null;
+  };
+  const flee = async (a) => V.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
+  const spRow = async (id) => (await admin.select(`species?id=eq.${id}&select=dex,name,btype`)).data?.[0];
+  try {
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 100); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    await setS('wild_shiny_chance', 0); await setS('safari_encounter_rate', 1);
+    // 1) 구역 desert 를 받아들이고 만남에 zone 'desert' 로 적힘
+    const a0 = await walk('desert', 'desert', 0);
+    ok(a0?.zone === 'desert' && a0?.encounter?.zone === 'desert', 'safari_encounter accepts zone "desert" (encounter.zone = desert)', { zone: a0?.zone, enc: a0?.encounter?.zone });
+    await flee(a0);
+    // 2) 사는 곳: 땅 · 바위 (+ 선인왕 · 마라카치 · 데스마스 · 목도리키텔) 만, 물 · 얼음은 절대 없음
+    const EXTRA = [331, 556, 562, 694];
+    const seen = [];
+    for (let i = 0; i < 14; i++) { const a = await walk('desert', 'desert', 20); seen.push(await spRow(a?.encounter?.species_id)); await flee(a); }
+    ok(seen.every((s) => s && (/땅|바위/.test(s.btype) || EXTRA.includes(s.dex))), 'desert pool: ground / rock types (+ a few desert species) only', seen.map((s) => `${s?.name}:${s?.btype}`));
+    ok(seen.every((s) => s && !/물|얼음/.test(s.btype)), 'desert pool: never water / ice', seen.map((s) => s?.btype));
+    ok(seen.filter((s) => /땅|바위/.test(s?.btype)).length >= 9, 'desert pool: mostly ground / rock', seen.map((s) => s?.btype));
+    // 3) 레벨: 입구 Lv.15 → 서쪽 끝 Lv.45, 먼 거리 · 음수 거리는 범위 안으로, 다른 지도 이름 / 지도 없음 = 사막 최소 레벨 15, 사막 지도에서 다른 구역 → 그 구역 최소
+    const lv = async (zone, area, dist) => { const a = await walk(zone, area, dist); await flee(a); return a?.encounter?.level; };
+    const L = {
+      entrance: await lv('desert', 'desert', 0), far: await lv('desert', 'desert', 55), huge: await lv('desert', 'desert', 99999),
+      neg: await lv('desert', 'desert', -40), otherArea: await lv('desert', 'ultra', 55), noArea: await lv('desert', null, 55),
+      grassInDesert: await lv('grass', 'desert', 55), mid: await lv('desert', 'desert', 27),
+    };
+    ok(L.entrance >= 15 && L.entrance <= 16, 'desert entrance → Lv.15 (±1)', L);
+    ok(L.far >= 44 && L.far <= 45 && L.huge >= 44 && L.huge <= 45, 'far west ruins → Lv.45, huge distance clamped to the band (≤45)', L);
+    ok(L.mid >= 28 && L.mid <= 31, 'half way into the desert → about Lv.30', L);
+    ok(L.neg >= 15 && L.neg <= 16, 'negative distance clamped to the entrance level', L);
+    ok(L.otherArea === 15 && L.noArea === 15, 'desert zone with another map / no map → lowest desert level (15)', L);
+    ok(L.grassInDesert === 5, 'grass zone claimed on the desert map → lowest grass level (no desert levels for other zones)', L);
+    // 4) 모르는 구역 이름은 예전처럼 grass
+    const bad = await walk('sahara', 'desert', 55);
+    ok(bad?.zone === 'grass', 'unknown zone name → grass (whitelist)', bad?.zone);
+    await flee(bad);
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);

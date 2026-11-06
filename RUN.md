@@ -91,6 +91,11 @@ python tools/build_atlas.py                                                   # 
 - 확률 (운영자 [성장·보상] → '반짝이는 포켓몬'): 새로 잡는 포켓몬 1/512 · 알 1/256 · 1/128 · 1/64 · 빛나는 부적 ×3 (확률 칸은 "1 / N" 의 N).
 - 화면: 임시 학생(0205xx)을 만들고 그 학생에게 반짝 만남 한 줄 (SQL `insert into raid_encounters (..., shiny) values (..., true)`) → `cd web && python -m http.server 8138` 에서 홈 배너 → 잡기 장면(반짝반짝) · 알림 이유 · 가방 부적을 폰(375) · 320 크기로 확인 → 끝나면 임시 학생 지우기.
 
+## 0043 사막 · 모래바람 지대 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [53] (구역 desert · 땅/바위 (+ 선인왕 · 마라카치 · 데스마스 · 목도리키텔) 만, 물 · 얼음 없음 · Lv.15 → 45 · 자르기). 레벨 범위는 설정 `safari_level_bands` 의 "desert".
+- 그림: `python tools/build_safari_tiles.py --preview` (사막 타일 desert_tiles · 기둥 선인장 · 사암 돌기둥 · 모래 언덕 48×32).
+- 화면: 사파리존 서쪽 끝 모래길 (입구에서 왼쪽 아래) → 사막. 들어서면 "모래바람이 거세게 분다!" 글 상자 · 지도 위 모래바람 (움직임 줄이기 설정이면 멈춘 옅은 모래빛) · 마른 풀숲이 다리를 가림 · 사막에서 만난 포켓몬은 잡기 장면도 모래빛.
+
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.
 

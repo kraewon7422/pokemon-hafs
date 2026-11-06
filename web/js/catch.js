@@ -201,7 +201,7 @@ const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..
 
 // ═════════════════════════════ 장면 ═════════════════════════════
 // onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
-export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null, shiny = false } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수) · shiny: 반짝이는 색 (0042)
+export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null, shiny = false, sand = false } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수) · shiny: 반짝이는 색 (0042) · sand: 사막 모래바람 빛 (0043)
   const tod = EDGE[time] ? time : defaultTime();
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
@@ -256,7 +256,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
     layer.className = 'cz-layer';
     layer.setAttribute('role', 'dialog');
     layer.setAttribute('aria-label', `${nm} 잡기`);
-    layer.style.background = `linear-gradient(${top} 0 50%, ${bot} 50% 100%)`;
+    layer.style.background = `${sand ? 'linear-gradient(rgba(224,160,80,.42), rgba(224,160,80,.42)), ' : ''}linear-gradient(${top} 0 50%, ${bot} 50% 100%)`;   // 0043 사막: 위아래 빈칸도 모래빛
     area = document.createElement('div'); area.className = 'cz-area';
     box = document.createElement('div'); box.className = 'cz-box';
     // 오른쪽 위 버튼: 바로 잡기 (+ 남은 포켓몬이 있으면 모두 바로 잡기). 레이드는 버튼 없음
@@ -382,6 +382,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
 
       // 배경 · 그림자 · 포켓몬
       if (sc.textures.exists('bg')) sc.add.image(0, 0, 'bg').setOrigin(0).setDepth(0);
+      if (sand) sc.add.rectangle(0, 0, W, H, 0xe0a050, 0.42).setOrigin(0).setDepth(0.5);   // 0043 사막: 배경 위에 모래빛 (포켓몬 · 공은 그 위)
       const shadow = sc.add.graphics().setDepth(1);
       const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (포켓몬 뒤로 가면 1.5)
       const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
