@@ -44,36 +44,53 @@ input::placeholder, textarea::placeholder { color: #6a7490; }
 .mcard b { font-size: var(--fs-xl); }
 .congrats { font-size: var(--fs-xl); color: #f8d048; text-shadow: 3px 3px 0 #101828; text-align: center; }
 
-/* big screen (TV 1920x1080): everything fits in one screen, text on the 12px pixel grid */
-.screen { height: 100vh; overflow: hidden; padding: 24px 36px; display: grid; grid-template-columns: 1.05fr 1fr; gap: 36px; font-size: 24px; }
-/* 왼쪽 반·오른쪽 반이 따로 끝까지 스크롤 (레이드 카드가 여러 개 떠도 아래가 보이게) */
-.screen > section { min-height: 0; display: flex; flex-direction: column; gap: 18px; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #586890 transparent; padding-right: 6px; }
+/* big screen (TV): everything fits in one screen at any TV size (1280x720 ~ 1920x1080, portrait 1080x1920).
+   --fs scales with the viewport (24px at 1920x1080, 16px at 1280x720) and every size below is in em. */
+.screen { --fs: min(1.25vw, 2.22vh); font-size: var(--fs); height: 100vh; height: 100dvh; overflow: hidden; padding: 1em 1.5em .4em;
+  display: grid; grid-template-columns: 1.05fr 1fr; grid-template-rows: minmax(0, 1fr) auto; column-gap: 1.5em; row-gap: .4em; }
+.screen > section { min-height: 0; display: flex; flex-direction: column; gap: .75em; }
 .screen > section > * { flex-shrink: 0; }
-/* long lists scroll inside the screen (mouse wheel / touch) instead of being cut off */
-.screen .grow { flex: 1 0 auto; min-height: 60vh; display: flex; flex-direction: column; gap: 12px; }
-.screen .grow > .feed, .screen .top10 { flex: 1; min-height: 0; overflow-y: auto; align-content: start; scrollbar-width: thin; scrollbar-color: #586890 transparent; }
-.screen h2 { margin: 0; color: #f8d048; text-shadow: 3px 3px 0 #101828; font-size: 36px; }
-.screen .top10 { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
-.screen .top10 li { display: grid; grid-template-columns: 72px 1fr auto; align-items: center; gap: 12px; background: rgba(255,255,255,.08); border: 3px solid #586890; border-radius: 12px; padding: 6px 16px; min-height: 60px; }
+/* 오른쪽: 레이드·전설 QR 이 많이 떠서 넘칠 때만 스크롤 (보통은 피드가 남은 칸만 차지) */
+.screen > section + section { overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; scrollbar-color: #586890 transparent; }
+.screen h2 { margin: 0; color: #f8d048; text-shadow: .125em .125em 0 #101828; font-size: 1.5em; line-height: 1.2; }
+/* TOP 10: 10칸이 남은 높이를 똑같이 나눠 가짐 → 10위까지 항상 보임 */
+.screen .top10 { list-style: none; margin: 0; padding: 0; flex: 1 1 0; min-height: 0; display: grid; grid-template-rows: repeat(10, minmax(0, 1fr)); gap: .33em; }
+.screen .top10 li { display: grid; grid-template-columns: 3em minmax(0, 1fr) auto; align-items: center; gap: .5em; min-height: 0; background: rgba(255,255,255,.08); border: 3px solid #586890; border-radius: .5em; padding: 0 .67em; overflow: hidden; }
+.screen .top10 li > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .screen .top10 li:nth-child(1) { border-color: #f8d048; background: rgba(248,208,72,.18); }
-.screen .feed { display: grid; gap: 8px; }
-.screen .feed div { display: flex; align-items: center; gap: 12px; background: rgba(255,255,255,.08); border-radius: 10px; padding: 4px 12px; animation: pop .3s steps(4); }
-.screen .gens { display: flex; gap: 12px; flex-wrap: wrap; }
-.screen .gens div { background: rgba(255,255,255,.1); border: 3px solid #586890; border-radius: 12px; padding: 6px 16px; }
+/* 방금 잡힌 포켓몬: 남은 칸에 들어가는 줄만 (넘치는 줄은 옆 열로 넘어가 통째로 숨음 → 반쯤 잘린 줄 없음) */
+.screen .grow { flex: 1 1 0; min-height: 4.9em; display: flex; flex-direction: column; gap: .5em; }
+.screen .feed { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; flex-wrap: wrap; align-content: flex-start; row-gap: .33em; column-gap: 2em; overflow: hidden; }
+.screen .feed div { flex: none; width: 100%; display: flex; align-items: center; gap: .5em; background: rgba(255,255,255,.08); border-radius: .42em; padding: .17em .5em; animation: pop .3s steps(4); }
+.screen .feed div > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.screen .feed div > small { flex: none; }
+.screen .gens { display: flex; gap: .5em; flex-wrap: wrap; }
+.screen .gens div { background: rgba(255,255,255,.1); border: 3px solid #586890; border-radius: .5em; padding: .25em .67em; }
 .screen .gens div:first-child { border-color: #f8d048; }
-.screen .notice { background: #f8d048; color: #101828; border-radius: 12px; padding: 8px 16px; font-weight: bold; }
-.legend-row { display: flex; gap: 18px; flex: none; }
+.screen .notice { background: #f8d048; color: #101828; border-radius: .5em; padding: .33em .67em; font-weight: bold; }
+.legend-row { display: flex; gap: .75em; flex: none; }
 .legend-row:empty { display: none; }
-/* small window / portrait: one column and the whole page scrolls */
-@media (max-width: 1100px), (max-height: 640px) {
-  .screen { height: auto; min-height: 100vh; overflow: visible; grid-template-columns: 1fr; }
-  .screen > section, .screen .grow { overflow: visible; }
-  .screen .grow > .feed, .screen .top10 { overflow: visible; }
-}
-.legend-qr { background: #fff; color: #101828; border: 6px solid #f8d048; border-radius: 14px; padding: 12px; display: grid; justify-items: center; gap: 6px; flex: 1; }
-.legend-qr canvas { width: min(18vw, 30vh); height: auto; image-rendering: pixelated; }
-.fs-btn { position: fixed; right: 10px; bottom: 10px; opacity: .25; }   /* 오른쪽 (왼쪽 아래는 팬 게임 안내 글과 겹침) */
+/* 전설 QR: QR 왼쪽 · 글 오른쪽 (세로로 쌓으면 작은 TV 에서 피드 자리가 없어짐) */
+.legend-qr { background: #fff; color: #101828; border: .25em solid #f8d048; border-radius: .58em; padding: .5em .75em; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; align-content: center; column-gap: .75em; row-gap: .5em; flex: 1; min-width: 0; }
+.legend-qr canvas { grid-column: 1; grid-row: 1 / span 2; width: min(10em, 24vh); height: auto; image-rendering: pixelated; }
+/* 아래 줄: 팬 게임 안내 + 전체 화면 단추 (서로·내용과 안 겹침) */
+.tv-foot { grid-column: 1 / -1; display: flex; align-items: center; gap: 1em; min-width: 0; }
+.fan-note.tv { flex: 1; min-width: 0; margin: 0; font-size: max(11px, .5em); color: rgba(255,255,255,.7); text-align: left; word-break: keep-all; }
+.fs-btn { flex: none; opacity: .35; font-size: max(12px, .55em); padding: .3em .8em; }
 :fullscreen .fs-btn { display: none; }
+/* portrait TV (1080x1920): one column, TOP 10 on top, the rest below — still one screen */
+@media (orientation: portrait) and (min-height: 900px) {
+  .screen { --fs: min(2.2vw, 1.25vh); grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) minmax(0, 1.15fr) auto; row-gap: 1em; }
+}
+/* small window (laptop browser, phone): one column and the whole page scrolls */
+@media (max-width: 1100px) and (orientation: landscape), (max-height: 640px), (orientation: portrait) and (max-height: 899px) {
+  .screen { --fs: 24px; height: auto; min-height: 100vh; overflow: visible; grid-template-columns: 1fr; grid-template-rows: none; row-gap: 1.5em; }
+  .screen > section, .screen > section + section { overflow: visible; }
+  .screen .top10 { grid-template-rows: none; }
+  .screen .top10 li { min-height: 2.5em; }
+  .screen .grow, .screen .feed { flex: none; }
+  .screen .feed { flex-wrap: nowrap; overflow: visible; }
+}
 
 /* booth: special tickets (레이드·도감 보상) */
 .ticket-list li.special { background: linear-gradient(110deg, #f8d040, #fff4b0 40%, #f0b820 60%, #ffe680); background-size: 250% 100%; animation: shimmer 2.4s linear infinite; color: #3a2400; font-weight: bold; }
@@ -81,18 +98,17 @@ input::placeholder, textarea::placeholder { color: #6a7490; }
 @keyframes shimmer { to { background-position: 250% 0; } }
 
 /* TV raids */
-.raid-row-tv { display: grid; gap: 12px; flex: none; }
+.raid-row-tv { display: grid; gap: .5em; flex: none; }
 .raid-row-tv:empty { display: none; }
-.raid-tv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 16px; align-items: center; padding: 14px 18px; border-radius: 16px;
+.raid-tv { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: .67em; align-items: center; padding: .58em .75em; border-radius: .67em;
   background: linear-gradient(90deg, #402060, #803080); box-shadow: 0 0 0 4px #f878c8 inset; }
-.raid-tv h3 { margin: 0 0 6px; font-size: 28px; }
-.raid-tv .hpbar { height: 26px; border: 4px solid #101828; border-radius: 8px; background: #384050; overflow: hidden; }
+.raid-tv h3 { margin: 0 0 .25em; font-size: 1.17em; }
+.raid-tv .hpbar { height: 1.1em; border: 4px solid #101828; border-radius: 8px; background: #384050; overflow: hidden; }
 .raid-tv .hpbar i { display: block; height: 100%; background: #48d048; transition: width .5s; }
 .raid-tv .hpbar i.yellow { background: #f8c830; } .raid-tv .hpbar i.red { background: #f04830; }
-.raid-tv .meta { display: flex; gap: 18px; font-size: 20px; margin-top: 6px; flex-wrap: wrap; }
-.raid-tv .qr { display: grid; justify-items: center; gap: 4px; background: #fff; color: #101828; padding: 8px; border-radius: 10px; }
-.raid-tv .qr canvas { width: 170px; height: 170px; image-rendering: pixelated; }
+.raid-tv .meta { display: flex; gap: .2em .9em; font-size: .83em; margin-top: .3em; flex-wrap: wrap; }
+.raid-tv .qr { display: grid; justify-items: center; gap: .17em; background: #fff; color: #101828; padding: .33em; border-radius: .42em; }
+.raid-tv .qr canvas { width: min(7em, 18vh); height: auto; aspect-ratio: 1; image-rendering: pixelated; }
 .raid-tv.won { box-shadow: 0 0 0 4px #f8d048 inset; }
 
 /* 비공식 팬 게임 안내 (0032) */
-.fan-note.tv { position: fixed; left: 12px; bottom: 6px; right: 140px; margin: 0; font-size: 12px; color: rgba(255,255,255,.7); text-align: left; word-break: keep-all; }
