@@ -50,7 +50,13 @@ const PW_LO = -Math.log(0.945), PW_HI = Math.log(1.10);
 
 const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
 // 배경 그림 맨 위 / 맨 아래 색 (화면이 그림보다 길 때 위아래를 채움)
-const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'] };
+const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'],
+  shore: ['#5e92eb', '#f5d6af'], desert: ['#63b3e1', '#f5d6af'], cave: ['#28414b', '#366a84'] };
+// 구역 배경 (사파리존 만남의 enc.zone): 해변·연못 = 바닷가, 사막 = 모래, 동굴 = 동굴 (img/catch/{shore,desert,cave}.png — tools/draw_catch_zone_bg.py,
+// 배틀 배경 CC0 조각). 울트라 스페이스 = 밤 배경 + 보랏빛. 그 밖 (풀숲·깊은 곳·레이드·전설·QR) = 시간대 배경 (낮·노을·밤)
+const ZONE_BG = { beach: 'shore', pond: 'shore', shore: 'shore', desert: 'desert', cave: 'cave' };
+// 바깥 구역 배경 위에 시간대 빛 (동굴은 늘 같음): [색, 진하기]
+const TOD_TINT = { day: null, sunset: [0xf07848, 0.2], night: [0x16102c, 0.45] };
 const RING = { common: 0x58d858, rare: 0xf8a830, legendary: 0xf04848, mythic: 0xf04848 };
 const BASE_P = { common: 0.6, rare: 0.4, legendary: 0.25, mythic: 0.25 };
 // 난이도 단계 (level 이 있을 때): 0 초록 · 1 노랑 · 2 주황 · 3 빨강 (포켓몬 GO 색). 고리 최대 크기 (R 의 배), 기본 잡힘 확률
@@ -204,8 +210,12 @@ const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..
 
 // ═════════════════════════════ 장면 ═════════════════════════════
 // onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
-export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, confirm = null, intro = null, shiny = false, sand = false } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수) · shiny: 반짝이는 색 (0042) · sand: 사막 모래바람 빛 (0043)
-  const tod = EDGE[time] ? time : defaultTime();
+export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, confirm = null, intro = null, shiny = false, sand = false, zone = null } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수) · shiny: 반짝이는 색 (0042) · sand: 사막 (0043, = zone 'desert') · zone: 사파리존 구역 (배경)
+  const tod = ['day', 'sunset', 'night'].includes(time) ? time : defaultTime();
+  const zn = sand ? 'desert' : String(zone || '');
+  const bgKey = ZONE_BG[zn] || (zn === 'ultra' ? 'night' : tod);
+  // 화면 위에 덮는 빛: 바깥 구역 배경 = 시간대 빛 · 울트라 스페이스 = 보랏빛 · 사막 = 옅은 모래바람
+  const tints = [zn === 'ultra' ? [0x8030c0, 0.32] : null, ZONE_BG[zn] && bgKey !== 'cave' ? TOD_TINT[tod] : null, zn === 'desert' ? [0xe0a050, 0.16] : null].filter(Boolean);
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
   const fleeP = clamp(Number(fleeChance) || 0, 0, 1);
@@ -254,12 +264,13 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
 
   try {
     injectStyle();
-    const [top, bot] = EDGE[tod];
+    const [top, bot] = EDGE[bgKey];
     layer = document.createElement('div');
     layer.className = 'cz-layer';
     layer.setAttribute('role', 'dialog');
     layer.setAttribute('aria-label', `${nm} 잡기`);
-    layer.style.background = `${sand ? 'linear-gradient(rgba(224,160,80,.42), rgba(224,160,80,.42)), ' : ''}linear-gradient(${top} 0 50%, ${bot} 50% 100%)`;   // 0043 사막: 위아래 빈칸도 모래빛
+    const css = (c, a) => `rgba(${c >> 16},${(c >> 8) & 255},${c & 255},${a})`;
+    layer.style.background = [...tints.map(([c, a]) => `linear-gradient(${css(c, a)}, ${css(c, a)})`), `linear-gradient(${top} 0 50%, ${bot} 50% 100%)`].join(', ');   // 위아래 빈칸도 같은 빛
     area = document.createElement('div'); area.className = 'cz-area';
     box = document.createElement('div'); box.className = 'cz-box';
     // 오른쪽 위 버튼: 바로 잡기 (+ 남은 포켓몬이 있으면 모두 바로 잡기). 레이드는 버튼 없음
@@ -337,7 +348,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         key: 'catch',
         preload() {
           this.load.spritesheet('mons', ATLAS_URL, { frameWidth: 64, frameHeight: 64 });
-          this.load.image('bg', BG_URL(tod));
+          this.load.image('bg', BG_URL(bgKey));
         },
         create() {
           try { setup(this); sceneReady = true; clearTimeout(bootTimer); } catch (e) { console.warn('[catch] setup', e); bail(); }
@@ -385,7 +396,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
 
       // 배경 · 그림자 · 포켓몬
       if (sc.textures.exists('bg')) sc.add.image(0, 0, 'bg').setOrigin(0).setDepth(0);
-      if (sand) sc.add.rectangle(0, 0, W, H, 0xe0a050, 0.42).setOrigin(0).setDepth(0.5);   // 0043 사막: 배경 위에 모래빛 (포켓몬 · 공은 그 위)
+      tints.forEach(([c, a], i) => sc.add.rectangle(0, 0, W, H, c, a).setOrigin(0).setDepth(0.5 + i * 0.01));   // 배경 위 빛 (포켓몬 · 공은 그 위)
       const shadow = sc.add.graphics().setDepth(1);
       const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (포켓몬 뒤로 가면 1.5)
       const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
