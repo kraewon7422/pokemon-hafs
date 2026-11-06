@@ -3162,7 +3162,7 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
     const sm = (await X.select('species_moves?species_id=in.(1321,1324)&select=species_id,slot,move_id&order=species_id,slot')).data || [];
     const mv = Object.fromEntries(((await X.select(`moves?id=in.(${sm.map((x) => x.move_id).join(',') || 0})&select=id,name`)).data || []).map((x) => [x.id, x.name]));
     const names = (id) => sm.filter((x) => x.species_id === id).map((x) => mv[x.move_id]).join(',');
-    ok(names(1321) === '파도타기,악의파동,깜짝베기,섀도클로' && names(1324) === '10만볼트,전광석화,아이언테일,번개', 'starting moves', [names(1321), names(1324)]);
+    ok(names(1321) === '물수리검,악의파동,깜짝베기,섀도클로' && names(1324) === '10만볼트,전광석화,아이언테일,일렉트릭볼', 'starting moves (0047: 물수리검 · 일렉트릭볼)', [names(1321), names(1324)]);
     const ls = (await X.select('learnset?line_id=in.(441,442)&select=line_id')).data || [];
     ok(EVL.every((l) => ls.filter((x) => x.line_id === l).length >= 10), 'learnsets loaded', ls.length);
     const evo = (await X.select('evolutions?or=(from_species.in.(1321,1324),to_species.in.(1321,1324))&select=from_species')).data || [];
@@ -3237,6 +3237,170 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
   } finally {
     for (const id of gifts) await admin.rpc('admin_delete_gift', { p_id: id });
     for (const k of keys) if (k in old) await setS(k, old[k]);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[55] 기술 넓히기 (0047): 새 기술 152개 · 물수리검 (2~5번 / 지우개굴닌자 3번) · 선공 · 일렉트릭볼 · 고정 데미지 · 객기 · 레벨업으로 배움 · 기술머신52~');
+{
+  const mvRows = (await admin.select('moves?select=id,name,type,category,kind,power,accuracy,pp,priority,effect&order=id&limit=600')).data || [];
+  const MVN = Object.fromEntries(mvRows.map((m) => [m.name, m]));
+  const MV = Object.fromEntries(mvRows.map((m) => [m.name, m.id]));
+  const byId = Object.fromEntries(mvRows.map((m) => [m.id, m]));
+  ok(mvRows.length >= 397 && mvRows.filter((m) => m.id >= 252).length >= 150 && Math.max(...mvRows.map((m) => m.id)) === 403, `moves: ${mvRows.length} (new ids 252–403)`, mvRows.length);
+  ok(byId[59]?.name === '파도타기' && byId[93]?.name === '번개' && byId[111]?.name === '용성군' && byId[251]?.name === '변신' && byId[4]?.name === '이판사판태클',
+     'old move ids unchanged (59 파도타기 · 93 번개 · 111 용성군 · 251 변신)');
+  const W = MVN['물수리검'];
+  ok(W && W.id >= 252 && W.type === '물' && W.category === 'special' && W.power === 15 && W.accuracy === 100 && W.pp === 20 && W.priority === 1
+     && W.effect?.hits === 5 && W.effect?.bond?.line === 441 && W.effect?.bond?.hits === 3 && W.effect?.bond?.power === 20, '물수리검 data (물 · 특수 · 15 · 100 · PP20 · 선공+1 · 2~5번 · bond)', W);
+  const E = MVN['일렉트릭볼'];
+  ok(E?.type === '전기' && E.category === 'special' && E.power === 0 && E.effect?.spd_pow === 'electro', '일렉트릭볼 data (speed-based power)', E);
+  const chk = [['지옥찌르기', '악', 'physical', 80], ['엄청난힘', '격투', 'physical', 120], ['객기', '노말', 'physical', 70], ['괴상한바람', '고스트', 'special', 60],
+               ['아이스해머', '얼음', 'physical', 100], ['나이트헤드', '고스트', 'special', 0], ['액셀록', '바위', 'physical', 40]];
+  ok(chk.every(([n, t, c, p]) => MVN[n]?.type === t && MVN[n]?.category === c && MVN[n]?.power === p), 'some new moves have real type / category / power', chk.map(([n]) => MVN[n]));
+  ok(MVN['엄청난힘']?.effect?.self?.atk === -1 && MVN['액셀록']?.priority === 1 && MVN['나이트헤드']?.effect?.fixed === 'lv' && MVN['객기']?.effect?.double_if === 'self_st',
+     'effects: 엄청난힘 self −1 · 액셀록 선공 · 나이트헤드 fixed · 객기 double_if');
+  const tms = (await admin.select('items?key=in.(tm01,tm51,tm52,tm60)&select=key,move_id&order=key')).data || [];
+  const tm = (k) => tms.find((x) => x.key === k)?.move_id;
+  ok(tm('tm01') === MV['이판사판태클'] && byId[tm('tm51')] && tm('tm52') === MV['객기'] && tm('tm60') === MV['스마트혼'], 'TM01–51 unchanged, TM52 객기 … TM60 스마트혼', tms);
+
+  const spRows = (await admin.select('species?select=id,dex&id=lt.10000&order=id&limit=1000')).data || [];
+  const SP = Object.fromEntries(spRows.filter((r) => r.dex <= 809).map((r) => [r.dex, r.id]));
+  const SIMR = async (p) => { const r = await admin.rpc('admin_bt_sim', { p }); if (r.error) console.log('   sim error', r.error); return r.data; };
+  const BASE = { r: 0.5, crit: false, roll: 100, nopar: true };
+  const M = (sp, o = {}) => ({ sp, lv: 50, ...o, moves: (o.moves || ['고속이동']).map((n) => MV[n]) });
+  const turn = { 0: [{ move: 1, target: 0 }], 1: [{ move: 1, target: 0 }] };
+  const sim = (s0, s1, o = {}) => SIMR({ sides: [s0, s1], sim: { ...BASE, ...(o.sim || {}) }, turns: [turn], no_entry: true, ...(o.p || {}) });
+  const lg0 = (x) => x?.logs?.[0] || [];
+  const hitsOf = (lg) => lg.filter((e) => e.hp && e.hp[0] === 2 && e.dmg).length;
+  const dmgTo = (lg, u) => lg.filter((e) => e.hp && e.hp[0] === u && e.dmg).reduce((a, e) => a + e.dmg, 0);
+  const BLISSEY = SP[242], GREN = SP[658], ASH = 1321;
+  // 1) 물수리검: 보통 개굴닌자 = 2~5번 (여러 번), 지우개굴닌자 = 반드시 3번
+  const counts = [];
+  for (let k = 0; k < 14; k++) {
+    const lg = lg0(await sim([M(GREN, { moves: ['물수리검'] })], [M(BLISSEY, { lv: 100 })], { p: { seed: (k + 1) / 20 } }));
+    counts.push(hitsOf(lg));
+    if (k === 0) ok(lg.some((e) => e.m && /^\d번 맞았다!$/.test(e.m)), '물수리검 log: "N번 맞았다!"', lg.map((e) => e.m).filter(Boolean));
+  }
+  ok(counts.every((c) => c >= 2 && c <= 5) && new Set(counts).size >= 2, `개굴닌자 물수리검 hits 2–5 (${counts.join(',')})`, counts);
+  const ashC = [];
+  let ashDmg = [];
+  for (let k = 0; k < 6; k++) {
+    const lg = lg0(await sim([M(ASH, { moves: ['물수리검'] })], [M(BLISSEY, { lv: 100 })], { p: { seed: (k + 1) / 10 } }));
+    ashC.push(hitsOf(lg));
+    if (k === 0) ashDmg = lg.filter((e) => e.hp && e.hp[0] === 2 && e.dmg).map((e) => e.dmg);
+  }
+  const gunDmg = dmgTo(lg0(await sim([M(ASH, { moves: ['물대포'] })], [M(BLISSEY, { lv: 100 })])), 2);
+  ok(ashC.every((c) => c === 3), `지우개굴닌자 물수리검 always 3 hits (${ashC.join(',')})`, ashC);
+  ok(ashDmg.length === 3 && gunDmg > 0 && Math.abs(ashDmg[0] / gunDmg - 0.5) < 0.12, `지우개굴닌자 물수리검 per hit ≈ power 20 (vs 물대포 40: ${ashDmg[0]}/${gunDmg})`, [ashDmg, gunDmg]);
+  // 2) 선공: 느린 코뿌리의 물수리검 / 액셀록이 빠른 크로뱃보다 먼저
+  for (const n of ['물수리검', '액셀록']) {
+    const lg = lg0(await sim([M(SP[111], { moves: [n] })], [M(SP[169], { moves: ['몸통박치기'] })]));
+    const uses = lg.filter((e) => e.use).map((e) => e.use[0]);
+    ok(uses[0] === 0 && uses.includes(2), `priority +1: slow 코뿌리 ${n} moves before fast 크로뱃`, uses);
+  }
+  const lgN = lg0(await sim([M(SP[111], { moves: ['몸통박치기'] })], [M(SP[169], { moves: ['몸통박치기'] })]));
+  ok(lgN.filter((e) => e.use)[0]?.use?.[0] === 2, 'control: without priority the faster 크로뱃 moves first', lgN.filter((e) => e.use).map((e) => e.use));
+  // 3) 일렉트릭볼 (레벨 50 피카츄): 위력 = 스피드 비율 → 같은 상대에게 10만볼트 (90) 와 비교
+  //    해피너스 (느림, 비율 ≥1 → 60) · 야도란 (아주 느림, ≥2 → 80) · 크로뱃 (빠름, <1 → 40)
+  const rEB = async (dex) => {
+    const a = dmgTo(lg0(await sim([M(SP[25], { moves: ['일렉트릭볼'] })], [M(SP[dex])])), 2);
+    const b = dmgTo(lg0(await sim([M(SP[25], { moves: ['10만볼트'] })], [M(SP[dex])])), 2);
+    return b ? a / b : null;
+  };
+  const eb = { blissey: await rEB(242), slowbro: await rEB(80), crobat: await rEB(169) };
+  ok(Math.abs(eb.blissey - 60 / 90) < 0.1 && Math.abs(eb.slowbro - 80 / 90) < 0.1 && Math.abs(eb.crobat - 40 / 90) < 0.1,
+     `일렉트릭볼 power by speed ratio (vs 10만볼트: ${Object.values(eb).map((x) => x?.toFixed(2)).join(' / ')} ≈ 0.67 / 0.89 / 0.44)`, eb);
+  // 4) 고정 데미지: 지구던지기 = 레벨 (50), 나이트헤드는 노말 해피너스에게 효과 없음
+  const st1 = lg0(await sim([M(SP[68], { moves: ['지구던지기'] })], [M(BLISSEY, { lv: 100 })]));
+  ok(dmgTo(st1, 2) === 50 && !st1.some((e) => e.m?.includes('효과가')), '지구던지기 = exactly user level (50), no effectiveness text', st1.map((e) => e.m || e.dmg));
+  const ns = lg0(await sim([M(SP[94], { moves: ['나이트헤드'] })], [M(BLISSEY, { lv: 100 })]));
+  ok(dmgTo(ns, 2) === 0 && ns.some((e) => e.m?.includes('효과가 없는')), '나이트헤드 vs Normal: no effect', ns.map((e) => e.m).filter(Boolean));
+  // 5) 객기: 화상이면 위력 2배 (화상으로 반이 되지도 않음)
+  const fc = async (st) => dmgTo(lg0(await sim([M(SP[20], { moves: ['객기'], ...(st ? { st } : {}) })], [M(BLISSEY, { lv: 100 })])), 2);
+  const fBrn = await fc('brn'), fOk = await fc(null);
+  ok(fOk > 0 && Math.abs(fBrn / fOk - 2) < 0.15, `객기: burned ×2 (${fBrn} vs ${fOk})`, [fBrn, fOk]);
+
+  // 6) 레벨업으로 새 기술을 배움 (learnset 의 새 기술 · 레벨 12~40)
+  const row = (await admin.select('learnset?move_id=gte.252&how=eq.level&lv=gte.12&lv=lte.40&line_id=gte.83&line_id=lte.440&select=line_id,move_id,lv&order=line_id&limit=1')).data?.[0];
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'mv1234' })).error);
+  try {
+    const X = client(await pwLogin(`${sid}@code.local`, 'mv1234'));
+    await X.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '기술테스트' });
+    const g = await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: row?.line_id, p_stage: 1 });
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: row?.line_id, p_level: row.lv - 1 });
+    const mon = async () => ((await X.rpc('bag_state')).data?.box || []).find((m) => m.line === row.line_id);
+    const k0 = (await mon())?.known || [];
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: row.line_id, p_level: row.lv });
+    const m1 = await mon();
+    const k1 = m1?.known || [];
+    ok(!g.error && row && k0.length > 0 && !k0.includes(row.move_id) && k1.includes(row.move_id),
+       `line ${row?.line_id}: Lv.${row?.lv - 1} doesn't know ${byId[row?.move_id]?.name}, Lv.${row?.lv} does`, [g.error, row, k0.length, k1.length]);
+    const set = await X.rpc('bag_set_moves', { p_mon: m1?.id, p_moves: [row.move_id, ...(m1?.moves || []).filter((x) => x !== row.move_id).slice(0, 3)] });
+    ok(!set.error && (await mon())?.moves?.[0] === row.move_id, 'can put the new move into the 4 moves', set.error);
+  } finally {
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[56] 이로치 레이드 (0047 B): admin_create_raid p_shiny → raid json shiny · 이기면 보상 반드시 반짝 (티켓 · 잡기) · 보통 레이드는 그대로');
+{
+  const MODE0 = (await admin.select('settings?key=eq.raid_reward_mode')).data?.[0]?.value ?? 'ticket';
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'shy1234' })).error);
+  const X = client(await pwLogin(`${sid}@code.local`, 'shy1234'));
+  await X.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '이로치테스트' });
+  await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: 32, p_stage: 3 });
+  const rids = [];
+  const win = async (shiny, title) => {
+    const rd = (await admin.rpc('admin_create_raid', { p_species: 3, p_hp: 30, p_minutes: 5, p_tv: false, p_title: title, ...(shiny == null ? {} : { p_shiny: shiny }) })).data;
+    rids.push(rd?.id);
+    await X.rpc('raid_join', { p_q: rd.q, p_t: rd.t });
+    let r;
+    for (let i = 0; i < 30; i++) {
+      await new Promise((res) => setTimeout(res, 700));
+      r = await X.rpc('raid_attack', { p_raid: rd.id, p_taps: 8 });
+      if (r.data?.status !== 'active') break;
+    }
+    return { rd, r: (await X.rpc('raid_state', { p_raid: rd.id })).data };
+  };
+  try {
+    await patchSetting('raid_reward_mode', 'ticket');
+    // 1) 티켓 방식
+    const a = await win(true, '이로치 레이드 테스트');
+    ok(a.rd?.shiny === true && a.r?.shiny === true && a.r.status === 'won' && a.r.me?.rewarded, 'shiny raid: json shiny = true, won + rewarded', { rd: a.rd?.shiny, st: a.r?.status });
+    const lst = (await admin.rpc('admin_list_raids')).data || [];
+    ok(lst.find((x) => x.id === a.rd.id)?.shiny === true, 'admin_list_raids shows shiny');
+    let s = (await X.rpc('sync')).data.state;
+    const n1 = s.notices.find((n) => n.kind === 'raid' && n.body.includes('이로치 레이드 테스트'));
+    ok(n1?.data?.shiny === true && n1.body.includes('✦ 반짝이는 색이에요! ✦'), 'shiny raid ticket → notice with the shiny line', n1);
+    const b = await win(null, '보통 레이드 테스트');
+    ok(b.rd?.shiny === false && b.r?.status === 'won', 'normal raid (no p_shiny): shiny = false');
+    s = (await X.rpc('sync')).data.state;
+    const n2 = s.notices.find((n) => n.kind === 'raid' && n.body.includes('보통 레이드 테스트'));
+    ok(n2 && n2.data?.shiny === false && !n2.body.includes('반짝'), 'normal raid ticket not shiny (wild_shiny_chance 0 during tests)', n2);
+    // 부스에서 바꾸면 박스의 포켓몬이 반짝
+    const pend = s.tickets.filter((t) => t.status === 'pending' && t.qr_id === 'RAID');
+    const res = (await booth.rpc('booth_redeem', { p_payload: bag(sid, pend.map((t) => ({ n: t.nonce, q: t.qr_id, t: t.token }))) })).data;
+    const box = (await X.rpc('bag_state')).data?.box || [];
+    const l1 = box.filter((m) => m.line === 1);
+    ok(pend.length === 2 && l1.length === 2 && l1.filter((m) => m.shiny && m.shiny_on).length === 1,
+       'redeemed: one shiny (shiny_on) 문장곤 from the shiny raid, one normal', [pend.length, res?.results?.map((x) => x.species_id), l1.map((m) => [m.shiny, m.shiny_on])]);
+    // 2) 잡기 방식
+    await patchSetting('raid_reward_mode', 'catch');
+    const c = await win(true, '이로치 잡기 레이드');
+    const enc = (await X.rpc('my_encounters')).data || [];
+    const e = enc.find((x) => x.raid_title === '이로치 잡기 레이드');
+    ok(c.r?.status === 'won' && e?.shiny === true, 'catch mode: pending encounter is shiny', enc);
+    const got = (await X.rpc('encounter_result', { p_id: e?.id, p_caught: true, p_grade: 'nice' })).data;
+    const box2 = (await X.rpc('bag_state')).data?.box || [];
+    ok(got?.caught && box2.filter((m) => m.line === 1 && m.shiny && m.shiny_on).length === 2, 'caught → shiny + shiny_on in the box', [got, box2.filter((m) => m.line === 1).map((m) => m.shiny)]);
+    const d = await win(false, '보통 잡기 레이드');
+    const e2 = ((await X.rpc('my_encounters')).data || []).find((x) => x.raid_title === '보통 잡기 레이드');
+    ok(d.rd?.shiny === false && e2 && e2.shiny === false, 'normal raid (p_shiny false) in catch mode: encounter not shiny', e2);
+    if (e2) await X.rpc('encounter_result', { p_id: e2.id, p_caught: false });
+    ok((await X.rpc('admin_create_raid', { p_species: 3, p_hp: 30, p_minutes: 5, p_shiny: true })).error === 'NOT_ADMIN', 'students cannot open (shiny) raids');
+  } finally {
+    await patchSetting('raid_reward_mode', MODE0);
     await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
   }
 }

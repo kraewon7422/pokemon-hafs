@@ -79,9 +79,9 @@ async function tickRaids() {
     c.el.classList.toggle('won', r.status === 'won');
     if (r.status === 'active' && c.token !== r.t) { drawQR(c.qr, placeUrl(site, r.q, r.t), { cell: 6, margin: 2 }); c.token = r.t; }
     c.el.replaceChildren(
-      spriteCanvas(r.species_id, Math.round(em() * 5.33)),
+      spriteCanvas(r.species_id, Math.round(em() * 5.33), r.shiny ? 'shiny' : 'normal'),
       h('div',
-        h('h3', r.status === 'won' ? `${r.title} — 격파!` : r.status === 'failed' ? `${r.title} — 도망쳤다…` : `⚡ ${r.title}`),
+        h('h3', (r.shiny ? '✦ ' : '') + (r.status === 'won' ? `${r.title} — 격파!` : r.status === 'failed' ? `${r.title} — 도망쳤다…` : `⚡ ${r.title}`)),
         h('div.hpbar', h(`i${ratio < 0.2 ? '.red' : ratio < 0.5 ? '.yellow' : ''}`, { style: { width: `${ratio * 100}%` } })),
         h('div.meta', h('b', `HP ${r.hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`), h('span', `참가 ${r.players}명`),
           r.status === 'active' && h('span', `남은 시간 ${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`),
