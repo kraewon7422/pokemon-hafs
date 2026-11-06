@@ -166,6 +166,8 @@ let gen = 0;               // 곡 바꾸기 순서 (늦게 풀린 곡이 새 요
 let kickTimer = 0;
 const bytes = {};          // name → Promise<ArrayBuffer> (압축된 파일, 작음)
 const decoded = {};        // name → Promise<AudioBuffer>
+const pinUntil = {};       // name → performance.now() 까지는 풀어 둔 소리를 버리지 않음 (bgmPreload: 사파리 풀숲 만남이 늦지 않게)
+const startWait = [];      // bgmCue 가 기다리는 곡 시작 [{ name, res }]
 
 const wanted = () => { for (let i = stack.length - 1; i >= 0; i--) if (stack[i].name !== undefined) return stack[i].name; return base; };
 export function bgmScene(name) { base = name; kick(); }
@@ -275,7 +277,7 @@ function stopVoice(v, dur = FADE) {
   for (const s of v.srcs) { try { s.stop(at); } catch { /* */ } }
   setTimeout(() => {
     try { v.g.disconnect(); } catch { /* */ }
-    if (voice?.name !== v.name && !(groupOf(wanted()) === v.name)) delete decoded[v.name];   // 안 쓰는 곡은 메모리에서 뺌 (압축 파일은 남김)
+    if (voice?.name !== v.name && !(groupOf(wanted()) === v.name) && !(pinUntil[v.name] > performance.now())) delete decoded[v.name];   // 안 쓰는 곡은 메모리에서 뺌 (압축 파일은 남김)
   }, (dur + 0.3) * 1000);
 }
 
@@ -292,12 +294,45 @@ async function applyBgm() {
   if (my !== gen || !ctx || ctx.state !== 'running') return;
   stopVoice(voice);   // 새 곡이 준비된 뒤에 겹쳐 바꿈 (그동안 앞 곡은 계속)
   voice = startVoice(pick, buf);
+  for (let i = startWait.length - 1; i >= 0; i--) if (startWait[i].name === pick) startWait.splice(i, 1)[0].res(voice);   // bgmCue: 시작 시각을 바로 알려 줌
   // 기본 곡이 나오기 시작하면 배틀 곡 파일을 미리 받아 둠 (처음 배틀에서 늦지 않게, 압축 파일만)
   if (target === 'main') setTimeout(() => { fetchBytes('battle').catch(() => {}); }, 8000);
 }
 
 // 미리 풀어 두기 (사파리존을 열 때 등): 처음 터치 뒤 · 음악이 켜져 있을 때만
-export function bgmPreload(name) { if (ctx && bgmOn && TRACKS[name]) decode(name).catch(() => {}); }
+// 미리 푼 곡은 10분 동안 (만날 때마다 다시 10분) 메모리에 남김 → 만남마다 다시 풀지 않음
+export function bgmPreload(name) { if (ctx && bgmOn && TRACKS[name]) { pinUntil[name] = performance.now() + 600000; decode(name).catch(() => {}); } }
+
+// ctx 시각 (초) → 그 소리가 스피커에서 나오는 performance.now() 시각 (ms). getOutputTimestamp 가 있으면 출력 지연까지 정확히
+function ctxToPerf(t) {
+  const ts = ctx.getOutputTimestamp?.();
+  if (ts && ts.performanceTime > 0) return ts.performanceTime + (t - ts.contextTime) * 1000;
+  return performance.now() + (t - ctx.currentTime + (ctx.outputLatency || ctx.baseLatency || 0)) * 1000;
+}
+// 곡 시작 맞추기 (av7): bgmPush(name) 다음에 부름. 그 곡이 실제로 시작될 때 (예약된 ctx 시각) 를 기다려
+//   { music: true, start, hit } (performance.now() ms — start = 곡 소리가 나오기 시작, hit = 첫 타격) 를 돌려줌.
+//   음악 꺼짐 · 첫 터치 전 · ms 안에 못 풀면 { music: false, start: 다음 프레임, hit: start + (hit - startAt) } — 그림은 같은 박자로.
+export function bgmCue(name, ms = 1200) {
+  const tr = TRACKS[name];
+  const lead = ((tr.hit ?? tr.startAt ?? 0) - (tr.startAt || 0)) * 1000;
+  const fall = () => { const start = performance.now() + 16; return { music: false, start, hit: start + lead }; };
+  const at = (v) => { const start = ctxToPerf(v.t0 + (tr.startAt || 0)); return { music: true, start, hit: start + lead }; };
+  if (voice?.name === name && !voice.stopped) return Promise.resolve(at(voice));
+  if (!ctx || ctx.state !== 'running' || !bgmOn || document.hidden) return Promise.resolve(fall());
+  if (pinUntil[name]) pinUntil[name] = performance.now() + 600000;
+  return new Promise((res) => {
+    const w = { name, res: (v) => { clearTimeout(timer); res(at(v)); } };
+    const timer = setTimeout(() => { const i = startWait.indexOf(w); if (i >= 0) startWait.splice(i, 1); res(fall()); }, ms);
+    startWait.push(w);
+  });
+}
+// 사파리 풀숲 만남 순서 (av7): '!' = 야생 곡이 나오기 시작하는 프레임, 화면 번쩍 3번 (110ms 씩 흰색/꺼짐 = 660ms) 이 끝나고
+//   어두워지는 순간 = 곡의 첫 타격 (wild 2.74초). safari.js 의 bubbleT · flashT 에 그대로 넣으면 됨, doneT 까지 기다린 뒤 잡기 장면.
+export async function encounterCue(name = 'wild', ms = 1200) {
+  const c = await bgmCue(name, ms);
+  if (!c.music) sfx.scan();          // 음악 없이: 8비트 '짠' 으로 '!' 를 알림 (같은 시각표)
+  return { music: c.music, bubbleT: c.start, flashT: c.hit - 660, cutT: c.hit, doneT: c.hit + 190 };
+}
 // 그 곡이 실제로 나오기 시작할 때까지 기다림 (최대 ms). 나오면 true, 음악 꺼짐·못 받음·시간 초과면 false
 export function bgmReady(name, ms = 1500) {
   const until = performance.now() + ms;
