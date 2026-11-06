@@ -129,7 +129,7 @@ export const sfx = {
   faint:     () => play([[67, 1], [63, 1], [58, 1], [53, 3]], { bpm: 720, type: 'triangle', vol: 0.1 }),
 };
 
-// ───────── 배경 음악 (파일 2개, 반복) ─────────
+// ───────── 배경 음악 (메인 4곡 차례로 · 배틀 · 야생, web/audio/) ─────────
 // 소리 크기 (headless Chrome 에서 WebAudio 로 잰 값, 2026-11-05): battle.mp3 RMS -15.4 dBFS · peak 0.0 dBFS,
 //   main.m4a RMS -51.2 dBFS · peak -35.6 dBFS, wild.m4a RMS -48.4 dBFS · peak -33.6 dBFS (폰 녹음이라 아주 작음). gain = 둘 다 RMS -18 dBFS 로 맞추는 배수,
 //   그 위에 BUS -6 dB → 실제 약 -24 dBFS (효과음 사각파 ≈ -22 dBFS 보다 조금 작게), peak 은 -8.5 · -8.5 · -9.2 dBFS (안 찢어짐).
@@ -138,11 +138,22 @@ export const sfx = {
 // wild (야생 만남): 앞 1.40초는 빈 소리 → 1.40초부터 시작. 빠른 도입 뒤 첫 큰 타격 = 2.74초 (onset 분석), 박 = 0.325초
 //   (1.44·1.76·2.09·2.41·2.74·3.07… 에 onset). '!' · 화면 번쩍 · 포켓몬 등장은 bgmBeat() 로 이 박에 맞춤.
 //   파일을 바꾸면 이름도 바꿔서 (예: battle2.mp3) 폰에 남은 옛 파일을 쓰지 않게 — sw.js 의 AUDIO 캐시는 이름으로 찾음
+// 메인 화면 곡 4개 (av7, 2026-11-06): main → main2 → main3 → main4 → main … 차례로 한 번씩, 끝나기 xf 초 전에 다음 곡이 겹쳐 시작.
+//   소리 크기는 PyAV 로 잰 몸통 RMS (모노, .work/av7/analyze_bgm.py): main -49.5 · main2 -37.2 · main3 -44.5 · main4 -35.6 dBFS
+//   → gain = 45.45 × 10^((-49.5 - RMS)/20) 로 main 과 같은 크기 (곡이 바뀌어도 소리 크기가 튀지 않음). 파일은 녹음 그대로 (AAC 192k),
+//   앞뒤 빈 소리는 startAt · end 로 건너뜀. 다음 곡은 끝나기 25초 전에 받아서 풂 (첫 화면은 main 하나만 받음).
+//   다음 곡을 못 받으면 (오프라인) 지금 곡을 처음부터 다시. group = 'main' 인 곡은 앱에서는 모두 'main' 으로 부름.
 const TRACKS = {
-  main: { url: new URL('../audio/main.m4a', import.meta.url).href, gain: 45.45, loopStart: 0.9, loopEnd: 90.0, xf: 1.5 },
+  main: { url: new URL('../audio/main.m4a', import.meta.url).href, gain: 45.45, group: 'main', startAt: 0.85, end: 91.0, xf: 2.0, next: 'main2' },
+  main2: { url: new URL('../audio/main2.m4a', import.meta.url).href, gain: 11.03, group: 'main', startAt: 0.85, end: 64.3, xf: 2.0, next: 'main3' },
+  main3: { url: new URL('../audio/main3.m4a', import.meta.url).href, gain: 25.56, group: 'main', startAt: 1.25, end: 50.95, xf: 2.0, next: 'main4' },
+  main4: { url: new URL('../audio/main4.m4a', import.meta.url).href, gain: 9.17, group: 'main', startAt: 0.75, end: 79.95, xf: 2.0, next: 'main' },
   battle: { url: new URL('../audio/battle.mp3', import.meta.url).href, gain: 0.744, loopStart: 65.0, loopEnd: 149.15, xf: 0.35 },
   wild: { url: new URL('../audio/wild.m4a', import.meta.url).href, gain: 32.9, startAt: 1.40, loopStart: 2.74, loopEnd: 88.0, xf: 1.0, hit: 2.74, beat: 0.325 },
 };
+const groupOf = (n) => (n && TRACKS[n]?.group) || n;
+// 메인 곡 중 지금(또는 마지막으로) 나온 곡: 배틀에서 돌아오면 그 곡부터, 다음에 앱을 열면 그 곡부터
+let rot = TRACKS[lsGet('bgmRot')]?.group === 'main' ? lsGet('bgmRot') : 'main';
 const BUS = 0.5;           // -6 dB
 const FADE = 0.6;          // 곡을 바꿀 때 겹치는 시간 (초)
 const DECODE_RATE = 32000; // 풀어 둔 소리는 메모리를 많이 씀 (189초 · 48kHz · 스테레오 ≈ 73MB) → 32kHz 로 (≈ 48MB), 안 쓰는 곡은 버림
@@ -155,6 +166,8 @@ let gen = 0;               // 곡 바꾸기 순서 (늦게 풀린 곡이 새 요
 let kickTimer = 0;
 const bytes = {};          // name → Promise<ArrayBuffer> (압축된 파일, 작음)
 const decoded = {};        // name → Promise<AudioBuffer>
+const pinUntil = {};       // name → performance.now() 까지는 풀어 둔 소리를 버리지 않음 (bgmPreload: 사파리 풀숲 만남이 늦지 않게)
+const startWait = [];      // bgmCue 가 기다리는 곡 시작 [{ name, res }]
 
 const wanted = () => { for (let i = stack.length - 1; i >= 0; i--) if (stack[i].name !== undefined) return stack[i].name; return base; };
 export function bgmScene(name) { base = name; kick(); }
@@ -202,13 +215,15 @@ function fadeTo(g, v, dur) {
   try { g.gain.cancelScheduledValues(t); g.gain.setValueAtTime(g.gain.value, t); g.gain.linearRampToValueAtTime(v, t + dur); } catch { g.gain.value = v; }
 }
 
-// 곡 하나를 [loopStart, loopEnd] 로 끝없이: 구간 하나 = BufferSource 하나, 끝나기 xf 초 전에 다음 구간이 겹쳐 시작
-function startVoice(name, buf) {
+// 곡 하나를 [loopStart, loopEnd] 로 끝없이: 구간 하나 = BufferSource 하나, 끝나기 xf 초 전에 다음 구간이 겹쳐 시작.
+// next 가 있는 곡 (메인 곡들): startAt → end 를 한 번 틀고, 끝나기 xf 초 전에 next 곡으로 겹쳐 넘어감 (못 받으면 같은 곡을 다시).
+// at = 시작할 ctx 시각 (넘겨받을 때), 없으면 바로 (곡 전체 소리는 FADE 초 동안 올림)
+function startVoice(name, buf, at = 0) {
   const tr = TRACKS[name];
-  const end = Math.min(tr.loopEnd, buf.duration - 0.01);
-  const ls = Math.min(tr.loopStart, Math.max(0, end - 2 * tr.xf - 1));
-  const g = ctx.createGain(); g.gain.value = 0; g.connect(bus);
-  const v = { name, g, srcs: new Set(), timer: 0, stopped: false, loops: 0, t0: 0 };
+  const end = Math.min(tr.next ? tr.end : tr.loopEnd, buf.duration - 0.01);
+  const ls = tr.next ? Math.min(tr.startAt || 0, end - 2 * tr.xf - 1) : Math.min(tr.loopStart, Math.max(0, end - 2 * tr.xf - 1));
+  const g = ctx.createGain(); g.connect(bus);
+  const v = { name, g, srcs: new Set(), timer: 0, pre: 0, stopped: false, loops: 0, t0: 0 };
   const seg = (when, from, fadeIn) => {
     if (v.stopped) return;
     const s = ctx.createBufferSource(); s.buffer = buf;
@@ -222,25 +237,47 @@ function startVoice(name, buf) {
     s.stop(endAt + 0.05);
     v.srcs.add(s); v.loops++;
     s.onended = () => { v.srcs.delete(s); try { sg.disconnect(); } catch { /* */ } };
+    const nextAt = endAt - tr.xf;
+    if (tr.next) {
+      // 다음 곡은 끝나기 25초 전에 받아서 풀어 둠 (처음부터 4곡을 다 받지 않게)
+      clearTimeout(v.pre);
+      v.pre = setTimeout(() => { if (!v.stopped) decode(tr.next).catch(() => {}); }, Math.max(0, (nextAt - 25 - ctx.currentTime) * 1000));
+    }
     // 다음 구간은 2초 전에 예약 (화면이 꺼져 타이머가 늦어져도 ctx 도 멈추므로 괜찮음)
-    v.timer = setTimeout(() => seg(endAt - tr.xf, ls, true), Math.max(0, (endAt - tr.xf - ctx.currentTime - 2) * 1000));
+    v.timer = setTimeout(async () => {
+      if (v.stopped) return;
+      if (tr.next) {
+        let nb = null;
+        try { nb = await decode(tr.next); } catch { /* 오프라인 → 같은 곡 다시 */ }
+        if (v.stopped) return;
+        if (nb && voice === v && ctx.currentTime < nextAt - 0.05) {
+          // 넘겨줌: 이 곡은 스스로 페이드아웃 (sg 램프) 하고 끝남, 다음 곡은 nextAt 에 페이드인
+          v.stopped = true; clearTimeout(v.pre);
+          voice = startVoice(tr.next, nb, nextAt);
+          rot = tr.next; lsSet('bgmRot', rot);
+          setTimeout(() => { try { v.g.disconnect(); } catch { /* */ } if (voice?.name !== name) delete decoded[name]; }, (endAt - ctx.currentTime + 0.5) * 1000);
+          return;
+        }
+      }
+      seg(nextAt, ls, true);
+    }, Math.max(0, (nextAt - ctx.currentTime - 2) * 1000));
   };
   const from0 = Math.min(tr.startAt || 0, ls);
-  v.t0 = ctx.currentTime + 0.03 - from0;   // ctx 시각으로 '곡의 0초' (박 맞추기용)
-  seg(ctx.currentTime + 0.03, from0, false);
-  fadeTo(g, tr.gain, FADE);
+  const when = at || ctx.currentTime + 0.03;
+  v.t0 = when - from0;   // ctx 시각으로 '곡의 0초' (박 맞추기용)
+  if (at) { g.gain.setValueAtTime(tr.gain, ctx.currentTime); seg(when, from0, true); } else { g.gain.value = 0; seg(when, from0, false); fadeTo(g, tr.gain, FADE); }
   return v;
 }
 function stopVoice(v, dur = FADE) {
   if (!v || v.stopped) return;
   v.stopped = true;
-  clearTimeout(v.timer);
+  clearTimeout(v.timer); clearTimeout(v.pre);
   fadeTo(v.g, 0, dur);
   const at = ctx.currentTime + dur + 0.05;
   for (const s of v.srcs) { try { s.stop(at); } catch { /* */ } }
   setTimeout(() => {
     try { v.g.disconnect(); } catch { /* */ }
-    if (wanted() !== v.name && voice?.name !== v.name) delete decoded[v.name];   // 안 쓰는 곡은 메모리에서 뺌 (압축 파일은 남김)
+    if (voice?.name !== v.name && !(groupOf(wanted()) === v.name) && !(pinUntil[v.name] > performance.now())) delete decoded[v.name];   // 안 쓰는 곡은 메모리에서 뺌 (압축 파일은 남김)
   }, (dur + 0.3) * 1000);
 }
 
@@ -249,19 +286,53 @@ async function applyBgm() {
   if (!bus) { bus = ctx.createGain(); bus.gain.value = BUS; bus.connect(ctx.destination); }
   const target = bgmOn ? wanted() : null;
   const my = ++gen;   // 먼저 올림: 앞에서 풀고 있던 곡이 끝나도 이 요청을 덮지 않게
-  if ((voice?.name ?? null) === target) return;
+  if (groupOf(voice?.name ?? null) === target) return;   // 메인 곡 중 아무거나 나오고 있으면 그대로
   if (!target || !TRACKS[target]) { stopVoice(voice); voice = null; return; }
+  const pick = target === 'main' ? rot : target;
   let buf;
-  try { buf = await decode(target); } catch { return; }   // 오프라인 · 못 푸는 파일 → 음악 없이
+  try { buf = await decode(pick); } catch { return; }   // 오프라인 · 못 푸는 파일 → 음악 없이
   if (my !== gen || !ctx || ctx.state !== 'running') return;
   stopVoice(voice);   // 새 곡이 준비된 뒤에 겹쳐 바꿈 (그동안 앞 곡은 계속)
-  voice = startVoice(target, buf);
+  voice = startVoice(pick, buf);
+  for (let i = startWait.length - 1; i >= 0; i--) if (startWait[i].name === pick) startWait.splice(i, 1)[0].res(voice);   // bgmCue: 시작 시각을 바로 알려 줌
   // 기본 곡이 나오기 시작하면 배틀 곡 파일을 미리 받아 둠 (처음 배틀에서 늦지 않게, 압축 파일만)
   if (target === 'main') setTimeout(() => { fetchBytes('battle').catch(() => {}); }, 8000);
 }
 
 // 미리 풀어 두기 (사파리존을 열 때 등): 처음 터치 뒤 · 음악이 켜져 있을 때만
-export function bgmPreload(name) { if (ctx && bgmOn && TRACKS[name]) decode(name).catch(() => {}); }
+// 미리 푼 곡은 10분 동안 (만날 때마다 다시 10분) 메모리에 남김 → 만남마다 다시 풀지 않음
+export function bgmPreload(name) { if (ctx && bgmOn && TRACKS[name]) { pinUntil[name] = performance.now() + 600000; decode(name).catch(() => {}); } }
+
+// ctx 시각 (초) → 그 소리가 스피커에서 나오는 performance.now() 시각 (ms). getOutputTimestamp 가 있으면 출력 지연까지 정확히
+function ctxToPerf(t) {
+  const ts = ctx.getOutputTimestamp?.();
+  if (ts && ts.performanceTime > 0) return ts.performanceTime + (t - ts.contextTime) * 1000;
+  return performance.now() + (t - ctx.currentTime + (ctx.outputLatency || ctx.baseLatency || 0)) * 1000;
+}
+// 곡 시작 맞추기 (av7): bgmPush(name) 다음에 부름. 그 곡이 실제로 시작될 때 (예약된 ctx 시각) 를 기다려
+//   { music: true, start, hit } (performance.now() ms — start = 곡 소리가 나오기 시작, hit = 첫 타격) 를 돌려줌.
+//   음악 꺼짐 · 첫 터치 전 · ms 안에 못 풀면 { music: false, start: 다음 프레임, hit: start + (hit - startAt) } — 그림은 같은 박자로.
+export function bgmCue(name, ms = 1200) {
+  const tr = TRACKS[name];
+  const lead = ((tr.hit ?? tr.startAt ?? 0) - (tr.startAt || 0)) * 1000;
+  const fall = () => { const start = performance.now() + 16; return { music: false, start, hit: start + lead }; };
+  const at = (v) => { const start = ctxToPerf(v.t0 + (tr.startAt || 0)); return { music: true, start, hit: start + lead }; };
+  if (voice?.name === name && !voice.stopped) return Promise.resolve(at(voice));
+  if (!ctx || ctx.state !== 'running' || !bgmOn || document.hidden) return Promise.resolve(fall());
+  if (pinUntil[name]) pinUntil[name] = performance.now() + 600000;
+  return new Promise((res) => {
+    const w = { name, res: (v) => { clearTimeout(timer); res(at(v)); } };
+    const timer = setTimeout(() => { const i = startWait.indexOf(w); if (i >= 0) startWait.splice(i, 1); res(fall()); }, ms);
+    startWait.push(w);
+  });
+}
+// 사파리 풀숲 만남 순서 (av7): '!' = 야생 곡이 나오기 시작하는 프레임, 화면 번쩍 3번 (110ms 씩 흰색/꺼짐 = 660ms) 이 끝나고
+//   어두워지는 순간 = 곡의 첫 타격 (wild 2.74초). safari.js 의 bubbleT · flashT 에 그대로 넣으면 됨, doneT 까지 기다린 뒤 잡기 장면.
+export async function encounterCue(name = 'wild', ms = 1200) {
+  const c = await bgmCue(name, ms);
+  if (!c.music) sfx.scan();          // 음악 없이: 8비트 '짠' 으로 '!' 를 알림 (같은 시각표)
+  return { music: c.music, bubbleT: c.start, flashT: c.hit - 660, cutT: c.hit, doneT: c.hit + 190 };
+}
 // 그 곡이 실제로 나오기 시작할 때까지 기다림 (최대 ms). 나오면 true, 음악 꺼짐·못 받음·시간 초과면 false
 export function bgmReady(name, ms = 1500) {
   const until = performance.now() + ms;
@@ -297,4 +368,4 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', () => { if (ctx && !document.hidden) unlockAudio(); });
 
 // 시험용 (개발자 도구 · 자동 시험): import('./js/sfx.js').then((m) => m.__bgm())
-export const __bgm = () => ({ ctx: ctx?.state ?? null, rate: ctx?.sampleRate, want: wanted(), playing: voice?.name ?? null, gain: voice ? +voice.g.gain.value.toFixed(3) : 0, loops: voice?.loops || 0, bgmOn, sfxOn, decoded: Object.keys(decoded), stack: stack.length });
+export const __bgm = () => ({ t: ctx ? +ctx.currentTime.toFixed(3) : 0, rot, ctx: ctx?.state ?? null, rate: ctx?.sampleRate, want: wanted(), playing: voice?.name ?? null, gain: voice ? +voice.g.gain.value.toFixed(3) : 0, loops: voice?.loops || 0, bgmOn, sfxOn, decoded: Object.keys(decoded), stack: stack.length });

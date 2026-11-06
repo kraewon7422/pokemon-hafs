@@ -424,6 +424,9 @@ export function spriteCanvas(dex, cssSize = 96, mode = 'normal') {
   return c;
 }
 
+// 다시 붙인 canvas 를 바로 그림 (떼어 둔 동안 IntersectionObserver 가 1×1 로 비워 둠 → 다음 프레임까지 빈칸으로 깜빡이지 않게). 화면 밖이면 IO 가 다시 비움
+export function paintNow(c) { const e = c.__spr; if (e && c.isConnected) { e.vis = true; draw(e); } }
+
 export function paint(c, dex, cssSize = 96, mode = 'normal', preview = null) {
   let e = c.__spr;
   if (!e) { e = { c, born: performance.now(), vis: !io }; c.__spr = e; io?.observe(c); }

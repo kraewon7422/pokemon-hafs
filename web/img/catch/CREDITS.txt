@@ -4,6 +4,4 @@ Catch-scene backgrounds (day.png, sunset.png, night.png) are assembled by tools/
 - Night sky, moon, mountains and pines: "Mountain at Dusk Background" by Luis Zuno (ansimuz) — https://opengameart.org/content/mountain-at-dusk-background
 - Grass field: "Tiny Town" by Kenney — https://kenney.nl/assets/tiny-town
 All CC0. Credit is not required but given with thanks. Sky gradients, sun, stars and the monster's spot are drawn in the script.
-Zone backgrounds (shore.png = beach/pond, desert.png, cave.png) are assembled by tools/draw_catch_zone_bg.py from the CC0 battle backgrounds in web/img/battle
-("isaiah658's Pixel Pack #2" by isaiah658 — https://opengameart.org/content/isaiah658s-pixel-pack-2): sky colours, ground colours and the small props (shells, starfish, cacti, tumbleweed, rocks).
-The sea band, cave stalactites and back wall, distant dunes and the monster's spot are drawn in the script.
+Zone backgrounds (shore.png = beach/pond, desert.png, cave.png) are drawn entirely by tools/draw_catch_zone_bg.py (v2, 2026-11-06): original pixel art made in code, no third-party images.
