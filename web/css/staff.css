@@ -1,7 +1,8 @@
 /* Booth (tablet/laptop) and big-screen (TV) pages. */
 body { background: #283048; color: #fff; min-height: 100vh; }
 .staff { max-width: 1200px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; }
-.staff header { display: flex; justify-content: space-between; align-items: center; gap: 12px; text-shadow: 1px 1px 0 #101828; }
+.staff header { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px 12px; text-shadow: 1px 1px 0 #101828; }   /* 좁은 폰: 아이디·로그아웃은 다음 줄로 (글자가 한 자씩 쪼개지지 않게) */
+.staff header .btn { white-space: nowrap; flex: none; }
 .staff header h1 { margin: 0; font-size: var(--fs-xl); color: var(--gold); }
 .staff .box { color: var(--ink); }
 .staff .btn { border-color: #f8f8f8; box-shadow: 0 4px 0 #101828; }

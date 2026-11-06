@@ -325,6 +325,21 @@ export async function atlasURL(dexes = [], shiny = false) {   // shiny = 반짝�
   return res;
 }
 
+// 운영자 페이지 '그림 내려받기': 이 포켓몬 그림 한 장 → PNG Blob (그림이 없으면 null)
+//   96×96 칸에 원래 도트 크기 그대로, 가운데·아래 맞춤 (그림판과 같은 모양). 색이 다른 그림이 없으면 앱과 똑같이 색을 돌려서 만듦
+export async function spriteBlob(dex, shiny = false) {
+  dex = Number(dex);
+  await spritesReady;
+  await ensureSprites([dex], shiny);
+  const src = sourceOf(dex, shiny ? 'shiny' : 'normal');
+  if (!src || src === WAIT) return null;
+  const f = withFx(src, realId(dex), true);
+  const W = Math.max(CELL, f.w), H = Math.max(CELL, f.h);
+  const c = mkCanvas(W, H); const g = c.getContext('2d'); g.imageSmoothingEnabled = false;
+  g.drawImage(f.img, 0, 0, f.w, f.h, Math.floor((W - f.w) / 2), H - f.h, f.w, f.h);
+  return new Promise((r) => c.toBlob(r, 'image/png'));
+}
+
 // 움직이는 그림은 더 쓰지 않음 (잡기 장면도 멈춘 그림)
 export const monAnim = () => null;
 
