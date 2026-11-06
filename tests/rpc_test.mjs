@@ -3319,9 +3319,11 @@ console.log('\n[55] 사파리존 더 넓게 (0048): 설원 · 용암 · 발전�
     ok(s2?.dragon === true && ['beach', 'desert', 'snow', 'lava'].every((a) => s2.visited.includes(a)), 'safari_state.dragon true after all four', s2?.visited);
     ok((await V.rpc('safari_visit', { p_area: 'desert' })).data?.opened === false, 'opened only once');
     // 6) 용의 굴: 드래곤 + 600족 계열, Lv.40 → 50
-    const dg = await pool('dragon', 'dragon', 16);
+    const dg = await pool('dragon', 'dragon', 24);
     ok(dg.every((s) => s.zone === 'dragon' && (has(s, /드래곤/) || PSEUDO.includes(s.dex))), 'dragon den: dragon types + pseudo-legend lines only', dg.map((s) => `${s.name}:${s.btype}`));
-    ok(dg.filter((s) => PSEUDO.includes(s.dex)).length >= 3, 'dragon den: pseudo-legend lines appear often (≥3 of 16)', dg.filter((s) => PSEUDO.includes(s.dex)).map((s) => s.name));
+    ok(dg.filter((s) => PSEUDO.includes(s.dex)).length >= 2, 'dragon den: wild pseudo-legend lines appear often (≥2 of 24)', dg.filter((s) => PSEUDO.includes(s.dex)).map((s) => s.name));
+    const dgSub = (await admin.select(`species?dex=in.(${[...new Set(dg.map((s) => s.dex))].join(',')})&stage=eq.1&select=dex,lines(subject)`)).data || [];
+    ok(dgSub.length > 0 && dgSub.every((r) => r.lines?.subject === '야생'), 'dragon den: wild lines only (teacher-subject lines like 미뇽 · 아공이 stay QR / quiz only)', dgSub.map((r) => `${r.dex}:${r.lines?.subject}`));
     ok(dg.every((s) => s.lv >= 40 && s.lv <= 50), 'dragon den levels within 40–50', dg.map((s) => s.lv));
     const LD = { entrance: await lv('dragon', 'dragon', 0), far: await lv('dragon', 'dragon', 26), otherArea: await lv('dragon', 'safari', 26) };
     ok(LD.entrance >= 40 && LD.entrance <= 41 && LD.far >= 49 && LD.far <= 50 && LD.otherArea === 40, 'dragon levels: Lv.40 at the ladder → Lv.50 far end; other map → 40', LD);
