@@ -1,4 +1,4 @@
-"""잡기 화면 구역 배경 v2 (web/img/catch/shore.png · desert.png · cave.png, 270×480) — 사파리존 해변·연못 / 사막 / 동굴.
+"""잡기 화면 구역 배경 v2 (web/img/catch/{shore,desert,cave,snow,lava,plant,dragon}.png, 270×480) — 사파리존 해변·연못 / 사막 / 동굴 / 눈밭 / 용암 / 발전소 / 용의 굴.
 v1 (git 2026-11-05) 은 배틀 배경 조각을 늘려 붙여서 거칠었음 → v2 는 전부 이 스크립트에서 도트로 그림 (외부 그림 없음):
   층층이 깔린 하늘 (순서 디더링 띠) · 먼 산/메사 실루엣 · 모래 언덕 명암 · 물결 무늬 줄 · 외곽선 있는 소품 (선인장 · 바위 · 뼈 · 조개 · 불가사리 · 종유석 · 수정).
 지평선 HOR · 포켓몬 자리 SPOT 은 draw_catch_bg.py · catch.js 와 같아야 함. 맨 윗줄 · 맨 아랫줄 색 = catch.js EDGE 와 같음.
@@ -507,14 +507,350 @@ def cave():
     return im
 
 
+# ───────── 눈밭 (snow) ─────────
+def pine(im, fx, fy, h, pal, snow=True):
+    """눈 덮인 전나무: 층층 삼각형 (왼쪽 밝게) + 가지 위 눈 + 줄기 + 외곽선 + 땅 그림자."""
+    m = set(); tiers = 4 if h > 30 else 3
+    for t in range(tiers):
+        top = -h + int(t * h * 0.22); bot = -int(h * 0.12) - int((tiers - 1 - t) * h * 0.2)
+        for y in range(top, bot + 1):
+            half = int((y - top + 1) * (0.62 + 0.08 * t))
+            for x in range(-half, half + 1): m.add((x, y))
+    pix = run_shade(m, pal[:4])
+    if snow:
+        for (x, y) in list(pix):
+            if (x, y - 1) not in m and pix[(x, y)] != pal[0]: pix[(x, y)] = hexc('f4f8fc')
+            elif (x, y - 1) not in m: pix[(x, y)] = hexc('c8d6e4')
+            elif (x, y + 1) not in m and (x + y) % 3 == 0 and pix[(x, y)] != pal[0]: pix[(x, y)] = hexc('dce8f2')
+    for y in range(-int(h * 0.12), 1):
+        for x in (-1, 0, 1): pix[(x, y)] = pal[4] if x < 1 else shade(pal[4], 0.7)
+    ground_shadow(im, fx + h // 6, fy, max(3, h // 4), max(1, h // 14), 0.9)
+    paint(im, pix, fx, fy)
+
+
+def snow():
+    im = Image.new('RGBA', (W, H)); px = im.load()
+    bands(im, 0, HOR, [hexc('a9c3e0'), hexc('b5cce4'), hexc('c2d5e8'), hexc('cfdeec'), hexc('dce6f0'), hexc('e6edf4'), hexc('eef2f6')])
+    for y in range(40, 100):                                 # 옅은 해 (구름 뒤)
+        for x in range(170, 240):
+            r = math.hypot(x - 204, y - 70)
+            if r < 9: px[x, y] = hexc('f8f8f2') + (255,)
+            elif r < 26 and BAYER[y & 3][x & 3] < (26 - r) / 2.2: px[x, y] = mix(px[x, y][:3], hexc('f4f4ee'), 0.5) + (255,)
+
+    def mountain(peaks, base, col, shadowc, snowc, snowline):
+        """설산 줄: 봉우리 오른쪽 = 그늘, 위쪽 = 눈 (경계 들쭉날쭉), 윗선 하양."""
+        for x in range(W):
+            yt = int(min(base - max(0, hgt - abs(x - cx) * sl) for cx, hgt, sl in peaks))
+            near = min(peaks, key=lambda p: base - max(0, p[1] - abs(x - p[0]) * p[2]))
+            right = x > near[0]
+            for y in range(yt, base):
+                c = shadowc if right else col
+                if y < yt + snowline + ((x * 7) % 5) - 2: c = snowc if not right else mix(snowc, shadowc, 0.35)
+                px[x, y] = c + (255,)
+            px[x, yt] = hexc('ffffff') + (255,)
+    mountain([(60, 92, 1.15), (150, 70, 1.0), (240, 104, 1.2)], HOR - 14, hexc('9cb0c8'), hexc('8296b0'), hexc('eef4fa'), 26)
+    mountain([(20, 40, 0.9), (110, 48, 0.85), (200, 36, 0.8)], HOR - 6, hexc('b4c4d6'), hexc('a0b2c6'), hexc('f2f6fa'), 12)
+    for y in range(HOR - 6, HOR + 1):
+        for x in range(W): px[x, y] = hexc('dce6f0') + (255,)
+    TP = [hexc('24403e'), hexc('2e5450'), hexc('3c6a62'), hexc('4e8074'), hexc('4a3a30')]
+    bands(im, HOR + 1, H, [hexc('cdd9e6'), hexc('d8e2ee'), hexc('e2eaf3'), hexc('eaf0f7'), hexc('eef4fa')])
+    for x in range(-2, W + 4, 7): pine(im, x + (x * 13) % 4, HOR + 2, 10 + (x * 7) % 6, TP)
+    # 눈더미 (밝은 윗면 · 그늘진 아랫면)
+    for cxd, cyd, rx, ry in ((40, 300, 60, 10), (230, 280, 70, 9), (30, 452, 90, 18), (250, 440, 80, 16), (140, 262, 40, 5)):
+        for y in range(cyd - ry, cyd + ry):
+            for x in range(cxd - rx, cxd + rx):
+                u, v = (x - cxd) / rx, (y - cyd) / ry
+                if 0 <= x < W and u * u + v * v < 1 and v < 0.6 and not in_spot(x, y, 4):
+                    c = hexc('fbfdff') if (u * 0.6 + v) < -0.35 else hexc('eef4fa') if v < 0.2 else hexc('d2deea')
+                    px[x, y] = c + (255,)
+    ripples(im, HOR + 20, H - 2, hexc('d4dfec'), 13, density=0.6, avoid=lambda x, y: in_spot(x, y))
+    pine(im, 236, 302, 36, TP); pine(im, 22, 290, 26, TP); pine(im, 48, 456, 46, TP)
+    ROCK = [hexc('4a5668'), hexc('6a788c'), hexc('8c9aae'), hexc('b4c0d0')]
+    rock(im, 204, 448, 10, 7, ROCK, 21)
+    for i in range(-7, 8): px[204 + i, 440 + (i * i) // 20] = hexc('f8fbff') + (255,)
+    rnd = random.Random(31)                                   # 떨어지는 눈
+    for _ in range(140):
+        x, y = rnd.randrange(W), rnd.randrange(H)
+        if in_spot(x, y, 2): continue
+        px[x, y] = hexc('ffffff') + (255,)
+        if y > HOR and rnd.random() < 0.5 and x + 1 < W: px[x + 1, y] = hexc('f0f6fc') + (255,)
+    for x in range(W): px[x, 0] = hexc('a9c3e0') + (255,); px[x, H - 1] = hexc('eef4fa') + (255,)
+    spot(im, hexc('b8c8da'), hexc('dbe5f0'), hexc('e8eff7'), hexc('98aac0'))
+    return im
+
+
+# ───────── 용암 지대 (lava) ─────────
+LAVA = (hexc('ffe27a'), hexc('ffa63a'), hexc('e8541e'), hexc('8a2416'))
+
+
+def lava():
+    im = Image.new('RGBA', (W, H)); px = im.load()
+    bands(im, 0, HOR, [hexc('2a1a1c'), hexc('3a2222'), hexc('4c2a24'), hexc('6a3426'), hexc('8c4426'), hexc('b0582a')])
+    rnd = random.Random(41)
+    for j, cy in enumerate((34, 70, 108)):                   # 재 구름 (뭉친 덩어리, 위 어둡게 · 아랫단 붉게 비침)
+        for i in range(-20, W + 20, 26):
+            cx = i + (j * 13) % 26; r = 9 + (i * 7 + j * 5) % 7
+            for y in range(cy - r, cy + 3):
+                for x in range(cx - 2 * r, cx + 2 * r):
+                    if 0 <= x < W and 0 <= y < H and ((x - cx) / (2 * r)) ** 2 + ((y - cy) / r) ** 2 <= 1:
+                        k = (cy + 2 - y)
+                        px[x, y] = (hexc('6a3026') if k <= 1 else hexc('3a2224') if k <= 4 else hexc('2a1a1e')) + (255,)
+    # 먼 화산 + 꼭대기에서 흐르는 용암 줄 + 연기
+    for x in range(W):
+        yt = int(HOR - 6 - max(0, 96 - abs(x - 170) * 1.05))
+        if 154 < x < 186: yt = HOR - 94 + (1 if (x // 3) % 2 else 0)
+        for y in range(yt, HOR): px[x, y] = (hexc('2c1c1e') if x > 170 else hexc('3a2426')) + (255,)
+        px[x, yt] = hexc('5c3436') + (255,)
+    for i, (x0, sway) in enumerate(((160, 1), (178, -1), (168, 1))):
+        x = x0
+        for y in range(HOR - 92, HOR - 4):
+            if (y + i * 5) % 9 == 0: x += sway
+            if 0 <= x < W: px[x, y] = hexc('ffb040') + (255,)
+            if 0 <= x + 1 < W: px[x + 1, y] = hexc('e05a20') + (255,)
+    for k in range(60):
+        y = HOR - 98 - k * 2; r = 4 + k // 5
+        for dx in range(-r, r + 1):
+            x = 170 + dx + int(6 * math.sin(k / 6))
+            if 0 <= x < W and 0 <= y < H and BAYER[y & 3][x & 3] < 10 - k // 8: px[x, y] = mix(px[x, y][:3], hexc('4a3a3a'), 0.6) + (255,)
+    # 가까운 검은 바위 등성이
+    m = set()
+    for x in range(W):
+        yt = int(HOR - 18 - 14 * abs(math.sin(x / 23)) - 6 * abs(math.sin(x / 7.3)))
+        if 96 < x < 196: yt = HOR - 4 - int(4 * abs(math.sin(x / 9)))
+        for y in range(yt, HOR + 1): m.add((x, y))
+    paint(im, run_shade(m, [hexc('120c0e'), hexc('22181a'), hexc('34262a'), hexc('4a3638')], light=(1, 0)))
+    GROUND = [hexc('4a2a24'), hexc('3e2626'), hexc('3a2828'), hexc('3a2a2a')]
+    bands(im, HOR + 1, H, GROUND)
+
+    def flow(pts, w0, w1):
+        """용암 강: 가운데 노랑 → 주황 → 빨강 → 검붉은 테."""
+        for i in range(len(pts) - 1):
+            (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+            n = int(max(abs(x1 - x0), abs(y1 - y0)))
+            for k in range(0, n + 1, 2):
+                t = k / max(1, n); x = x0 + (x1 - x0) * t; y = y0 + (y1 - y0) * t
+                p = (y - HOR) / (H - HOR); w = w0 + (w1 - w0) * p; hh = max(1.5, w * 0.35)
+                for yy in range(int(y - hh - 2), int(y + hh + 3)):
+                    for xx in range(int(x - w - 2), int(x + w + 3)):
+                        if not (0 <= xx < W and HOR < yy < H) or in_spot(xx, yy, 2): continue
+                        q = ((xx - x) / w) ** 2 + ((yy - y) / hh) ** 2
+                        lvl = 0 if q < 0.25 else 1 if q < 0.55 else 2 if q < 0.9 else 3 if q < 1.35 else None
+                        if lvl is None: continue
+                        cur = px[xx, yy][:3]
+                        if cur in LAVA and LAVA.index(cur) <= lvl: continue
+                        px[xx, yy] = LAVA[lvl] + (255,)
+    flow([(-10, 262), (40, 270), (80, 284), (60, 300), (20, 318), (-10, 330)], 5, 16)
+    flow([(280, 250), (230, 262), (200, 278), (236, 300), (262, 330), (240, 380), (280, 420)], 4, 18)
+    flow([(120, 252), (150, 258), (196, 262)], 2, 5)
+    hot = [(x, y) for y in range(HOR + 1, H, 3) for x in range(0, W, 3) if px[x, y][:3] == LAVA[1]]
+    for (gx, gy) in hot[::5]:                                 # 용암 빛이 땅에 번짐
+        for dy in range(-12, 13):
+            for dx in range(-16, 17):
+                x, y = gx + dx, gy + dy
+                if 0 <= x < W and HOR < y < H and px[x, y][:3] in GROUND and BAYER[y & 3][x & 3] < 4 and dx * dx / 256 + dy * dy / 144 < 1:
+                    px[x, y] = mix(px[x, y][:3], hexc('a0402a'), 0.4) + (255,)
+    for i in range(22):                                       # 갈라진 금
+        y = rnd.randrange(HOR + 8, H - 6); x = rnd.randrange(W)
+        for k in range(10 + (y - HOR) // 6):
+            if 0 <= x < W and not in_spot(x, y, 4) and px[x, y][:3] not in LAVA: px[x, y] = hexc('1c1012') + (255,)
+            x += rnd.choice((1, 1, -1)); y = max(HOR + 2, min(H - 3, y + rnd.choice((0, 0, 1, -1))))
+    ROCK = [hexc('140c0e'), hexc('2c1e20'), hexc('46302e'), hexc('6a4a40'), hexc('a05a3a')]
+    rock(im, 222, 318, 13, 9, ROCK, 42); rock(im, 34, 440, 15, 10, ROCK, 43); rock(im, 74, 300, 6, 4, ROCK, 44); rock(im, 238, 456, 9, 6, ROCK, 45)
+    for _ in range(70):                                       # 불티
+        x, y = rnd.randrange(W), rnd.randrange(20, H - 20)
+        if not in_spot(x, y, 2): px[x, y] = (hexc('ffd060') if rnd.random() < 0.4 else hexc('ff7a30')) + (255,)
+    for x in range(W): px[x, 0] = hexc('2a1a1c') + (255,); px[x, H - 1] = hexc('3a2a2a') + (255,)
+    spot(im, hexc('241618'), hexc('4a3230'), hexc('5a3c36'), hexc('140c0e'))
+    return im
+
+
+# ───────── 발전소 안 (plant) ─────────
+def plant():
+    im = Image.new('RGBA', (W, H)); px = im.load(); d = ImageDraw.Draw(im)
+    bands(im, 0, HOR, [hexc('1c2630'), hexc('202c38'), hexc('24323e'), hexc('283846'), hexc('2c3e4c')])
+    for y in (0, 22):                                         # 천장 들보
+        d.rectangle((0, y, W, y + 6), fill=hexc('141c24') + (255,)); d.line((0, y + 6, W, y + 6), fill=hexc('3a4c5c') + (255,))
+    for x in range(14, W, 64):                                # 형광등 + 차가운 빛 원뿔
+        d.rectangle((x, 30, x + 36, 33), fill=hexc('dff6ff') + (255,)); d.line((x, 34, x + 36, 34), fill=hexc('8ec8e0') + (255,))
+        for y in range(35, 92):
+            spread = (y - 35) * 0.5
+            for xx in range(int(x - spread), int(x + 36 + spread)):
+                if 0 <= xx < W and BAYER[y & 3][xx & 3] < max(0, 5 - (y - 35) // 12): px[xx, y] = mix(px[xx, y][:3], hexc('9ad8f0'), 0.25) + (255,)
+    for y in range(92, HOR):                                  # 벽 판넬 (이음매 · 리벳)
+        for x in range(W):
+            c = hexc('3a4a58') if (y - 92) < 4 else hexc('34444f')
+            if x % 44 == 0 or (y - 92) % 34 == 0: c = hexc('25323c')
+            elif x % 44 == 1: c = hexc('4c5e6c')
+            px[x, y] = c + (255,)
+    for x in range(6, W, 44):
+        for y in (98, 130, 164, 196):
+            if y < HOR - 10:
+                px[x, y] = hexc('6c8090') + (255,)
+                if x + 30 < W: px[x + 30, y] = hexc('6c8090') + (255,)
+    for x in range(W):                                        # 경고 띠
+        for y in range(HOR - 8, HOR): px[x, y] = (hexc('e8c040') if ((x + y) // 5) % 2 else hexc('22262a')) + (255,)
+    PIPE = [hexc('1a2a30'), hexc('2e5060'), hexc('4a7a8c'), hexc('7cb0c0'), hexc('b4e0ea')]
+
+    def tone(k, r):
+        t = (k + r) / (2 * r)
+        return PIPE[0] if abs(k) == r else PIPE[4] if t < 0.18 else PIPE[3] if t < 0.4 else PIPE[2] if t < 0.75 else PIPE[1]
+
+    def hpipe(y, r):
+        for x in range(W):
+            for k in range(-r, r + 1):
+                c = tone(k, r)
+                if x % 52 in (0, 1, 2): c = shade(c, 0.72) if abs(k) < r else PIPE[0]    # 이음쇠
+                px[x, y + k] = c + (255,)
+
+    def vpipe(x, y0, y1, r):
+        for y in range(y0, y1):
+            for k in range(-r, r + 1):
+                c = tone(k, r)
+                if y % 40 in (0, 1): c = shade(c, 0.72) if abs(k) < r else PIPE[0]
+                if 0 <= x + k < W: px[x + k, y] = c + (255,)
+    hpipe(104, 5); hpipe(120, 3)
+    vpipe(30, 40, HOR - 8, 5); vpipe(240, 40, HOR - 8, 6); vpipe(254, 60, HOR - 8, 3)
+    # 발전기: 몸통 + 빛나는 코일 창 + 번개 + 계기 램프 + 노란 빛 번짐
+    GEN = [hexc('141c22'), hexc('2c3a44'), hexc('42565e'), hexc('5e7680')]
+    m = {(x, y) for y in range(130, HOR - 8) for x in range(96, 176)} | {(x, y) for y in range(118, 130) for x in range(104 + (130 - y), 168 - (130 - y))}
+    for y in range(110, HOR - 8):
+        for x in range(64, 208):
+            r = math.hypot((x - 136) / 1.3, y - 170)
+            if (x, y) not in m and r < 66 and BAYER[y & 3][x & 3] < (66 - r) / 7: px[x, y] = mix(px[x, y][:3], hexc('ffe27a'), 0.25) + (255,)
+    paint(im, run_shade(m, GEN, light=(1, 0)))
+    for y in range(140, 200):
+        for x in range(116, 156):
+            k = abs(x - 136) / 20
+            c = hexc('fff6a0') if k < 0.3 else hexc('ffe040') if k < 0.65 else hexc('e0a020')
+            if (y - 140) % 6 == 0: c = hexc('8a6a18')
+            px[x, y] = c + (255,)
+    d.rectangle((115, 139, 156, 200), outline=hexc('141c22') + (255,))
+    d.line((136, 122, 131, 128, 138, 128, 133, 136), fill=hexc('fffbe0') + (255,))
+    for i, x in enumerate(range(102, 172, 10)):
+        c = (hexc('6aff8a') if i % 3 else hexc('ff5a4a')) + (255,); px[x, 212] = c; px[x + 1, 212] = c
+    # 바닥: 금속 타일 (가로 줄 = 멀수록 촘촘, 세로 줄 = 소실점으로) + 이음 반사
+    bands(im, HOR, H, [hexc('2e3a46'), hexc('36444f'), hexc('3e4c58'), hexc('445260'), hexc('4a5a68')])
+    VX, VY = W / 2, HOR - 120
+    y = HOR + 2.0; gap = 4.0
+    while y < H - 1:
+        yi = int(y)
+        for x in range(W):
+            if not in_spot(x, yi, 2): px[x, yi] = mix(px[x, yi][:3], hexc('1e2830'), 0.55) + (255,)
+            if yi + 1 < H and not in_spot(x, yi + 1, 2): px[x, yi + 1] = mix(px[x, yi + 1][:3], hexc('6a7c8a'), 0.3) + (255,)
+        y += gap; gap *= 1.22
+    for k in range(-14, 15):
+        xb = W / 2 + k * 30
+        for yy in range(HOR, H):
+            x = int(VX + (xb - VX) * (yy - VY) / (H - VY))
+            if 0 <= x < W and not in_spot(x, yy, 2): px[x, yy] = mix(px[x, yy][:3], hexc('1e2830'), 0.45) + (255,)
+    for y in range(HOR + 1, HOR + 60):                       # 발전기 빛 반사
+        for x in range(104, 168):
+            if BAYER[y & 3][x & 3] < max(0, 7 - (y - HOR) // 8) and abs(x - 136) < 28 - (y - HOR) // 3: px[x, y] = mix(px[x, y][:3], hexc('ffe27a'), 0.3) + (255,)
+    for x in range(W):                                        # 바닥 케이블
+        yy = int(H - 40 + 6 * math.sin(x / 22))
+        if not in_spot(x, yy, 4): px[x, yy] = hexc('141a20') + (255,); px[x, yy + 1] = hexc('2a3640') + (255,)
+    BOX = [hexc('2a2014'), hexc('7a5a24'), hexc('a07a30'), hexc('c8a048')]
+    for bx, by, bw, bh in ((14, 336, 30, 22), (228, 318, 26, 18)):
+        pix = run_shade({(x, y) for x in range(bw) for y in range(bh)}, BOX, light=(1, 0))
+        for x in range(bw): pix[(x, 4)] = BOX[0]
+        ground_shadow(im, bx + bw // 2 + 3, by, bw // 2 + 3, 3, 0.8)
+        paint(im, pix, bx, by - bh)
+        for x in range(bx + 4, bx + bw - 4, 6): px[x, by - bh + 11] = hexc('e8c040') + (255,)
+    for x in range(W): px[x, 0] = hexc('1c2630') + (255,); px[x, H - 1] = hexc('4a5a68') + (255,)
+    spot(im, hexc('2a3640'), hexc('46566a'), hexc('526476'), hexc('1a2228'))
+    return im
+
+
+# ───────── 용의 굴 (dragon) ─────────
+def dragon():
+    im = Image.new('RGBA', (W, H)); px = im.load(); d = ImageDraw.Draw(im)
+    bands(im, 0, HOR, [hexc('140f24'), hexc('18122c'), hexc('1c1634'), hexc('221a3e'), hexc('2a2048')])
+
+    def glow(cx, cy, r, col, a=0.35):
+        for y in range(cy - r, cy + r + 1):
+            for x in range(cx - r, cx + r + 1):
+                if 0 <= x < W and 0 <= y < H:
+                    q = math.hypot(x - cx, y - cy) / r
+                    if q < 1 and BAYER[y & 3][x & 3] / 16 < (1 - q) * 1.1: px[x, y] = mix(px[x, y][:3], col, a * (1 - q * 0.5)) + (255,)
+    for x in range(W):                                        # 안쪽 벽
+        yt = int(70 + 12 * math.sin(x / 31) + 6 * math.sin(x / 9))
+        for y in range(yt, HOR): px[x, y] = hexc('261e40') + (255,)
+        px[x, yt] = hexc('3c3060') + (255,)
+    # 고대 용 부조: 긴 몸 (위아래 새긴 선 + 그림자 선) · 등지느러미 · 비늘 · 뿔 달린 머리 · 희미하게 빛나는 눈
+    LIT, SH = hexc('5a4c8a'), hexc('18122a')
+    body = [(26 + i * 3, int(150 + 18 * math.sin(i / 6))) for i in range(66)]
+    for (x0, y0), (x1, y1) in zip(body, body[1:]):
+        d.line((x0, y0 - 8, x1, y1 - 8), fill=LIT + (255,)); d.line((x0, y0 + 8, x1, y1 + 8), fill=LIT + (255,))
+        d.line((x0, y0 - 7, x1, y1 - 7), fill=SH + (255,)); d.line((x0, y0 + 9, x1, y1 + 9), fill=SH + (255,))
+    for i in range(4, 62, 6):
+        x, y = body[i]
+        d.line((x, y - 8, x + 3, y - 15, x + 6, y - 8), fill=LIT + (255,))
+        d.arc((x - 3, y - 4, x + 3, y + 4), 0, 180, fill=LIT + (255,))
+    hx_, hy = body[-1][0] + 22, body[-1][1] - 8
+    head = [(hx_ - 24, hy + 14), (hx_ - 6, hy - 2), (hx_ + 14, hy - 2), (hx_ + 24, hy + 8), (hx_ + 14, hy + 18), (hx_ - 6, hy + 20), (hx_ - 24, hy + 14)]
+    d.line(head, fill=LIT + (255,))
+    d.line((hx_ - 6, hy - 2, hx_ - 14, hy - 22, hx_ - 2, hy - 4), fill=LIT + (255,))
+    d.line((hx_ + 6, hy - 2, hx_ + 4, hy - 20, hx_ + 12, hy - 2), fill=LIT + (255,))
+    d.line((hx_ + 4, hy + 12, hx_ + 22, hy + 10), fill=SH + (255,))
+    glow(hx_ + 3, hy + 5, 14, hexc('8ae8ff'), 0.35)
+    d.rectangle((hx_ + 2, hy + 4, hx_ + 5, hy + 6), fill=hexc('bff4ff') + (255,))
+    ST = [hexc('0c0818'), hexc('241c40'), hexc('362a5a'), hexc('4c3e78'), hexc('6a5aa0')]
+    rnd = random.Random(51); x = -3
+    while x < W:                                              # 종유석
+        wdt = rnd.choice((5, 7, 9, 13)); ln = int(wdt * rnd.uniform(2.4, 5)) + (rnd.randint(10, 30) if rnd.random() < 0.3 else 0)
+        m = set()
+        for y in range(ln):
+            half = (wdt / 2) * (1 - y / ln) ** 0.8
+            for xx in range(int(-half), int(half) + 1): m.add((xx, y))
+        paint(im, run_shade(m, ST, light=(1, 0)), x + wdt // 2, 0)
+        x += wdt + rnd.randint(-1, 4)
+    for xx in range(W):
+        yb = int(8 + 4 * math.sin(xx / 13) + 2 * math.sin(xx / 4.1))
+        for y in range(yb): px[xx, y] = (hexc('120c22') if y < yb - 1 else hexc('3c3060')) + (255,)
+    bands(im, HOR, H, [hexc('1c1834'), hexc('201c3c'), hexc('242040'), hexc('282246'), hexc('2a2448')])
+    for i in range(18):                                       # 금
+        y = rnd.randrange(HOR + 6, H - 8); x = rnd.randrange(W)
+        for k in range(12 + (y - HOR) // 5):
+            if 0 <= x < W and not in_spot(x, y, 6):
+                px[x, y] = hexc('120e22') + (255,)
+                if y + 1 < H - 1: px[x, y + 1] = mix(px[x, y + 1][:3], hexc('5a4c8a'), 0.35) + (255,)
+            x += 1 if i % 2 else -1; y = max(HOR + 2, min(H - 3, y + rnd.choice((0, 0, 0, 1, -1))))
+    PEB = [hexc('0e0a1a'), hexc('2a2448'), hexc('3e3664'), hexc('5a4e88')]
+    for i in range(50):                                       # 자갈
+        y = int(HOR + 6 + (rnd.random() ** 1.3) * (H - HOR - 12)); x = rnd.randrange(W)
+        if in_spot(x, y, 8): continue
+        sz = 1 + int((y - HOR) / (H - HOR) * 4)
+        if sz <= 1: px[x, y] = PEB[2] + (255,); continue
+        m = blob(0, 0, sz + 0.5, sz * 0.6 + 0.5, i + 100, 0.1); yb = max(yy for _, yy in m); paint(im, run_shade(m, PEB), x, y - yb)
+
+    def crystal(cx, fy, h, col):
+        dark, mid, lit, hi = shade(col, 0.45), shade(col, 0.7), col, mix(col, (255, 255, 255), 0.6)
+        glow(cx, fy - h // 2, h + 10, col, 0.3)
+        for ox, hh, lean in ((-5, h * 0.55, -1), (5, h * 0.7, 1), (0, h, 0), (9, h * 0.4, 2)):
+            m = set(); hh = int(hh); w2 = max(2, int(h * 0.15))
+            for y in range(hh):
+                half = w2 if y < hh - w2 else (hh - y)
+                for xx in range(-half, half + 1): m.add((xx + int(lean * y * 0.25), -y))
+            paint(im, run_shade(m, [dark, mid, lit, hi], light=(1, 0)), cx + ox, fy)
+    crystal(34, 304, 24, hexc('7ab8ff')); crystal(236, 296, 18, hexc('c08aff')); crystal(60, HOR + 6, 10, hexc('c08aff'))
+    crystal(196, HOR + 4, 8, hexc('7ab8ff')); crystal(246, 456, 22, hexc('9a9aff')); crystal(20, 452, 14, hexc('c08aff'))
+    for _ in range(40):                                       # 떠다니는 빛 알갱이
+        x, y = rnd.randrange(W), rnd.randrange(30, H - 10)
+        if not in_spot(x, y, 2): px[x, y] = (hexc('bfe8ff') if rnd.random() < 0.5 else hexc('e0c8ff')) + (255,)
+    for x in range(W): px[x, 0] = hexc('140f24') + (255,); px[x, H - 1] = hexc('2a2448') + (255,)
+    spot(im, hexc('1a1630'), hexc('342c58'), hexc('3e3468'), hexc('0e0a1a'))
+    return im
+
+
 def main():
     out = os.path.join(ROOT, 'web', 'img', 'catch')
-    sheet = Image.new('RGB', (W * 3 + 8, H), (255, 0, 255))
-    for i, (n, fn) in enumerate((('shore', shore), ('desert', desert), ('cave', cave))):
+    scenes = (('shore', shore), ('desert', desert), ('cave', cave), ('snow', snow), ('lava', lava), ('plant', plant), ('dragon', dragon))
+    sheet = Image.new('RGB', ((W + 4) * len(scenes), H), (255, 0, 255))
+    for i, (n, fn) in enumerate(scenes):
         im = fn().convert('RGB')
         im.save(os.path.join(out, f'{n}.png'), optimize=True)
         sheet.paste(im, (i * (W + 4), 0))
-        print(n, 'top', im.getpixel((W // 2, 0)), 'bottom', im.getpixel((W // 2, H - 1)), 'colours', len(set(im.tobytes()[i:i + 3] for i in range(0, W * H * 3, 3))), os.path.getsize(os.path.join(out, f'{n}.png')), 'bytes')
+        print(n, 'top', im.getpixel((W // 2, 0)), 'bottom', im.getpixel((W // 2, H - 1)), 'colours', len(im.getcolors(1 << 16) or []), os.path.getsize(os.path.join(out, f'{n}.png')), 'bytes')
     os.makedirs(os.path.join(ROOT, '.work'), exist_ok=True)
     sheet.resize((sheet.width * 2, sheet.height * 2), Image.NEAREST).save(os.path.join(ROOT, '.work', 'catch_zone_bg_preview.png'))
 
