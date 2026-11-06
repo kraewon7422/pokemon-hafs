@@ -62,7 +62,7 @@ const SETTING_HELP = {
   drop_place: '물건: 장소 QR을 찍으면 물건이 나올 확률 (기본 0.3 = 30%)', drop_quiz: '물건: 퀴즈 정답 때 확률 (기본 0.4)',
   drop_battle: '물건: 친구·실시간 배틀 승리 때 확률 (기본 0.5)', drop_practice: '물건: 연습 배틀 승리 때 확률 (기본 0.15)',
   drop_raid_tm: '물건: 레이드 승리 때 특별 기술머신 확률 (기본 0.3, 이상한사탕은 항상)',
-  battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20)',
+  battle_item_max: '배틀: 한 배틀에 쓸 수 있는 회복약 수 (기본 2)', battle_turn_cap: '배틀: 이 턴이 지나면 남은 체력 비율로 승부 (기본 20, 3마리 · 2 대 2는 4마리 기준 — 팀이 크면 비례해서 늘어남)',
   battle_fields: '배틀 시간표: [{"from":"12:00","to":"13:30","name":"점심시간","env":"grassy"}, …] — 그 시간에 시작한 배틀의 날씨·필드 (sun·rain·sand·hail·electric·grassy·misty·psychic)',
   battle_field_mult: '필드 (일렉트릭·그래스·사이코필드): 그 타입 기술 위력 배율 (기본 1.3)',
   ability_hidden_chance: '특성: 잡을 때 숨겨진 특성이 나올 확률 (기본 0.05 = 5%)',
@@ -2033,8 +2033,16 @@ async function tabStaff() {
   const links = h('div.box.stack',
     h('h2', '운영 화면 주소'),
     h('p.small-txt', '운영진에게 이 주소를 보내 주세요.'),
-    ...[['admin', '운영자 페이지'], ['booth', '부스 화면 (태블릿·노트북)'], ['screen', 'TV 대형 화면']].map(([p, t]) =>
-      h('div', h('b', t, ': '), h('a.mono', { href: `${site}/${p}.html`, target: '_blank', rel: 'noopener' }, `${site}/${p}.html`))));
+    ...[['admin', '운영자 페이지'], ['booth', '부스 화면 (태블릿·노트북)'], ['screen', 'TV 대형 화면']].map(([p, t]) => {
+      const url = `${site}/${p}.html`;
+      // 긴 주소: / . - 뒤에서만 줄을 바꿈 (<wbr>) — 좁은 폰에서 단어 가운데가 잘리지 않게. [복사] 로 통째로
+      const parts = url.split(/(?<=[/.-])/).flatMap((x, i) => (i ? [h('wbr'), x] : [x]));
+      const copy = h('button.btn.small', { type: 'button', 'aria-label': `${t} 주소 복사` }, '복사');
+      copy.onclick = async () => {
+        try { await navigator.clipboard.writeText(url); toast('주소를 복사했어요.'); } catch { toast('복사하지 못했어요. 주소를 길게 눌러 복사해 주세요.'); }
+      };
+      return h('div.url-item', h('b', t), h('div.url-row', h('a.mono.url', { href: url, target: '_blank', rel: 'noopener' }, ...parts), copy));
+    }));
 
   // ── 운영진 아이디 (0018): 운영자가 만들고, 비밀번호는 한 번만 보여 준다 ──
   const ids = h('div');

@@ -30,6 +30,7 @@ export function renderConsent() {
       onclick: async () => {
         try {
           const prof = await rpc('accept_terms', { p_show: show.checked });
+          if (!S.snap) return afterLogin();   // 기록을 아직 못 받았으면 (afterLogin 이 받아서 홈으로)
           S.snap.profile = { ...S.snap.profile, ...prof };
           await kv.set('snap', S.snap);
           renderShell();

@@ -13,6 +13,9 @@ export const CONFIG = {
   SYNC_INTERVAL_MS: 60_000,
   BAG_POLL_MS: 3_000,
   ATLAS_COLS: 12,
+  // 부스 몬스터볼 연출 GIF (선택, 예: 'img/booth-ball.gif'). 그 파일은 저작권 때문에 gitignore → 직접 넣어 배포할 때만 적기.
+  // 비우면 CSS 로 그린 몬스터볼이 흔들림 (파일을 찾지 않으므로 404 도 없음)
+  BOOTH_GIF: '',
   // 팬 게임 안내 (로그인·설정·대형 화면·개인정보 처리방침에 늘 보임)
   FAN_NOTICE: '비공식 팬 게임 · 무료 학교 축제용이에요. Nintendo · Game Freak · The Pokémon Company와 관련이 없고 승인·후원을 받지 않았어요. 포켓몬 이름·그림의 권리는 원저작권자에게 있어요.',
 };

@@ -16,7 +16,9 @@ let species = [];
 let busy = false;
 let scanner = null;
 let autoConfirm = (() => { try { return localStorage.getItem('booth-auto') === '1'; } catch { return false; } })();
-const GIF = 'img/booth-ball.gif';     // optional reveal GIF (gitignored - never commit downloaded art); falls back to a CSS ball
+// 몬스터볼 연출 GIF (선택): config.js BOOTH_GIF 에 경로를 넣었을 때만 불러옴. 비어 있으면 (기본) CSS 몬스터볼.
+// 그 GIF 는 저작권 때문에 git 에 없음 → 배포본에는 없으니 미리 불러 보지도 않음 (콘솔 404 없음)
+const GIF = CONFIG.BOOTH_GIF || '';
 let gifOk = false;
 
 const STATUS = {
@@ -31,9 +33,12 @@ let pendingConfirm = null;   // the student card waiting for 확인 (Enter/Space
 async function boot() {
   pixelFontScale();
   for (const ev of ['pointerdown', 'touchend', 'click']) document.addEventListener(ev, unlockAudio, { passive: true });
-  const img = new Image();
-  img.onload = () => { gifOk = true; };
-  img.src = GIF;
+  if (GIF) {   // 넣었는데 파일이 없으면 onerror → CSS 몬스터볼 그대로
+    const img = new Image();
+    img.onload = () => { gifOk = true; };
+    img.onerror = () => { gifOk = false; };
+    img.src = GIF;
+  }
   const { data: { session } } = await sb.auth.getSession();
   if (!session) return renderLogin();
   await start();

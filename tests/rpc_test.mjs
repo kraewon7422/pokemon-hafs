@@ -770,7 +770,7 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok((await anon.rpc('battle_start_cpu', { p_mons: await monIds(anon, [32]) })).error, 'anon cannot battle');
   ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [4]) })).error === 'BAD_TEAM', 'team must be my own monsters');
   ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 32]) })).error === 'BAD_TEAM', 'no duplicates in a team');
-  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 1]) })).error === 'BAD_TEAM', 'at most 3');
+  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 1]) })).error === 'BAD_TEAM', 'one monster I do not own → refused');
 
   // play until the end: move 1 each turn, pick the next monster when one faints
   const play = async (c, b, pick = () => ({ move: 1 })) => {
@@ -794,8 +794,8 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 9 } })).error === 'BAD_ACTION', 'bad move slot refused');
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { switch: 0 } })).error === 'BAD_ACTION', 'cannot switch to the monster already out');
   let r = await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 1 } });
-  ok(r.data?.turn === 1 && r.data.seq === 1 && r.data.log.some(x => /^@0.+의 .+!$/.test(x.m || '')) && r.data.log.some(x => /^@1/.test(x.m || '')), 'one turn: both sides act, log uses @0/@1 tokens', r.data?.log);
-  ok(r.data.sides[0].mons[0].moves[0].pp === b.sides[0].mons[0].moves[0].pp - 1 || r.data.log.some(x => /잠들어|저려서/.test(x.m || '')), 'PP goes down');
+  ok(r.data?.turn === 1 && r.data.seq === 1 && r.data.log.some(x => /^@0.+(의 .+!|혼란에 빠져 있다!)$/.test(x.m || '')) && r.data.log.some(x => /^@1/.test(x.m || '')), 'one turn: both sides act, log uses @0/@1 tokens', r.data?.log);
+  ok(r.data.sides[0].mons[0].moves[0].pp === b.sides[0].mons[0].moves[0].pp - 1 || r.data.log.some(x => /잠들어|저려서|자신을 공격했다/.test(x.m || '')), 'PP goes down');
   b = await play(A.c, r.data);
   ok(b?.status === 'over' && (b.winner === 0 || b.winner === 1) && b.reward?.ticket === false && ['practice', 'lost'].includes(b.reward?.why), 'CPU battle ends; practice gives no ticket', { st: b?.status, w: b?.winner, rw: b?.reward, err: b?.error });
 
@@ -807,8 +807,10 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   const t0 = (await A.c.rpc('sync')).data.state.profile.evo_tickets;
   let won = null;
   for (let tries = 0; tries < 4 && !won; tries++) {
-    b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
-    if (tries === 0) ok(b?.mode === 'team' && b.sides[1].mons.length === 1 && b.names[1], 'friend team vs AI starts (friend has 1 monster)', b?.sides?.[1]);
+    // 0045: N = min(3, B 1) = 1 → only A's first Pokémon fights B's 고오스 (고스트/독 · 부유). 괴력몬 (격투 = 효과 없음) and
+    // 악비아르 (지진 = 부유, 속임수 = 상대 공격력) cannot win; 프레프티르 (문포스) can → put it first
+    b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [61, 17, 32]) })).data;
+    if (tries === 0) ok(b?.mode === 'team' && b.sides[1].mons.length === 1 && b.sides[0].mons.length === 1 && b.names[1], 'friend team vs AI starts: N = min(my 3, friend 1) = 1 each (0045)', b?.sides?.map((x) => x.mons.length));
     b = await play(A.c, b);
     if (b?.winner === 0) won = b;
   }
@@ -817,7 +819,7 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok(st1.evo_tickets === t0 + 1, 'evo ticket +1', [t0, st1.evo_tickets]);
   const rkA = (await A.c.rpc('get_ranking_by', { p_kind: 'battle' })).data;
   ok(rkA?.me?.value === 1, 'battle win counts in the ranking', rkA?.me);
-  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61]) })).data;
+  b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [61, 17, 32]) })).data;
   b = await play(A.c, b);
   ok(b?.winner !== 0 || b.reward?.why === 'same_opp', 'same friend again today → no 2nd ticket', b?.reward);
 
@@ -830,7 +832,7 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok(box?.invites?.some(x => x.id === inv.id && x.from), 'A sees "배틀 신청!" in the inbox', box);
   ok((await S[0].rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(S[0], [1]) })).error, 'only the invited friend can accept');
   let pa = (await A.c.rpc('battle_accept', { p_id: inv.id, p_mons: await monIds(A.c, [32, 17]) })).data;
-  ok(pa?.status === 'active' && pa.me === 1 && pa.sides[1].mons.length === 2 && pa.sides[0].mons.length === 1, 'A accepts → battle starts (A is side 1)', pa);
+  ok(pa?.status === 'active' && pa.me === 1 && pa.sides[1].mons.length === 1 && pa.sides[0].mons.length === 1, 'A accepts → battle starts (A is side 1; min(B 1, A 2) = 1 each)', pa);
   ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32]) })).error === 'IN_PVP_BATTLE' && (await B.c.rpc('battle_start_cpu', { p_mons: await monIds(B.c, [4]) })).error === 'IN_PVP_BATTLE', 'cannot start another battle during a live one (no silent forfeit)');
   r = await B.c.rpc('battle_act', { p_id: inv.id, p_action: { move: 1 } });
   ok(r.data?.chosen === true && r.data.turn === 0, 'B chose; waits for A');
@@ -877,7 +879,9 @@ console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)')
   const A = await mk('더블에이'), B = await mk('더블비');
   for (const l of [32, 17, 61, 44]) await admin.rpc('admin_grant_monster', { p_student_id: A.sid, p_line: l, p_stage: 3 });
   for (const l of [4, 5]) await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: l, p_stage: 1 });
-  ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]) })).error === 'BAD_TEAM', '1 vs 1 takes at most 3');
+  { const b4 = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]) })).data;
+    ok(b4?.format === 'single' && b4.sides[0].mons.length === 4 && b4.sides[1].mons.length === 4, '1 vs 1 practice with 4 → AI also 4 (0045: 1~6)', b4?.sides?.map((x) => x.mons.length));
+    if (b4?.id) await A.c.rpc('battle_forfeit', { p_id: b4.id }); }
   ok((await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]), p_format: 'triple' })).error === 'BAD_FORMAT', 'unknown format refused');
   let b = (await A.c.rpc('battle_start_cpu', { p_mons: await monIds(A.c, [32, 17, 61, 44]), p_format: 'double' })).data;
   ok(b?.format === 'double' && b.sides[0].act?.length === 2 && b.sides[1].act?.length === 2 && b.sides[0].mons.length === 4 && b.sides[1].mons.length === 4,
@@ -909,12 +913,101 @@ console.log('\n[27] 2 vs 2 double battles (4 monsters, chosen by the QR owner)')
   const pk = (await A.c.rpc('battle_peek', { p_code: codeB })).data;
   ok(pk?.format === 'double' && pk.name, 'scanner sees the format before starting', pk);
   b = (await A.c.rpc('battle_start_team', { p_code: codeB, p_mons: await monIds(A.c, [32, 17, 61, 44]) })).data;
-  ok(b?.format === 'double' && b.sides[1].mons.length === 2 && b.sides[1].act.length === 2, 'friend team vs AI uses the friend\'s 2 vs 2 (friend has 2 monsters)', b?.sides?.[1]);
+  ok(b?.format === 'double' && b.sides[1].mons.length === 2 && b.sides[0].mons.length === 2 && b.sides[1].act.length === 2, 'friend team vs AI uses the friend\'s 2 vs 2: min(my 4, friend 2) = 2 each', b?.sides?.map((x) => x.mons.length));
   await A.c.rpc('battle_forfeit', { p_id: b.id });
   await B.c.rpc('battle_code', { p_format: 'single' });
   ok((await B.c.rpc('battle_code', { p_format: 'x' })).error === 'BAD_FORMAT', 'bad format refused');
-  ok((await A.c.rpc('battle_set_team', { p_mons: await monIds(A.c, [44, 61, 17, 32]) })).data?.ok, 'a battle team can hold 4 (first 3 used for 1 vs 1)');
+  ok((await A.c.rpc('battle_set_team', { p_mons: await monIds(A.c, [44, 61, 17, 32]) })).data?.ok, 'a battle team can hold 4');
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
+}
+
+console.log('\n[27b] 0045 battle team up to 6 (N = min(mine, friend); AI = my count; 2 vs 2 needs 2)');
+{
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'six123' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'six123'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { c, sid };
+  };
+  const X = await mk('여섯엑스'), Y = await mk('여섯와이'), Z = await mk('여섯제트');
+  try {
+    for (const l of [32, 17, 61, 44, 4, 5, 12]) await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: l, p_stage: 1 });
+    for (const l of [13, 1, 2]) await admin.rpc('admin_grant_monster', { p_student_id: Y.sid, p_line: l, p_stage: 1 });
+    await admin.rpc('admin_grant_monster', { p_student_id: Z.sid, p_line: 3, p_stage: 1 });
+    const x7 = await monIds(X.c, [32, 17, 61, 44, 4, 5, 12]); const x6 = x7.slice(0, 6);
+    const y3 = await monIds(Y.c, [13, 1, 2]); const z1 = await monIds(Z.c, [3]);
+    ok(x7.every((i) => i > 0) && y3.every((i) => i > 0) && z1[0] > 0, 'fixtures: X 7 · Y 3 · Z 1 Pokémon', [x7, y3, z1]);
+    ok((await X.c.rpc('battle_set_team', { p_mons: x7 })).error === 'BAD_TEAM', 'a battle team holds at most 6');
+    for (const t of [x6.slice(0, 1), x6.slice(0, 3), x6]) {
+      const r = await X.c.rpc('battle_set_team', { p_mons: t });
+      ok(r.data?.ok && (await X.c.rpc('battle_today')).data?.team?.join() === t.join() && (await X.c.rpc('bag_state')).data?.team?.join() === t.join(),
+        `save a battle team of ${t.length} (battle_today + bag_state.team for the trainer card)`, r.error);
+    }
+    const cap0 = Number((await admin.select('settings?key=eq.battle_turn_cap&select=value')).data?.[0]?.value ?? 20);
+    let b = (await X.c.rpc('battle_start_cpu', { p_mons: x6.slice(0, 1), p_format: 'single' })).data;
+    ok(b?.sides?.[0]?.mons?.length === 1 && b.sides[1].mons.length === 1 && b.turn_cap === cap0, '1 vs 1 practice with 1 → AI fields 1 (turn cap unchanged)', { n: b?.sides?.map((x) => x.mons.length), cap: b?.turn_cap });
+    if (b?.id) await X.c.rpc('battle_forfeit', { p_id: b.id });
+    b = (await X.c.rpc('battle_start_cpu', { p_mons: x6, p_format: 'single' })).data;
+    ok(b?.sides?.[0]?.mons?.length === 6 && b.sides[1].mons.length === 6 && b.turn_cap === Math.max(cap0, Math.ceil(cap0 * 6 / 3)),
+      '1 vs 1 practice with 6 → AI fields 6, turn cap scales (×2)', { n: b?.sides?.map((x) => x.mons.length), cap: b?.turn_cap });
+    if (b?.id) await X.c.rpc('battle_forfeit', { p_id: b.id });
+    ok((await X.c.rpc('battle_start_cpu', { p_mons: x6.slice(0, 1), p_format: 'double' })).error === 'DOUBLE_NEEDS_2', '2 vs 2 practice with 1 → refused (DOUBLE_NEEDS_2)');
+    b = (await X.c.rpc('battle_start_cpu', { p_mons: x6.slice(0, 3), p_format: 'double', p_fair: true })).data;
+    ok(b?.format === 'double' && b.sides[0].mons.length === 3 && b.sides[1].mons.length === 3 && b.sides[0].act.length === 2 && b.fair && b.sides[0].mons.every((m) => m.lv === 50),
+      '2 vs 2 practice with 3 (fair mode) → AI 3, 2 on the field, all Lv.50', { n: b?.sides?.map((x) => x.mons.length), fair: b?.fair });
+    if (b?.id) await X.c.rpc('battle_forfeit', { p_id: b.id });
+    b = (await X.c.rpc('battle_start_cpu', { p_mons: x6, p_format: 'double' })).data;
+    { // 같은 학생이 두 기기에서 동시에 고름 → 차례대로 처리, 오류는 깔끔한 이름 (HTTP 500 · 시간 초과 아님)
+      const act = { slots: [{ move: 1, target: 0 }, { move: 1, target: 0 }] };
+      const rs = await Promise.all([1, 2, 3].map(() => X.c.rpc('battle_act', { p_id: b?.id, p_action: act })));
+      const okN = rs.filter((r) => !r.error).length;
+      // 뒤엣것은 앞 턴이 끝난 상태로 다시 검사됨 → BATTLE_WAIT · BATTLE_BUSY · BAD_ACTION (교체 단계) 같은 서버 오류 이름이면 됨
+      ok(okN >= 1 && rs.every((r) => !r.error || /^[A-Z_]+$/.test(r.error)), 'two devices choosing at once: one turn, the others get a clean server error (no 500 / timeout)', rs.map((r) => r.error || r.data?.turn));
+    }
+    ok(b?.sides?.[0]?.mons?.length === 6 && b.sides[1].mons.length === 6 && b.turn_cap === Math.max(cap0, Math.ceil(cap0 * 6 / 4)), '2 vs 2 practice with 6 → AI 6 (turn cap ×1.5)', { n: b?.sides?.map((x) => x.mons.length), cap: b?.turn_cap });
+    if (b?.id) await X.c.rpc('battle_forfeit', { p_id: b.id });
+
+    // friend QR: Y saved 3 and chose 2 vs 2 → X (6) vs Y (3) = 3 each, first 3 in order
+    await Y.c.rpc('battle_set_team', { p_mons: y3 });
+    const codeY = (await Y.c.rpc('battle_code', { p_format: 'double' })).data;
+    const pk = (await X.c.rpc('battle_peek', { p_code: codeY })).data;
+    ok(pk?.format === 'double' && pk.count === 3, 'battle QR peek shows the friend team size', pk);
+    b = (await X.c.rpc('battle_start_team', { p_code: codeY, p_mons: x6 })).data;
+    ok(b?.format === 'double' && b.sides[0].mons.length === 3 && b.sides[1].mons.length === 3 && b.sides[0].mons.map((m) => m.mon).join() === x6.slice(0, 3).join(),
+      '2 vs 2 friend team: my 6 vs friend 3 → both field their first 3', { n: b?.sides?.map((x) => x.mons.length), mine: b?.sides?.[0]?.mons?.map((m) => m.mon) });
+    if (b?.id) await X.c.rpc('battle_forfeit', { p_id: b.id });
+    // Z has 1 → 2 vs 2 refused both ways; 1 vs 1 works with N = 1
+    const codeZ = (await Z.c.rpc('battle_code', { p_format: 'double' })).data;
+    ok((await X.c.rpc('battle_start_team', { p_code: codeZ, p_mons: x6 })).error === 'FRIEND_DOUBLE_NEEDS_2', '2 vs 2 vs a friend with 1 Pokémon → refused (FRIEND_DOUBLE_NEEDS_2)');
+    ok((await X.c.rpc('battle_challenge', { p_code: codeZ, p_mons: x6 })).error === 'FRIEND_DOUBLE_NEEDS_2', 'live 2 vs 2 request to a friend with 1 → refused');
+    ok((await Z.c.rpc('battle_start_team', { p_code: codeY, p_mons: z1 })).error === 'DOUBLE_NEEDS_2' && (await Z.c.rpc('battle_challenge', { p_code: codeY, p_mons: z1 })).error === 'DOUBLE_NEEDS_2',
+      'my team of 1 cannot start a 2 vs 2 friend battle (DOUBLE_NEEDS_2)');
+    await Z.c.rpc('battle_code', { p_format: 'single' });
+    b = (await X.c.rpc('battle_start_team', { p_code: codeZ, p_mons: x6 })).data;
+    ok(b?.format === 'single' && b.sides[0].mons.length === 1 && b.sides[1].mons.length === 1, '1 vs 1 vs a friend with 1 → 1 each', b?.sides?.map((x) => x.mons.length));
+    if (b?.id) await X.c.rpc('battle_forfeit', { p_id: b.id });
+
+    // live PvP: X asks with 6, Y accepts with 3 → 3 each (X's side rebuilt to its first 3)
+    await Y.c.rpc('battle_code', { p_format: 'single' });
+    let inv = (await X.c.rpc('battle_challenge', { p_code: codeY, p_mons: x6 })).data;
+    const ib = (await Y.c.rpc('battle_inbox')).data;
+    ok(inv?.status === 'invite' && ib?.invites?.find((i) => i.id === inv.id)?.count === 6, 'invite carries the challenger team size', ib?.invites);
+    const pa = (await Y.c.rpc('battle_accept', { p_id: inv?.id, p_mons: y3 })).data;
+    const px = (await X.c.rpc('battle_state', { p_id: inv?.id })).data;
+    ok(pa?.status === 'active' && pa.sides[0].mons.length === 3 && pa.sides[1].mons.length === 3 && px?.sides?.[0]?.mons?.map((m) => m.mon).join() === x6.slice(0, 3).join(),
+      'live PvP: my 6 vs friend 3 → both send their first 3', { n: pa?.sides?.map((x) => x.mons.length), x: px?.sides?.[0]?.mons?.map((m) => m.mon) });
+    if (inv?.id) await X.c.rpc('battle_forfeit', { p_id: inv.id });
+    // live 2 vs 2: accepting with 1 → refused (invite stays), then 2 vs 3 → 2 each
+    await Y.c.rpc('battle_code', { p_format: 'double' });
+    inv = (await X.c.rpc('battle_challenge', { p_code: codeY, p_mons: x6.slice(0, 2) })).data;
+    ok(inv?.format === 'double' && (await Y.c.rpc('battle_accept', { p_id: inv.id, p_mons: y3.slice(0, 1) })).error === 'DOUBLE_NEEDS_2', 'live 2 vs 2: accepting with 1 → refused (DOUBLE_NEEDS_2)');
+    const pd = (await Y.c.rpc('battle_accept', { p_id: inv?.id, p_mons: y3 })).data;
+    ok(pd?.status === 'active' && pd.sides[0].mons.length === 2 && pd.sides[1].mons.length === 2 && pd.sides[1].act.length === 2, 'live 2 vs 2: 2 vs 3 → 2 each', pd?.sides?.map((x) => x.mons.length));
+    if (inv?.id) await X.c.rpc('battle_forfeit', { p_id: inv.id });
+    await Y.c.rpc('battle_code', { p_format: 'single' });
+  } finally {
+    await admin.rpc('admin_delete_students', { p_student_ids: [X.sid, Y.sid, Z.sid], p_confirm: '삭제' });
+  }
 }
 
 console.log('\n[28] admin: delete student records (dummy data clean-up)');

@@ -9,6 +9,9 @@
 //   onMiss: async () => true(도망)/false — 공이 빗나갈 때마다 서버에 물어봄 (0037 사파리존: 도망은 서버가 정함). 있으면 fleeMiss 대신.
 //   fleeMiss: 공이 빗나갈(튕겨 나올) 때마다 이 확률로 도망 (예전 서버의 사파리존). canRun: '도망가기' 버튼 (사파리존, 바로 잡기 대신) → fled·ran.
 //   fleeAfterAll: 공을 다 쓰면 도망 (레이드 보스). 아니면 fleeChance 확률로 도망 (부스 5%), 아니면 지쳐서 잡힘.
+//   confirm: async (caught, { throws, grade, curve }) → true(잡힘)/false(도망)/null(모름) — 끝나기 직전에 서버에 결과를 보내고 그 답대로 연출.
+//            '잡았다!' 는 서버가 잡혔다고 할 때만, 서버가 도망이라 하면 튀어나와 도망, 모르면 (인터넷·박스 꽉 참) 어느 쪽도 말하지 않고 끝냄.
+//            보낸 뒤엔 result.sent = true (앱은 결과를 다시 보내지 않음).
 //   remaining > 0: '남은 포켓몬 모두 바로 잡기 (N)' 버튼도 보임 → 누르면 이번 것도 바로 잡고 skipAll:true.
 //   레이드 (fleeAfterAll) 에서는 '바로 잡기' 버튼이 없음 (누르면 공 없이 잡히니까).
 // 배경: img/catch/{day,sunset,night}.png (CC0, tools/draw_catch_bg.py). 공·별·반짝이는 이 파일에서 도트로 그림.
@@ -47,7 +50,13 @@ const PW_LO = -Math.log(0.945), PW_HI = Math.log(1.10);
 
 const BG_URL = (t) => new URL(`../img/catch/${t}.png`, import.meta.url).href;
 // 배경 그림 맨 위 / 맨 아래 색 (화면이 그림보다 길 때 위아래를 채움)
-const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'] };
+const EDGE = { day: ['#19adf5', '#84c669'], sunset: ['#3a2868', '#9ca452'], night: ['#16102c', '#3f5c65'],
+  shore: ['#5e92eb', '#f5d6af'], desert: ['#63b3e1', '#f5d6af'], cave: ['#28414b', '#366a84'] };
+// 구역 배경 (사파리존 만남의 enc.zone): 해변·연못 = 바닷가, 사막 = 모래, 동굴 = 동굴 (img/catch/{shore,desert,cave}.png — tools/draw_catch_zone_bg.py,
+// 배틀 배경 CC0 조각). 울트라 스페이스 = 밤 배경 + 보랏빛. 그 밖 (풀숲·깊은 곳·레이드·전설·QR) = 시간대 배경 (낮·노을·밤)
+const ZONE_BG = { beach: 'shore', pond: 'shore', shore: 'shore', desert: 'desert', cave: 'cave' };
+// 바깥 구역 배경 위에 시간대 빛 (동굴은 늘 같음): [색, 진하기]
+const TOD_TINT = { day: null, sunset: [0xf07848, 0.2], night: [0x16102c, 0.45] };
 const RING = { common: 0x58d858, rare: 0xf8a830, legendary: 0xf04848, mythic: 0xf04848 };
 const BASE_P = { common: 0.6, rare: 0.4, legendary: 0.25, mythic: 0.25 };
 // 난이도 단계 (level 이 있을 때): 0 초록 · 1 노랑 · 2 주황 · 3 빨강 (포켓몬 GO 색). 고리 최대 크기 (R 의 배), 기본 잡힘 확률
@@ -201,8 +210,12 @@ const ARROW = rowsPx(['...k...', '..kwk..', '.kwwwk.', 'kwwwwwk', 'kkwwwkk', '..
 
 // ═════════════════════════════ 장면 ═════════════════════════════
 // onThrow(n) = 볼을 던질 때마다 (n = 이 장면에서 던진 수) — 사파리존이 기기에 적어 둠 (앱을 닫아도 볼 수가 이어지게)
-export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, intro = null, shiny = false, sand = false } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수) · shiny: 반짝이는 색 (0042) · sand: 사막 모래바람 빛 (0043)
-  const tod = EDGE[time] ? time : defaultTime();
+export async function catchScene({ dex, name, rarity = 'common', level = null, time, balls = 3, ball: ballStyle = 'red', fleeChance = 0, fleeAfterAll = false, remaining = 0, fleeMiss = 0, canRun = false, onThrow = null, onMiss = null, confirm = null, intro = null, shiny = false, sand = false, zone = null } = {}) {   // intro: 시작 글 (0038 전설: '{n}' = 공 개수) · shiny: 반짝이는 색 (0042) · sand: 사막 (0043, = zone 'desert') · zone: 사파리존 구역 (배경)
+  const tod = ['day', 'sunset', 'night'].includes(time) ? time : defaultTime();
+  const zn = sand ? 'desert' : String(zone || '');
+  const bgKey = ZONE_BG[zn] || (zn === 'ultra' ? 'night' : tod);
+  // 화면 위에 덮는 빛: 바깥 구역 배경 = 시간대 빛 · 울트라 스페이스 = 보랏빛 · 사막 = 옅은 모래바람
+  const tints = [zn === 'ultra' ? [0x8030c0, 0.32] : null, ZONE_BG[zn] && bgKey !== 'cave' ? TOD_TINT[tod] : null, zn === 'desert' ? [0xe0a050, 0.16] : null].filter(Boolean);
   const BALLS = clamp(Math.round(Number(balls) || 3), 1, 20);
   const style = BALL_COL[ballStyle] ? ballStyle : 'red';
   const fleeP = clamp(Number(fleeChance) || 0, 0, 1);
@@ -221,7 +234,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
   const D = (ms) => Math.round(ms * (rm ? 0.5 : 1) * speed);
 
   let done = false, dead = false, game = null, ro = null, bootTimer = 0, resolveP;
-  const result = { grade: 'none', curve: false, throws: 0, skipped: false, skipAll: false, fled: false, ran: false };
+  const result = { grade: 'none', curve: false, throws: 0, skipped: false, skipAll: false, fled: false, ran: false, sent: false };
   const out = new Promise((r) => { resolveP = r; });
   const listeners = [];
   const on = (el, ev, fn, opt) => { el.addEventListener(ev, fn, opt); listeners.push([el, ev, fn, opt]); };
@@ -243,7 +256,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
   // 정확히 한 번만 끝냄
   const finish = (fade = true) => {
     if (done) return; done = true;
-    const r = { grade: result.grade, curve: result.curve, throws: result.throws, skipped: result.skipped, skipAll: result.skipAll, fled: result.fled, ran: result.ran };
+    const r = { grade: result.grade, curve: result.curve, throws: result.throws, skipped: result.skipped, skipAll: result.skipAll, fled: result.fled, ran: result.ran, sent: result.sent };
     const end = () => { cleanup(); resolveP(r); };
     if (fade && layer && !rm) { layer.classList.remove('cz-on'); setTimeout(end, 280); } else end();
   };
@@ -251,12 +264,13 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
 
   try {
     injectStyle();
-    const [top, bot] = EDGE[tod];
+    const [top, bot] = EDGE[bgKey];
     layer = document.createElement('div');
     layer.className = 'cz-layer';
     layer.setAttribute('role', 'dialog');
     layer.setAttribute('aria-label', `${nm} 잡기`);
-    layer.style.background = `${sand ? 'linear-gradient(rgba(224,160,80,.42), rgba(224,160,80,.42)), ' : ''}linear-gradient(${top} 0 50%, ${bot} 50% 100%)`;   // 0043 사막: 위아래 빈칸도 모래빛
+    const css = (c, a) => `rgba(${c >> 16},${(c >> 8) & 255},${c & 255},${a})`;
+    layer.style.background = [...tints.map(([c, a]) => `linear-gradient(${css(c, a)}, ${css(c, a)})`), `linear-gradient(${top} 0 50%, ${bot} 50% 100%)`].join(', ');   // 위아래 빈칸도 같은 빛
     area = document.createElement('div'); area.className = 'cz-area';
     box = document.createElement('div'); box.className = 'cz-box';
     // 오른쪽 위 버튼: 바로 잡기 (+ 남은 포켓몬이 있으면 모두 바로 잡기). 레이드는 버튼 없음
@@ -334,7 +348,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         key: 'catch',
         preload() {
           this.load.spritesheet('mons', ATLAS_URL, { frameWidth: 64, frameHeight: 64 });
-          this.load.image('bg', BG_URL(tod));
+          this.load.image('bg', BG_URL(bgKey));
         },
         create() {
           try { setup(this); sceneReady = true; clearTimeout(bootTimer); } catch (e) { console.warn('[catch] setup', e); bail(); }
@@ -382,7 +396,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
 
       // 배경 · 그림자 · 포켓몬
       if (sc.textures.exists('bg')) sc.add.image(0, 0, 'bg').setOrigin(0).setDepth(0);
-      if (sand) sc.add.rectangle(0, 0, W, H, 0xe0a050, 0.42).setOrigin(0).setDepth(0.5);   // 0043 사막: 배경 위에 모래빛 (포켓몬 · 공은 그 위)
+      tints.forEach(([c, a], i) => sc.add.rectangle(0, 0, W, H, c, a).setOrigin(0).setDepth(0.5 + i * 0.01));   // 배경 위 빛 (포켓몬 · 공은 그 위)
       const shadow = sc.add.graphics().setDepth(1);
       const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (포켓몬 뒤로 가면 1.5)
       const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
@@ -649,6 +663,32 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         phase = 'end';
         finish(true);
       };
+      // 서버 판정 (confirm 옵션): 끝날 때 한 번만 보냄. confirm 이 없으면 (부스) 장면이 정한 대로
+      let verdictP = null;
+      const verdict = (want) => {
+        if (!confirm) return Promise.resolve(want);
+        if (!verdictP) {
+          result.sent = true;
+          const snap = { throws: result.throws, grade: result.grade, curve: result.curve };
+          verdictP = Promise.resolve().then(() => confirm(want, snap)).then((v) => (v === true || v === false ? v : null), () => null);
+        }
+        return verdictP;
+      };
+      // 결과를 모름 (인터넷 끊김 · 박스가 꽉 참 …): '잡았다' 도 '도망쳤다' 도 말하지 않고 끝냄 → 앱이 이유를 알려 줌
+      const unsure = async (c) => {
+        await c.wait(320);
+        showHud(false); say('…');
+        await c.wait(700);
+        phase = 'end';
+        finish(true);
+      };
+      // 공이 흔들린 뒤: 서버가 잡혔다고 할 때만 '잡았다!', 도망이라 하면 튀어나와 도망
+      const settle = async (c, vP) => {
+        const v = await vP;
+        if (v === true) { await caught(c); return; }
+        if (v === false) { await escape(c); await c.wait(250); await flee(c); return; }
+        await unsure(c);
+      };
       const escape = async (c) => {
         await c.wait(260);
         ball.setFrame(1); play('ballPop'); vibrate(40);
@@ -715,8 +755,10 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
           ringT = 0; frozen = null; ringOn = true; B.free = true; phase = 'aim'; idleT = 0;
           return;
         }
-        // 공을 다 썼음 → 레이드 보스는 도망, 부스는 fleeChance 확률로 도망, 아니면 지쳐서 반드시 잡힘
-        if (fleeAfterAll || (fleeP > 0 && rand() < fleeP)) { await flee(c); return; }
+        // 공을 다 썼음 → 레이드 보스는 도망, 부스는 fleeChance 확률로 도망, 아니면 지쳐서 반드시 잡힘 (서버가 있으면 서버 답대로)
+        const v = await verdict(!(fleeAfterAll || (fleeP > 0 && rand() < fleeP)));
+        if (v === null) { await unsure(c); return; }
+        if (!v) { await flee(c); return; }
         phase = 'seq'; ringOn = false; B.free = false; showHud(false);
         await c.tw({ targets: mon, x: SPOT_X, y: footY, scaleX: MON_K * 1.05, scaleY: MON_K * 0.9, duration: 300 });
         say(`${josa(nm, '은', '는')} 지쳐서 얌전해졌다!`);
@@ -729,7 +771,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         const cc = center();
         await suckIn(c, cc.x, cc.y - bh / 2 - 10);
         await shake(c, 3);
-        await caught(c);
+        await caught(c);   // 서버가 이미 잡혔다고 함 (위 verdict)
       };
 
       // ─────── 던지기 ───────
@@ -771,7 +813,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         const toMiss = (q, why) => {
           f.mode = 'miss';
           evlog.push(['miss', why, Math.round(q.x), Math.round(q.y)]);
-          run((k) => { f.c = k; return onMiss(k, f, q); });
+          run((k) => { f.c = k; return missed(k, f, q); });
         };
         f.ev = (type, info) => {
           if (f.mode === 'throw') {
@@ -834,7 +876,8 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         await nextOrTired(c);
       };
 
-      const onMiss = async (c, f, q) => {
+      // (이름이 onMiss 이면 위 옵션 onMiss (서버에 묻기) 를 가려 버려서 safari_turn 이 한 번도 안 불렸음 → 다른 이름)
+      const missed = async (c, f, q) => {
         phase = 'seq'; frozen = null;
         label('빗나갔다!', '#ffffff', q.x, q.y - 34, false);
         await flyDone(c, f);   // 공이 땅에 튀고 굴러 멈추거나 화면 밖으로 나갈 때까지
@@ -855,6 +898,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         const pc = Math.min(0.95, baseP * (GRADE_K[grade] || 1) * (curve ? 1.3 : 1));
         const u = rand();
         const ok = u < pc;
+        const vP = ok ? verdict(true) : null;   // 잡혔으면 바로 서버에 보냄 (공이 흔들리는 동안 답이 옴)
         // 아깝게 놓칠수록 많이 흔들림
         const close = ok ? 1 : (u - pc) / (1 - pc);
         const n = ok ? 3 : close < 0.34 ? 3 : close < 0.67 ? 2 : 1;
@@ -868,7 +912,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         const gy = proj(p.x, BR, p.z).y;
         await suckIn(c, ball.x, ball.y, ball.scaleX, gy);
         await shake(c, n);
-        if (ok) { await caught(c); return; }
+        if (ok) { await settle(c, vP); return; }
         await escape(c);
         await nextOrTired(c);
       };
@@ -970,6 +1014,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
         grab = null; curveArmed = false; ringOn = false; frozen = null; B.free = false; phase = 'seq';
         say(''); showHud(false); fx.clear();
         hint.setVisible(false); hintArrow.setVisible(false);
+        const vP = verdict(true);
         (async () => {
           mon.setVisible(true).setPosition(SPOT_X, footY).setScale(MON_K).setAngle(0); monW.setAlpha(0);
           B.ox = 0; B.hop = 0;
@@ -978,7 +1023,7 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
           await c.tw({ targets: ball, y: cc.y - bh / 2 - 10, duration: 220, ease: 'Quad.easeOut' });
           await suckIn(c, ball.x, ball.y);
           await shake(c, 1);
-          await caught(c);
+          await settle(c, vP);
         })().catch((e) => { if (e !== CANCEL) bail(); });
       };
 

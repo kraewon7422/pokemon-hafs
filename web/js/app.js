@@ -86,6 +86,7 @@ export async function boot() {
   }
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
+  S.snap ||= null;   // 이 기기에 저장된 기록이 없으면 undefined 로 옴 → 늘 null (= 아직 첫 동기화 전)
   if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog))) S.catalog = null;   // 0032·0034·0037·0039 전 목록은 버리고 새로 받음
   if (S.catalog?.lines) { sortDex(S.catalog); aliasSprites(S.catalog.species); }
   S.outbox ||= [];
@@ -132,7 +133,13 @@ export async function doAfterLogin(retried = false) {
     if (!S.snap) S.celebrated = new Set(['__init__']);   // first sync on this device: don't replay old celebrations
     await loadCatalog();
     await sync({ force: true });
-    if (!S.snap?.profile?.consented && profile.role === 'student') return renderConsent();
+    // sync 는 실패해도 throw 하지 않음 → 새 기기에서 첫 동기화가 실패하면 S.snap 이 없다.
+    // 그대로 동의·홈 화면을 그리면 S.snap.profile 에서 멈춤 (client_errors 'reading profile') → 다시 시도 화면으로
+    if (!S.snap?.profile) {
+      if (!S.online) return renderLogin('인터넷에 연결된 곳에서 처음 로그인해 주세요.');
+      return renderRetry('서버에서 내 기록을 받아 오지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+    }
+    if (!S.snap.profile.consented && profile.role === 'student') return renderConsent();
     if (!$('nav.tabs')) renderShell();
     persist();
     if (recovering) { passwordSheet({ recover: true }); return; }   // 구글로 내 계정을 찾았음 → 새 비밀번호
@@ -528,6 +535,7 @@ export async function spinRoulette() {
   try {
     res = await rpc('spin_roulette', {}, { retries: 0 });
   } catch (e) { S.spinning = false; sfx.error(); toast(errorText(e.message)); sync({ force: true }); return; }
+  if (!S.snap) { S.spinning = false; return; }   // 돌리는 사이 로그아웃
   S.snap.roulette = res.roulette;
   S.snap.profile = { ...S.snap.profile, evo_tickets: res.evo_tickets, titles: res.titles || S.snap.profile.titles };
   await kv.set('snap', S.snap);
@@ -537,7 +545,8 @@ export async function spinRoulette() {
   const text = h('div.box.textbox');
   overlay(h('div.stage', h('div.scene', h('div.reel-row.big', cells)), text), 'full');
   text.textContent = '룰렛이 돌아간다…!';
-  S.overlay.dataset.locked = '1';
+  const ov = S.overlay;                  // 도는 동안 다른 창이 덮어써도 (S.overlay = null) 이 창만 만짐 → S.spinning 이 풀리지 않는 일 없게
+  ov.dataset.locked = '1';
   const target = Math.max(0, vals.indexOf(res.prize));
   let i = 0;
   if (!reducedMotion()) {
@@ -554,14 +563,14 @@ export async function spinRoulette() {
     await sleep(reducedMotion() ? 0 : 500);
     cells[target].textContent = '777';
     cells[target].classList.add('jackpot');
-    S.overlay.querySelector('.scene')?.classList.add('golden');
+    ov.querySelector('.scene')?.classList.add('golden');
     sfx.catch(); vibrate([70, 50, 70, 50, 70, 50, 200]);
     await typeText(text, '7 7 7 !!! 럭키 세븐!\n아주 드문 행운이에요. 칭호 「럭키 세븐」을 얻었다!');
   } else {
     if (res.prize > 0) { sfx.correct(); vibrate([40, 30, 80]); } else sfx.fail();
     await typeText(text, res.prize > 0 ? `진화의 돌 ${res.prize}개를 받았다! (지금 ${res.evo_tickets}개)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
   }
-  S.overlay.dataset.locked = '0';
+  ov.dataset.locked = '0';
   text.append(h('button.btn.big.primary', { style: { marginTop: '10px' }, onclick: () => closeOverlay() }, '확인'));
   S.spinning = false;
   renderTab();
@@ -635,6 +644,7 @@ function nicknameBox(p) {
     save.disabled = true;
     try {
       const prof = await rpc('set_nickname', { p_nick: v }, { retries: 0 });
+      if (!S.snap) return;
       S.snap.profile = { ...S.snap.profile, ...prof };
       await kv.set('snap', S.snap);
       sfx.blip();
@@ -722,6 +732,7 @@ function pickPartner() {
   const choose = async (id) => {
     try {
       const prof = await rpc('set_partner', { p_mon: id });
+      if (!S.snap) return;
       S.snap.profile = { ...S.snap.profile, ...prof };
       await kv.set('snap', S.snap);
       sfx.blip(); closeOverlay(); renderTab();
@@ -741,9 +752,10 @@ function pickPartner() {
 }
 
 export async function setPublic(show) {
-  if (!!S.snap.profile.show_on_board === show) return;
+  if (!S.snap?.profile || !!S.snap.profile.show_on_board === show) return;
   try {
     const prof = await rpc('set_prefs', { p_show: show, p_avatar: null });
+    if (!S.snap) return;
     S.snap.profile = { ...S.snap.profile, ...prof };
     await kv.set('snap', S.snap);
     toast(prof.show_on_board ? `랭킹에 "${prof.display}"${josa(prof.display, '으로', '로').slice(String(prof.display).length)} 보여요.` : '랭킹에 "익명 트레이너"로 보여요.');
@@ -804,6 +816,7 @@ export async function loadRanking() {
   const scope = `${S.rankKind}:${S.rankScope}`;
   const key = 'rank:' + scope;
   S.rank[scope] ||= await kv.get(key);
+  if (!S.snap?.profile) return;   // 기다리는 사이 로그아웃·계정 바꾸기
   if (S.tab === 'rank') renderTab();
   try {
     const data = S.rankKind === 'class' ? await rpc('class_ranking', {}, { retries: 0 })
@@ -911,6 +924,7 @@ export function classSheet(first = false) {
     ok.disabled = true;
     try {
       await rpc('set_class', { p_grade: g, p_class: c }, { retries: 0 });
+      if (!S.snap?.profile) return;
       Object.assign(S.snap.profile, { grade: g, class_name: c }); kv.set('snap', S.snap);
       closeOverlay(); sfx.correct();
       toast(`${g}학년 ${c}반으로 정했어요! 랭킹 → 반별에서 우리 반 순위를 봐요.`, 3500);
@@ -1083,7 +1097,7 @@ export async function maybeDexComplete() {
   const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
   const ov = overlay(h('div.stage', h('div.scene.golden', h('div.rays'), h('span.spr', spriteCanvas(dexOf(35, 1), 200))), text), 'full');
   sfx.catch(); vibrate([80, 60, 80, 60, 200]);
-  await typeText(text, `도감 완성!!\n${S.snap.profile.name || '트레이너'}, 학교의 모든 포켓몬을 만났어요.\n칭호 「도감 마스터」를 얻었다! 트레이너 카드가 금빛으로 바뀌었어요.`);
+  await typeText(text, `도감 완성!!\n${S.snap?.profile?.name || '트레이너'}, 학교의 모든 포켓몬을 만났어요.\n칭호 「도감 마스터」를 얻었다! 트레이너 카드가 금빛으로 바뀌었어요.`);
   text.append(h('span.more', '▼'));
   await tapToContinue(ov);
   closeOverlay();
@@ -1247,42 +1261,59 @@ export async function catchEncounter(enc) {
     }
     let turnRes = null;   // 사파리: safari_turn 에서 도망친 결과
     const onMiss = safari ? async () => { const t = await rpc('safari_turn', { p_id: enc.id }, { retries: 1 }); if (t?.fled) turnRes = t; return !!t?.fled; } : null;
+    // 결과 보내기: 잡기 장면이 끝나기 직전에 (confirm) → 장면은 서버 답대로 '잡았다!' / 도망 (사파리는 서버가 남은 도망 판정을 굴릴 수 있음)
+    //   돌려줌 { f } (사파리 sendResult) | { r } | { e } (오류)
+    const send = async (caught, x) => {
+      if (safari) return { f: await ss.sendResult({ p_id: enc.id, p_throws: prior + (x.throws || 0), p_caught: caught, p_grade: x.grade || 'none', p_curve: !!x.curve }) };
+      try { return { r: await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: caught, p_grade: x.grade || 'none', p_curve: !!x.curve }, { retries: 1 }) }; } catch (e) { return { e }; }
+    };
+    let sentP = null;   // 장면 안에서 보낸 결과 (약속 — 장면이 중간에 깨져도 두 번 보내지 않게 바로 적어 둠)
+    const confirm = (caught, x) => {
+      sentP = send(caught, x);
+      return sentP.then((o) => { const r = safari ? o.f?.r : o.r; return r ? !(r.fled || r.caught === false) : null; });
+    };
     try {
       const { catchScene } = await import('./catch.js');
       if (c) { /* 이어서 보내기만 */ } else
       c = safari
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior), level: Number(enc.level) || undefined, shiny, sand: enc.zone === 'desert',   // 0040: 서버가 정한 야생 레벨 (잡기 난이도) · 0043: 사막이면 모래빛 배경
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.rarity || 'common', ball: 'safari', balls: Math.max(1, lent - prior), level: Number(enc.level) || undefined, shiny, zone: enc.zone,   // 0040: 서버가 정한 야생 레벨 (잡기 난이도) · 구역 배경 (해변·연못·사막·동굴·울트라)
           fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true,
-          onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss })
+          onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss, confirm })
         : legend
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true, shiny,
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true, shiny, confirm,
           intro: `전설의 포켓몬 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` })
         : wild
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true, shiny,
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true, shiny, confirm,
           intro: roam ? `방랑 전설 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` : null })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
-          balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false, shiny });
+          balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false, shiny, confirm });
     } catch { /* */ }
     // 장면을 못 띄웠으면 (레이드엔 바로 잡기 버튼이 없으니 skipped = 실패) 결과를 보내지 않음 → 기회는 그대로 남음
-    if (!c || c.skipped) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
+    //   (장면 안에서 이미 결과를 보냈으면 (sent) 그 결과를 씀)
+    const sent = sentP ? await sentP : null;
+    if (!sent && (!c || c.skipped)) { toast('잡기 화면을 열지 못했어요. 잠시 뒤 홈에서 다시 도전해 주세요.', { kind: 'error' }); return; }
+    c ||= { grade: 'none', curve: false, throws: 0 };
     let r;
     if (turnRes) {
       r = turnRes;   // 0037: 서버가 이미 도망을 정함 (만남 끝남) → 결과를 따로 보내지 않음
     } else if (safari) {
       // 먼저 기기에 적고 보냄: 끊기면 남겨 두었다가 다시 연결되면 보냄 · 같은 만남은 한 번만 (서버도 끝난 만남은 NOT_FOUND)
-      const f = await ss.sendResult({ p_id: enc.id, p_throws: prior + (c.throws || 0), p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve });
+      const f = (sent || await send(!c.fled, c)).f;
       if (f?.queued) { toast('인터넷이 끊겨서 결과를 기기에 적어 두었어요. 연결되면 바로 보낼게요.', { kind: 'error' }); return { queued: true }; }
       if (f?.kept) { toast(errorText(f.error.message), { kind: 'error' }); return; }
       if (f?.gone) { toast(errorText(f.error.message)); (S.encDone ||= new Set()).add(enc.id); return; }
       r = f?.r;
-    } else try {
-      r = await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: !c.fled, p_grade: c.grade || 'none', p_curve: !!c.curve }, { retries: 1 });
-    } catch (e) {
+    } else {
+      const o = sent || await send(!c.fled, c);
+      r = o.r;
+      const e = o.e;
+      if (e) {
       if (e.offline) toast('결과를 보내지 못했어요. 인터넷이 연결되면 홈에서 다시 도전할 수 있어요.', { kind: 'error' });
       else { toast(errorText(e.message)); if (e.message !== 'BOX_FULL') (S.encDone ||= new Set()).add(enc.id); }
       return;
+      }
     }
     (S.encDone ||= new Set()).add(enc.id);
     // 서버가 잡은 보스를 특별 티켓으로 바로 바꿔 줌 → 다음 sync 에서 또 축하하지 않게 미리 표시
@@ -1335,6 +1366,7 @@ export function openQuiz() {
     decide.dataset.done = '1';
     btns[r.answer_pos]?.classList.add('right');
     if (!r.correct) btns[picked].classList.add('wrong');
+    if (!S.snap) return;   // 답을 보내는 사이 로그아웃
     S.snap.quizzes.shift();
     S.snap.profile.evo_tickets = r.evo_tickets;
     await kv.set('snap', S.snap);

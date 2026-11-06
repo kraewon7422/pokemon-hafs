@@ -65,7 +65,10 @@ const ENV_ICON = {
 };
 export const envIcon = (k) => (ENV_ICON[k] ? h('i.env-ico', { html: `<svg viewBox="0 0 8 8" width="16" height="16" shape-rendering="crispEdges">${ENV_ICON[k]}</svg>` }) : null);
 
-export const FMT = { single: { n: 3, label: '1 대 1', long: '1 대 1 (3마리)' }, double: { n: 4, label: '2 대 2', long: '2 대 2 (4마리)' } };
+// 0045: 마릿수는 형식과 상관없이 배틀 팀 1~6마리 (2 대 2 는 2마리 이상). 친구와는 min(내 팀, 친구 팀) 마리씩, AI 는 내 팀과 같은 수
+export const TEAM_MAX = 6;
+export const FMT = { single: { min: 1, label: '1 대 1' }, double: { min: 2, label: '2 대 2' } };
+const DOUBLE_SHORT = '2 대 2는 배틀 팀에 포켓몬이 2마리 이상 있어야 해요. [팀 바꾸기]에서 더 골라 주세요.';
 // 배경: isaiah658 의 픽셀 팩 #2 (CC0, web/img/battle/CREDITS.txt). 배틀마다 다르게
 export const BT_BG = ['plains', 'forest', 'beach', 'desert', 'snowy', 'underground', 'underwater'];
 export const moveOf = (id) => (S.catalog.moves || []).find((m) => m.id === id);
@@ -76,14 +79,14 @@ export const BT_WHY = {
   luck: '이번엔 진화의 돌이 없었어요. (이기면 가끔 받아요)',
 };
 
-// 내 배틀 팀 = 저장한 팀 (아직 박스에 있는 것만), 없으면 가장 높은 단계·레벨부터. n = 3 (1 대 1) / 4 (2 대 2)
+// 내 배틀 팀 = 저장한 팀 (아직 박스에 있는 것만, 순서대로, 1~6마리). 저장한 적이 없으면 가장 높은 단계·레벨 3마리 (서버 _team_mons 와 같음)
 // 0036: 팀 = 박스의 포켓몬 번호 (같은 종 두 마리도 됨)
-export function myTeam(n = 3) {
+export function myTeam() {
   const mine = mons().filter((c) => !isWithdrawn(c.line_id));
   const have = new Set(mine.map((c) => c.id));
   const saved = (S.btTeam || []).filter((id) => have.has(id));
-  const rest = [...mine].sort((a, b) => b.stage - a.stage || b.level - a.level || a.id - b.id).map((c) => c.id).filter((id) => !saved.includes(id));
-  return [...saved, ...rest].slice(0, n);
+  if (saved.length) return saved.slice(0, TEAM_MAX);
+  return [...mine].sort((a, b) => b.stage - a.stage || b.level - a.level || a.id - b.id).map((c) => c.id).slice(0, 3);
 }
 
 export async function loadBattleToday() {
@@ -117,22 +120,32 @@ setInterval(pollInbox, 15000);
 
 export const livePvp = () => S.btInbox?.active?.mode === 'pvp' && S.btInbox.active.status === 'active' ? S.btInbox.active : null;
 
-export function teamStrip(team, size = 56) {
-  return team.length
-    ? h('div.bt-team', team.map((id) => {
-      const m = monById(id); const sp = monSp(m);
-      if (!sp) return null;
-      // 칸마다 같은 줄: 그림 상자 · 이름 (한 줄, 길면 글자 작게 = --len) · Lv · 타입 (app.css .bt-team)
-      const name = h('b.bt-name', sp.name);
-      name.style.setProperty('--len', String([...sp.name].length));
-      return h('div.bt-mon', h('div.bt-tpic', { style: { height: `${size}px` } }, spriteCanvas(sp.id, size)), name, h('small.bt-mlv', `Lv.${m.level}`), h('span.types', typeChips(sp)));
-    }).filter(Boolean))
-    : h('p', '아직 포켓몬이 없어요. QR을 찍어 포켓몬을 먼저 모아요!');
+// 배틀 팀 칸: 3칸 × 2줄, 모두 같은 크기. 칸마다 그림 상자 (아래 맞춤) · 이름 (한 줄, 길면 글자 작게 = --len) · Lv · 타입 한 줄 (app.css .bt-team)
+// slots = true → 6칸을 다 그리고 빈 칸은 점선 '+' (onAdd 를 주면 누를 수 있음)
+export function teamStrip(team, size = 56, { slots = false, onAdd = null } = {}) {
+  const cells = team.map((id) => {
+    const m = monById(id); const sp = monSp(m);
+    if (!sp) return null;
+    const name = h('b.bt-name', sp.name);
+    name.style.setProperty('--len', String([...sp.name].length));
+    return h('div.bt-mon', h('div.bt-tpic', { style: { height: `${size}px` } }, spriteCanvas(sp.id, size)), name, h('small.bt-mlv', `Lv.${m.level}`), h('span.types', typeChips(sp)));
+  }).filter(Boolean);
+  if (!cells.length && !slots) return h('p', '아직 포켓몬이 없어요. QR을 찍어 포켓몬을 먼저 모아요!');
+  if (slots) {
+    for (let i = cells.length; i < TEAM_MAX; i++) {
+      const kids = [h('div.bt-tpic', { style: { height: `${size}px` } }, h('span.bt-plus', '+')), h('b.bt-name', '빈 칸'), h('small.bt-mlv', ''), h('span.types')];
+      cells.push(onAdd ? h('button.bt-mon.bt-empty', { type: 'button', 'aria-label': '빈 칸: 배틀 팀에 포켓몬 넣기', onclick: onAdd }, ...kids) : h('div.bt-mon.bt-empty', ...kids));
+    }
+  }
+  return h('div.bt-team', cells);
 }
+
+// 친구와 할 때 실제로 나가는 마릿수 = min(내 팀, 친구 팀)
+const sharedN = (mine, theirs) => Math.min(mine, theirs > 0 ? theirs : mine);
 
 export function fmtSeg(cur, onpick) {
   return h('div.seg.bt-fmt', { role: 'group', 'aria-label': '배틀 형식' }, Object.entries(FMT).map(([k, f]) =>
-    h('button', { 'aria-pressed': String(cur === k), onclick: () => { sfx.blip(); onpick(k); } }, f.long)));
+    h('button', { 'aria-pressed': String(cur === k), onclick: () => { sfx.blip(); onpick(k); } }, f.label)));
 }
 
 export function typeTable() {
@@ -154,7 +167,8 @@ export function typeTable() {
 export function viewBattle() {
   if (S.online && (!S.btTodayAt || Date.now() - S.btTodayAt > 15000)) { loadBattleToday(); pollInbox(true); }
   S.btFmt ||= 'single';
-  const team = myTeam(FMT[S.btFmt].n);
+  const team = myTeam();
+  const short = team.length < FMT[S.btFmt].min;
   const today = S.btToday;
   const act = S.btInbox?.active;
   const pvp = livePvp();
@@ -170,16 +184,18 @@ export function viewBattle() {
         h('button.btn.small.primary', { onclick: () => acceptInvite(inv) }, '수락'),
         h('button.btn.small', { onclick: () => declineInvite(inv) }, '거절')))),
     h('div.box.stack',
-      h('div.banner', h('b', '내 배틀 팀'), h('button.btn.small', { onclick: teamPicker, disabled: !mons().length }, '팀 바꾸기')),
+      h('div.banner', h('b', `내 배틀 팀 ${team.length}/${TEAM_MAX}`), h('button.btn.small', { onclick: teamPicker, disabled: !mons().length }, '팀 바꾸기')),
       fmtSeg(S.btFmt, (k) => { S.btFmt = k; renderTab(); }),
-      teamStrip(team),
+      mons().length ? teamStrip(team, 56, { slots: true, onAdd: teamPicker }) : teamStrip([]),
+      h('small.muted', `팀에 넣은 ${team.length}마리가 순서대로 나가요. 연습 상대(AI)도 ${team.length}마리예요.`),
+      short && h('small.warn-txt', DOUBLE_SHORT),
       h('div.seg.bt-fmt.bt-fair', { role: 'group', 'aria-label': '연습 배틀 레벨' }, [[false, '내 레벨'], [true, '공정 모드']].map(([v, l]) =>
         h('button', { 'aria-pressed': String(practiceFair() === v), onclick: () => { sfx.blip(); setPracticeFair(v); renderTab(); } }, l))),
       h('small.muted', practiceFair() ? '공정 모드: 양쪽 모두 Lv.50, 회복약을 쓸 수 없어요.' : '연습 배틀은 내 포켓몬 레벨 그대로 싸워요.'),
-      h('button.btn.big.primary', { disabled: !team.length || !!pvp, onclick: () => startBattle('cpu', null, S.btFmt) }, pix('spark'), h('span.btn-label', `연습 배틀 · ${FMT[S.btFmt].label}`), h('small.btn-sub', '보상 없음')),
+      h('button.btn.big.primary', { disabled: !team.length || short || !!pvp, onclick: () => startBattle('cpu', null, S.btFmt) }, pix('spark'), h('span.btn-label', `연습 배틀 · ${FMT[S.btFmt].label}`), h('small.btn-sub', '보상 없음')),
       h('button.btn.big', { disabled: !team.length || !!pvp, onclick: openScanner }, pix('camera'), '친구 배틀 QR 찍기'),
       h('button.btn.big', { onclick: showBattleQr }, '내 배틀 QR 보여주기'),
-      h('small.muted', '친구가 내 QR을 찍으면 실시간 배틀을 신청하거나, 내 팀을 AI가 조종하는 배틀을 할 수 있어요. 1 대 1인지 2 대 2인지는 QR을 보여주는 사람이 정해요.')),
+      h('small.muted', '친구가 내 QR을 찍으면 실시간 배틀을 신청하거나, 내 팀을 AI가 조종하는 배틀을 할 수 있어요. 1 대 1인지 2 대 2인지는 QR을 보여주는 사람이 정해요. 친구와는 두 팀 중 적은 마릿수만큼 각자 팀 앞에서부터 나가요.')),
     (S.btRecent || []).length > 0 && h('div.box.stack',
       h('b', '최근 배틀한 친구'),
       h('small.muted', 'QR 없이 바로 다시 붙을 수 있어요. 형식은 친구가 정해 둔 대로예요.'),
@@ -193,32 +209,41 @@ export function viewBattle() {
 
 export function teamPicker() {
   sfx.select();
-  let sel = myTeam(4).filter((id) => (S.btTeam || []).includes(id));
-  if (!sel.length) sel = myTeam(4);
+  let sel = myTeam();
   const grid = h('div.bt-pick');
-  const draw = () => grid.replaceChildren(...mons().filter((c) => !isWithdrawn(c.line_id))
+  const preview = h('div');
+  const count = h('b');
+  const draw = () => {
+    preview.replaceChildren(teamStrip(sel, 40, { slots: true }));
+    count.textContent = `${sel.length}/${TEAM_MAX}마리`;
+    grid.replaceChildren(...mons().filter((c) => !isWithdrawn(c.line_id))
     .sort((a, b) => b.stage - a.stage || b.level - a.level || a.line_id - b.line_id || a.id - b.id).map((c) => {
       const sp = monSp(c); const n = sel.indexOf(c.id);
       return h(`button.bt-opt${n >= 0 ? '.on' : ''}`, {
         onclick: () => {
           sfx.blip();
-          sel = n >= 0 ? sel.filter((x) => x !== c.id) : sel.length < 4 ? [...sel, c.id] : sel;
+          if (n < 0 && sel.length >= TEAM_MAX) { err.textContent = `배틀 팀은 ${TEAM_MAX}마리까지예요. 먼저 한 마리를 빼 주세요.`; return; }
+          err.textContent = '';
+          sel = n >= 0 ? sel.filter((x) => x !== c.id) : [...sel, c.id];
           draw();
         },
       }, n >= 0 ? h('span.bt-num', String(n + 1)) : null, spriteCanvas(sp.id, 48), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
     }));
-  draw();
+  };
   const err = h('div.err');
+  draw();
   sheet(h('div.stack',
-    h('b', '배틀 팀 고르기 (누른 순서대로 나가요)'),
-    h('small', '1~3번 = 1 대 1 팀 · 1~4번 = 2 대 2 팀'),
+    h('div.banner', h('b', '배틀 팀 고르기'), count),
+    h('small', `누른 순서대로 나가요. 1~${TEAM_MAX}마리 (2 대 2는 2마리 이상). 1 대 1 · 2 대 2 모두 이 팀을 써요.`),
+    preview,
     grid, err,
     h('button.btn.big.primary', {
       onclick: async () => {
         if (!sel.length) { err.textContent = '1마리 이상 골라 주세요.'; return; }
         try {
           await rpc('battle_set_team', { p_mons: sel }, { retries: 0 });
-          S.btTeam = sel; closeOverlay(); renderTab(); toast('배틀 팀을 저장했어요!');
+          S.btTeam = sel; if (S.bag) S.bag.team = sel;   // 트레이너 카드 (share.js) 가 읽는 팀도 바로 맞춤
+          closeOverlay(); renderTab(); toast('배틀 팀을 저장했어요!');
         } catch (e) { err.textContent = errorText(e.message); }
       },
     }, '저장'),
@@ -243,7 +268,8 @@ export async function showBattleQr() {
         catch (e) { toast(errorText(e.message)); }
       } }, t))),
     fair ? h('small.muted', '공정 모드: 양쪽 모두 Lv.50, 회복약을 쓸 수 없어요.') : '');
-    teamBox.replaceChildren(teamStrip(myTeam(FMT[fmt].n), 44));
+    teamBox.replaceChildren(teamStrip(myTeam(), 44),
+      myTeam().length < FMT[fmt].min ? h('small.warn-txt', DOUBLE_SHORT) : h('small.muted', `친구 팀과 적은 쪽 마릿수만큼 (최대 ${myTeam().length}마리) 싸워요.`));
   };
   draw();
   sheet(h('div.stack',
@@ -259,13 +285,18 @@ export async function friendBattleSheet(code) {
   let pk;
   try { pk = await rpc('battle_peek', { p_code: code }, { retries: 0 }); } catch (e) { sfx.error(); return say(errorText(e.message), true); }
   const f = FMT[pk.format] || FMT.single;
+  const team = myTeam();
+  const n = sharedN(team.length, pk.count);
+  const why = team.length < f.min ? DOUBLE_SHORT : n < f.min ? '친구 배틀 팀이 1마리뿐이라 2 대 2를 할 수 없어요. 친구에게 1 대 1로 바꿔 달라고 해 주세요.' : '';
   sfx.scan(); vibrate(80);
   sheet(h('div.stack',
     h('b', pix('spark'), ` ${josa(pk.name, '의', '의').slice(0, -1)}의 배틀 QR!`),
-    h('p', { style: { margin: 0 } }, h('b', f.long), pk.fair ? h('b', ' · 공정 모드 (모두 Lv.50)') : null, ' 배틀이에요. 내 배틀 팀으로 어떻게 겨룰까요?'),
-    teamStrip(myTeam(f.n), 44),
-    h('button.btn.big.primary', { onclick: () => startBattle('pvp', code) }, '실시간 배틀 신청 (친구가 수락하면 시작)'),
-    h('button.btn.big', { onclick: () => startBattle('team', code) }, '친구 팀과 AI 배틀 (바로 시작)'),
+    h('p', { style: { margin: 0 } }, h('b', f.label), pk.fair ? h('b', ' · 공정 모드 (모두 Lv.50)') : null, ' 배틀이에요. 내 배틀 팀으로 어떻게 겨룰까요?'),
+    pk.count > 0 && h('small.muted', `내 팀 ${team.length}마리 · 친구 팀 ${pk.count}마리 → 각자 팀 앞에서 ${n}마리씩 나가요.`),
+    teamStrip(team.slice(0, n), 44),
+    why && h('small.warn-txt', why),
+    h('button.btn.big.primary', { disabled: !!why, onclick: () => startBattle('pvp', code) }, '실시간 배틀 신청 (친구가 수락하면 시작)'),
+    h('button.btn.big', { disabled: !!why, onclick: () => startBattle('team', code) }, '친구 팀과 AI 배틀 (바로 시작)'),
     h('small.muted', '이기면 진화의 돌 1개 (하루 3번 · 같은 친구는 하루 1번)'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
   S.btPeekFmt = pk.format;
@@ -273,16 +304,21 @@ export async function friendBattleSheet(code) {
 
 export function inviteSheet(inv) {
   const f = FMT[inv.format] || FMT.single;
+  const team = myTeam();
+  const n = sharedN(team.length, inv.count);
+  const short = team.length < f.min;
   sheet(h('div.stack',
     h('b.bt-alert', pix('spark'), ' 배틀 신청!'),
-    h('p', { style: { margin: 0 } }, `${josa(inv.from, '이', '가')} ${f.long} 실시간 배틀을 신청했어요. 1분 안에 수락해야 시작돼요.`),
-    teamStrip(myTeam(f.n), 44),
-    h('button.btn.big.primary', { onclick: () => acceptInvite(inv), disabled: !mons().length }, '수락하고 배틀!'),
+    h('p', { style: { margin: 0 } }, `${josa(inv.from, '이', '가')} ${f.label} 실시간 배틀을 신청했어요. 1분 안에 수락해야 시작돼요.`),
+    inv.count > 0 && h('small.muted', `친구 팀 ${inv.count}마리 · 내 팀 ${team.length}마리 → 각자 ${n}마리씩 나가요.`),
+    teamStrip(team.slice(0, n), 44),
+    short && h('small.warn-txt', DOUBLE_SHORT),
+    h('button.btn.big.primary', { onclick: () => acceptInvite(inv), disabled: !mons().length || short }, '수락하고 배틀!'),
     h('button.btn', { onclick: () => declineInvite(inv) }, '거절')));
 }
 
 export async function acceptInvite(inv) {
-  try { openBattle(await rpc('battle_accept', { p_id: inv.id, p_mons: myTeam((FMT[inv.format] || FMT.single).n) }, { retries: 0 })); }
+  try { openBattle(await rpc('battle_accept', { p_id: inv.id, p_mons: myTeam() }, { retries: 0 })); }
   catch (e) { sfx.error(); say(errorText(e.message), true); pollInbox(true); }
 }
 export async function declineInvite(inv) {
@@ -299,9 +335,9 @@ const setPracticeFair = (v) => { try { localStorage.setItem('btPracticeFair', v 
 let starting = false;
 export async function startBattle(mode, code, fmt) {
   if (starting) return;   // 두 번 눌러서 배틀이 두 개 만들어지지 않게
-  const n = FMT[mode === 'cpu' ? fmt : S.btPeekFmt || 'single']?.n || 3;
-  const team = myTeam(n);
+  const team = myTeam();
   if (!team.length) return say('배틀하려면 먼저 포켓몬을 모아요!', true);
+  if (mode === 'cpu' && team.length < (FMT[fmt] || FMT.single).min) return say(DOUBLE_SHORT, true);
   if (!S.online) return say('배틀은 인터넷이 필요해요. 와이파이나 데이터를 켜 주세요.', true);
   starting = true;
   try {
