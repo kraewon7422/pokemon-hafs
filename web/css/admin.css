@@ -120,6 +120,7 @@ details.create[open] > summary { margin-bottom: 10px; }
 /* ── tables ── */
 .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 table.tbl { width: 100%; border-collapse: collapse; font-size: 14px; overflow-wrap: normal; word-break: keep-all; }
+table.tbl .btn { white-space: nowrap; }   /* 고급 설정 '저장' 단추가 좁은 칸에서 '저/장' 으로 쪼개지던 문제 */
 table.tbl th, table.tbl td { padding: 8px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; }
 table.tbl th { background: #f8f9fb; font-size: 12px; color: var(--sub); font-weight: 600; white-space: nowrap; position: sticky; top: 0; }
 table.tbl tr.click { cursor: pointer; }
