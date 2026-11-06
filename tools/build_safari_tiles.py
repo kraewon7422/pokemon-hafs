@@ -2022,37 +2022,51 @@ def plexit():
 
 
 def plgen():
-    """32×40 큰 주황 발전기 (2×2 칸 + 위로 8px): 둥근 몸통 · 층층 고리 · 꼭대기 코일 · 받침판."""
+    """32×40 큰 주황 발전기 (2×2 칸 + 위로 8px): 위에서 비스듬히 본 둥근 원통 (타원 윗면 + 가운데 축 + 빛나는 코일) ·
+    몸통 고리 3줄 · 옆 관 · 계기판 · 회색 받침판."""
     t = Tile(32, 40)
-    for y in range(26, 40):                    # 받침판
+    K = PL['ok']
+    for y in range(30, 40):                    # 받침판 (위에서 본 회색 판)
         for x in range(0, 32):
-            c = PL['r1'] if y == 26 else PL['r0']
-            if x in (0, 31) or y in (39,):
+            c = PL['r1'] if y == 30 else PL['r0'] if y < 38 else PL['r2']
+            if x in (0, 31) or y == 39:
                 c = PL['rk']
             t.px(x, y, c)
-    for y in range(4, 36):
-        half = 13 if y > 12 else 13 - (12 - y) * 0.9
+    cx, rx = 15.5, 13.5
+    for y in range(9, 36):                     # 몸통 (원통 옆면, 아래는 둥근 타원)
         for x in range(32):
-            dx = x - 15.5
-            if abs(dx) <= half:
-                edge = abs(dx) > half - 1 or y == 4
-                k = dx / max(1, half)
-                c = PL['o1'] if k < -0.45 else PL['o0'] if k < 0.4 else PL['o2']
-                if y % 6 == 0 and y > 8:
-                    c = PL['o2']                 # 고리
-                if y % 6 == 1 and y > 8 and k < 0.2:
-                    c = PL['o3']
-                if edge:
-                    c = PL['ok']
-                t.px(x, y, c)
-    for y in range(0, 8):                      # 꼭대기 코일
-        for x in range(12, 20):
-            c = PL['ok'] if x in (12, 19) or y == 0 else PL['o3'] if y % 2 else PL['o1']
+            dx = (x - cx) / rx
+            if abs(dx) > 1:
+                continue
+            bottom = 31 + 4 * math.sqrt(max(0, 1 - dx * dx))
+            if y > bottom:
+                continue
+            c = PL['o1'] if dx < -0.5 else PL['o0'] if dx < 0.35 else PL['o2']
+            if y in (16, 22, 28):
+                c = PL['o2'] if dx > -0.6 else PL['o0']
+            if y in (17, 23, 29) and dx < 0.2:
+                c = PL['o3']
+            if abs(dx) > 0.93 or y >= bottom - 0.8:
+                c = K
             t.px(x, y, c)
-    for y in range(28, 33):                    # 계기판
-        for x in range(11, 21):
-            t.px(x, y, PL['cs'] if x not in (11, 20) and y not in (28, 32) else PL['ok'])
-    t.px(13, 30, PL['cS']); t.px(16, 30, PL['cY']); t.px(18, 30, PL['cR'])
+    for y in range(3, 16):                     # 윗면 (타원) + 가운데 축
+        for x in range(32):
+            e = ((x - cx) / rx) ** 2 + ((y - 9) / 5.5) ** 2
+            if e <= 1:
+                c = PL['o3'] if e < 0.35 else PL['o1'] if e < 0.8 else PL['o0']
+                if e > 0.86:
+                    c = K
+                t.px(x, y, c)
+    for y in range(0, 10):                     # 코일 기둥 (빛나는 노란 고리)
+        for x in range(13, 19):
+            c = K if x in (13, 18) or y == 0 else PL['ly'] if y % 2 else PL['o3']
+            t.px(x, y, c)
+    for y in range(19, 27):                    # 옆 관 (오른쪽)
+        t.px(29, y, PL['b2']); t.px(30, y, PL['b0']); t.px(31, y, PL['pk'])
+    for y in range(22, 27):                    # 계기판
+        for x in range(10, 22):
+            t.px(x, y, K if x in (10, 21) or y in (22, 26) else PL['cs'])
+    t.px(12, 24, PL['cS']); t.px(15, 24, PL['cY']); t.px(18, 24, PL['cR'])
     return t
 
 
