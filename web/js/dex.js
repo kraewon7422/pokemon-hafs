@@ -489,6 +489,7 @@ export async function doEvolve(c, to = null) {
   try {
     res = await rpc('evolve', to ? { p_mon: c.id, p_to: to } : { p_mon: c.id }, { retries: 0 });
   } catch (e) { sfx.error(); toast(errorText(e.message)); return; }
+  if (!S.snap) return;   // 진화 요청 사이 로그아웃
   // result is decided; the animation has a fixed length so latency never hints at the outcome
   S.snap.profile = { ...S.snap.profile, ...res.profile };
   // 0036: 그 한 마리만 바뀜 (도감 기록은 sync 가 다시 보냄). 0037: 갈래 종 번호 species_id

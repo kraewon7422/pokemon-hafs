@@ -86,6 +86,7 @@ export async function boot() {
   }
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
+  S.snap ||= null;   // 이 기기에 저장된 기록이 없으면 undefined 로 옴 → 늘 null (= 아직 첫 동기화 전)
   if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog))) S.catalog = null;   // 0032·0034·0037·0039 전 목록은 버리고 새로 받음
   if (S.catalog?.lines) { sortDex(S.catalog); aliasSprites(S.catalog.species); }
   S.outbox ||= [];
@@ -132,7 +133,13 @@ export async function doAfterLogin(retried = false) {
     if (!S.snap) S.celebrated = new Set(['__init__']);   // first sync on this device: don't replay old celebrations
     await loadCatalog();
     await sync({ force: true });
-    if (!S.snap?.profile?.consented && profile.role === 'student') return renderConsent();
+    // sync 는 실패해도 throw 하지 않음 → 새 기기에서 첫 동기화가 실패하면 S.snap 이 없다.
+    // 그대로 동의·홈 화면을 그리면 S.snap.profile 에서 멈춤 (client_errors 'reading profile') → 다시 시도 화면으로
+    if (!S.snap?.profile) {
+      if (!S.online) return renderLogin('인터넷에 연결된 곳에서 처음 로그인해 주세요.');
+      return renderRetry('서버에서 내 기록을 받아 오지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+    }
+    if (!S.snap.profile.consented && profile.role === 'student') return renderConsent();
     if (!$('nav.tabs')) renderShell();
     persist();
     if (recovering) { passwordSheet({ recover: true }); return; }   // 구글로 내 계정을 찾았음 → 새 비밀번호
@@ -528,6 +535,7 @@ export async function spinRoulette() {
   try {
     res = await rpc('spin_roulette', {}, { retries: 0 });
   } catch (e) { S.spinning = false; sfx.error(); toast(errorText(e.message)); sync({ force: true }); return; }
+  if (!S.snap) { S.spinning = false; return; }   // 돌리는 사이 로그아웃
   S.snap.roulette = res.roulette;
   S.snap.profile = { ...S.snap.profile, evo_tickets: res.evo_tickets, titles: res.titles || S.snap.profile.titles };
   await kv.set('snap', S.snap);
@@ -636,6 +644,7 @@ function nicknameBox(p) {
     save.disabled = true;
     try {
       const prof = await rpc('set_nickname', { p_nick: v }, { retries: 0 });
+      if (!S.snap) return;
       S.snap.profile = { ...S.snap.profile, ...prof };
       await kv.set('snap', S.snap);
       sfx.blip();
@@ -723,6 +732,7 @@ function pickPartner() {
   const choose = async (id) => {
     try {
       const prof = await rpc('set_partner', { p_mon: id });
+      if (!S.snap) return;
       S.snap.profile = { ...S.snap.profile, ...prof };
       await kv.set('snap', S.snap);
       sfx.blip(); closeOverlay(); renderTab();
@@ -742,9 +752,10 @@ function pickPartner() {
 }
 
 export async function setPublic(show) {
-  if (!!S.snap.profile.show_on_board === show) return;
+  if (!S.snap?.profile || !!S.snap.profile.show_on_board === show) return;
   try {
     const prof = await rpc('set_prefs', { p_show: show, p_avatar: null });
+    if (!S.snap) return;
     S.snap.profile = { ...S.snap.profile, ...prof };
     await kv.set('snap', S.snap);
     toast(prof.show_on_board ? `랭킹에 "${prof.display}"${josa(prof.display, '으로', '로').slice(String(prof.display).length)} 보여요.` : '랭킹에 "익명 트레이너"로 보여요.');
@@ -805,6 +816,7 @@ export async function loadRanking() {
   const scope = `${S.rankKind}:${S.rankScope}`;
   const key = 'rank:' + scope;
   S.rank[scope] ||= await kv.get(key);
+  if (!S.snap?.profile) return;   // 기다리는 사이 로그아웃·계정 바꾸기
   if (S.tab === 'rank') renderTab();
   try {
     const data = S.rankKind === 'class' ? await rpc('class_ranking', {}, { retries: 0 })
@@ -912,6 +924,7 @@ export function classSheet(first = false) {
     ok.disabled = true;
     try {
       await rpc('set_class', { p_grade: g, p_class: c }, { retries: 0 });
+      if (!S.snap?.profile) return;
       Object.assign(S.snap.profile, { grade: g, class_name: c }); kv.set('snap', S.snap);
       closeOverlay(); sfx.correct();
       toast(`${g}학년 ${c}반으로 정했어요! 랭킹 → 반별에서 우리 반 순위를 봐요.`, 3500);
@@ -1084,7 +1097,7 @@ export async function maybeDexComplete() {
   const text = h('div.box.textbox', { style: { whiteSpace: 'pre-line' } });
   const ov = overlay(h('div.stage', h('div.scene.golden', h('div.rays'), h('span.spr', spriteCanvas(dexOf(35, 1), 200))), text), 'full');
   sfx.catch(); vibrate([80, 60, 80, 60, 200]);
-  await typeText(text, `도감 완성!!\n${S.snap.profile.name || '트레이너'}, 학교의 모든 포켓몬을 만났어요.\n칭호 「도감 마스터」를 얻었다! 트레이너 카드가 금빛으로 바뀌었어요.`);
+  await typeText(text, `도감 완성!!\n${S.snap?.profile?.name || '트레이너'}, 학교의 모든 포켓몬을 만났어요.\n칭호 「도감 마스터」를 얻었다! 트레이너 카드가 금빛으로 바뀌었어요.`);
   text.append(h('span.more', '▼'));
   await tapToContinue(ov);
   closeOverlay();
@@ -1353,6 +1366,7 @@ export function openQuiz() {
     decide.dataset.done = '1';
     btns[r.answer_pos]?.classList.add('right');
     if (!r.correct) btns[picked].classList.add('wrong');
+    if (!S.snap) return;   // 답을 보내는 사이 로그아웃
     S.snap.quizzes.shift();
     S.snap.profile.evo_tickets = r.evo_tickets;
     await kv.set('snap', S.snap);
