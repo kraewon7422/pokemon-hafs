@@ -537,7 +537,8 @@ export async function spinRoulette() {
   const text = h('div.box.textbox');
   overlay(h('div.stage', h('div.scene', h('div.reel-row.big', cells)), text), 'full');
   text.textContent = '룰렛이 돌아간다…!';
-  S.overlay.dataset.locked = '1';
+  const ov = S.overlay;                  // 도는 동안 다른 창이 덮어써도 (S.overlay = null) 이 창만 만짐 → S.spinning 이 풀리지 않는 일 없게
+  ov.dataset.locked = '1';
   const target = Math.max(0, vals.indexOf(res.prize));
   let i = 0;
   if (!reducedMotion()) {
@@ -554,14 +555,14 @@ export async function spinRoulette() {
     await sleep(reducedMotion() ? 0 : 500);
     cells[target].textContent = '777';
     cells[target].classList.add('jackpot');
-    S.overlay.querySelector('.scene')?.classList.add('golden');
+    ov.querySelector('.scene')?.classList.add('golden');
     sfx.catch(); vibrate([70, 50, 70, 50, 70, 50, 200]);
     await typeText(text, '7 7 7 !!! 럭키 세븐!\n아주 드문 행운이에요. 칭호 「럭키 세븐」을 얻었다!');
   } else {
     if (res.prize > 0) { sfx.correct(); vibrate([40, 30, 80]); } else sfx.fail();
     await typeText(text, res.prize > 0 ? `진화의 돌 ${res.prize}개를 받았다! (지금 ${res.evo_tickets}개)` : `꽝…! ${res.roulette.every_min}분 뒤에 다시 도전해요.`);
   }
-  S.overlay.dataset.locked = '0';
+  ov.dataset.locked = '0';
   text.append(h('button.btn.big.primary', { style: { marginTop: '10px' }, onclick: () => closeOverlay() }, '확인'));
   S.spinning = false;
   renderTab();

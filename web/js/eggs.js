@@ -12,7 +12,7 @@ import { moveOf } from './battle.js';
 
 export const TIER = { green: '초록 점박이 알', yellow: '노랑 점박이 알', purple: '보라 점박이 알' };
 const TIER_I = { green: 0, yellow: 1, purple: 2 };
-const TIER_NOTE = { green: '흔한 포켓몬 · 레벨 +3 · 반짝 10%', yellow: '희귀 포켓몬 · 알 기술 · 반짝 25%', purple: '가끔 전설! · 알 기술 + 지닌 물건 · 반짝 50%' };
+const TIER_NOTE = { green: '흔한 포켓몬 · 레벨 +3 · 반짝 1/256', yellow: '희귀 포켓몬 · 알 기술 · 반짝 1/128', purple: '가끔 전설! · 알 기술 + 지닌 물건 · 반짝 1/64' };
 
 // web/img/eggs.png 칸 (32×40): 알 3 · 금 간 알 3 · 부화기 속 알 3 · 빈 부화기 (tools/draw_fx.py EGG_CELLS 와 같은 순서)
 export function eggImg(kind, tier, k = 2) {
