@@ -519,6 +519,7 @@ async function refreshStats(redraw = true) {
   try {
     S.stats = await rpc('admin_stats');
     S.game = await rpc('admin_game_stats').catch(() => S.game);   // 오늘 배틀·레이드·진화의 돌 (0019)
+    S.safariOpen = await tq(sb.from('settings').select('value').eq('key', 'safari_open')).then((r) => (r?.[0] ? isOn(r[0].value) : null)).catch(() => S.safariOpen);   // 0048
     S.statsFailed = false;
   } catch (e) {
     if (!S.statsFailed) fail(e);               // toast once per failure streak
@@ -563,6 +564,7 @@ function dashBody() {
   const tiles = h('div.tiles',
     tile('게임 상태', open ? 'ON' : 'OFF', open ? '운영 중' : '정지됨 (축제 운영 탭)', open ? 'good' : 'alert'),
     tile('셀프 지급', selfOn ? 'ON' : 'OFF', selfOn ? '셀프 지급 모드 켜짐' : '부스에서만 지급', selfOn ? 'alert' : ''),
+    S.safariOpen == null ? null : tile('사파리존', S.safariOpen ? '열림' : '닫힘', S.safariOpen ? '학생이 사파리존에 들어갈 수 있음' : 'QR만 (축제 운영 → 야생 포켓몬)', S.safariOpen ? '' : 'alert'),
     tile('포켓몬 미설정 QR', emptyPool.length, '활성인데 풀이 비어 있음', emptyPool.length ? 'alert' : ''),
     tile('학생 수', s.students),
     tile('5분 내 접속', s.active_5m),
@@ -2355,6 +2357,7 @@ const DEFAULTS = {
   // 0032 야생 포켓몬
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
+  safari_open: true,   // 0048 사파리존 잠금
   safari_balls_daily: 20, safari_reset_hours: 0.5, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_flee: 0.25, safari_steps_per_sec: 10,   // 0040: 30분 충전 · 만남 상한 없음 · 걸음 10/초
   safari_flee_level: 0.1,
   safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
@@ -2462,6 +2465,7 @@ const GROUPS = {
       P('wild_steps', '걸음마다 야생 포켓몬 1마리', 'int', { unit: '걸음', min: 0, max: 100000, help: '0 = 걸어서 만나기 끔. 앱 홈에 "야생 포켓몬이 나타났다!" 가 뜨고 잡기 장면에서 잡아요.' }),
       P('wild_daily', '걸어서 만나는 야생 포켓몬 (하루 최대)', 'int', { unit: '마리', min: 0, max: 100 }),
       P('wild_balls', '걸어서 만난 야생 포켓몬: 몬스터볼 개수', 'int', { unit: '개', min: 1, max: 30, help: '다 빗나가면 도망가요.' }),
+      P('safari_open', '사파리존 열기', 'bool', { help: '꺼짐 = 사파리존이 닫혀요 (학생 앱에 "아직 닫혀 있어요 — 학교 곳곳의 QR을 찾아보세요!"). 축제 첫머리에 QR부터 찾게 할 때 끄세요. 이미 시작한 잡기는 끝낼 수 있어요.' }),
       P('safari_balls_daily', '사파리존: 사파리볼 개수', 'step', { unit: '개', min: 0, max: 100, help: '충전 주기마다 한 사람이 받는 사파리볼 (기본 20개). 다 쓰면 다음 충전까지 못 만나요 (서버가 셈). 0 = 사파리존 끔.' }),
       P('safari_reset_hours', '사파리존: 충전 주기', 'seg', { unit: '시간', options: [[0.25, '15분'], [0.5, '30분'], [1, '1시간'], [3, '3시간'], [6, '6시간'], [12, '12시간'], [24, '24시간']],
         help: '서울 시각 00:00 부터 이만큼마다 사파리볼이 다시 차요 (기본 30분). 예: 30분 → 00:00 · 00:30 · 01:00 …. 앱에 "다음 충전 15:30" 처럼 보여요. 바꾸면 바로 새 주기로 세요.' }),

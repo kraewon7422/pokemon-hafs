@@ -96,6 +96,12 @@ python tools/build_atlas.py                                                   # 
 - 그림: `python tools/build_safari_tiles.py --preview` (사막 타일 desert_tiles · 기둥 선인장 · 사암 돌기둥 · 모래 언덕 48×32).
 - 화면: 사파리존 서쪽 끝 모래길 (입구에서 왼쪽 아래) → 사막. 들어서면 "모래바람이 거세게 분다!" 글 상자 · 지도 위 모래바람 (움직임 줄이기 설정이면 멈춘 옅은 모래빛) · 마른 풀숲이 다리를 가림 · 사막에서 만난 포켓몬은 잡기 장면도 모래빛.
 
+## 0048 설원 · 용암 지대 · 발전소 · 용의 굴 · 사파리존 잠금 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [55] (구역 snow · lava · plant · dragon 의 타입 · 레벨 범위와 자르기 · 방문 기록 · 네 곳 다녀오기 전 용의 굴은 grass 로 · 600족 계열 · 잠금 SAFARI_CLOSED). 레벨 범위는 설정 `safari_level_bands` 의 snow · lava · plant1 · plant2 · dragon.
+- 그림: `python tools/build_safari_tiles.py --preview` (0048 타일은 맨 뒤에 붙음 → 예전 타일 자리 그대로). 지도 점검: `node .work/s7/maps-check.mjs` (막는 칸 · 모든 칸 닿는지 · 얼음 미끄러짐 · warp).
+- 화면: 사파리존 맨 위 모래길 → 설원 ("눈이 펑펑 내리고 있다!", 얼어붙은 연못은 미끄러짐) · 왼쪽 아래 모래길 → 용암 지대 ("후끈한 열기가 느껴진다!") · 왼쪽 위 발전소 문 → 1층 → 계단 → 2층. 네 곳 (해변 · 사막 · 설원 · 용암) 을 다녀오면 호수에 섬 + 다리 가운데 계단 → 용의 굴.
+- **축제 시작할 때**: 학생들이 먼저 QR 을 찾게 하려면 운영자 [축제 운영] → 야생 포켓몬 → '사파리존 열기' 를 끔 (학생 앱 사파리존 = "아직 닫혀 있어요" 덮개, 현황판에 '사파리존 닫힘'). 스테이징 기본은 켜짐.
+
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.
 
