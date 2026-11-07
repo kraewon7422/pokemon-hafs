@@ -228,6 +228,13 @@ export function sync(opts = {}) {
       for (const [, st] of acks) if (ACK_MSG[st]) toast(ACK_MSG[st], 4000);
       S.outbox = S.outbox.filter((o) => !FINAL.has(acks.get(o.n)));
       await kv.set('outbox', S.outbox);
+      // 0049: 인터넷이 끊겨 기기에 남겨 둔 사파리 잡기 결과 → 사파리존을 다시 열지 않아도 보냄 (그대로 두면 충전 시각이 지나 도망으로 정리됨).
+      //   보내면 서버가 박스에 넣고, 다음 sync 의 graded 티켓으로 '잡았다' 알림 (던지기 장면 없음)
+      import('./safari-sync.js').then(async (m) => {
+        if (!(await m.queuedResult())) return;
+        const f = await m.flushResult();
+        if (f?.ok || f?.gone) sync({ force: true }).catch(() => {});
+      }).catch(() => {});
 
       if (res.same) {                               // nothing changed on the server: tiny response
         S.snap.synced_at = new Date().toISOString();
@@ -1183,6 +1190,16 @@ export async function celebrate(tickets, prevLines) {
     const disg = speciesOf(S.snap?.disguised?.[t.nonce]);
     const seen = disg || sp;
     const shiny = !!S.snap?.shiny_t?.[t.nonce];   // 0042: 받을 때 서버가 굴린 반짝
+    // 0049: 이미 앱 안에서 잡은 티켓 (사파리 · 걸음 야생 · 전설 · 방랑 · 잡기 레이드: 서버 graded) → 다시 던지게 하지 않고 '잡았다' 알림만
+    //   (잡는 중 · 축하 중 새로 고침, 끊긴 결과를 나중에 다시 보냄 → 이 기기가 축하했다고 적지 못한 경우)
+    if (t.graded) {
+      const isNew = !prevLines.has(sp.line_id);
+      prevLines.add(sp.line_id);
+      await done(t);
+      const ov = await showCatch(sp, { isNew, sub: t.qr_name, shiny });
+      await tapToContinue(ov); closeOverlay();
+      continue;
+    }
     // 0028/0030: 먼저 몬스터볼로 잡기 (공 3개 다 빗나가면 아주 가끔 도망). 장면을 못 띄우면 바로 축하로
     let c = null;
     try {
@@ -1268,9 +1285,11 @@ export async function catchEncounter(enc) {
       try { return { r: await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: caught, p_grade: x.grade || 'none', p_curve: !!x.curve }, { retries: 1 }) }; } catch (e) { return { e }; }
     };
     let sentP = null;   // 장면 안에서 보낸 결과 (약속 — 장면이 중간에 깨져도 두 번 보내지 않게 바로 적어 둠)
+    // 0049: 서버가 잡았다고 답한 순간 그 티켓을 '축하함' 으로 적음 — 장면이 끝나기 전에 새로 고쳐도 다음 sync 가 던지기 장면을 다시 띄우지 않게
+    const markDone = async (r) => { if (r?.nonce && !S.celebrated.has(r.nonce)) { S.celebrated.add(r.nonce); await kv.set('celebrated', [...S.celebrated]); } };
     const confirm = (caught, x) => {
       sentP = send(caught, x);
-      return sentP.then((o) => { const r = safari ? o.f?.r : o.r; return r ? !(r.fled || r.caught === false) : null; });
+      return sentP.then(async (o) => { const r = safari ? o.f?.r : o.r; await markDone(r); return r ? !(r.fled || r.caught === false) : null; });
     };
     try {
       const { catchScene } = await import('./catch.js');

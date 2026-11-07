@@ -28,7 +28,7 @@ export const qrName = (id) => S.catalog?.qrs.find((q) => q.id === id)?.name;
 export const abilityOf = (key) => (key && (S.catalog?.abilities || []).find((a) => a.key === key)) || null;
 // 계열의 곧은 길 (첫 갈래) 의 종 번호. 갈래 종 (0037: 쥬피썬더 · 엘레이드 …) 은 id 10000+ → 포켓몬마다 species_id 를 씀 (spIdOf · monSp)
 export const dexOf = (line, stage) => (line - 1) * 3 + stage;
-// 도감 번호 = 실제 전국도감 번호 (No.001 이상해씨 … No.809 멜메탈). species.id 는 (계열-1)*3+단계 그대로 (서버가 씀)
+// 도감 번호 = 실제 전국도감 번호 (No.001 이상해씨 … No.807 제라오라, 0049: 멜탄 808 · 멜메탈 809 없음 · 이벤트 810~). species.id 는 (계열-1)*3+단계 그대로 (서버가 씀)
 export const dexNo = (sp) => `No.${String(sp?.dex || 0).padStart(3, '0')}`;
 // 도감 칸 = 전국도감 번호 (같은 번호가 두 계열에 있어도 한 칸). 번호 없는 운영자 포켓몬은 -id
 export const dexKey = (sp) => sp?.dex || -(sp?.id || 0);
@@ -102,13 +102,18 @@ export const isBonus = (line) => !!lineOf(line)?.bonus || isSecret(line) || isMy
 export const isWild = (line) => lineOf(line)?.subject === '야생';
 // 이벤트 포켓몬 (0044: 지우개굴닌자 · 지우의 피카츄, 도감 810~) = 이상한 소포로만 받음. 야생 계열 + bonus (도감 수에 안 셈)
 export const isEvent = (line) => isWild(line) && !!lineOf(line)?.bonus;
-// 학교 도감 = 선생님 포켓몬 + 특별 전설 (야생·비밀·환상·비공개 제외) → 도감 50%·100% 보상과 '도감 완성' 은 이것 기준
+// 학교 도감 (0049) = 도감 '학교' 탭에 늘 보이는 칸: 야생이 아닌 계열 (선생님 · 교장/교감 · 탐구 활동 · 야자 전설, 갈래 종 포함),
+//   잡기 전엔 안 보이는 비밀 · 환상과 비공개, 도감 보상으로 받는 계열 (뮤츠 · 지가르데) 은 뺌 → 도감 50%·100% 보상 · 빛나는 부적 · '도감 완성' 기준.
+//   서버가 sync rules.school_keys 로 그 칸 목록 (_school_keys, 전국도감 번호) 을 보냄 → 앱도 그 목록으로 셈 (서버 보상과 늘 같음)
 // 전국 도감 = 야생까지 모든 포켓몬 (비밀·환상·비공개 제외)
-// 0037: 칸 = 전국도감 번호 (서버 _dex_rewards 와 같은 셈)
+const DEX_REWARD_LINES = [41, 42];   // 예전 서버 (school_keys 없음) 일 때만: 설정 dex_rewards 기본값
 export function dexStats() {
   const seen = seenKeys();
   const all = new Set(S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id)).map(dexKey));
-  const school = new Set(S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id) && !isWild(sp.line_id)).map(dexKey));
+  const keys = S.snap?.rules?.school_keys;
+  const school = Array.isArray(keys) ? new Set(keys)
+    : new Set(S.catalog.species.filter((sp) => !isWild(sp.line_id) && !isSecret(sp.line_id) && !isMythic(sp.line_id) && !isWithdrawn(sp.line_id)
+                                       && lineOf(sp.line_id)?.active !== false && !DEX_REWARD_LINES.includes(sp.line_id)).map(dexKey));
   const cnt = (set) => [...set].filter((k) => seen.has(k)).length;
   const found = cnt(school);
   return { found, total: school.size, complete: school.size > 0 && found === school.size,
