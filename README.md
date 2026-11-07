@@ -195,11 +195,12 @@
 - 학생 / 계정 (비밀번호 초기화 요청 · 문의함 · 물건 · 알 주기) · 미니게임 · 성장 / 보상 (배틀 시간표 날씨 · 필드, 알 걸음, 반짝이 확률)
 - 전설 / 소포: 소포 코드 만들기 (포켓몬 · 물건, 기간 · 인원 제한) · 운영진 아이디 · 고급 설정
 
-<img width="1280" height="669" alt="스크린샷 2026-11-07 092132" src="https://github.com/user-attachments/assets/54e91935-f7ad-4b80-908a-9e11355261d8" />
+
+<img width="1280" height="674" alt="스크린샷 2026-11-07 092143" src="https://github.com/user-attachments/assets/f2324d45-b8d9-42c3-aa63-fb83cd727752" />
 
 **부스 화면**: 학생의 티켓 QR 을 찍거나 고유번호를 넣어 포켓몬을 줍니다.
 
-<img width="1280" height="674" alt="스크린샷 2026-11-07 092143" src="https://github.com/user-attachments/assets/f2324d45-b8d9-42c3-aa63-fb83cd727752" />
+<img width="1280" height="669" alt="스크린샷 2026-11-07 092132" src="https://github.com/user-attachments/assets/54e91935-f7ad-4b80-908a-9e11355261d8" />
 
 **TV 대형 화면**: 랭킹 TOP 10 · 기수 대항전 · 방금 잡힌 포켓몬 · 레이드 참가 QR(30초마다 바뀜). 시간대 전설 레이드는 이 화면이 켜져 있을 때 시간표대로 열립니다.
 
