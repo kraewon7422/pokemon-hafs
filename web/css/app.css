@@ -1314,3 +1314,4 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .ul-dex-note { display: block; margin-top: 4px; color: #6a4a08; font-weight: 700; word-break: keep-all; overflow-wrap: break-word; }
 .ul-fanfare .ul-fan-btns { display: flex; gap: 8px; margin-top: 8px; }
 .ul-fanfare .ul-fan-btns .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+.ul-fanfare .ul-fan-btns .btn.primary { flex: 2 1 0; padding-left: 8px; padding-right: 8px; }

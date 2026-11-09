@@ -325,7 +325,7 @@ begin
     'minigame', coalesce((public._setting('minigame_unlock'))::int, 10));
 end $$;
 
--- rule (0006): every migration that creates functions ends with this block (copied from 0049_core_fixes.sql + admin_unlock_stats();
+-- rule (0006): every migration that creates functions ends with this block (copied from 0050_legends.sql + admin_unlock_stats();
 --   helpers _unlock_* · _unlocked · _school_line · _draw_line(text, uuid) are internal, not granted)
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function

@@ -499,20 +499,28 @@ export function viewHome() {
 
 // 해금 단계 (0051): 2단계 전엔 홈에 진행 상황 (학교 포켓몬 got/need → 사파리존 · 야생 포켓몬 · 전체 도감)
 function unlockHomeBox() {
-  if (stage2()) return null;
+  if (stage2()) {   // 열렸으면 처음 한 번 축하 (로그인 직후 sync 는 홈을 그리기 전이라 여기서도 확인)
+    if (S.snap?.unlock?.unlocked && !unlockRetry && !unlockBusy) unlockRetry = setTimeout(() => { unlockRetry = null; maybeUnlockFanfare().catch(() => {}); }, 1500);
+    return null;
+  }
   const u = unlockInfo();
   return h('section.box.ul-home', { 'aria-label': '해금 단계' },
     h('div.ul-home-head', pix('spark'), h('b', '다음 해금: 사파리존')),
     unlockBar(),
-    h('p.ul-home-txt', `학교 포켓몬 ${u.got}/${u.need} — ${u.need}마리 모으면 사파리존이 열려요!`),
+    h('p.ul-home-txt', `학교 포켓몬 ${u.got}/${u.need} — ${u.need}마리 모으면 사파리존이 열려요! (앞으로 ${Math.max(0, u.need - u.got)}마리)`),
     h('small.muted', '함께 열림: 장소 QR의 야생 포켓몬 · 전체 도감'),
     h('button.btn.small', { onclick: () => { sfx.select(); S.dexScope = 'school'; go('dex'); } }, pix('book'), '학교 포켓몬 보기'));
 }
 // 2단계가 처음 열렸을 때 한 번 (기기 · 학생마다): "사파리존이 열렸다!" 축하 화면
 let unlockBusy = false;
+let unlockRetry = null;
 async function maybeUnlockFanfare() {
   const u = S.snap?.unlock;
-  if (!u?.unlocked || unlockBusy || S.overlay || S.bagOpen || !$('nav.tabs')) return;
+  if (!u?.unlocked || unlockBusy || !$('nav.tabs')) return;
+  if (S.overlay || S.bagOpen) {   // 다른 장면 (알림 · 잡기 · 가방) 이 끝나면 바로 이어서
+    if (!unlockRetry) unlockRetry = setTimeout(() => { unlockRetry = null; maybeUnlockFanfare().catch(() => {}); }, 3000);
+    return;
+  }
   const key = `unlock2:${S.snap?.profile?.student_id || ''}`;
   if (await kv.get(key)) return;
   unlockBusy = true;
