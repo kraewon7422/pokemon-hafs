@@ -2420,7 +2420,10 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
     ok((await myMons(M.c)).some((m) => m.line_id === 116), '메타몽 is in the box');
     await setS('wild_chance', 1); await setS('self_redeem', true);
     const qn = nonce();
-    await M.c.rpc('sync', { p_scans: [{ n: qn, q: spots[5], t: T[spots[5]].token }] });
+    // 이번 시간의 방랑 장소가 spots[5] 이면 위 방랑 시험에서 이미 여러 번 찍어 오늘 한도 (daily_cap) → 티켓이 안 생김 (시간에 따라 흔들림) → 오늘 안 찍은 장소
+    const today5 = (await st(M.c)).today || {};
+    const qd = spots.find((q, i) => i >= 5 && !today5[q]) || spots[5];
+    await M.c.rpc('sync', { p_scans: [{ n: qn, q: qd, t: T[qd].token }] });
     await M.c.rpc('self_redeem');
     s1 = await st(M.c);
     ok(s1.disguised?.[qn] && s1.tickets.find((t) => t.nonce === qn)?.species_id === dittoSp, 'QR wild Pokémon can be a disguised 메타몽 too (state.disguised)', s1.disguised);
