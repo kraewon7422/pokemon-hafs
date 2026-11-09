@@ -12,7 +12,7 @@
 3. 포켓몬 10종류를 모으면 **미니게임**, 학교 도감의 30%를 채우면 **사파리존**과 야생 포켓몬이 열립니다.
 4. 배틀 · 레이드 · 알 부화로 포켓몬을 키우고, 도감과 점수로 **랭킹**에 오릅니다.
 
-> 지금 상태: 테스트 서버에서 게임 전체를 할 수 있습니다. 서버 규칙 자동 시험의 마지막 전체 실행은 **1185개 통과, 0개 실패**입니다. 남은 일(실제 퀴즈 내용 · 학교 구글 로그인 · 실전 서버)은 [진행 상황 문서 PROGRESS.md](PROGRESS.md) 에 있습니다.
+> 지금 상태: 테스트 서버에서 게임 전체를 할 수 있습니다. 서버 규칙 자동 시험의 마지막 전체 실행은 **1257개 통과, 2개 실패**입니다 (실패 2개는 테스트 서버가 바빠 8초 시간 제한에 걸린 해금 시험 하나와 그 뒤 시험 — 같은 시험이 그 전 실행들에서는 통과). 남은 일(실제 퀴즈 내용 · 학교 구글 로그인 · 실전 서버)은 [진행 상황 문서 PROGRESS.md](PROGRESS.md) 에 있습니다.
 >
 > 비공식 팬 게임 · 무료 학교 축제용입니다. Nintendo · Game Freak · The Pokémon Company 와 관련이 없고 승인 · 후원을 받지 않았습니다. 포켓몬 이름 · 그림의 권리는 원저작권자에게 있습니다.
 
@@ -471,7 +471,7 @@ python -m http.server 8124
 
 ### 테스트
 
-- `node tests/rpc_test.mjs` — 테스트 서버에 실제로 RPC 를 불러 서버 규칙을 확인합니다. 마지막 전체 실행: **1185 passed, 0 failed**. 테스트 학생 기록을 지우고 다시 만들므로 **실전 서버에는 절대 돌리지 않습니다.** (`tests/.env` 필요, 연속 3번 넘게 돌리면 로그인 횟수 제한에 걸림)
+- `node tests/rpc_test.mjs` — 테스트 서버에 실제로 RPC 를 불러 서버 규칙을 확인합니다. 마지막 전체 실행 (2026-11-10): **1257 passed, 2 failed** — 실패 2개는 테스트 서버 시간 초과(statement timeout). 테스트 학생 기록을 지우고 다시 만들므로 **실전 서버에는 절대 돌리지 않습니다.** (`tests/.env` 필요, 연속 3번 넘게 돌리면 로그인 횟수 제한에 걸림)
 - `tests/festival_load.mjs` — 학생 600명 규모 요청(초당 70개)을 임시 학생 24명에게 나눠 보내는 부하 시험 (끝나면 임시 학생을 지움). `tests/raid_load.mjs` — 레이드 탭 폭주 시험.
 - **부하 시험 결과 주의 (2026-11-10)**: 테스트 서버는 가장 작은 공유 CPU 서버라, 하루 종일 시험을 돌린 뒤에는 초당 21개에서도 요청이 30초를 넘겼습니다 (두 시간 전에는 같은 부하가 문제없었음 → CPU 몫을 다 쓴 것). 그래서 실전 서버는 **공유 CPU 가 아닌 크기(Small 이상)** 로 만들고, 축제 전에 실전 서버에서 `festival_load.mjs` 를 한 번 돌려 확인하세요.
 
@@ -496,7 +496,7 @@ python -m http.server 8124
 
 ## English summary
 
-A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), trade Pokémon face to face (both confirm, server-side atomic swap), fight legendaries before catching them, solve puzzle dungeons in the Safari Zone, join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0057); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1185 passed, 0 failed). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
+A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), trade Pokémon face to face (both confirm, server-side atomic swap), fight legendaries before catching them, solve puzzle dungeons in the Safari Zone, join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0057); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1257 passed, 2 failed — both a staging statement timeout). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
 
 ## 다른 문서
 
