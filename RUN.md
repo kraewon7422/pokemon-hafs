@@ -117,6 +117,11 @@ python tools/build_atlas.py                                                   # 
 - 화면: `node C:/dev/tools/pw-webkit/c8_safari.mjs <port> <tag>` (잡은 뒤 새로 고침 / 응답 끊김 → 다시 던지기 장면이 안 뜨는지), `c8_shiny.mjs <port>` (이로치 레이드 잡기 · 티켓 · 셀프 수령).
 - 운영: 선생님 계열 2 · 18 · 33 · 46 · 50 · 69 는 지금 갈래 계열 (랄토스 · 발챙이 · 배루키 · 야돈 · 눈꼬마 · 뚜벅쵸) → 운영자 [몬스터] → 선생님 배정에서 다른 야생 포켓몬으로 옮기기를 권함 (자동으로 옮기지 않음).
 
+## 0050 전설의 특별한 곳 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [59] (새 전설 33마리 = legend_src safari · 퀘스트 47개 · zone_catch 셈 · 코스모그 깨어남 → 잡기 → 네크로즈마).
+- 그림: `python tools/build_safari_tiles.py --preview` (0050 타일은 맨 뒤 → 예전 타일 자리 그대로). 지도 점검: `node .work/d8/maps-check.mjs` (전설 자리마다 닿는지 · 힌트 · 묶음).
+- 화면: 해변 동쪽 끝 나루 → 꿈의 섬 · 깊은 연못 동쪽 길 → 성검의 숲 · 용의 굴 위쪽 사다리 → 용의 굴 깊은 곳 · 울트라 스페이스 위쪽 워프홀 → 별의 제단 · 사막 서쪽 유적 계단 → 고대 유적. 사육사 → "어떤 포켓몬에 대한 이야기를 듣고 싶니?" → 곳 → 전설.
+
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.
 

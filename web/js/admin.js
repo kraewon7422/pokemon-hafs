@@ -2479,7 +2479,25 @@ const DEFAULTS = {
     { dex: 379, kind: 'type_catch', types: ['강철'], n: 8, reward: 'map' }, { dex: 486, kind: 'caught_all', of: [377, 378, 379], reward: 'map' },
     { dex: 249, kind: 'type_catch', types: ['물'], n: 20, reward: 'map' }, { dex: 250, kind: 'type_catch', types: ['불꽃', '비행'], n: 20, reward: 'map' },
     { dex: 382, kind: 'safari_catches', n: 15, reward: 'map' }, { dex: 383, kind: 'type_catch', types: ['땅'], n: 15, reward: 'map' },
-    { dex: 384, kind: 'caught_all', of: [382, 383], reward: 'map' }],
+    { dex: 384, kind: 'caught_all', of: [382, 383], reward: 'map' },
+    // 0050_legends.sql
+    { dex: 380, kind: 'type_catch', types: ['에스퍼'], n: 6, reward: 'map' }, { dex: 381, kind: 'type_catch', types: ['드래곤'], n: 3, reward: 'map' },
+    { dex: 488, kind: 'type_catch', types: ['페어리'], n: 6, reward: 'map' }, { dex: 491, kind: 'caught_all', of: [488], reward: 'map' },
+    { dex: 489, kind: 'type_catch', types: ['물'], n: 10, reward: 'map' }, { dex: 785, kind: 'type_catch', types: ['전기'], n: 6, reward: 'map' },
+    { dex: 786, kind: 'battle_wins', n: 5, reward: 'map' }, { dex: 787, kind: 'type_catch', types: ['풀'], n: 8, reward: 'map' },
+    { dex: 788, kind: 'safari_catches', n: 25, reward: 'map' }, { dex: 638, kind: 'type_catch', types: ['강철'], n: 5, reward: 'map' },
+    { dex: 639, kind: 'type_catch', types: ['바위'], n: 5, reward: 'map' }, { dex: 640, kind: 'type_catch', types: ['격투'], n: 5, reward: 'map' },
+    { dex: 647, kind: 'caught_all', of: [638, 639, 640], reward: 'map' }, { dex: 492, kind: 'type_catch', types: ['풀', '벌레'], n: 15, reward: 'map' },
+    { dex: 641, kind: 'type_catch', types: ['비행'], n: 10, reward: 'map' }, { dex: 642, kind: 'type_catch', types: ['전기'], n: 10, reward: 'map' },
+    { dex: 645, kind: 'caught_all', of: [641, 642], reward: 'map' }, { dex: 643, kind: 'zone_catch', zone: 'dragon', n: 3, reward: 'map' },
+    { dex: 644, kind: 'zone_catch', zone: 'dragon', n: 5, reward: 'map' }, { dex: 646, kind: 'caught_all', of: [643, 644], reward: 'map' },
+    { dex: 789, kind: 'zone_catch', zone: 'ultra', n: 2, reward: 'map' }, { dex: 800, kind: 'caught_all', of: [789], reward: 'map' },
+    { dex: 385, kind: 'quiz_streak', n: 7, reward: 'map' }, { dex: 386, kind: 'zone_catch', zone: 'ultra', n: 4, reward: 'map' },
+    { dex: 720, kind: 'raid_slots', n: 2, reward: 'map' }, { dex: 494, kind: 'battle_wins', n: 3, reward: 'map' },
+    { dex: 649, kind: 'type_catch', types: ['벌레'], n: 10, reward: 'map' }, { dex: 719, kind: 'zone_catch', zone: 'desert', n: 8, reward: 'map' },
+    { dex: 802, kind: 'type_catch', types: ['고스트'], n: 8, reward: 'map' }, { dex: 807, kind: 'zone_catch', zone: 'plant', n: 5, reward: 'map' },
+    { dex: 801, kind: 'type_catch', types: ['강철', '페어리'], n: 12, reward: 'map' }, { dex: 772, kind: 'catches', n: 40, reward: 'map' },
+    { dex: 485, kind: 'zone_catch', zone: 'lava', n: 6, reward: 'map' }],
 };
 const hasDefault = (key) => Object.prototype.hasOwnProperty.call(DEFAULTS, key);
 const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys)
@@ -3203,7 +3221,9 @@ async function tabGrow() {
 const QUEST_KIND = {
   quiz_streak: ['퀴즈 연속 정답', '번'], battle_wins: ['배틀 승리', '번'], catches: ['포켓몬 잡기', '마리'], raid_slots: ['서로 다른 시간대 레이드 참가', '번'],
   qr_all: ['지도의 장소 QR 모두 찍기', null], type_catch: ['타입 포켓몬 잡기', '마리'], safari_catches: ['사파리존에서 잡기', '마리'], caught_all: ['앞의 전설 모두 잡기', null],
+  zone_catch: ['사파리존 그 구역에서 잡기', '마리'],   // 0050
 };
+const ZONE_KO = { dragon: '용의 굴', ultra: '울트라 스페이스', desert: '사막', plant: '발전소', lava: '용암 지대', snow: '설원', beach: '해변', cave: '동굴', deep: '깊은 동굴' };
 const spByDex = (d) => S.species.find((x) => x.dex === Number(d));
 
 async function tabLegend() {
@@ -3326,6 +3346,7 @@ function questCard(set) {
   const rows = qs.map((q) => {
     const sp = spByDex(q.dex); const [label, unit] = QUEST_KIND[q.kind] || [q.kind, null];
     const detail = q.kind === 'type_catch' ? `${(q.types || []).join('·')} ${label}`
+      : q.kind === 'zone_catch' ? `${ZONE_KO[q.zone] || q.zone}에서 잡기`
       : q.kind === 'caught_all' ? `${(q.of || []).map((d) => spByDex(d)?.name || d).join('·')} 모두 잡기` : label;
     const inp = unit ? h('input.inp.w-num', { type: 'number', min: 0, max: 1000, value: q.n ?? 0, 'aria-label': `${sp?.name || q.dex} 조건 숫자` }) : null;
     if (inp) ins.push([q, inp]);
