@@ -2224,13 +2224,13 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
   const uidOf = async (sid) => (await admin.select(`profiles?student_id=eq.${sid}&select=user_id`)).data?.[0]?.user_id;
   try {
     ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0 && Number(ROAM0) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
-       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto · roam (0 during the suite), roam default 30%, legend 3 tries · 10 balls, 14 quests', old);
+       && Array.isArray(old.legend_quests) && old.legend_quests.length === 47, 'settings: ditto · roam (0 during the suite), roam default 30%, legend 3 tries · 10 balls, 47 quests (0050: +33)', old);
     ok(Number(DITTO0) === 0.005, 'ditto_disguise_chance default 0.5% (user choice)', DITTO0);
     // ── 0. 야생 무리: 퀘스트 · 사파리 · 방랑 · 소포 전설과 울트라비스트는 빠짐 ──
     const ln = (await admin.select('lines?select=id,ultra,legend_src&or=(ultra.eq.true,legend_src.not.is.null)')).data;
     const src = Object.fromEntries(['quest', 'safari', 'roam', 'gift'].map((k) => [k, ln.filter((x) => x.legend_src === k).length]));
-    ok(ln.filter((x) => x.ultra).length === 10 && src.quest === 5 && src.safari === 9 && src.roam === 3 && src.gift === 14,
-       'lines flagged: 10 Ultra Beasts, 5 quest, 9 safari, 3 roaming, 12 gift-only mythics (0049: 멜탄 removed) + 2 event (0044)', src);
+    ok(ln.filter((x) => x.ultra).length === 10 && src.quest === 5 && src.safari === 42 && src.roam === 3 && src.gift === 2,
+       'lines flagged: 10 Ultra Beasts, 5 quest, 42 safari (0050: +33), 3 roaming, 2 event gifts (0044 · 0050 moved the 12 mythics to the Safari)', src);
 
     // ── A. 알림 ──
     await L.c.rpc('claim_egg', { p_key: 'card' });
@@ -2246,7 +2246,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
     // ── B. 퀘스트 ──
     const row = (s, dex) => s.legends.find((x) => x.dex === dex);
     s1 = await st();
-    ok(s1.legends.length === 14 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
+    ok(s1.legends.length === 47 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
        'quest rows in sync: 유크시 quiz streak 0/10', row(s1, 480));
     ok(row(s1, 481)?.prog === '배틀 승리 0/10' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
        'battle wins 0/10 · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
@@ -3663,6 +3663,74 @@ console.log('\n[58] 핵심 고침 (0049): 울트라비스트는 울트라 스페
   } finally {
     for (const k of keys) if (k in old) await setS(k, old[k]);
     await admin.patch('lines?ultra=eq.true', { rarity: 'common' });
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[59] 전설의 특별한 곳 (0050): 사파리존 전설 33마리 (legend_src safari · 퀘스트 · zone_catch · 잡기)');
+{
+  const NEW = [380, 381, 488, 491, 489, 785, 786, 787, 788, 638, 639, 640, 647, 492, 641, 642, 645, 643, 644, 646, 789, 800, 385, 386, 720, 494, 649, 719, 802, 807, 801, 772, 485];
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_reset_hours',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'ditto_disguise_chance', 'wild_shiny_chance', 'safari_open',
+                'legend_quests', 'legend_daily_tries', 'legend_balls'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const y = encodeURIComponent('야생');
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'lg1234' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'lg1234'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '전설시험' });
+  const st = async () => (await V.rpc('sync')).data.state;
+  const row = (s, dex) => s?.legends?.find((x) => x.dex === dex);
+  try {
+    // ── A. 사파리존 전설 33마리 ──
+    const q = old.legend_quests || [];
+    ok(Array.isArray(q) && q.length === 47 && NEW.every((d) => q.some((x) => x.dex === d && x.reward === 'map')), 'legend_quests: 14 old + 33 new map quests', q.length);
+    const sp = (await admin.select(`species?dex=in.(${NEW.join(',')})&stage=eq.1&id=lt.10000&select=dex,name,line_id,lines(subject,legend_src,bonus,mythic,secret)`)).data || [];
+    const byDex = new Map(); for (const r of sp) if (!byDex.has(r.dex)) byDex.set(r.dex, r);
+    ok(NEW.every((d) => byDex.get(d)?.lines?.legend_src === 'safari' && byDex.get(d).lines.subject === '야생' && !byDex.get(d).lines.bonus),
+       'all 33 exist in species (stage 1) and their lines are wild · legend_src safari (out of every random pool)', NEW.filter((d) => byDex.get(d)?.lines?.legend_src !== 'safari'));
+    const keep = (await admin.select('lines?id=in.(35,36,37,77,78,42,425)&select=id,legend_src')).data || [];
+    ok(keep.length === 7 && keep.every((l) => l.legend_src === null), 'teacher / school specials (35 · 36 · 37 · 77 · 78 · 42) and the separate 루나아라 line 425 untouched', keep);
+    const ev = (await admin.select('lines?id=in.(441,442)&select=id,legend_src')).data || [];
+    ok(ev.length === 2 && ev.every((l) => l.legend_src === 'gift'), 'event gifts 810 · 811 stay gift-only', ev);
+    const s0 = await st();
+    ok(NEW.every((d) => row(s0, d)?.reward === 'map' && row(s0, d).ok === false && row(s0, d).cond), 'sync legends: a row (map · not ready · condition text) for each new legend', NEW.filter((d) => !row(s0, d)));
+    ok(row(s0, 789)?.cond === '울트라 스페이스에서 포켓몬을 2마리 잡아야 한대' && row(s0, 789).prog === '울트라 스페이스에서 잡은 포켓몬 0/2'
+       && row(s0, 643)?.cond.startsWith('용의 굴에서') && row(s0, 485)?.cond.startsWith('용암 지대에서') && row(s0, 719)?.cond.startsWith('사막에서'),
+       'zone_catch condition / progress text', [row(s0, 789), row(s0, 643)?.cond]);
+    ok(row(s0, 491)?.cond === '크레세리아를 모두 잡아야 한대' && row(s0, 647)?.cond.includes('코바르온·테라키온·비리디온'), 'caught_all text names the partners', [row(s0, 491)?.cond, row(s0, 647)?.cond]);
+    ok((await V.rpc('legend_encounter', { p_dex: 646 })).error === 'NOT_READY', 'legend_encounter(큐레무) before the condition → NOT_READY');
+    // zone_catch: 울트라 스페이스에서 1마리 잡기 (조건 1로) → 코스모그 깨어남 → 잡기 → 네크로즈마 (코스모그를 잡아야) 깨어남
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 300); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('safari_flee_max', 0);
+    await setS('ditto_disguise_chance', 0); await setS('wild_shiny_chance', 0); await setS('safari_encounter_rate', 1); await setS('safari_open', true);
+    await setS('legend_daily_tries', 3); await setS('legend_balls', 10);
+    const Q = structuredClone(q); Q.find((x) => x.dex === 789).n = 1; await setS('legend_quests', Q);
+    let enc = null;
+    for (const t0 = Date.now(); !enc && Date.now() - t0 < 10000;) {
+      const r = await V.rpc('safari_encounter', { p_steps: 3, p_zone: 'ultra', p_area: 'ultra', p_dist: 0 });
+      if (r.data?.encounter) enc = r.data.encounter; else await wait(400);
+    }
+    const cr = (await V.rpc('safari_result', { p_id: enc?.id, p_throws: 1, p_caught: true })).data;
+    ok(enc?.zone === 'ultra' && cr?.caught === true, 'caught one Pokémon in the Ultra Space (zone ultra)', [enc?.zone, cr?.caught]);
+    let s1 = await st();
+    ok(row(s1, 789)?.ok === true && row(s1, 789).prog === '울트라 스페이스에서 잡은 포켓몬 1/1' && row(s1, 386)?.prog === '울트라 스페이스에서 잡은 포켓몬 1/4',
+       'zone_catch counts Ultra Space catches (코스모그 1/1 ready · 테오키스 1/4)', [row(s1, 789), row(s1, 386)?.prog]);
+    const nr = s1.notices.find((n) => n.kind === 'legend_ready' && n.data?.dex === 789);
+    ok(nr?.body.startsWith('울트라 스페이스에서 포켓몬을 1마리 잡았어요!') && nr.body.includes('별의 제단'), "'깨어났다' notice: zone_catch reason + 별의 제단", nr?.body);
+    const le = (await V.rpc('legend_encounter', { p_dex: 789 })).data;
+    ok(le?.encounter?.kind === 'legend' && le.encounter.balls === 10, 'legend_encounter(코스모그) → legend encounter (10 balls)', le);
+    const lr = (await V.rpc('legend_result', { p_id: le?.encounter?.id, p_caught: true, p_grade: 'nice' })).data;
+    s1 = await st();
+    const cos = byDex.get(789);
+    ok(lr?.caught === true && lr.line === cos?.line_id && row(s1, 789)?.caught === true, '코스모그 caught → in the box (its line), legend row caught', [lr?.caught, lr?.line, cos?.line_id]);
+    ok((await V.rpc('legend_encounter', { p_dex: 789 })).error === 'ALREADY_CAUGHT', 'once per account');
+    ok(row(s1, 800)?.ok === true && s1.notices.some((n) => n.kind === 'legend_ready' && n.data?.dex === 800), '네크로즈마 (코스모그를 잡아야) wakes up right after', row(s1, 800));
+    await setS('legend_quests', q);
+
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
     await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
   }
 }

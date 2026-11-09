@@ -29,6 +29,7 @@
   dgrass dgrassR<0-1> dcactusS drock drubble dskull dbones druin<0-1> dsign  마른 모래 풀숲 (+흔들림) · 술통 선인장 · 사암 바위 · 돌 부스러기 · 머리뼈 · 뼈 · 유적 바닥 · 표지판
   dcactus dpillar ddune        기둥 선인장 16×24 · 유적 사암 돌기둥 16×32 · 모래 언덕 48×32 (3×2 칸)
   (0048) 설원 sn*/swall* · 용암 lv*/lwall*/lava* · 발전소 pl* · 용의 굴 e*/ewall* · 다리 계단 bstair — 이름표는 아래 '0048' 부분
+  (0050) 전설의 특별한 곳 moon* grac* eladderD ustar dstairs · tapu 16×32 · swordst 16×24 — 이름표는 아래 '0050' 부분
 주인공 safari-hero.png · 사육사 safari-keeper.png: 16×24 칸, 줄 = 아래·위·왼쪽·오른쪽, 칸 = 서기·걸음1·걸음2.
 """
 import json
@@ -2351,6 +2352,237 @@ def plsign_t():
     t = Tile(); t.art(SIGN, dict(SIGN_PAL, g=PL['sh'])); return t
 
 
+# ─────────── 0050: 전설의 특별한 곳 (꿈의 섬 · 성검의 숲 · 용의 굴 깊은 곳 · 별의 제단 · 고대 유적) ───────────
+# 3세대 느낌으로 새로 그린 덧그림 (원본 타일을 베끼지 않음). 이름:
+#   moon<0-1>   초승달 꽃 (꿈의 섬, 걸을 수 있는 장식, 2장 흔들림) · grac<A|B>  그라시데아 꽃 (성검의 숲 꽃밭)
+#   eladderD    용의 굴 바닥 구멍 + 내려가는 사다리 · ustar  별의 제단 금빛 별 무늬 (발판 위 덧그림)
+#   dstairs     사막 유적 바닥의 내려가는 돌계단
+#   tapu 16×32  수호신의 돌기둥 (꿈의 섬, 막힌 칸, 윗칸으로 솟음) · swordst 16×24  검이 꽂힌 바위 (성검의 숲, 막힌 칸)
+LG = {k: hx(v) for k, v in dict(
+    mk='#5c3c8c', m0='#c8a8f8', m1='#eedcff', m2='#9c78e0', mc='#fff6a8', mC='#f0c848',      # 초승달 꽃 (연보라 + 노란 속)
+    gk='#a83868', g0='#f890c0', g1='#ffd0e4', g2='#d8609c', gc='#fff8f0',                      # 그라시데아 (분홍 + 흰 속)
+    tk='#3c2c20', t0='#b08860', t1='#d4ac80', t2='#86603c', t3='#5c4028',                      # 돌기둥 나무색 돌
+    ty='#f8c838', tY='#c88c18', tr='#e05038', tb='#3878c8', te='#202028', tw='#fff8e0',         # 탈 무늬 (노랑 · 빨강 · 파랑)
+    rk='#3c4050', r0='#9ca4b4', r1='#c8d0dc', r2='#6c7488', r3='#e4ecf4',                      # 바위 (회색)
+    bk='#404858', b0='#e8f0f8', b1='#b8c4d4', b2='#8090a8', hk='#6c4c10', h0='#f8d048', h1='#c89820', hg='#58c8a8',  # 칼날 · 손잡이 · 보석
+    sk='#8c6418', s0='#f8d860', s1='#fff4b0', s2='#d0a030',                                    # 별 무늬 (금빛)
+).items()}
+
+MOON = [   # 초승달 모양 꽃잎 두 송이 + 잎 (투명 바탕)
+    '................',
+    '...mmm..........',
+    '..m11Mm.........',
+    '.m1cc0Mm...mmm..',
+    '.mc0000m..m11Mm.',
+    '.mC0000m.m1cc0Mm',
+    '..mcc0m..mc0000m',
+    '...mmmm..mC0000m',
+    '....l.....mcc0m.',
+    '....l......mmmm.',
+    '..lLl.......l...',
+    '..lLLl..l...l...',
+    '...llll.lLl.l...',
+    '....lll.lLLll...',
+    '.....gggggggg...',
+    '................',
+]
+
+
+def moon(f):
+    t = Tile()
+    pal = {'m': LG['mk'], '1': LG['m1'], '0': LG['m0'], 'M': LG['m2'], 'c': LG['mc'], 'C': LG['mC'],
+           'l': C['lf'], 'L': C['lL'], 'g': C['g2']}
+    rows = MOON
+    if f:   # 2장째: 꽃 머리가 1px 기울어짐
+        rows = [(r[1:] + '.') if i < 10 else r for i, r in enumerate(MOON)]
+    t.art(rows, pal)
+    return t
+
+
+GRAC = [   # 그라시데아: 다섯 장 꽃잎 + 흰 속 (투명 바탕)
+    '................',
+    '......kk........',
+    '....kk11kk......',
+    '...k1001k0k.....',
+    '..k1k00kk00k....',
+    '..k10kcck00k....',
+    '...k0kcckk0k....',
+    '..k100kk002k....',
+    '..k1002k022k....',
+    '...kk22kk2k.....',
+    '.....kkskk......',
+    '......s.........',
+    '...lLls.lLl.....',
+    '...llLs.Lll.....',
+    '....lllslll.....',
+    '................',
+]
+
+
+def grac(which):
+    t = Tile()
+    pal = {'k': LG['gk'], '1': LG['g1'], '0': LG['g0'], '2': LG['g2'], 'c': LG['gc'], 's': C['st'], 'l': C['lf'], 'L': C['lL']}
+    if which == 'B':   # 둘째 무늬: 조금 진한 분홍 · 오른쪽으로 2px
+        pal.update({'1': LG['g0'], '0': LG['g2'], '2': LG['gk']})
+        t.art(GRAC, pal, 3, 1)
+    else:
+        t.art(GRAC, pal, 1, 0)
+    return t
+
+
+def eladder_down():
+    """용의 굴 바닥 구멍 + 아래로 내려가는 사다리 (efloor 바탕)."""
+    t = efloor(0)
+    for y in range(2, 15):
+        for x in range(2, 14):
+            edge = x in (2, 13) or y in (2, 14)
+            t.px(x, y, hx('#2a2c3c') if edge else hx('#0c0c14'))
+    for x in range(3, 13):
+        t.px(x, 3, hx('#3c3e54'))      # 구멍 안쪽 위 턱 (깊어 보이게)
+    W0, W1, WK = hx('#e8b478'), hx('#c88c50'), hx('#5c3820')
+    for y in range(1, 14):
+        for x in (4, 11):
+            t.px(x - 1, y, WK); t.px(x, y, W0); t.px(x + 1, y, W1); t.px(x + 2, y, WK)
+    for y in range(3, 13, 3):
+        for x in range(5, 11):
+            t.px(x, y, W0); t.px(x, y + 1, WK)
+    return t
+
+
+def ustar():
+    """별의 제단 무늬 (발판 위 덧그림): 금빛 둥근 테 + 가운데 다섯 꼭지 별."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            d = ((x - 7.5) ** 2 + (y - 7.5) ** 2) ** 0.5
+            if 6.2 <= d < 7.2:
+                t.px(x, y, LG['s2'] if (x + y) % 3 else LG['s0'])
+            elif 7.2 <= d < 7.9:
+                t.px(x, y, LG['sk'])
+    STAR = [
+        '.......k.......',
+        '......k1k......',
+        '......k1k......',
+        '.kkkkk101kkkkk.',
+        '..k1110001222k.',
+        '...k10000022k..',
+        '....k000002k...',
+        '....k002002k...',
+        '...k02k.k22k...',
+        '...k2k...k2k...',
+        '...kk.....kk...',
+    ]
+    t.art(STAR, {'k': LG['sk'], '1': LG['s1'], '0': LG['s0'], '2': LG['s2']}, 0, 2)
+    return t
+
+
+def dstairs():
+    """사막 유적 바닥의 아래로 내려가는 돌계단: 사암 테두리 · 내려갈수록 좁고 어두운 디딤판 (앞 턱은 밝게) · 양옆 벽 그늘."""
+    t = druin(0)
+    for y in range(1, 16):                       # 사암 틀
+        for x in range(1, 15):
+            if x in (1, 14) or y == 1:
+                t.px(x, y, RUIN['c3'])
+            elif y == 2:
+                t.px(x, y, RUIN['c2'])
+    steps = [(3, RUIN['f2'], RUIN['f0']), (6, RUIN['f0'], RUIN['fg']), (9, RUIN['c2'], hx('#7c5434')),
+             (12, hx('#7c5434'), hx('#4c321c'))]
+    for i, (y0, lip, face) in enumerate(steps):
+        x0, x1 = 3 + i, 12 - i                   # 내려갈수록 좁아짐
+        for y in range(y0, y0 + 3):
+            for x in range(2, 14):
+                if x < x0 or x > x1:
+                    t.px(x, y, hx('#5c3c24') if (x < x0 and x == x0 - 1) or (x > x1 and x == x1 + 1) else hx('#3c2814'))
+                else:
+                    t.px(x, y, lip if y == y0 else face)
+    for y in range(15, 16):
+        for x in range(2, 14):
+            t.px(x, y, hx('#24180c'))
+    return t
+
+
+def tapu():
+    """16×32 수호신의 돌기둥: 받침 · 나무색 기둥 (새긴 줄 · 빨강 파랑 무늬) · 위에 세 갈래 노란 볏 + 짙은 탈 (비스듬한 흰 눈 · 이빨 입)."""
+    t = Tile(16, 32)
+    for y in range(27, 32):                      # 받침돌
+        for x in range(2, 14):
+            edge = x in (2, 13) or y in (27, 31)
+            t.px(x, y, LG['tk'] if edge else LG['t1'] if y == 28 else LG['t0'] if x < 10 else LG['t2'])
+    for y in range(16, 28):                      # 기둥
+        for x in range(4, 12):
+            c = LG['tk'] if x in (4, 11) else LG['t1'] if x <= 5 else LG['t2'] if x >= 9 else LG['t0']
+            if y in (19, 25) and 4 < x < 11:
+                c = LG['t3']
+            t.px(x, y, c)
+    for y in range(20, 25):                      # 무늬 (빨강 · 파랑 마름모)
+        d = abs(y - 22)
+        for x in range(8 - (2 - d), 8 + (2 - d)):
+            t.px(x, y, LG['tr'] if x < 8 else LG['tb'])
+    CREST = [   # 세 갈래 볏 (y 0..6)
+        '...k...kk...k...',
+        '..kyk..kyk..kyk.',
+        '..kyyk.kyk.kyyk.',
+        '...kyykyyykyyk..',
+        '....kyyyyyyyk...',
+        '....kYyyyyyYk...',
+        '...kkkkkkkkkkk..',
+    ]
+    t.art(CREST, {'k': LG['tY'], 'y': LG['ty'], 'Y': LG['tw']})
+    MASK = [    # 탈 (y 6..16)
+        '...kkkkkkkkkk...',
+        '..kMMMMMMMMMMk..',
+        '..kMwwMMMMwwMk..',
+        '..kMMweMMewMMk..',
+        '..kMrMMMMMMrMk..',
+        '..kMMMMddMMMMk..',
+        '..kMkkkkkkkkMk..',
+        '..kMkwkwkwkkMk..',
+        '..kMkkkkkkkkMk..',
+        '...kMMMMMMMMk...',
+        '....kkkkkkkk....',
+    ]
+    t.art(MASK, {'k': LG['tk'], 'M': LG['t3'], 'w': LG['tw'], 'e': LG['te'], 'r': LG['tr'], 'd': LG['t2']}, 0, 6)
+    for y in range(18, 32):
+        t.px(14, y, hx('#c8a868'))               # 그림자 (모래 위)
+    return t
+
+
+def swordst():
+    """16×24 검이 꽂힌 바위: 모난 회색 바위 (왼쪽 위 빛 · 오른쪽 아래 그늘 · 금) + 은빛 칼날 + 금빛 가로대 · 청록 보석."""
+    t = Tile(16, 24)
+    ROCK_ = [   # y 11..23
+        '.....kkkkk......',
+        '...kk13311kk....',
+        '..k1133311100k..',
+        '.k113331110002k.',
+        '.k133311100022k.',
+        'k1333111000222k.',
+        'k1331110002222k.',
+        'k1311100k02222kk',
+        'k111000k0022222k',
+        '.k1000k00222222k',
+        '.k00000022222kk.',
+        '..kkk000222kk...',
+        '.....kkkkkk.....',
+    ]
+    t.art(ROCK_, {'k': LG['rk'], '1': LG['r3'], '3': LG['r1'], '0': LG['r0'], '2': LG['r2']}, 0, 11)
+    for y in range(4, 14):                       # 칼날 (아래가 바위에 박힘)
+        t.px(6, y, LG['bk']); t.px(7, y, LG['b0']); t.px(8, y, LG['b1']); t.px(9, y, LG['bk'])
+    for x in range(3, 13):                       # 가로대
+        t.px(x, 3, LG['hk']); t.px(x, 5, LG['hk'])
+        t.px(x, 4, LG['h0'] if x < 8 else LG['h1'])
+    t.px(2, 4, LG['hk']); t.px(13, 4, LG['hk'])
+    t.px(7, 4, LG['hg']); t.px(8, 4, LG['hg'])
+    for y in range(0, 3):                        # 자루
+        t.px(6, y, LG['hk']); t.px(7, y, LG['h0'] if y == 0 else LG['h1']); t.px(8, y, LG['h1']); t.px(9, y, LG['hk'])
+    return t
+
+
+def legend_tiles():
+    return [('moon0', moon(0)), ('moon1', moon(1)), ('gracA', grac('A')), ('gracB', grac('B')),
+            ('eladderD', eladder_down()), ('ustar', ustar()), ('dstairs', dstairs())]
+
+
 # ─────────── 주인공: HAFS 교복 (남색 재킷 + 금색 테두리) · 사육사 ───────────
 # v3 (2026-11-05): 참고 그림 (3세대 FRLG 남자아이 3×4 · 16장 시트) 처럼 큰 머리 (키의 절반쯤) · 짧은 몸,
 #   눈 = 1칸 폭 × 2칸 높이, 둘 사이 2칸 (코 위 가운데), 모자 챙 바로 아래 · 양옆 머리카락.
@@ -2562,6 +2794,7 @@ def build():
     tiles += beach_tiles()
     tiles += desert_tiles()
     tiles += more_tiles()            # 0048: 맨 뒤에 붙임 → 앞 타일 자리 그대로
+    tiles += legend_tiles()          # 0050: 그 뒤에 → 앞 타일 자리 그대로
     tree = Tile(16, 24); tree.art(TREE, TREE_PAL)
 
     cols = 16
@@ -2591,6 +2824,9 @@ def build():
     for name, im, x in [('snpine', snpine(), 0), ('lvtree', lvtree(), 16), ('sncabin', sncabin(), 32), ('plgen', plgen(), 64), ('plbuild', plbuild(), 96)]:
         sheet.paste(im.im, (x, y2))
         idx[name] = [x, y2, im.w, im.h]
+    for name, im, x in [('tapu', tapu(), 0), ('swordst', swordst(), 16)]:   # 0050: 둘째 줄 왼쪽 아래 빈 곳 (y2+40~) — 수호신의 돌기둥 16×32 · 검이 꽂힌 바위 16×24
+        sheet.paste(im.im, (x, y2 + 40))
+        idx[name] = [x, y2 + 40, im.w, im.h]
     # ui8: 울트라 발판 안쪽 모서리 4장 + 빛의 길 가장자리 16장 = 둘째 줄 오른쪽 빈 곳 (x 192~255 · 4칸 × 5줄) → 앞 그림 자리 · 그림판 크기 그대로
     extra = [(f'uplatc{c}', uplatc(c)) for c in ('nw', 'ne', 'sw', 'se')] + [(f'upathe{m}', upathe(m)) for m in range(16)]
     for i, (name, t) in enumerate(extra):
