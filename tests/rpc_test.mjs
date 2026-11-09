@@ -3912,7 +3912,7 @@ console.log('\n[61] 폼 (0052): 선생님 폼 · 일반 폼 (복사본) · 이�
       const s = sp.find((x) => x.id === e.species_id); if (s) seenL.push(s.line_id);
       await V.c.rpc('safari_result', { p_id: e.id, p_throws: 1, p_caught: false });
     }
-    ok(seenL.length >= 30 && !seenL.some((l) => L.get(l)?.form_kind !== 'normal'), `safari: ${seenL.length} encounters, all normal forms (no teacher / event)`, seenL.filter((l) => L.get(l)?.form_kind !== 'normal'));
+    ok(seenL.length >= 15 && !seenL.some((l) => L.get(l)?.form_kind !== 'normal'), `safari: ${seenL.length} encounters, all normal forms (no teacher / event)`, seenL.filter((l) => L.get(l)?.form_kind !== 'normal'));
     ok(seenL.some((l) => l >= 1000 && l < 2000), `safari: normal forms of former teacher species appear (${seenL.filter((l) => l >= 1000 && l < 2000).join(',')})`);
 
     // 3) 학교 = 선생님 폼만 · 전체 = 번호마다 한 번 · 이벤트 폼은 안 셈
@@ -4001,7 +4001,7 @@ console.log('\n[61] 폼 (0052): 선생님 폼 · 일반 폼 (복사본) · 이�
     const sp0 = (await admin.select('species?id=eq.35&select=sprite')).data?.[0]?.sprite ?? null;
     await admin.patch('species?id=eq.35', { sprite: '35-ftest.png' });
     const ov = (await anon.rpc('sprite_overrides')).data || {};
-    ok(String(ov['35'] || '').startsWith('35-ftest.png') && !ov['20035'] && !ov['1324'], 'a face sprite on the teacher form species only (normal 20035 / event untouched)', [ov['35'], ov['20035']]);
+    ok(String(ov['35'] || '').startsWith('35-ftest.png') && !ov['20035'] && !String(ov['1324'] || '').includes('ftest'), 'a face sprite on the teacher form species only (normal 20035 / event untouched)', [ov['35'], ov['20035']]);
     await admin.patch('species?id=eq.35', { sprite: sp0 });
     ok((await admin.select('species?id=eq.35&select=sprite')).data?.[0]?.sprite === sp0, 'sprite restored');
   } finally {

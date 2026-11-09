@@ -1091,7 +1091,7 @@ async function tabMon() {
   const filter = h('input.inp', { type: 'search', value: S.monQuery || '', placeholder: view === 'teacher' ? '선생님 이름 · 과목 · 포켓몬으로 찾기' : '포켓몬 이름 · 선생님 이름 · 과목 · 도감 번호로 찾기', 'aria-label': '찾기' });
   const listEl = h('div.line-list');
   const scopeBar = h('div.chips');
-  const setView = (v) => { S.monView = v; rerender(); };
+  const setView = (v) => { S.monView = v; S.monQuery = ''; rerender(); };
   const viewBar = h('div.seg-ctl.mon-view', { role: 'group', 'aria-label': '보기' },
     h('button.btn.seg-btn', { type: 'button', 'aria-pressed': String(view === 'family'), onclick: () => setView('family') }, '포켓몬 가족별'),
     h('button.btn.seg-btn', { type: 'button', 'aria-pressed': String(view === 'teacher'), onclick: () => setView('teacher') }, `선생님 찾기 (${S.lines.filter(isTeacherLine).length})`));
@@ -1111,13 +1111,11 @@ async function tabMon() {
         .filter(({ l, f }) => !q || [l.teacher, l.subject, teacherLabel(l), ...(f?.names || [])].some((x) => String(x || '').toLowerCase().includes(q)))
         .sort((a, b) => Number(b.l.active) - Number(a.l.active) || a.l.subject.localeCompare(b.l.subject, 'ko') || a.l.teacher.localeCompare(b.l.teacher, 'ko', { numeric: true }));
       listEl.replaceChildren(rows.length ? h('div.tbl-wrap', h('table.tbl.teacher-tbl',
-        h('thead', h('tr', h('th', '선생님'), h('th', '과목'), h('th', '포켓몬'), h('th', '상태'), h('th.num', '퀴즈'))),
-        h('tbody', rows.map(({ l, f }) => h(`tr.click${famOf(l) === S.selFam && S.selForm === l.id ? '.sel' : ''}`, { tabindex: 0, onclick: () => open(famOf(l), l.id), onkeydown: (e) => { if (e.key === 'Enter') open(famOf(l), l.id); } },
-          h('td', h('b', l.teacher), h('br'), h('small.muted', `"${teacherLabel(l)}의 ${firstSp(l)?.name || ''}"`)),
-          h('td', l.subject),
+        h('thead', h('tr', h('th', '선생님 · 과목'), h('th', '포켓몬'), h('th', '상태'))),
+        h('tbody', rows.map(({ l }) => h(`tr.click${famOf(l) === S.selFam && S.selForm === l.id ? '.sel' : ''}`, { tabindex: 0, onclick: () => open(famOf(l), l.id), onkeydown: (e) => { if (e.key === 'Enter') open(famOf(l), l.id); } },
+          h('td', h('b', l.teacher), h('br'), h('small.muted', `${l.subject} · 퀴즈 ${S.quizCount.get(l.id) || 0}`)),
           h('td', h('span.tt-mon', sprite(firstSp(l)?.id, 32), h('span', chainName(l)))),
-          h('td', l.active ? chip('켜짐', 'ok') : chip('꺼짐', 'off'), l.withdrawn ? chip('동의 철회', 'hot') : null),
-          h('td.num', String(S.quizCount.get(l.id) || 0))))))) : h('p.muted', '찾는 선생님이 없어요.'));
+          h('td', l.active ? chip('켜짐', 'ok') : chip('꺼짐', 'off'), l.withdrawn ? chip('동의 철회', 'hot') : null)))))) : h('p.muted', '찾는 선생님이 없어요.'));
       return;
     }
     scopeBar.replaceChildren(...MON_SCOPES.map(([k, t]) => h('button.chip.btnchip', { type: 'button', 'aria-pressed': String((S.monScope || 'all') === k),
