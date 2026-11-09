@@ -30,6 +30,7 @@
   - [사파리존](#사파리존)
   - [전설 포켓몬 만나는 법](#전설-포켓몬-만나는-법)
   - [배틀](#배틀)
+  - [포켓몬 교환](#포켓몬-교환)
   - [레이드](#레이드)
   - [이상한 소포와 이벤트 포켓몬](#이상한-소포와-이벤트-포켓몬)
   - [반짝이는 포켓몬](#반짝이는-포켓몬)
@@ -42,6 +43,7 @@
   - [선생님 포켓몬 관리 (포켓몬 탭)](#선생님-포켓몬-관리-포켓몬-탭)
   - [레이드와 이상한 소포 만들기](#레이드와-이상한-소포-만들기)
   - [부스 화면과 TV 대형 화면](#부스-화면과-tv-대형-화면)
+  - [축제 당일 운영 체크리스트](#축제-당일-운영-체크리스트)
   - [축제가 끝나면](#축제가-끝나면)
   - [계획 중: 선생님 포켓몬 실물 카드](#계획-중-선생님-포켓몬-실물-카드)
 - [개발자 안내](#개발자-안내)
@@ -140,6 +142,8 @@
 - 포켓몬 GO 처럼 **줄어드는 고리**에 맞춰 공을 위로 휙 던집니다.
 - 공이 **고리 안**에 맞았을 때만 나이스 · 그레이트 · 엑설런트 판정이 나옵니다. 공을 휘어 던지면 커브볼 보너스.
 - 레벨이 높을수록 잡기 어렵습니다. 어려울수록 안쪽 고리가 **작아지고** 색도 초록 → 노랑 → 주황 → 빨강으로 바뀝니다.
+- 고리 색마다 잡힐 확률이 다릅니다 (기본: 초록 70% · 노랑 50% · 주황 33% · 빨강 18%, 판정 · 커브볼 보너스를 받아도 초록 95% · 노랑 80% · 주황 60% · 빨강 45% 를 넘지 않음). 운영자가 바꿉니다.
+- 안 잡히면 포켓몬이 볼에서 **튀어나오는** 장면(번쩍임)이 나옵니다. 볼은 흔들려도 픽셀이 깨지지 않게 미리 그린 그림으로 보여 줍니다.
 - 배경은 시간(낮 · 노을 · 밤)과 만난 곳(사막 · 해변 · 동굴 · 설원 · 용암 · 발전소 · 용의 굴)에 따라 바뀝니다.
 - 사파리존에서 잡은 포켓몬은 바로 박스에 들어갑니다 (새로 고침해도 다시 던지기 장면이 뜨지 않음).
 
@@ -211,6 +215,12 @@
 - **방랑 전설**: 라이코 · 앤테이 · 스이쿤이 한 시간마다 다른 장소 QR 에 숨어 있습니다. 지도에 소문이 뜹니다.
 - **시간대 레이드 전설**: 아침 · 점심 · 저녁 · 야자 시간마다 TV 화면이 정해진 전설 레이드를 엽니다.
 
+**전설과 먼저 배틀** (0055): 사파리존 · 방랑 전설은 잡기 전에 내 배틀 팀으로 그 전설을 이겨야 합니다.
+
+- 전설은 내 팀에서 가장 높은 레벨 + 8 (Lv.55 ~ 80), 체력 2.5배, 공격 · 방어 · 특수 능력 +2 단계로 나옵니다. 쉽게 이기지 못하도록 맞춘 값이고 운영자가 바꿉니다.
+- 이기면 "○○이 지쳤다! 지금이야!" 와 함께 잡기 장면이 열리고, 잡힐 확률이 1.5배가 됩니다 (고리 색의 최대 확률은 넘지 않음).
+- 지거나 도망치면 오늘 도전 1번을 쓴 것이고, 전설은 그 자리에 남아 다시 도전할 수 있습니다. 배틀 중에 나가면 다시 말을 걸 때 이어집니다.
+
 전설을 받으면 **전체 화면 연출**(검은 실루엣 → 빛나며 등장 + 짧은 팡파르)과 받은 이유가 나옵니다.
 
 <img src="docs/screens/fanfare.webp" width="450" alt="전설 연출 두 장면: 왼쪽은 검은 화면 가운데 포켓몬 실루엣, 오른쪽은 빛나며 나타난 지라치와 '이상한 소포가 도착했다!' 글 상자">
@@ -240,6 +250,19 @@
 - 하루에 보상을 받는 승리 수 제한이 없습니다 (운영자 설정 999 = 제한 없음).
 - 같은 친구를 이긴 보상은 하루 한 번만 받습니다.
 
+### 포켓몬 교환
+
+친구와 **얼굴을 보고** 포켓몬을 한 마리씩 바꿉니다 (0056). 두 사람 모두 인터넷이 연결돼 있어야 합니다.
+
+1. 한 사람이 배틀 탭(또는 가방)의 **교환** → "내 교환 QR 보여주기", 다른 사람이 그 QR 을 찍고 **포켓몬 교환하기** 를 누릅니다. 두 폰에 교환방이 열립니다.
+2. 각자 보낼 포켓몬을 한 마리 고릅니다. 상대 포켓몬의 레벨 · 타입 · 특성 · 기술 · 지닌 물건이 보입니다.
+3. 두 사람이 모두 **교환하기** 를 누르면 서버가 한 번에 바꿉니다. 한쪽이 포켓몬을 바꾸면 두 사람 모두 다시 눌러야 하고, 언제든 **교환 그만두기** 를 누를 수 있습니다. 3분 동안 아무것도 안 하면 방이 닫힙니다.
+
+- **바꿀 수 있는 포켓몬**: 일반 폼만. 반짝이 · 선생님 · 전설 · 환상 · 이벤트 · 특별 · 울트라비스트, 배틀 팀과 트레이너 카드에 올린 포켓몬은 바꿀 수 없습니다 (회색 칸을 누르면 이유가 나옴). 알도 안 됩니다.
+- 하루 **5번** (운영자 설정). 지닌 물건은 보낸 사람 가방으로 돌아갑니다.
+- **도감**: 보낸 포켓몬도 내 도감에는 남습니다. 내가 보냈던 바로 그 포켓몬을 돌려받거나, 24시간 안에 같은 친구와 같은 계열을 주고받으면 도감 칸이 새로 채워지지 않습니다.
+- **교환 진화**: 윤겔라 · 근육몬 · 데구리 · 고우스트 · 암트르 · 토쇠골은 받자마자 진화합니다.
+
 ### 레이드
 
 <img src="docs/screens/raid.webp" width="600" alt="왼쪽은 레이드 탭: '레이드 QR 찍기' 단추와 'QR 없이 바로 참가할 수 있는 레이드' 목록. 오른쪽은 레쿠쟈 레이드 화면: 위에 보스 체력 막대와 남은 시간 7:45, 아래에 '내 포켓몬은 이 보스에게 효과가 굉장해!' 글">
@@ -256,6 +279,7 @@
 
 - 설정 단추 왼쪽의 선물 상자 = **이상한 소포**. 운영진이 알려 준 코드를 넣으면 포켓몬이나 물건이 들어 있습니다.
 - 환상 포켓몬과 이벤트 포켓몬은 소포로만 받습니다.
+- 운영진이 **반짝이는 모습**으로 넣은 소포도 있습니다 (✦ 표시).
 - **이벤트 포켓몬**: 지우의 피카츄(피카츄의 폼, 기술 일렉트릭볼) · 지우개굴닌자(개굴닌자의 폼, 특성 유대변화, 물수리검이 반드시 3번 맞음). 도감에서는 그 번호(피카츄 · 개굴닌자)의 폼으로 보이고, 도감 수에는 들어가지 않습니다.
 
 ### 반짝이는 포켓몬
@@ -288,6 +312,7 @@
 <img src="docs/screens/card.webp" width="300" alt="트레이너 카드 공유 창: 이름 · 기수 · 도감 수 · 점수 · 나의 배틀 팀 6마리 · 배지가 들어간 카드 그림, 아래에 공유와 저장 단추">
 
 - 홈의 "카드 공유 · 저장" → 배틀 팀 · 도감 · 배지가 들어간 카드 그림을 만듭니다. 내 카드라서 **내 진짜 이름**이 들어가고, 별명이 있으면 작은 줄로 함께 나옵니다 (고유번호 · 이메일은 넣지 않음).
+- 공유 창의 **이름 숨기기** 를 켜면 진짜 이름 대신 별명(없으면 '트레이너')만 들어갑니다. 인스타그램 등에 올릴 때 쓰세요. 한 번 켜면 그 폰에서 계속 켜져 있습니다.
 - 폰은 공유(인스타그램 · 메시지), 컴퓨터는 PNG 파일로 저장합니다.
 - 가방 → 포켓몬 → **사진 만들기**: 포켓몬 한 마리 사진을 배경을 골라 만듭니다.
 
@@ -306,14 +331,14 @@
 탭마다 맨 위에 "이 탭에서 하는 일" 안내가 있습니다.
 
 - **현황**: 게임 상태 · 접속 · 티켓 · 진화 성공률 · 오늘의 게임 숫자 (10초마다 새로 고침), 교장 · 교감 선생님 레이드 바로 시작
-- **축제 운영**: 시작 · 마감 시각, 공지, **해금 단계** 카드, 사파리존 열기
+- **축제 운영**: 시작 · 마감 시각, 공지, **해금 단계** 카드, 사파리존 열기, **잡기 확률 (원 색깔별)** (고리 색마다 기본 · 최대 확률, 바꾸면 바로 미리보기 표가 바뀜)
 - **장소 · QR**: 지도 핀 · QR 인쇄
 - **포켓몬 · 퀴즈**: 선생님 포켓몬 관리 ([아래](#선생님-포켓몬-관리-포켓몬-탭)), 퀴즈
 - **레이드**: 레이드 열기 · 보상 방식
 - **학생 · 계정**: 비밀번호 초기화 요청 · 문의함 · 물건 · 알 주기 · 별명 지우기
 - **미니게임**: 게임 켜고 끄기, 기록 관리
-- **성장 · 보상**: 배틀 시간표(날씨 · 필드), 알 걸음, 반짝이 확률, 배틀 보상
-- **전설 · 소포**: 소포 코드 만들기
+- **성장 · 보상**: 배틀 시간표(날씨 · 필드), 알 걸음, 반짝이 확률, 배틀 보상, **포켓몬 교환** (켜고 끄기 · 하루 횟수 · 방 닫히는 시간 · 최근 교환 목록)
+- **전설 · 소포**: 소포 코드 만들기, **전설 배틀 강하기** (켜고 끄기 · 레벨 · 체력 배수 · 능력 단계 · 이긴 뒤 잡기 배수, 'AI 끼리 10판 시험' 단추로 얼마나 어려운지 확인)
 - **운영진**: 운영진 아이디 만들기 · 구글 계정 초대
 - **고급 설정**: 모든 설정에 무엇인지 · 단위 · 보통 값을 알려 주는 한 줄 설명
 
@@ -339,12 +364,38 @@
 <img src="docs/screens/admin_raid.webp" width="750" alt="운영자 페이지 레이드 탭: 왼쪽에 보스 포켓몬 · 체력 · 시간 · TV 또는 인쇄 QR 을 골라 레이드를 여는 칸, 오른쪽에 레이드 보상 방식 설정">
 
 - **레이드**: 보스를 이름 · 도감 번호 · 타입으로 찾고, 체력 · 시간 · TV 또는 인쇄 QR 을 골라 엽니다. **✦ 이로치 레이드** 체크를 켜면 반짝이는 보스가 나옵니다.
-- **이상한 소포**: 포켓몬(이벤트 폼 포함) 또는 물건을 넣고, 기간과 인원 제한을 정해 코드를 만듭니다. 물건은 이름으로 찾아 고릅니다.
+- **이상한 소포**: 포켓몬(이벤트 폼 포함) 또는 물건을 넣고, 기간과 인원 제한을 정해 코드를 만듭니다. 물건은 이름으로 찾아 고릅니다. **✦ 반짝이는 (이로치) 포켓몬** 체크를 켜면 반짝이는 모습으로 들어갑니다.
 
 ### 부스 화면과 TV 대형 화면
 
 - **부스 화면**: 학생의 티켓 QR 을 찍거나 고유번호를 넣어 포켓몬을 줍니다.
 - **TV 대형 화면**: 랭킹 TOP 10 · 기수 대항전 · 방금 잡힌 포켓몬 · 레이드 참가 QR(30초마다 바뀜). 시간대 전설 레이드는 이 화면이 켜져 있을 때 시간표대로 열립니다.
+
+### 축제 당일 운영 체크리스트
+
+**전날까지**
+
+- `web/js/config.js` 가 실전 값인지 (`DEV_LOGIN: false`, 실전 서버 주소) 확인합니다. 테스트 서버용 시험 계정(`@test.local` 운영진 · 0229xx · 0205xx ~ 0209xx 번호)은 실전 서버에 만들지 않습니다.
+- 배틀 시간표 · 시간대 레이드를 실제 시간으로, 축제 시작 · 마감 시각을 맞춥니다.
+- `web/sw.js` 의 `VERSION` 을 올려 배포했는지 확인합니다. 예전 버전이 저장된 폰은 홈에 **⬆ 새 버전 적용하기** 단추가 뜹니다 (티켓 QR 을 띄운 동안에는 바꾸지 않음).
+
+**문제가 생기면 끄는 스위치** (모두 운영자 페이지에서, 바로 적용)
+
+| 상황 | 할 일 |
+|---|---|
+| 처음에는 QR 찍기에 집중하게 하고 싶다 | 축제 운영 → **사파리존 열기** 끄기 |
+| 다 같이 사파리존을 열고 싶다 | 축제 운영 → 해금 단계 → **모두에게 열기** |
+| 야생 포켓몬이 너무 많이 / 적게 나온다 | 고급 설정 → `wild_chance` (보통 0.4) |
+| 미니게임에 사람이 몰려 서버가 느리다 | 미니게임 탭 → 게임 끄기 |
+| 교환에서 문제가 생겼다 | 성장 · 보상 → 포켓몬 교환 → 끄기 (`trade_open`) |
+| 전설이 너무 어렵다 / 쉽다 | 전설 · 소포 → 전설 배틀 강하기, 또는 축제 운영 → 잡기 확률 |
+
+**지원 데스크 (학생이 찾아왔을 때)**
+
+- 비밀번호를 잊었다 → 학생 · 계정 탭의 **비밀번호 초기화 요청** 에서 처리
+- 포켓몬이 안 들어왔다 → 찍은 QR 은 폰에 먼저 저장됐다가 인터넷이 돌아오면 보내집니다. 홈의 "보낼 티켓" 숫자를 확인하고 와이파이를 켜게 합니다.
+- 이상한 별명 → 학생 · 계정 탭에서 **별명 지우기**
+- **배터리**: 알 걸음은 화면이 켜져 있어야 세므로 배터리가 빨리 닳습니다. 화면 밝기를 낮추고, 보조 배터리를 챙기라고 안내하세요.
 
 ### 축제가 끝나면
 
@@ -380,7 +431,7 @@
 | 앱 (프런트엔드) | 빌드 없는 순수 ES 모듈 (`web/js/*.js`, `<script type="module">`). 번들러 · 프레임워크 없음. `web/` 폴더를 그대로 정적 호스팅에 올리면 끝 |
 | PWA · 오프라인 | `web/sw.js`. 설치 때 첫 화면에 필요한 파일만 받고(CORE), 나머지(QR 카메라 · 지도 · 배틀 · 미니게임 · 사파리)는 뒤에서 받음(EXTRA). 캐시 3개: 앱 버전 캐시(`VERSION`, 배포마다 올림) · 운영자가 올린 포켓몬 그림 · 배경 음악(처음 틀 때 받고, 버전을 올려도 다시 안 받음). 티켓 QR 이 화면에 떠 있을 때는 새 버전으로 바꾸지 않음 |
 | 서버 | Supabase (Postgres + Auth + Storage). 앱은 "이 기술을 골랐다", "이 QR 을 찍었다" 만 보내고 결과(포획 · 진화 · 배틀 데미지 · 룰렛 · 알 부화 · 반짝이 · 해금)는 서버 함수가 정함. 함수는 `SECURITY DEFINER` + `search_path = ''`, 표는 RLS 로 막고, 함수를 만드는 마이그레이션마다 끝에 실행 권한 블록(0006 방식)을 둬서 로그인하지 않은 사람은 부를 수 없음 |
-| DB 변경 이력 | `supabase/migrations/0001 ~ 0054`. 예: 0015 배틀 엔진 · 0027 알 · 0032 실제 포켓몬 · 0033 사파리존 · 0036 PC 박스 · 0038 전설 · 소포 · 0039 특성 · 날씨 · 0042 반짝이 · 0045 배틀 팀 6마리 · 0047 기술 넓히기 · 이로치 레이드 · 0048 설원 · 용암 · 발전소 · 용의 굴 · 0049 울트라비스트 정리 · 갈래 진화 무작위 · 멜탄 빼기 · 0050 전설의 특별한 곳 · 0051 해금 단계 · 0052 폼 · 0053 배틀 보상 제한 없음 · 0054 전설 자리 나누기 · 퍼즐 지도 · 어려운 전설 조건 · 해금 30% |
+| DB 변경 이력 | `supabase/migrations/0001 ~ 0056`. 예: 0015 배틀 엔진 · 0027 알 · 0032 실제 포켓몬 · 0033 사파리존 · 0036 PC 박스 · 0038 전설 · 소포 · 0039 특성 · 날씨 · 0042 반짝이 · 0045 배틀 팀 6마리 · 0047 기술 넓히기 · 이로치 레이드 · 0048 설원 · 용암 · 발전소 · 용의 굴 · 0049 울트라비스트 정리 · 갈래 진화 무작위 · 멜탄 빼기 · 0050 전설의 특별한 곳 · 0051 해금 단계 · 0052 폼 · 0053 배틀 보상 제한 없음 · 0054 전설 자리 나누기 · 퍼즐 지도 · 어려운 전설 조건 · 해금 30% · 0055 전설 먼저 배틀 · 고리 색별 잡기 확률 · 반짝이 소포 · 0056 포켓몬 교환 |
 | 폼 (0052) | `lines.form_kind` (normal · teacher · event · special) · `family_id` · `form_label`, `species.form_of`. 선생님 폼마다 일반 폼 복사본(계열 1000+, 종 +20000)이 야생에 나옴. 학교 칸 = `_seen_school`, 이름 = `_sp_label` / 앱 `displayName`. `_forms_build()` 가 구조를 맞춤 |
 | 해금 (0051) | `_unlock_progress` · `profiles.unlocked_at`, 설정 `minigame_unlock` · `unlock_safari_pct` · `unlock_all`, sync 의 `unlock` |
 | 화면 그리기 | 픽셀 아트 = `<canvas>` + `imageSmoothingEnabled = false` / CSS `image-rendering: pixelated`. 글꼴은 도트 글꼴 Galmuri11 |
@@ -399,7 +450,7 @@ web/            정적 사이트 (index = 학생 앱, admin · booth · screen =
   js/           ES 모듈 — app · battle · catch · safari · raid · eggs · legends · bag · dex · share · sfx …
   js/games/     미니게임 (hub · common + 게임 하나 = 파일 하나)
   vendor/       supabase.js · phaser.min.js · jsQR.js · qrcode.js
-supabase/       migrations/0001~0054 · seed_battle.sql · seed_pokemon.sql · seed.sql (데모용) · cleanup_after_festival.sql
+supabase/       migrations/0001~0056 · seed_battle.sql · seed_pokemon.sql · seed.sql (데모용) · cleanup_after_festival.sql
 tools/          그림판 · 타일 · 동굴 · 데이터 생성 스크립트 (Python), upload_pokemon_sprites.mjs (포켓몬 그림 올리기)
 tests/          rpc_test.mjs · festival_load.mjs · raid_load.mjs
 ```
@@ -431,7 +482,7 @@ python -m http.server 8124
 3. `0021` → `0039` 를 번호 순서대로.
 4. `seed_pokemon.sql` — 포켓몬 · 기술 · 특성 자료. 0038 의 열(`ultra` · `legend_src`)과 0039 의 특성 표를 쓰므로 **0039 다음에만** 됩니다.
 5. 확인: `select count(*) from public.lines where ultra;` 가 0 이면, 0038 파일 위쪽의 울트라비스트 · 전설 표시 `update` 두 줄을 한 번 더 실행합니다 (0038 이 포켓몬 자료보다 먼저 돌아서 빈 표에 적용됐기 때문).
-6. `0040` → `0054` 을 번호 순서대로.
+6. `0040` → `0056` 을 번호 순서대로.
 7. `seed_pokemon.sql` 을 한 번 더 — 다시 돌려도 결과가 같고, 끝에서 `_forms_build()` 를 불러 폼 구조를 맞춥니다.
 8. `node tools/upload_pokemon_sprites.mjs` — 포켓몬 그림을 Storage 에 올립니다 (이벤트 폼 1321 · 1324 포함, 실전 서버 주소 · 공개 키 · 운영자 계정은 환경 변수로, 사용법은 파일 맨 위).
 9. 첫 운영자: `select public.bootstrap_staff('admin1', 'admin');` → 나온 비밀번호로 운영자 페이지에 로그인, 나머지 운영진은 운영진 탭에서.
@@ -443,7 +494,7 @@ python -m http.server 8124
 
 ## English summary
 
-A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0054); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1185 passed, 0 failed). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
+A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), trade Pokémon face to face (both confirm, server-side atomic swap), fight legendaries before catching them, solve puzzle dungeons in the Safari Zone, join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0056); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1185 passed, 0 failed). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
 
 ## 다른 문서
 

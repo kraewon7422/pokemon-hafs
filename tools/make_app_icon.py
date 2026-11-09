@@ -1,7 +1,8 @@
-# 앱 아이콘 (PWA): 사용자 그림 → 흰 바탕을 지운 투명 PNG 들 + 파란 바탕 마스커블 · 애플 아이콘. 사용: python tools/make_app_icon.py (그림 경로는 아래 src)
+# 앱 아이콘 (PWA): 사용자 그림 → 흰 바탕을 지운 투명 PNG 들 + 파란 바탕 마스커블 · 애플 아이콘. 사용: python tools/make_app_icon.py <원본 그림.png>
+import sys
 from PIL import Image, ImageDraw, ImageFilter
 from collections import deque
-src = Image.open(r'C:\Users\kraew\Downloads\광택이 돋보이는 HAFS 불꽃 포켓볼 아이콘.png').convert('RGB')
+src = Image.open(sys.argv[1]).convert('RGB')
 W, H = src.size; px = src.load()
 # 바깥 흰 배경 (테두리에서 이어진 밝은 · 무채색 칸) → 투명. 경계는 밝기에 따라 부드럽게
 def bg_score(c):

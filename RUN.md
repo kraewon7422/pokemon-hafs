@@ -114,7 +114,7 @@ python tools/build_atlas.py                                                   # 
 - 실전 순서: `0049_core_fixes.sql` (멜탄 계열 440 을 지움 — 가진 학생은 진화의 돌 1개씩, item_log 'meltan_removed') → `supabase/seed_pokemon.sql` 다시 (808 · 809 없음, 사람이 없을 때).
   MCP 로 넣을 때 DELETE 가 든 멜탄 부분은 확인 창이 뜨면 임시 실행 함수로 (`.work/pokemon/exec.mjs`, 끝나면 `_tmp_seed_exec` 를 다시 DISABLED).
 - 서버: `node tests/rpc_test.mjs` → [58] (알 · 연습 배틀에 울트라비스트 없음 · 사파리 결과 두 번 보내도 같은 결과 · graded 티켓 · 갈래 진화 90번 고르게 · BRANCH_LINE · school_keys · 멜탄 없음).
-- 화면: `node C:/dev/tools/pw-webkit/c8_safari.mjs <port> <tag>` (잡은 뒤 새로 고침 / 응답 끊김 → 다시 던지기 장면이 안 뜨는지), `c8_shiny.mjs <port>` (이로치 레이드 잡기 · 티켓 · 셀프 수령).
+- 화면: Playwright 화면 시험 `c8_safari.mjs <port> <tag>` (잡은 뒤 새로 고침 / 응답 끊김 → 다시 던지기 장면이 안 뜨는지), `c8_shiny.mjs <port>` (이로치 레이드 잡기 · 티켓 · 셀프 수령).
 - 운영: 선생님 계열 2 · 18 · 33 · 46 · 50 · 69 는 지금 갈래 계열 (랄토스 · 발챙이 · 배루키 · 야돈 · 눈꼬마 · 뚜벅쵸) → 운영자 [몬스터] → 선생님 배정에서 다른 야생 포켓몬으로 옮기기를 권함 (자동으로 옮기지 않음).
 
 ## 0050 전설의 특별한 곳 확인 (스테이징)
@@ -126,7 +126,12 @@ python tools/build_atlas.py                                                   # 
 - 순서: `0055_legend_battle.sql` 하나 (설정 9개 추가 · admin_create_gift 를 지우고 다시 만듦 → 끝의 권한 블록 꼭 포함).
 - 서버: `node tests/rpc_test.mjs` → [64] (배틀 없이 잡기 NEED_BATTLE · 보스 Lv · 체력 배수 · 랭크 · 이어 하기 · 지면 만남 끝 + 도전 1번 · 이기면 잡힘 · 설정 끄면 예전처럼 · catch_config 확률 · 범위 · 반짝 소포). 시험 동안 legend_battle_on 은 꺼 둠 (끝에서 되돌림).
 - 보스 강하기: rpc `admin_legend_sim(p_dex, p_team [{sp, lv}…], p_n ≤ 20)` (AI 끼리, 운영자만) 또는 운영자 [전설·소포] → 전설 배틀 강하기 → "AI 끼리 10판 시험".
-- 화면: `node C:/dev/tools/pw-webkit/b11_legend.mjs <c375|c320|pc> <win|lose>` (만남 → 배틀 → 지쳤다 → 잡기 / 도망 → 사라짐), `b11_ball.mjs <before|after> <phone|pc> [운]` (공 흔들림 프레임), `b11_admin.mjs <c375|c320|pc>` (운영자 카드).
+- 화면: Playwright 화면 시험 `b11_legend.mjs <c375|c320|pc> <win|lose>` (만남 → 배틀 → 지쳤다 → 잡기 / 도망 → 사라짐), `b11_ball.mjs <before|after> <phone|pc> [운]` (공 흔들림 프레임), `b11_admin.mjs <c375|c320|pc>` (운영자 카드). 화면 시험 스크립트는 저장소 밖(개발 PC)에 있습니다.
+
+## 0056 포켓몬 교환 확인 (스테이징)
+- 순서: `0056_trade.sql` 하나 (표 trades · trade_seen, collection 에 열 추가 — 지우는 것 없음, 끝의 권한 블록 꼭 포함).
+- 서버: `node tests/rpc_test.mjs` → [63] (배틀 QR 로 교환방 · 둘 다 확인 · 바뀌면 확인 풀림 · 그만두기 · 못 바꾸는 포켓몬 코드 · 하루 횟수 · trade_open 끄기 · 바꾸기 직전 다시 확인 · 되돌려 받기 도감 · 두 번 눌러도 한 번 · 교환 진화 · 방 시간 끝 · 운영자 목록).
+- 화면: 학생 둘로 로그인 → 한 명은 배틀 탭 "내 교환 QR 보여주기", 다른 한 명은 그 QR 을 찍고 "포켓몬 교환하기" → 고르기 → 둘 다 교환하기 → 근육몬은 받자마자 괴력몬으로 진화.
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.

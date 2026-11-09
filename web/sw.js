@@ -1,7 +1,7 @@
 // Offline cache for the student app. Bump VERSION on every deploy.
 // Update policy: a new version installs in the background; the app tells it to take over (message 'skipWaiting')
 // at start-up or when the student taps "새 버전 적용" — never while a bag QR is on screen.
-const VERSION = 'hafsmon-v66';
+const VERSION = 'hafsmon-v67';
 // 운영자가 올린 포켓몬 그림 (Supabase Storage, 0031): 파일 이름이 올릴 때마다 바뀌므로 한 번 받으면 계속 씀 (버전과 따로 보관)
 const SPRITES = 'hafsmon-sprites';
 // 배경 음악 (web/audio/, 합쳐 약 9MB): 설치 때 받지 않음 (CORE 아님). 처음 틀 때 받아서 따로 보관 → 버전을 올려도 다시 받지 않음.
