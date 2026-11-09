@@ -1,7 +1,7 @@
 """진짜 포켓몬으로 바꾸기 (0032) → supabase/seed_pokemon.sql + .work/pokemon/sprites.json
 
 자료: PokeAPI CSV (https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv) 를 .work/pokeapi/ 에 받아 둔 것.
-  - 1~7세대 (도감 1~809) 전부. 진화 계열 = 한 줄(1~3단계). 갈래 진화는 첫 갈래가 계열을 잇고, 나머지는 따로 1단계 계열.
+  - 1~7세대 (도감 1~809) 전부 (0049: 멜탄 808 · 멜메탈 809 는 뺌, 계열 440 은 빈 번호). 진화 계열 = 한 줄(1~3단계). 갈래 진화는 첫 갈래가 계열을 잇고, 나머지는 따로 1단계 계열.
   - 갈래 진화 (0037): 첫 갈래가 아닌 진화 (이브이 → 쥬피썬더 …)도 원래 계열 안에 '갈래 종'으로 한 번 더 넣음
     (species.id = 10000 + 전국도감 번호, 같은 계열 · 다음 단계). 진화 길은 public.evolutions (from → to, level | item).
     따로 1단계 계열로 있던 것 (야생 쥬피썬더 등)은 그대로 둠 → 도감은 전국도감 번호마다 한 칸.
@@ -79,6 +79,8 @@ EVENT = [
      ['10만볼트', '전광석화', '아이언테일', '일렉트릭볼'], 'pikachu-ooriginal'),
 ]
 EVENT_DEX = {e[0]: e for e in EVENT}
+# 0052 폼: 이벤트 포켓몬은 그 가족의 도감 번호로 (지우개굴닌자 = 658 개굴닌자, 지우의 피카츄 = 25 피카츄). 안에서는 810 · 811 을 열쇠로 그대로 씀 (그림 · 자료)
+EVENT_REAL_DEX = {810: 658, 811: 25}
 EVENT_LINE = {e[1]: e for e in EVENT}
 for _r in rd('pokemon'):
     for _e in EVENT:
@@ -289,6 +291,12 @@ for _e in EVENT:                     # 이벤트 포켓몬 (0044): 야생 계열
     assert _e[1] == nid, ('이벤트 계열 번호', _e[1], nid)
     LINE_PATH[nid] = [_e[0]]
     nid += 1
+# 0049: 멜탄 · 멜메탈 (도감 808 · 809, 계열 440) 은 게임에서 뺌 — 계열 번호는 비워 둠 (다른 번호 · 이벤트 계열 441 · 442 는 그대로)
+REMOVED_DEX = {808, 809}
+REMOVED_LINES = sorted(l for l, p in LINE_PATH.items() if REMOVED_DEX.intersection(p))
+assert REMOVED_LINES == [440] and LINE_PATH[440] == [808, 809], ('멜탄 계열', REMOVED_LINES)
+for _l in REMOVED_LINES:
+    del LINE_PATH[_l]
 SPECIES_OF_DEX = {}       # 도감 번호 → (line, stage)
 for l, p in LINE_PATH.items():
     for i, s in enumerate(p):
@@ -784,14 +792,14 @@ def main():
              ' btype = excluded.btype, bonus = true, mythic = false, secret = false, ultra = false, legend_src = excluded.legend_src;')
     S.append("-- 예전 데이터의 '비밀 몬스터' (계열 37 = 뮤) → 포켓몬 이름으로 (도감 상세 '정체' 칸에 보임)")
     S.append("update public.lines set teacher = '비밀 포켓몬' where id = 37 and teacher = '비밀 몬스터';")
-    S.append(f'delete from public.lines where id > {max(line_ids)};')
+    S.append(f'delete from public.lines where id > {max(line_ids)} and id < 1000;   -- 0052: 1000+ = 폼 계열 (일반 폼 복사본 · 운영자가 만든 선생님 폼) 은 남김')
     abr = ability_rows([r[10] for r in species_rows])
     S.append('-- 특성 (0039): 7세대 기준 한국어 이름 · 설명 (PokeAPI)')
     S.append('insert into public.abilities (key, name, description) values ' + ',\n'.join(f'({q(k)}, {q(n)}, {q(d)})' for k, n, d in abr)
              + ' on conflict (key) do update set name = excluded.name, description = excluded.description;')
     S.append('insert into public.species (id, line_id, stage, name, category, flavor, height, weight, btype, hp, atk, def, spa, spd, spe, dex, evo_lv, evo_item, '
              'abilities, hidden_ability) values')
-    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {dex}, {ev if ev else 'null'}, "
+    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {EVENT_REAL_DEX.get(dex, dex)}, {ev if ev else 'null'}, "
                         f"{'true' if it else 'false'}, array[{', '.join(q(x) for x in ab[0])}]::text[], {q(ab[1])})"
                         for i, l, st, nm, cat, fl, h, w, bt, v, dex, ev, it, ab in species_rows))
     S.append('on conflict (id) do update set line_id = excluded.line_id, stage = excluded.stage, name = excluded.name, category = excluded.category, '
@@ -831,11 +839,13 @@ def main():
         f'({q(a)}, {q(d)}, {m:g})' for (a, d), m in sorted(CHART.items()) if m != 1) + ';')
     S.append('-- 특성 (0039): 종의 특성 목록이 바뀌었을 수 있음 → 포켓몬마다 다시 맞춤 (트리거 _col_ability, 자리 ability_slot 은 그대로)')
     S.append('update public.collection set ability = null where true;')
+    S.append('-- 0052 폼: 선생님 계열의 일반 폼 복사본 (1000+) · 가족 · 이벤트 폼을 다시 맞춤 (0052 를 넣은 뒤에만 — 함수가 없으면 건너뜀)')
+    S.append("do $$ begin if to_regproc('public._forms_build') is not null then perform public._forms_build(); end if; end $$;")
     S.append('commit;')
     out = os.path.join(ROOT, 'supabase', 'seed_pokemon.sql')
     open(out, 'w', encoding='utf-8', newline='\n').write('\n'.join(S) + '\n')
     # 그림 올리기용 표 (tools/upload_pokemon_sprites.mjs): species.id → 전국도감 번호 · 영어 이름
-    ident = {int(r['id']): r['identifier'] for r in rd('pokemon_species') if int(r['id']) <= MAXDEX}
+    ident = {int(r['id']): r['identifier'] for r in rd('pokemon_species') if int(r['id']) <= MAXDEX and int(r['id']) not in REMOVED_DEX}
     forms = {}                                   # 이벤트 포켓몬 (0044): 도감 번호 → smogon gen5 그림 이름 (s<이름>.png, 색이 다른 것 s<이름>-s.png)
     for e in EVENT:
         ident[e[0]] = POKE[e[0]]['identifier']
@@ -846,7 +856,7 @@ def main():
     print(f'갈래 종 {len(BRANCHES)}: ' + ', '.join(f"{NAME[b[3]]}({b[0]}, 계열 {b[1]} {b[2]}단계, {'돌' if b[6] else 'Lv.' + str(b[5])})" for b in BRANCHES))
     print(f'{out}: lines {len(lines_sql)} (wild {sum(1 for x in lines_sql if x[4])}), species {len(species_rows)}, '
           f'moves {len(MOVES)}, learn {len(learn_rows)}, items {len(items)} (TM {len(TMS)})')
-    for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, 440] + [e[1] for e in EVENT]:
+    for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, 439] + [e[1] for e in EVENT]:
         print(' ', l, [NAME[s] for s in LINE_PATH[l]], evo_levels(LINE_PATH[l]), lines_sql[line_ids.index(l)][2:4])
 
 

@@ -3,6 +3,19 @@
 // Resets the test students (admin_unlink) at the start, so it is repeatable.
 import { readFileSync } from 'node:fs';
 
+// 네트워크가 잠깐 끊겨 (ECONNRESET · ECONNABORTED · fetch failed) 시험 전체가 중간에 멈추면 설정이 시험 값으로 남음 →
+// 연결 오류일 때만 잠깐 쉬고 3번까지 다시 보냄 (HTTP 오류 응답은 그대로 돌려줌)
+const rawFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+  for (let i = 0; ; i++) {
+    try { return await rawFetch(...args); } catch (e) {
+      const code = e?.cause?.code || e?.code || '';
+      if (i >= 3 || !/ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|UND_ERR/.test(code + ' ' + (e?.message || ''))) throw e;
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+};
+
 const env = Object.fromEntries(readFileSync(new URL('./.env', import.meta.url), 'utf8')
   .split(/\r?\n/).filter(Boolean).map(l => l.split(/=(.*)/s).slice(0, 2)));
 const URL_ = env.SUPABASE_URL;
@@ -79,6 +92,9 @@ await patchSetting('battle_fields', []);
 // 0042: 새로 잡는 포켓몬이 1/512 로 반짝 — 예전 시험 (SHINY_LOCKED 등) 이 흔들리지 않게 시험 동안 0 (끝에서 되돌림)
 const WSHINY0 = (await admin.select('settings?key=eq.wild_shiny_chance')).data?.[0]?.value ?? 0.001953125;
 await patchSetting('wild_shiny_chance', 0);
+// 0051: 2단계 해금 (사파리존 · 장소 QR 야생) — 예전 시험은 새 학생이 바로 사파리 · QR 야생을 쓰므로 시험 동안 모두에게 열기 ([60] 은 직접 끄고 봄, 끝에서 되돌림)
+const UNLOCK0 = (await admin.select('settings?key=eq.unlock_all')).data?.[0]?.value ?? false;
+await patchSetting('unlock_all', true);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -590,10 +606,13 @@ console.log('\n[23] battle data: real Pokémon (0032) — types, moves, stats');
   // 0044: + 이벤트 포켓몬 2 (지우개굴닌자 No.810 · 지우의 피카츄 No.811, 계열 441 · 442 — [54] 에서 따로 봄)
   const EVENT_SP = [1321, 1324];
   const main = sp.filter(x => x.id < 10000 && !EVENT_SP.includes(x.id));
-  ok(main.length === 809 && sp.length === 831 && sp.filter(x => EVENT_SP.includes(x.id)).map(x => x.dex).join() === '810,811'
-     && sp.every(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].every(v => v > 0)), 'all 809 Pokémon (#1–809) + 20 branch rows + 2 event (No.810 · 811) have 6 base stats', sp.length);
-  ok(new Set(main.map(x => x.dex)).size === 809 && Math.min(...main.map(x => x.dex)) === 1 && Math.max(...main.map(x => x.dex)) === 809
-     && sp.filter(x => x.id >= 10000).every(x => x.id === 10000 + x.dex), 'national dex numbers 1–809, each once (branch rows reuse their number)');
+  // 0049: 멜탄 (808) · 멜메탈 (809) 은 뺌 → 807 + 갈래 20 + 이벤트 2. 0052: 이벤트 = 가족 번호 (658 · 25), + 폼 종 (20000+ 일반 폼 복사본 · 40000+ 운영자 선생님 폼)
+  const base = sp.filter(x => x.id < 20000);
+  ok(main.length === 807 && base.length === 829 && sp.filter(x => EVENT_SP.includes(x.id)).map(x => x.dex).join() === '658,25'
+     && sp.every(x => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].every(v => v > 0)), 'all 807 Pokémon (#1–807) + 20 branch rows + 2 event forms (No.658 · 025) + form copies have 6 base stats', [base.length, sp.length]);
+  ok(new Set(main.map(x => x.dex)).size === 807 && Math.min(...main.map(x => x.dex)) === 1 && Math.max(...main.map(x => x.dex)) === 807
+     && !sp.some(x => x.dex === 808 || x.dex === 809)
+     && sp.filter(x => x.id >= 10000 && x.id < 20000).every(x => x.id === 10000 + x.dex), 'national dex numbers 1–807, each once, no 멜탄 / 멜메탈 (branch rows reuse their number)');
   const byDex = Object.fromEntries(sp.map(x => [x.dex, x]));
   const st = (x) => [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].join('/');
   ok(st(byDex[1]) === '45/49/49/65/65/45' && byDex[1].name === '이상해씨' && byDex[1].btype === '풀/독', '이상해씨 = real stats and types', [byDex[1].name, st(byDex[1]), byDex[1].btype]);
@@ -617,8 +636,8 @@ console.log('\n[23] battle data: real Pokémon (0032) — types, moves, stats');
   ok(['노말:고스트', '격투:고스트', '고스트:노말', '전기:땅', '땅:비행', '독:강철', '에스퍼:악', '드래곤:페어리'].every(k => m(...k.split(':')) === 0)
      && tc.filter(c => Number(c.mult) === 0).length === 8, 'x0 cells (효과가 없다) = the 8 real ones');
   const ln = (await S[0].select('lines?select=id,btype,subject,max_stage&order=id')).data || [];
-  ok(ln.length === 442 && ln.every(l => l.btype) && ln.filter(l => l.subject === '야생').length === 360 && ln.every(l => l.max_stage >= 1 && l.max_stage <= 3),
-     '442 lines: 68 teacher + 14 special + 358 wild + 2 event (0044, 야생 · bonus), every line has a type', [ln.length, ln.filter(l => l.subject === '야생').length]);
+  ok(ln.length === 509 && !ln.some(l => l.id === 440) && ln.every(l => l.btype) && ln.filter(l => l.subject === '야생').length === 427 && ln.every(l => l.max_stage >= 1 && l.max_stage <= 3),
+     '509 lines: 68 teacher + 14 special + 357 wild (0049: 멜탄 계열 440 removed) + 2 event (0044) + 68 normal-form copies (0052, 1000+), every line has a type', [ln.length, ln.filter(l => l.subject === '야생').length]);
   const lg = (await S[0].select('lines?id=gte.37&id=lte.42&select=id,bonus,max_stage&order=id')).data || [];
   ok(lg.length === 6 && lg.every(l => l.bonus && l.max_stage === 1), 'secret + 5 탐구 legends are bonus 1-stage lines', lg);
   const w = await fetch(`${URL_}/rest/v1/moves?id=eq.${mv[0].id}`, { method: 'PATCH', headers: { apikey: KEY, 'Content-Type': 'application/json', Authorization: `Bearer ${STOK}`, Prefer: 'return=representation' }, body: JSON.stringify({ power: 999 }) });
@@ -699,24 +718,29 @@ console.log('\n[24] raids + special tickets');
   // 0037: 갈래 종 (10000+) 은 진화로만 (그 앞 단계를 받아서 Lv.100 + 진화의 돌 1개, p_to). 0044 이벤트 포켓몬 (bonus) 은 안 셈.
   const dexCfg = (await admin.select('settings?key=eq.dex_rewards&select=value')).data?.[0]?.value || { 50: 41, 100: 42 };
   const sp50 = (Number(dexCfg['50']) - 1) * 3 + 1, sp100 = (Number(dexCfg['100']) - 1) * 3 + 1;
-  const schoolLines = (await admin.select(`lines?select=id,max_stage&active=eq.true&withdrawn=eq.false&bonus=eq.false&secret=eq.false&subject=neq.${encodeURIComponent('야생')}&order=id`)).data || [];
+  // 0049: 학교 도감 = 학교 탭 (야생 아님 · active · not withdrawn · 비밀/환상 아님) − 보상 계열 (dex_rewards 50 · 100)
+  const rewardLines = Object.values(dexCfg).map(Number);
+  const schoolLines = ((await admin.select(`lines?select=id,max_stage&active=eq.true&withdrawn=eq.false&secret=eq.false&mythic=eq.false&subject=neq.${encodeURIComponent('야생')}&order=id`)).data || [])
+    .filter((l) => !rewardLines.includes(l.id));
   const schoolIds = new Set(schoolLines.map((l) => l.id));
   const schoolSp = ((await admin.select('species?select=id,line_id,stage,dex&order=id')).data || []).filter((x) => schoolIds.has(x.line_id));
   const keyOf = (x) => x.dex || -x.id;
   const dexTotal = new Set(schoolSp.map(keyOf)).size;
   ok(!schoolIds.has(441) && !schoolIds.has(442), '0044 event lines are not part of the school dex', [...schoolIds].filter((x) => x > 440));
+  // 0049: 갈래 진화는 무작위. 0052: 학교 칸은 그 선생님 폼으로만 채워짐 (같은 번호의 야생 계열은 안 셈) → 선생님 계열 안에서
+  //   앞 단계를 받아 Lv.1 로 두고 진화의 돌로 (모든 갈래 중 무작위) 그 갈래 종이 나올 때까지
   const branchEvolve = async (lines) => {
-    const brs = ((await admin.select('species?id=gte.10000&select=id,line_id,stage')).data || []).filter((x) => lines.has(x.line_id));
-    const evs = (await admin.select('evolutions?to_species=gte.10000&select=from_species,to_species')).data || [];
+    const brs = ((await admin.select('species?id=gte.10000&id=lt.20000&select=id,line_id,stage,dex')).data || []).filter((x) => lines.has(x.line_id));
+    await admin.rpc('admin_adjust_tickets', { p_student_id: B.sid, p_delta: 80 });   // 한 번에 (알림 하나)
     for (const b of brs) {
-      const e = evs.find((x) => x.to_species === b.id);
-      const from = e && (await admin.select(`species?id=eq.${e.from_species}&select=id,stage`)).data?.[0];
-      if (!from || from.id >= 10000) continue;
-      await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: b.line_id, p_stage: from.stage });
-      await admin.rpc('admin_set_level', { p_student_id: B.sid, p_line: b.line_id, p_level: 100 });
-      await admin.rpc('admin_adjust_tickets', { p_student_id: B.sid, p_delta: 1 });
-      const m = (await myMons(B.c)).filter((x) => x.line_id === b.line_id && x.stage === from.stage).pop();
-      await B.c.rpc('evolve', { p_mon: m?.id, p_to: b.id });
+      for (let k = 0; k < 30; k++) {
+        const s0 = (await B.c.rpc('sync')).data.state;
+        if ((s0.seen || []).includes(b.id)) break;
+        let m = (s0.mons || []).find((x) => x.line_id === b.line_id && x.stage === b.stage - 1);
+        if (!m) { await admin.rpc('admin_grant_monster', { p_student_id: B.sid, p_line: b.line_id, p_stage: b.stage - 1 }); continue; }
+        await admin.rpc('admin_set_level', { p_student_id: B.sid, p_line: b.line_id, p_level: 1 });
+        await B.c.rpc('evolve', { p_mon: m.id });
+      }
     }
   };
   // 앞쪽 계열부터 마지막 단계로 (앞 단계도 '본 것') — 절반을 넘기면 멈춤 (100% 는 아직)
@@ -735,6 +759,8 @@ console.log('\n[24] raids + special tickets');
   await branchEvolve(schoolIds);
   st = (await B.c.rpc('sync')).data.state;
   ok(st.special?.some(x => x.special === 'dex100' && x.species_id === sp100) && st.special.filter(x => x.special === 'dex50').length === 1, '도감 100% → 창문기 ticket (once each)', st.special);
+  const keysSrv = st.rules?.school_keys || [];
+  ok(keysSrv.length === dexTotal && schoolSp.every((x) => keysSrv.includes(keyOf(x))), `0049: sync rules.school_keys = the 학교 tab cells = the reward count (${keysSrv.length})`, [keysSrv.length, dexTotal]);
   await admin.rpc('admin_unlink', { p_student_id: A.sid }); await admin.rpc('admin_unlink', { p_student_id: B.sid });
 }
 
@@ -794,8 +820,9 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 9 } })).error === 'BAD_ACTION', 'bad move slot refused');
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { switch: 0 } })).error === 'BAD_ACTION', 'cannot switch to the monster already out');
   let r = await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 1 } });
-  ok(r.data?.turn === 1 && r.data.seq === 1 && r.data.log.some(x => /^@0.+(의 .+!|혼란에 빠져 있다!)$/.test(x.m || '')) && r.data.log.some(x => /^@1/.test(x.m || '')), 'one turn: both sides act, log uses @0/@1 tokens', r.data?.log);
-  ok(r.data.sides[0].mons[0].moves[0].pp === b.sides[0].mons[0].moves[0].pp - 1 || r.data.log.some(x => /잠들어|저려서|자신을 공격했다/.test(x.m || '')), 'PP goes down');
+  const meDown = r.data?.log?.some(x => x.faint === 0 && /^@0.+쓰러졌다!$/.test(x.m || ''));   // 상대가 먼저 한 방에 쓰러뜨리면 내 차례가 없음
+  ok(r.data?.turn === 1 && r.data.seq === 1 && (meDown || r.data.log.some(x => /^@0.+(의 .+!|혼란에 빠져 있다!)$/.test(x.m || ''))) && r.data.log.some(x => /^@1/.test(x.m || '')), 'one turn: both sides act, log uses @0/@1 tokens', r.data?.log);
+  ok(r.data.sides[0].mons[0].moves[0].pp === b.sides[0].mons[0].moves[0].pp - 1 || meDown || r.data.log.some(x => /잠들어|저려서|자신을 공격했다/.test(x.m || '')), 'PP goes down');
   b = await play(A.c, r.data);
   ok(b?.status === 'over' && (b.winner === 0 || b.winner === 1) && b.reward?.ticket === false && ['practice', 'lost'].includes(b.reward?.why), 'CPU battle ends; practice gives no ticket', { st: b?.status, w: b?.winner, rw: b?.reward, err: b?.error });
 
@@ -1771,17 +1798,9 @@ console.log('\n[41] 진짜 포켓몬 (0032): 걸어서 만나는 야생 포켓�
   const rq = (await booth.rpc('booth_redeem', { p_payload: sid })).data?.results?.find((x) => x.nonce === nq);
   await patchSetting('wild_chance', 0);
   ok(rq?.species_id && wildLines.has(rq.line_id), 'QR scan with wild_chance 100% → a wild Pokémon instead of the listed one', rq);
-  // 5) 선생님 포켓몬 바꾸기 (운영자): 선생님 · 퀴즈 · 장소 QR 이 함께 옮겨지고, 원래 계열은 야생
-  const q3 = (await admin.select('quizzes?line_id=eq.3&select=id')).data.length;
-  ok((await P.rpc('admin_assign_teacher', { p_from: 3, p_to: 83 })).error === 'NOT_ADMIN', 'students cannot move teachers');
-  ok((await admin.rpc('admin_assign_teacher', { p_from: 83, p_to: 84 })).error === 'NOT_TEACHER_LINE', 'only a teacher line can be moved');
-  ok((await admin.rpc('admin_assign_teacher', { p_from: 3, p_to: 35 })).error === 'NOT_WILD_LINE', 'cannot move onto a special legend line');
-  const mv1 = (await admin.rpc('admin_assign_teacher', { p_from: 3, p_to: 83 })).data;
-  const l3 = (await admin.select('lines?id=in.(3,83)&select=id,teacher,subject&order=id')).data;
-  ok(mv1?.ok && l3[0].subject === '야생' && l3[1].teacher === mv1.teacher && l3[1].subject !== '야생'
-     && (await admin.select('quizzes?line_id=eq.83&select=id')).data.length === q3, 'teacher + quizzes move to the new Pokémon line, old line becomes wild', l3);
-  ok((await admin.rpc('admin_assign_teacher', { p_from: 83, p_to: 3 })).data?.ok
-     && (await admin.select('lines?id=eq.3&select=subject')).data[0].subject !== '야생', 'and back again (restored)');
+  // 5) 선생님 폼 (0052): 학생은 못 만듦 · 예전 admin_assign_teacher 없음 (자세한 것은 [61])
+  ok((await P.rpc('admin_create_teacher_form', { p_family: 1003, p_teacher: '시험', p_subject: '국어' })).error === 'NOT_ADMIN', 'students cannot create teacher forms');
+  ok(!!(await admin.rpc('admin_assign_teacher', { p_from: 3, p_to: 83 })).error, 'admin_assign_teacher is gone (0052)');
   // 6) 돌 진화 (0034): 피카츄 → 라이츄 는 레벨로 안 됨, 진화의 돌 1개로 100%
   const rai = (await admin.select('species?line_id=eq.12&stage=eq.3&select=name,evo_lv,evo_item')).data[0];
   ok(rai?.name === '라이츄' && rai.evo_item === true && rai.evo_lv === null, '라이츄 = stone evolution (no level)', rai);
@@ -1995,7 +2014,7 @@ console.log('\n[43] PC 박스 (0036): 같은 포켓몬 여러 마리 · 진화�
   await admin.rpc('admin_delete_students', { p_student_ids: [X.sid, Y.sid], p_confirm: '삭제' });
 }
 
-console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈래 거절 · 돌/레벨 갈래 · 도감 수 · 사파리 도망 (서버) · 진화의 돌 이름');
+console.log('\n[44] 갈래 진화 (0037 · 0049 무작위): 서버가 갈래를 고름 · 돌/레벨 갈래 · 도감 수 · 사파리 도망 (서버) · 진화의 돌 이름');
 {
   const mk = async (name) => {
     let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'evo123' })).error);
@@ -2012,7 +2031,7 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
   const outs = ev.filter((e) => e.from_species === eevee?.id);
   ok(outs.length === 8 && outs.filter((e) => e.how === 'item').length === 5 && outs.filter((e) => e.how === 'level').every((e) => e.lv === 25),
      'evolutions: 이브이 has 8 branches (5 stone, 3 level 25)', outs);
-  const br = await spOf('id=gte.10000&order=id');
+  const br = await spOf('id=gte.10000&id=lt.20000&order=id');   // 0052: 20000+ = 폼 종
   ok(br.length === 20 && br.every((x) => x.id === 10000 + x.dex), 'branch species rows: id = 10000 + national dex', br.length);
   const jolt = br.find((x) => x.dex === 135);
   ok(jolt?.line_id === L && jolt.stage === 2 && jolt.evo_item === true, '쥬피썬더 branch = 이브이 line, stage 2, stone', jolt);
@@ -2021,75 +2040,86 @@ console.log('\n[44] 갈래 진화 (0037): 이브이는 고르기 · 틀린 갈�
   ok((await X.c.select('evolutions?select=from_species&limit=1')).data?.length === 1, 'students can read evolutions (catalog)');
   ok((await X.c.patch('evolutions?from_species=eq.1', { lv: 2 })) >= 400 || (await admin.select('evolutions?from_species=eq.1&select=lv')).data?.[0]?.lv !== 2, 'students cannot change evolutions');
 
-  // 1) 이브이 #1: 갈래 고르기 필수 · 틀린 갈래 · 돌 진화
+  // 0049: 갈래가 여럿이면 고르지 않음 — 서버가 같은 확률로 (p_to 무시, PICK_BRANCH 없음). 레벨이 된 레벨 갈래가 있으면 그중에서 돌 없이, 없으면 진화의 돌로 모든 갈래 중에서
+  const EP = (await admin.select('settings?key=eq.evo_prob&select=value')).data?.[0]?.value ?? [0, 0.7, 0.35];
+  const outIds = outs.map((e) => e.to_species);
+  // 1) 이브이 #1: 진화의 돌 없음 → NO_TICKET (고르라는 말 없음), 돌 1개 → 8갈래 중 하나
   await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
   const m1 = (await st()).mons.find((m) => m.line_id === L);
   ok(m1?.species_id === eevee.id && m1.stage === 1, 'a new 이브이 knows its species id', m1);
   await admin.rpc('admin_adjust_tickets', { p_student_id: X.sid, p_delta: -((await st()).profile.evo_tickets) });
-  ok((await X.c.rpc('evolve', { p_mon: m1.id })).error === 'PICK_BRANCH', '이브이 without p_to → PICK_BRANCH (must choose)');
-  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: 2 })).error === 'BAD_BRANCH', 'a species that is not one of its branches → BAD_BRANCH');
-  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: 10475 })).error === 'BAD_BRANCH', "another line's branch (엘레이드) → BAD_BRANCH");
-  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: jolt.id })).error === 'NO_TICKET', 'stone branch without a 진화의 돌 → NO_TICKET');
+  const e0 = await X.c.rpc('evolve', { p_mon: m1.id });
+  ok(e0.error === 'NO_TICKET', '이브이 Lv.5 without a 진화의 돌 → NO_TICKET (no PICK_BRANCH any more)', e0);
+  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: jolt.id })).error === 'NO_TICKET', 'p_to is ignored for a branching species (still needs a 진화의 돌)');
   await admin.rpc('admin_adjust_tickets', { p_student_id: X.sid, p_delta: 2 });
-  const r1 = (await X.c.rpc('evolve', { p_mon: m1.id, p_to: jolt.id })).data;
-  ok(r1?.success === true && r1.by_item === true && r1.species_id === jolt.id && r1.stage === 2 && r1.evo_tickets === 1,
-     'stone branch: 1 진화의 돌 → 100% 쥬피썬더 (species 10135, stage 2)', r1);
+  let r1;
+  await patchSetting('evo_prob', [0, 1, 1]);
+  try { r1 = (await X.c.rpc('evolve', { p_mon: m1.id, p_to: 2 })).data; } finally { await patchSetting('evo_prob', EP); }
+  ok(r1?.success === true && r1.branched === true && r1.options === 8 && outIds.includes(r1.species_id) && r1.stage === 2 && r1.evo_tickets === 1
+     && r1.by_level === false && r1.by_item === (outs.find((e) => e.to_species === r1.species_id)?.how === 'item'),
+     "stone + 8 branches: the server picks one of 이브이's branches (p_to ignored), 1 진화의 돌 used", r1);
   let s1 = await st();
   const m1b = s1.mons.find((m) => m.id === m1.id);
-  ok(m1b?.species_id === jolt.id && m1b.stage === 2, 'sync: that mon is now 쥬피썬더', m1b);
-  ok(s1.seen?.includes(eevee.id) && s1.seen.includes(jolt.id) && s1.profile.dex_count === 2, 'seen = 이브이 + 쥬피썬더, dex_count 2', { seen: s1.seen, dex: s1.profile.dex_count });
-  ok((await X.c.rpc('evolve', { p_mon: m1.id, p_to: jolt.id })).error === 'MAX_STAGE', '쥬피썬더 cannot evolve further');
+  ok(m1b?.species_id === r1?.species_id && m1b.stage === 2, 'sync: that mon is now the picked branch', m1b);
+  ok(s1.seen?.includes(eevee.id) && s1.seen.includes(r1?.species_id) && s1.profile.dex_count === 2, 'seen = 이브이 + the picked branch, dex_count 2', { seen: s1.seen, dex: s1.profile.dex_count });
+  ok((await X.c.rpc('evolve', { p_mon: m1.id })).error === 'MAX_STAGE', 'an evolved 이브이 cannot evolve further');
   const bag1 = (await X.c.rpc('bag_state')).data;
   const bx1 = bag1?.box?.find((m) => m.id === m1.id);
-  const smJ = ((await admin.select(`species_moves?species_id=eq.${jolt.id}&select=move_id&order=slot`)).data || []).map((x) => x.move_id);
-  ok(bx1?.species_id === jolt.id && smJ.length === 4 && smJ.every((x) => bx1.known.includes(x)), "bag: 쥬피썬더's own 4 moves are known", { bx1, smJ });
+  const smJ = ((await admin.select(`species_moves?species_id=eq.${r1?.species_id}&select=move_id&order=slot`)).data || []).map((x) => x.move_id);
+  ok(bx1?.species_id === r1?.species_id && smJ.length === 4 && smJ.every((x) => bx1.known.includes(x)), "bag: the branch Pokémon's own 4 moves are known", { bx1, smJ });
   const team = (await X.c.rpc('battle_set_team', { p_mons: [m1.id] }));
   ok(!team.error, 'a branch Pokémon can be in the battle team', team);
 
-  // 2) 이브이 #2: 레벨 갈래 (에브이 Lv.25) — 돌 없이 100%
+  // 2) 이브이 #2: Lv.25 → 레벨 갈래 (에브이 · 블래키 · 님피아) 중 하나, 돌 없이 100%
   await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
   const m2 = (await st()).mons.find((m) => m.line_id === L && m.stage === 1);
   await admin.rpc('admin_set_level', { p_student_id: X.sid, p_line: L, p_level: 25 });
-  const r2 = (await X.c.rpc('evolve', { p_mon: m2.id, p_to: 10196 })).data;
-  ok(r2?.success && r2.by_level === true && r2.species_id === 10196 && r2.evo_tickets === 1, 'level branch at Lv.25: 에브이, no 진화의 돌 used', r2);
+  const lvIds = outs.filter((e) => e.how === 'level').map((e) => e.to_species);
+  const r2 = (await X.c.rpc('evolve', { p_mon: m2.id, p_to: jolt.id })).data;
+  ok(r2?.success && r2.by_level === true && lvIds.includes(r2.species_id) && r2.evo_tickets === 1 && r2.branched,
+     'Lv.25: one of the level branches (에브이 · 블래키 · 님피아), no 진화의 돌 used, p_to (쥬피썬더) ignored', r2);
 
-  // 3) 이브이 #3: 레벨 갈래를 일찍 (Lv.5) = 진화의 돌 + 확률 (시험 동안 100%)
-  const EP = (await admin.select('settings?key=eq.evo_prob&select=value')).data?.[0]?.value ?? [0, 0.7, 0.35];
+  // 3) 이브이 #3: Lv.5 + 진화의 돌 = 모든 갈래 중 하나 (레벨 갈래면 확률, 시험 동안 100%)
   await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
   const m3 = (await st()).mons.find((m) => m.line_id === L && m.stage === 1);
   await patchSetting('evo_prob', [0, 1, 1]);
   let r3;
-  try { r3 = (await X.c.rpc('evolve', { p_mon: m3.id, p_to: 10197 })).data; } finally { await patchSetting('evo_prob', EP); }
-  ok(r3?.success && r3.by_level === false && r3.by_item === false && r3.species_id === 10197 && r3.evo_tickets === 0,
-     'early level branch (Lv.5 → 블래키): uses a 진화의 돌 (probability)', r3);
+  try { r3 = (await X.c.rpc('evolve', { p_mon: m3.id })).data; } finally { await patchSetting('evo_prob', EP); }
+  ok(r3?.success && r3.by_level === false && outIds.includes(r3.species_id) && r3.evo_tickets === 0,
+     'early (Lv.5) with a 진화의 돌: one of all 8 branches, 1 진화의 돌 used', r3);
   s1 = await st();
-  ok(s1.profile.dex_count === 4, 'dex counts 이브이 once + 쥬피썬더 + 에브이 + 블래키 = 4', s1.profile.dex_count);
+  const distinct = new Set([r1?.species_id, r2?.species_id, r3?.species_id]).size;
+  ok(s1.profile.dex_count === 1 + distinct, `dex counts 이브이 once + ${distinct} different branch species`, s1.profile.dex_count);
   ok(s1.collection.find((c) => c.line_id === L)?.count === 3, 'collection row: 3 Pokémon in the 이브이 line', s1.collection.find((c) => c.line_id === L));
 
-  // 4) 같은 전국도감 번호 = 한 칸: 따로 있는 야생 쥬피썬더 계열을 잡아도 도감 수는 그대로
-  const joltWild = (await spOf('dex=eq.135&id=lt.10000'))[0];
-  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: joltWild.line_id, p_stage: 1 });
+  // 4) 같은 전국도감 번호 = 한 칸: 따로 있는 야생 쥬피썬더 계열 — 이미 쥬피썬더가 됐으면 도감 수 그대로, 아니면 +1
+  const twin = (await spOf('dex=eq.135&id=lt.10000'))[0];
+  const dc0 = s1.profile.dex_count, had = [r1?.species_id, r2?.species_id, r3?.species_id].includes(jolt.id);
+  await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: twin.line_id, p_stage: twin.stage });
   s1 = await st();
-  ok(joltWild.line_id !== L && s1.profile.dex_count === 4 && s1.seen.includes(joltWild.id), 'catching the standalone 쥬피썬더 line: same dex number → dex_count stays 4', { dex: s1.profile.dex_count });
+  ok(twin.line_id !== L && s1.profile.dex_count === dc0 + (had ? 0 : 1) && s1.seen.includes(twin.id), 'standalone 쥬피썬더 line: same dex number = same cell', { had, dc0, dex: s1.profile.dex_count });
 
-  // 5) 한 갈래뿐이면 p_to 없이 · 3단계 갈래 (개무소 → 카스쿤 → 독케일)
+  // 5) 개무소 Lv.10 → 실쿤 / 카스쿤 중 하나 (둘 다 Lv.7 레벨 갈래) → 그다음은 한 길 (p_to 없이)
   const kakuna = (await spOf('dex=eq.268&id=gte.10000'))[0];
   const wurm = (await spOf(`line_id=eq.${kakuna.line_id}&stage=eq.1`))[0];
+  const silcoon = (await spOf(`line_id=eq.${kakuna.line_id}&stage=eq.2&id=lt.10000`))[0];
   await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: wurm.line_id, p_stage: 1 });
   await admin.rpc('admin_set_level', { p_student_id: X.sid, p_line: wurm.line_id, p_level: 10 });
   const mw = (await st()).mons.find((m) => m.line_id === wurm.line_id);
-  ok((await X.c.rpc('evolve', { p_mon: mw.id })).error === 'PICK_BRANCH', '개무소 (실쿤 / 카스쿤) → PICK_BRANCH');
-  const rw = (await X.c.rpc('evolve', { p_mon: mw.id, p_to: kakuna.id })).data;
-  ok(rw?.success && rw.by_level && rw.species_id === kakuna.id, '개무소 Lv.10 → 카스쿤 (level branch)', rw);
+  const rw = (await X.c.rpc('evolve', { p_mon: mw.id })).data;
+  ok(rw?.success && rw.by_level && [kakuna.id, silcoon?.id].includes(rw.species_id) && rw.branched && rw.options === 2, '개무소 Lv.10 → 실쿤 or 카스쿤 (server picks, no PICK_BRANCH)', rw);
+  const next3 = ev.find((e) => e.from_species === rw?.species_id)?.to_species;
   const rw2 = (await X.c.rpc('evolve', { p_mon: mw.id })).data;
-  ok(rw2?.success && rw2.by_level && rw2.species_id === 10269 && rw2.stage === 3, '카스쿤 has one way → evolve without p_to → 독케일 (stage 3)', rw2);
-  ok(((await st()).seen || []).filter((x) => [wurm.id, kakuna.id, 10269].includes(x)).length === 3, 'seen keeps the whole branch path (개무소 · 카스쿤 · 독케일)');
-  // 곧은 계열은 예전처럼 p_to 없이
+  ok(rw2?.success && rw2.by_level && rw2.species_id === next3 && rw2.stage === 3 && !rw2.branched, 'its next stage has one way → evolve without p_to (stage 3)', rw2);
+  ok(((await st()).seen || []).filter((x) => [wurm.id, rw?.species_id, next3].includes(x)).length === 3, 'seen keeps the whole branch path');
+  // 곧은 계열은 예전처럼 p_to 없이 · 틀린 p_to 는 BAD_BRANCH
   const one = (await spOf('id=eq.1'))[0];
   await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: one.line_id, p_stage: 1 });
   await admin.rpc('admin_set_level', { p_student_id: X.sid, p_line: one.line_id, p_level: 50 });
-  const r5 = (await X.c.rpc('evolve', { p_mon: (await st()).mons.find((m) => m.line_id === one.line_id).id })).data;
-  ok(r5?.success && r5.species_id === 2, 'a single-path line still evolves without p_to', r5);
+  const oneMon = (await st()).mons.find((m) => m.line_id === one.line_id).id;
+  ok((await X.c.rpc('evolve', { p_mon: oneMon, p_to: 10475 })).error === 'BAD_BRANCH', "a single-path species with another line's branch (엘레이드) → BAD_BRANCH");
+  const r5 = (await X.c.rpc('evolve', { p_mon: oneMon })).data;
+  ok(r5?.success && r5.species_id === 2 && !r5.branched, 'a single-path line still evolves without p_to', r5);
 
   // 6) 학교 도감: 선생님 계열의 갈래 종 (냄새꼬 → 아르코) 도 학교 도감 칸
   const bell = (await spOf('dex=eq.182&id=gte.10000'))[0];
@@ -2212,13 +2242,13 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
   const uidOf = async (sid) => (await admin.select(`profiles?student_id=eq.${sid}&select=user_id`)).data?.[0]?.user_id;
   try {
     ok(Number(old.ditto_disguise_chance) === 0 && Number(old.roam_chance) === 0 && Number(ROAM0) === 0.3 && Number(old.legend_daily_tries) === 3 && Number(old.legend_balls) === 10
-       && Array.isArray(old.legend_quests) && old.legend_quests.length === 14, 'settings: ditto · roam (0 during the suite), roam default 30%, legend 3 tries · 10 balls, 14 quests', old);
+       && Array.isArray(old.legend_quests) && old.legend_quests.length === 47, 'settings: ditto · roam (0 during the suite), roam default 30%, legend 3 tries · 10 balls, 47 quests (0050: +33)', old);
     ok(Number(DITTO0) === 0.005, 'ditto_disguise_chance default 0.5% (user choice)', DITTO0);
     // ── 0. 야생 무리: 퀘스트 · 사파리 · 방랑 · 소포 전설과 울트라비스트는 빠짐 ──
     const ln = (await admin.select('lines?select=id,ultra,legend_src&or=(ultra.eq.true,legend_src.not.is.null)')).data;
     const src = Object.fromEntries(['quest', 'safari', 'roam', 'gift'].map((k) => [k, ln.filter((x) => x.legend_src === k).length]));
-    ok(ln.filter((x) => x.ultra).length === 10 && src.quest === 5 && src.safari === 9 && src.roam === 3 && src.gift === 15,
-       'lines flagged: 10 Ultra Beasts, 5 quest, 9 safari, 3 roaming, 13 gift-only mythics + 2 event (0044)', src);
+    ok(ln.filter((x) => x.ultra).length === 10 && src.quest === 5 && src.safari === 42 && src.roam === 3 && src.gift === 2,
+       'lines flagged: 10 Ultra Beasts, 5 quest, 42 safari (0050: +33), 3 roaming, 2 event gifts (0044 · 0050 moved the 12 mythics to the Safari)', src);
 
     // ── A. 알림 ──
     await L.c.rpc('claim_egg', { p_key: 'card' });
@@ -2234,7 +2264,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
     // ── B. 퀘스트 ──
     const row = (s, dex) => s.legends.find((x) => x.dex === dex);
     s1 = await st();
-    ok(s1.legends.length === 14 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
+    ok(s1.legends.length === 47 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
        'quest rows in sync: 유크시 quiz streak 0/10', row(s1, 480));
     ok(row(s1, 481)?.prog === '배틀 승리 0/10' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
        'battle wins 0/10 · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
@@ -2390,7 +2420,10 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
     ok((await myMons(M.c)).some((m) => m.line_id === 116), '메타몽 is in the box');
     await setS('wild_chance', 1); await setS('self_redeem', true);
     const qn = nonce();
-    await M.c.rpc('sync', { p_scans: [{ n: qn, q: spots[5], t: T[spots[5]].token }] });
+    // 이번 시간의 방랑 장소가 spots[5] 이면 위 방랑 시험에서 이미 여러 번 찍어 오늘 한도 (daily_cap) → 티켓이 안 생김 (시간에 따라 흔들림) → 오늘 안 찍은 장소
+    const today5 = (await st(M.c)).today || {};
+    const qd = spots.find((q, i) => i >= 5 && !today5[q]) || spots[5];
+    await M.c.rpc('sync', { p_scans: [{ n: qn, q: qd, t: T[qd].token }] });
     await M.c.rpc('self_redeem');
     s1 = await st(M.c);
     ok(s1.disguised?.[qn] && s1.tickets.find((t) => t.nonce === qn)?.species_id === dittoSp, 'QR wild Pokémon can be a disguised 메타몽 too (state.disguised)', s1.disguised);
@@ -2422,7 +2455,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
 console.log('\n[46] 특성 · 변신 · 날씨 / 필드 (0039): admin_bt_sim (고정 난수) · 시간표 칸 · 잡을 때 특성 · 메타몽');
 {
   const spRows = (await admin.select('species?select=id,dex,line_id,stage,abilities,hidden_ability&id=lt.10000&order=id&limit=1000')).data || [];
-  const SP = Object.fromEntries(spRows.map((r) => [r.dex, r.id]));
+  const SP = Object.fromEntries(spRows.filter((r) => r.id !== 1321 && r.id !== 1324).map((r) => [r.dex, r.id]));   // 0052: 이벤트 폼은 가족 번호 (658 · 25)
   const mvRows = (await admin.select('moves?select=id,name,pp&limit=400')).data || [];
   const MV = Object.fromEntries(mvRows.map((m) => [m.name, m.id]));
   const abRows = (await admin.select('abilities?select=key,name,description&limit=400')).data || [];
@@ -3027,22 +3060,27 @@ console.log('\n[52] 반짝이는 포켓몬 · 빛나는 부적 · 알림 이유 
     ok(nro?.body.includes(rk.qr_name) && nro.body.includes('방랑하던') && nro.data?.shiny === true && nro.body.includes('반짝'), 'roam notice says where it was met (QR name) + shiny line', [nro, rk.qr_name]);
     await setS('roam_chance', old.roam_chance ?? 0.3); await setS('wild_shiny_chance', 0);
     // 7) 학교 도감 완성 → 빛나는 부적 한 번 + 알림 한 번
-    const elig = (await admin.select(`lines?select=id,max_stage&active=eq.true&withdrawn=eq.false&bonus=eq.false&secret=eq.false&subject=neq.${encodeURIComponent('야생')}&order=id`)).data;
+    const dexCfg52 = (await admin.select('settings?key=eq.dex_rewards&select=value')).data?.[0]?.value || { 50: 41, 100: 42 };   // 0049: 학교 탭 정의
+    const elig = ((await admin.select(`lines?select=id,max_stage&active=eq.true&withdrawn=eq.false&secret=eq.false&mythic=eq.false&subject=neq.${encodeURIComponent('야생')}&order=id`)).data || [])
+      .filter((l) => !Object.values(dexCfg52).map(Number).includes(l.id));
     for (const l of elig) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: 1 });
     for (const l of elig) if (l.max_stage > 1) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: l.max_stage });
     for (const l of elig) if (l.max_stage > 2) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l.id, p_stage: 2 });
-    const brs = ((await admin.select('species?id=gte.10000&select=id,line_id,stage')).data || []).filter((x) => elig.some((l) => l.id === x.line_id));
-    const evs = (await admin.select('evolutions?to_species=gte.10000&select=from_species,to_species')).data || [];
-    for (const b of brs) {
-      const e = evs.find((x) => x.to_species === b.id);
-      const from = e && (await admin.select(`species?id=eq.${e.from_species}&select=id,stage`)).data?.[0];
-      if (!from || from.id >= 10000) continue;
-      await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: b.line_id, p_stage: from.stage });
-      await admin.rpc('admin_set_level', { p_student_id: sid, p_line: b.line_id, p_level: 100 });
-      await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: 1 });
-      const m = (await myMons(X)).filter((x) => x.line_id === b.line_id && x.stage === from.stage).pop();
-      await X.rpc('evolve', { p_mon: m?.id, p_to: b.id });
+    const brs = ((await admin.select('species?id=gte.10000&id=lt.20000&select=id,line_id,stage,dex')).data || []).filter((x) => elig.some((l) => l.id === x.line_id));
+    await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: 80 });   // 한 번에 (알림 하나)
+    for (const b of brs) {   // 0049: 갈래 진화는 무작위. 0052: 학교 칸은 그 선생님 폼으로만 → 그 계열 안에서 진화의 돌로 그 갈래가 나올 때까지
+      for (let k = 0; k < 30; k++) {
+        const s0 = await st();
+        if ((s0.seen || []).includes(b.id)) break;
+        const m = (s0.mons || []).find((x) => x.line_id === b.line_id && x.stage === b.stage - 1);
+        if (!m) { await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: b.line_id, p_stage: b.stage - 1 }); continue; }
+        await admin.rpc('admin_set_level', { p_student_id: sid, p_line: b.line_id, p_level: 1 });
+        await X.rpc('evolve', { p_mon: m.id });
+      }
     }
+    // 0052: 갈래를 진화로 채우느라 포켓몬을 많이 받음 → 전설 '깨어났다' 알림 등이 쌓여 sync 의 알림 (안 본 것 중 오래된 20개) 에 부적 알림이 안 보일 수 있음 → 다른 알림은 봄 처리
+    for (let k = 0; k < 10; k++) { const ns = (await st()).notices || []; const other = ns.filter((n) => n.kind !== 'charm' && n.kind !== 'dex100').map((n) => n.id);
+      if (!other.length || ns.length < 20) break; await X.rpc('notice_seen', { p_ids: other }); }
     const s3 = await st();
     const charmQty = async () => ((await X.rpc('bag_state', { p_since: 0 })).data?.items || []).find((x) => x.key === 'shiny_charm')?.qty;   // 학생은 inventory 표를 직접 못 읽음 (RLS)
     const inv = { qty: await charmQty() };
@@ -3140,7 +3178,7 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
   const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-  const EV = [{ dex: 810, line: 441, sp: 1321, name: '지우개굴닌자', type: '물/악', josa: '가' }, { dex: 811, line: 442, sp: 1324, name: '지우의 피카츄', type: '전기', josa: '가' }];
+  const EV = [{ dex: 658, line: 441, sp: 1321, name: '지우개굴닌자', type: '물/악', josa: '가' }, { dex: 25, line: 442, sp: 1324, name: '지우의 피카츄', type: '전기', josa: '가' }];
   const EVL = EV.map((e) => e.line);
   let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'ash1234' })).error);
   const X = client(await pwLogin(`${sid}@code.local`, 'ash1234'));
@@ -3151,12 +3189,12 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
     // 1) 자료: 새 도감 번호 · 계열 하나씩 (진화 없음) · 실제 종족값 · 특성 · 기술 4개
     const sps = (await X.select('species?id=in.(1321,1324)&select=id,line_id,stage,name,dex,btype,hp,atk,def,spa,spd,spe,abilities,evo_lv&order=id')).data || [];
     ok(sps.length === 2 && sps.every((s, i) => s.dex === EV[i].dex && s.line_id === EV[i].line && s.stage === 1 && s.name === EV[i].name && s.btype === EV[i].type),
-       'species 1321/1324 = No.810 지우개굴닌자 (물/악) · No.811 지우의 피카츄 (전기), own lines', sps);
+       'species 1321/1324 = 지우개굴닌자 (물/악) No.658 · 지우의 피카츄 (전기) No.025 (0052 family numbers), own lines', sps);
     const g = sps[0], p = sps[1];
     ok(g && [g.hp, g.atk, g.def, g.spa, g.spd, g.spe].join() === '72,145,67,153,71,132' && g.abilities?.[0] === 'battle-bond', 'Ash-Greninja real base stats + 유대변화', g);
     ok(p && [p.hp, p.atk, p.def, p.spa, p.spd, p.spe].join() === '35,55,40,50,50,90', 'Ash-Pikachu = Pikachu base stats', p);
     const maxDex = (await X.select('species?select=dex&dex=not.is.null&order=dex.desc&limit=3')).data?.map((x) => x.dex);
-    ok(maxDex?.[0] === 811 && maxDex[1] === 810 && maxDex[2] === 809, 'new dex numbers come right after 809 (existing numbers unchanged)', maxDex);
+    ok(maxDex?.[0] === 807, '0052: no dex numbers past 807 (events moved to 658 · 25; 808 · 809 removed in 0049)', maxDex);
     const ab = (await X.select('abilities?key=eq.battle-bond&select=name')).data?.[0];
     ok(ab?.name === '유대변화', 'ability battle-bond = 유대변화', ab);
     const sm = (await X.select('species_moves?species_id=in.(1321,1324)&select=species_id,slot,move_id&order=species_id,slot')).data || [];
@@ -3184,7 +3222,7 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
     ok((await pool(`bonus=eq.false&secret=eq.false&withdrawn=eq.false&active=eq.true&subject=neq.${y}`)).length === 0, 'not counted in the school dex (도감 완성 · 빛나는 부적 · 50/100%)');
     const qr = (await admin.select('qr_rewards?line_id=in.(441,442)&select=qr_id')).data || [];
     const rs = (await admin.select('settings?key=in.(raid_slots,dex_rewards,legend_quests)&select=key,value')).data || [];
-    ok(qr.length === 0 && !/\b(441|442|810|811)\b/.test(JSON.stringify(rs.map((r) => r.value))), 'no QR reward / raid slot / dex reward / quest points at them', [qr.length]);
+    ok(qr.length === 0 && !/\b(441|442|1321|1324)\b/.test(JSON.stringify(rs.map((r) => r.value))), 'no QR reward / raid slot / dex reward / quest points at them', [qr.length]);
     // 사파리: 많이 만나도 나오지 않음 (풀숲 · 동굴 · 연못 · 깊은 곳 · 사막)
     await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 200); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
     await setS('safari_flee', 0); await setS('safari_encounter_rate', 1);
@@ -3200,11 +3238,11 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
       }
     }
     ok(seenSp.length >= 30 && !seenSp.some((s) => s === 1321 || s === 1324), `safari: ${seenSp.length} encounters, never 1321/1324`, seenSp.length);
-    // 4) 운영자: 소포 만들기 (도감 번호 810 · 811) → 학생이 받으면 박스 · 도감 · 알림
+    // 4) 운영자: 소포 만들기 (0052: 종 번호 p_species 1321 · 1324 — 도감 번호만 주면 일반 폼) → 학생이 받으면 박스 · 도감 · 알림
     const tag = Math.random().toString(36).slice(2, 7);
     for (const e of EV) {
-      const r = await admin.rpc('admin_create_gift', { p_code: `지우${e.dex}${tag}`, p_title: `시험 ${e.name}`, p_dex: e.dex, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null });
-      ok(r.data?.species_id === e.sp, `admin_create_gift p_dex ${e.dex} → species ${e.sp}`, r);
+      const r = await admin.rpc('admin_create_gift', { p_code: `지우${e.dex}${tag}`, p_title: `시험 ${e.name}`, p_dex: null, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null, p_species: e.sp });
+      ok(r.data?.species_id === e.sp, `admin_create_gift p_species ${e.sp} → species ${e.sp}`, r);
       if (r.data?.id) gifts.push(r.data.id);
     }
     const list = (await admin.rpc('admin_list_gifts')).data || [];
@@ -3216,7 +3254,7 @@ console.log('\n[54] 이벤트 포켓몬: 지우개굴닌자 · 지우의 피카�
       const c = (await X.rpc('gift_claim', { p_code: ` 지우 ${e.dex} ${tag.toUpperCase()}` })).data;
       const m = (await X.select(`collection?id=eq.${c?.mon}&select=id,line_id,stage,level,ability`)).data?.[0];
       ok(c?.ok && c.species_id === e.sp && m?.line_id === e.line && m.stage === 1, `claim → ${e.name} in the box`, [c, m]);
-      ok(e.dex === 810 ? m?.ability === 'battle-bond' : ['static', 'lightning-rod'].includes(m?.ability), `${e.name} ability set`, m?.ability);
+      ok(e.sp === 1321 ? m?.ability === 'battle-bond' : ['static', 'lightning-rod'].includes(m?.ability), `${e.name} ability set`, m?.ability);
       ok((await X.rpc('gift_claim', { p_code: `지우${e.dex}${tag}` })).data?.error === 'GIFT_CLAIMED', `${e.name}: one per account`);
     }
     const s1 = await st();
@@ -3265,7 +3303,7 @@ console.log('\n[55] 기술 넓히기 (0047): 새 기술 152개 · 물수리검 (
   ok(tm('tm01') === MV['이판사판태클'] && byId[tm('tm51')] && tm('tm52') === MV['객기'] && tm('tm60') === MV['스마트혼'], 'TM01–51 unchanged, TM52 객기 … TM60 스마트혼', tms);
 
   const spRows = (await admin.select('species?select=id,dex&id=lt.10000&order=id&limit=1000')).data || [];
-  const SP = Object.fromEntries(spRows.filter((r) => r.dex <= 809).map((r) => [r.dex, r.id]));
+  const SP = Object.fromEntries(spRows.filter((r) => r.dex <= 809 && r.id !== 1321 && r.id !== 1324).map((r) => [r.dex, r.id]));   // 0052: 이벤트 폼 빼고
   const SIMR = async (p) => { const r = await admin.rpc('admin_bt_sim', { p }); if (r.error) console.log('   sim error', r.error); return r.data; };
   const BASE = { r: 0.5, crit: false, roll: 100, nopar: true };
   const M = (sp, o = {}) => ({ sp, lv: 50, ...o, moves: (o.moves || ['고속이동']).map((n) => MV[n]) });
@@ -3430,7 +3468,7 @@ console.log('\n[57] 사파리존 더 넓게 (0048): 설원 · 용암 · 발전�
     return null;
   };
   const flee = async (a) => V.rpc('safari_result', { p_id: a?.encounter?.id, p_throws: 1, p_caught: false });
-  const spRow = async (id) => (await admin.select(`species?id=eq.${id}&select=dex,name,btype`)).data?.[0];
+  const spRow = async (id) => (await admin.select(`species?id=eq.${id}&select=id,dex,name,btype`)).data?.[0];
   const pool = async (zone, area, n) => { const seen = []; for (let i = 0; i < n; i++) { const a = await walk(zone, area, 10); seen.push({ ...(await spRow(a?.encounter?.species_id)), zone: a?.encounter?.zone, lv: a?.encounter?.level }); await flee(a); } return seen; };
   const lv = async (zone, area, dist) => { const a = await walk(zone, area, dist); await flee(a); return a?.encounter?.level; };
   const has = (s, re) => re.test(s?.btype || '');
@@ -3486,7 +3524,7 @@ console.log('\n[57] 사파리존 더 넓게 (0048): 설원 · 용암 · 발전�
     const dg = await pool('dragon', 'dragon', 24);
     ok(dg.every((s) => s.zone === 'dragon' && (has(s, /드래곤/) || PSEUDO.includes(s.dex))), 'dragon den: dragon types + pseudo-legend lines only', dg.map((s) => `${s.name}:${s.btype}`));
     ok(dg.filter((s) => PSEUDO.includes(s.dex)).length >= 2, 'dragon den: wild pseudo-legend lines appear often (≥2 of 24)', dg.filter((s) => PSEUDO.includes(s.dex)).map((s) => s.name));
-    const dgSub = (await admin.select(`species?dex=in.(${[...new Set(dg.map((s) => s.dex))].join(',')})&stage=eq.1&select=dex,lines(subject)`)).data || [];
+    const dgSub = (await admin.select(`species?id=in.(${[...new Set(dg.map((s) => s.id))].join(',')})&select=dex,lines!species_line_id_fkey(subject)`)).data || [];   // 0052: 만난 종의 계열 (일반 폼 = 야생)
     ok(dgSub.length > 0 && dgSub.every((r) => r.lines?.subject === '야생'), 'dragon den: wild lines only (teacher-subject lines like 미뇽 · 아공이 stay QR / quiz only)', dgSub.map((r) => `${r.dex}:${r.lines?.subject}`));
     ok(dg.every((s) => s.lv >= 40 && s.lv <= 50), 'dragon den levels within 40–50', dg.map((s) => s.lv));
     const LD = { entrance: await lv('dragon', 'dragon', 0), far: await lv('dragon', 'dragon', 26), otherArea: await lv('dragon', 'safari', 26) };
@@ -3519,12 +3557,471 @@ console.log('\n[57] 사파리존 더 넓게 (0048): 설원 · 용암 · 발전�
   }
 }
 
+console.log('\n[58] 핵심 고침 (0049): 울트라비스트는 울트라 스페이스에서만 · 사파리 잡기 결과 한 번만 · 갈래 진화 무작위 · 학교 도감 = 학교 탭 · 멜탄 없음');
+{
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_reset_hours',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'ditto_disguise_chance', 'wild_shiny_chance', 'safari_open', 'egg_steps'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'cf4949' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'cf4949'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '핵심고침' });
+  const st = async () => (await V.rpc('sync')).data.state;
+  const ubLines = ((await admin.select('lines?ultra=eq.true&select=id,rarity&order=id')).data || []);
+  const ubIds = ubLines.map((l) => l.id);
+  const walk = async (zone = 'grass') => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const r = await V.rpc('safari_encounter', { p_steps: 3, p_zone: zone, p_area: 'safari', p_dist: 0 });
+      if (r.error) return { error: r.error };
+      if (r.data?.encounter || r.data?.reason) return r.data;
+      await wait(400);
+    }
+    return null;
+  };
+  try {
+    ok(ubIds.length === 10 && ubLines.every((l) => l.rarity === 'common'), 'ultra beasts = 10 lines (common rarity, the green-egg pool before 0049)', ubLines);
+    // 1) 알: 울트라비스트를 잠깐 'rare' 로 두면 노란 알 풀의 10/35 → 고치기 전이면 24개 중 거의 반드시 나옴
+    await setS('egg_steps', { green: 1, yellow: 1, purple: 1 });
+    await admin.patch('lines?ultra=eq.true', { rarity: 'rare' });
+    const hatched = [];
+    try {
+      for (let round = 0; round < 8; round++) {
+        await admin.rpc('admin_give_egg', { p_student_id: sid, p_tier: 'yellow', p_n: 3 });
+        const eggs = ((await V.rpc('egg_state')).data?.eggs || []).filter((e) => !e.hatched_at);
+        for (const e of eggs.filter((x) => !x.slot).slice(0, 3)) await V.rpc('egg_incubate', { p_egg: e.id });
+        await V.rpc('egg_add_steps', { p_steps: 3 });
+        for (const e of ((await V.rpc('egg_state')).data?.eggs || []).filter((x) => x.slot)) {
+          const h = (await V.rpc('egg_hatch', { p_egg: e.id })).data;
+          if (h?.line) hatched.push(h.line);
+        }
+      }
+    } finally { await admin.patch('lines?ultra=eq.true', { rarity: 'common' }); }
+    ok(hatched.length >= 20 && !hatched.some((l) => ubIds.includes(l)), `eggs never hatch an ultra beast (${hatched.length} yellow eggs with UBs in the rare pool)`, hatched.filter((l) => ubIds.includes(l)));
+    ok(((await admin.select('lines?ultra=eq.true&select=rarity')).data || []).every((l) => l.rarity === 'common'), 'UB rarity restored');
+    // 2) 연습 배틀 상대: 울트라비스트 없음 (6마리 × 10판)
+    const lineOfSp = async (id) => (await admin.select(`species?id=eq.${id}&select=line_id`)).data?.[0]?.line_id;
+    for (const l of [1, 4, 7, 10, 13, 16]) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: l, p_stage: 1 });
+    const six = (await st()).mons.filter((m) => [1, 4, 7, 10, 13, 16].includes(m.line_id)).slice(0, 6).map((m) => m.id);
+    const foes = [];
+    for (let i = 0; i < 10; i++) {
+      const b = (await V.rpc('battle_start_cpu', { p_mons: six })).data;
+      for (const m of b?.sides?.[1]?.mons || []) foes.push(m.line ?? await lineOfSp(m.sp));
+      if (b?.id) await V.rpc('battle_forfeit', { p_id: b.id });
+    }
+    ok(foes.length === 60 && !foes.some((l) => ubIds.includes(l)), 'practice-battle foes never include an ultra beast (60 foes)', foes.filter((l) => ubIds.includes(l)));
+    // 3) 사파리 'ultra' 구역은 울트라비스트만, 다른 구역은 절대 안 나옴 (0038 그대로)
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 300); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('ditto_disguise_chance', 0);
+    await setS('wild_shiny_chance', 0); await setS('safari_encounter_rate', 1); await setS('safari_open', true);
+    const u = await walk('ultra');
+    ok(ubIds.includes(await lineOfSp(u?.encounter?.species_id)), 'ultra zone → an ultra beast', u?.encounter);
+    await V.rpc('safari_result', { p_id: u?.encounter?.id, p_throws: 1, p_caught: false });
+
+    // 4) 사파리 잡기 결과는 한 번만: 다시 보내도 같은 결과 (다시 던지는 장면 없음), 끝난 만남은 어디에도 다시 안 나옴
+    const a = await walk('grass');
+    const e = a?.encounter;
+    ok(!!e?.id && (await V.rpc('safari_state')).data?.pending?.id === e.id, 'a pending safari encounter (safari_state.pending)', e);
+    ok(!((await V.rpc('my_encounters')).data || []).some((x) => x.id === e?.id), 'safari encounters are never in my_encounters (home banner)');
+    const monsBefore = (await st()).mons.length;
+    const r1 = (await V.rpc('safari_result', { p_id: e?.id, p_throws: 2, p_caught: true })).data;
+    ok(r1?.caught === true && r1.nonce && r1.mon > 0 && !r1.replay, 'safari_result: caught → straight into the box (mon id, nonce)', r1);
+    const r2 = (await V.rpc('safari_result', { p_id: e?.id, p_throws: 5, p_caught: false })).data;
+    ok(r2?.replay === true && r2.caught === true && r2.nonce === r1?.nonce && r2.mon === r1?.mon && r2.safari?.balls_left === r1?.safari?.balls_left,
+       'double safari_result (lost response → resend, even with other values) → the same caught result, no extra balls', r2);
+    const s2 = await st();
+    ok(s2.mons.length === monsBefore + 1 && s2.mons.filter((m) => m.id === r1?.mon).length === 1, 'exactly one Pokémon added to the box', [monsBefore, s2.mons.length]);
+    const tk = s2.tickets.find((t) => t.nonce === r1?.nonce);
+    ok(tk?.status === 'redeemed' && tk.graded === true && tk.qr_id === 'SAFARI', 'sync ticket for the safari catch is marked graded (app shows no second throw scene)', tk);
+    ok(!s2.tickets.some((t) => ['SAFARI', 'WILD', 'LEGEND', 'ROAM'].includes(t.qr_id) && t.status === 'redeemed' && !t.graded), 'no ungraded in-app catch tickets (nothing for the app to re-throw)', s2.tickets);
+    ok((await V.rpc('safari_state')).data?.pending == null, 'safari_state.pending is empty after the catch');
+    ok(!((await V.rpc('my_encounters')).data || []).some((x) => x.id === e?.id) && !s2.encounters.some((x) => x.id === e?.id), 'closed safari encounter not listed (my_encounters · sync.encounters)');
+    ok((await V.rpc('catch_result', { p_nonce: r1?.nonce, p_grade: 'none', p_fled: true })).error === 'ALREADY_CLAIMED', 'old app re-throw + flee cannot take the caught Pokémon away (ALREADY_CLAIMED)');
+    ok((await st()).mons.some((m) => m.id === r1?.mon), 'the caught Pokémon is still in the box');
+    ok((await V.rpc('safari_turn', { p_id: e?.id })).error === 'NOT_FOUND' && (await V.rpc('safari_throws', { p_id: e?.id, p_n: 1 })).error === 'NOT_FOUND', 'a closed encounter cannot be thrown at again (safari_turn · safari_throws)');
+    // 도망친 만남도 다시 안 나옴 · 다시 보내도 도망 그대로
+    const f = (await walk('grass'))?.encounter;
+    const f1 = (await V.rpc('safari_result', { p_id: f?.id, p_throws: 1, p_caught: false })).data;
+    const f2 = (await V.rpc('safari_result', { p_id: f?.id, p_throws: 1, p_caught: true })).data;
+    const s3 = await st();
+    ok(f1?.fled === true && f2?.replay === true && f2.caught === false && f2.fled === true && s3.mons.length === monsBefore + 1, 'fled encounter: resend stays fled, nothing added', [f1, f2]);
+    ok((await V.rpc('safari_state')).data?.pending == null && !s3.encounters.some((x) => x.id === f?.id), 'fled encounter is not re-offered');
+
+    // 5) 갈래 진화: 같은 확률 (배루키 Lv.20 → 시라소몬 · 홍수몬 · 카포에라, 90번) · PICK_BRANCH 없음 · p_to 무시
+    const tyro = (await admin.select('species?dex=eq.236&id=lt.10000&select=id,line_id')).data?.[0];
+    const outs = ((await admin.select(`evolutions?from_species=eq.${tyro?.id}&select=to_species,how,lv`)).data || []);
+    ok(outs.length === 3 && outs.every((x) => x.how === 'level' && x.lv === 20), '배루키 has 3 level-20 branches', outs);
+    const N = 90;
+    for (let i = 0; i < N; i++) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: tyro.line_id, p_stage: 1 });
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: tyro.line_id, p_level: 20 });
+    const tm = (await st()).mons.filter((m) => m.species_id === tyro.id).map((m) => m.id);
+    const cnt = {}; const errs = []; let notLevel = 0;
+    for (const id of tm) {
+      const r = await V.rpc('evolve', { p_mon: id, p_to: outs[0].to_species });
+      if (r.error) { errs.push(r.error); continue; }
+      cnt[r.data.species_id] = (cnt[r.data.species_id] || 0) + 1;
+      if (!r.data.by_level || !r.data.branched) notLevel++;
+    }
+    const counts = outs.map((o) => cnt[o.to_species] || 0);
+    ok(tm.length === N && errs.length === 0 && notLevel === 0, `${N} evolutions, no PICK_BRANCH / errors, all free level evolutions`, { n: tm.length, errs: [...new Set(errs)] });
+    ok(counts.every((c) => c >= 15 && c <= 45) && counts.reduce((x, y) => x + y, 0) === N, `branches roughly uniform (expected ${N / 3} each): ${counts.join(' / ')}`, cnt);
+
+    // 6) 갈래 계열은 선생님 포켓몬으로 안 씀
+    const eeveeLine = (await admin.select('species?dex=eq.133&id=lt.10000&select=line_id')).data?.[0]?.line_id;
+    const pst = await admin.patch(`lines?id=eq.${eeveeLine}`, { subject: '과학', teacher: '시험 선생님' });
+    const lnow = (await admin.select(`lines?id=eq.${eeveeLine}&select=subject,teacher`)).data?.[0];
+    ok(pst >= 400 && lnow?.subject === '야생', "0052: a normal line cannot become a teacher line by a direct update (USE_TEACHER_FORM — use admin_create_teacher_form)", [pst, lnow]);
+
+    // 7) 학교 도감 = 학교 탭 (rules.school_keys): 탐구 · 야자 전설 포함, 비밀 · 환상 · 보상 계열 · 이벤트 · 야생 갈래 없음
+    const sk = new Set((await st()).rules?.school_keys || []);
+    ok([487, 493, 146, 145, 144, 716, 717, 182].every((d) => sk.has(d)), 'school_keys include 기라티나/아르세우스, 탐구 (파이어·썬더·프리저), 야자 (제르네아스·이벨타르), teacher-line branch 아르코', [...sk].length);
+    ok(![151, 150, 718, 721, 490, 648, 251, 810, 811, 808, 809].some((d) => sk.has(d)), 'school_keys exclude 뮤 (secret), 뮤츠/지가르데 (rewards), 환상 79–82, event 810/811, 멜탄', [151, 150, 718, 721, 490, 648, 251, 810, 811].filter((d) => sk.has(d)));
+
+    // 8) 멜탄 · 멜메탈 없음
+    ok(((await admin.select('species?dex=in.(808,809)&select=id')).data || []).length === 0 && ((await admin.select('lines?id=eq.440&select=id')).data || []).length === 0,
+       'no 멜탄 / 멜메탈 species and no line 440 (other numbers unchanged)');
+    ok(((await admin.select('lines?id=in.(439,441,442)&select=id')).data || []).length === 3, 'lines 439 · 441 · 442 still there');
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    await admin.patch('lines?ultra=eq.true', { rarity: 'common' });
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[59] 전설의 특별한 곳 (0050): 사파리존 전설 33마리 (legend_src safari · 퀘스트 · zone_catch · 잡기)');
+{
+  const NEW = [380, 381, 488, 491, 489, 785, 786, 787, 788, 638, 639, 640, 647, 492, 641, 642, 645, 643, 644, 646, 789, 800, 385, 386, 720, 494, 649, 719, 802, 807, 801, 772, 485];
+  const keys = ['safari_balls_daily', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_reset_hours',
+                'safari_flee', 'safari_flee_step', 'safari_flee_legend', 'safari_flee_max', 'ditto_disguise_chance', 'wild_shiny_chance', 'safari_open',
+                'legend_quests', 'legend_daily_tries', 'legend_balls'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const y = encodeURIComponent('야생');
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'lg1234' })).error);
+  const V = client(await pwLogin(`${sid}@code.local`, 'lg1234'));
+  await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '전설시험' });
+  const st = async () => (await V.rpc('sync')).data.state;
+  const row = (s, dex) => s?.legends?.find((x) => x.dex === dex);
+  try {
+    // ── A. 사파리존 전설 33마리 ──
+    const q = old.legend_quests || [];
+    ok(Array.isArray(q) && q.length === 47 && NEW.every((d) => q.some((x) => x.dex === d && x.reward === 'map')), 'legend_quests: 14 old + 33 new map quests', q.length);
+    const sp = (await admin.select(`species?dex=in.(${NEW.join(',')})&stage=eq.1&id=lt.10000&select=dex,name,line_id,lines(subject,legend_src,bonus,mythic,secret)`)).data || [];
+    const byDex = new Map(); for (const r of sp) if (!byDex.has(r.dex)) byDex.set(r.dex, r);
+    ok(NEW.every((d) => byDex.get(d)?.lines?.legend_src === 'safari' && byDex.get(d).lines.subject === '야생' && !byDex.get(d).lines.bonus),
+       'all 33 exist in species (stage 1) and their lines are wild · legend_src safari (out of every random pool)', NEW.filter((d) => byDex.get(d)?.lines?.legend_src !== 'safari'));
+    const keep = (await admin.select('lines?id=in.(35,36,37,77,78,42,425)&select=id,legend_src')).data || [];
+    ok(keep.length === 7 && keep.every((l) => l.legend_src === null), 'teacher / school specials (35 · 36 · 37 · 77 · 78 · 42) and the separate 루나아라 line 425 untouched', keep);
+    const ev = (await admin.select('lines?id=in.(441,442)&select=id,legend_src')).data || [];
+    ok(ev.length === 2 && ev.every((l) => l.legend_src === 'gift'), 'event gifts 810 · 811 stay gift-only', ev);
+    const s0 = await st();
+    ok(NEW.every((d) => row(s0, d)?.reward === 'map' && row(s0, d).ok === false && row(s0, d).cond), 'sync legends: a row (map · not ready · condition text) for each new legend', NEW.filter((d) => !row(s0, d)));
+    ok(row(s0, 789)?.cond === '울트라 스페이스에서 포켓몬을 2마리 잡아야 한대' && row(s0, 789).prog === '울트라 스페이스에서 잡은 포켓몬 0/2'
+       && row(s0, 643)?.cond.startsWith('용의 굴에서') && row(s0, 485)?.cond.startsWith('용암 지대에서') && row(s0, 719)?.cond.startsWith('사막에서'),
+       'zone_catch condition / progress text', [row(s0, 789), row(s0, 643)?.cond]);
+    ok(row(s0, 491)?.cond === '크레세리아를 모두 잡아야 한대' && row(s0, 647)?.cond.includes('코바르온·테라키온·비리디온'), 'caught_all text names the partners', [row(s0, 491)?.cond, row(s0, 647)?.cond]);
+    ok((await V.rpc('legend_encounter', { p_dex: 646 })).error === 'NOT_READY', 'legend_encounter(큐레무) before the condition → NOT_READY');
+    // zone_catch: 울트라 스페이스에서 1마리 잡기 (조건 1로) → 코스모그 깨어남 → 잡기 → 네크로즈마 (코스모그를 잡아야) 깨어남
+    await setS('safari_reset_hours', 24); await setS('safari_balls_daily', 300); await setS('safari_min_steps', 0); await setS('safari_steps_per_sec', 10);
+    await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('safari_flee_max', 0);
+    await setS('ditto_disguise_chance', 0); await setS('wild_shiny_chance', 0); await setS('safari_encounter_rate', 1); await setS('safari_open', true);
+    await setS('legend_daily_tries', 3); await setS('legend_balls', 10);
+    const Q = structuredClone(q); Q.find((x) => x.dex === 789).n = 1; await setS('legend_quests', Q);
+    let enc = null;
+    for (const t0 = Date.now(); !enc && Date.now() - t0 < 10000;) {
+      const r = await V.rpc('safari_encounter', { p_steps: 3, p_zone: 'ultra', p_area: 'ultra', p_dist: 0 });
+      if (r.data?.encounter) enc = r.data.encounter; else await wait(400);
+    }
+    const cr = (await V.rpc('safari_result', { p_id: enc?.id, p_throws: 1, p_caught: true })).data;
+    ok(enc?.zone === 'ultra' && cr?.caught === true, 'caught one Pokémon in the Ultra Space (zone ultra)', [enc?.zone, cr?.caught]);
+    let s1 = await st();
+    ok(row(s1, 789)?.ok === true && row(s1, 789).prog === '울트라 스페이스에서 잡은 포켓몬 1/1' && row(s1, 386)?.prog === '울트라 스페이스에서 잡은 포켓몬 1/4',
+       'zone_catch counts Ultra Space catches (코스모그 1/1 ready · 테오키스 1/4)', [row(s1, 789), row(s1, 386)?.prog]);
+    const nr = s1.notices.find((n) => n.kind === 'legend_ready' && n.data?.dex === 789);
+    ok(nr?.body.startsWith('울트라 스페이스에서 포켓몬을 1마리 잡았어요!') && nr.body.includes('별의 제단'), "'깨어났다' notice: zone_catch reason + 별의 제단", nr?.body);
+    const le = (await V.rpc('legend_encounter', { p_dex: 789 })).data;
+    ok(le?.encounter?.kind === 'legend' && le.encounter.balls === 10, 'legend_encounter(코스모그) → legend encounter (10 balls)', le);
+    const lr = (await V.rpc('legend_result', { p_id: le?.encounter?.id, p_caught: true, p_grade: 'nice' })).data;
+    s1 = await st();
+    const cos = byDex.get(789);
+    ok(lr?.caught === true && lr.line === cos?.line_id && row(s1, 789)?.caught === true, '코스모그 caught → in the box (its line), legend row caught', [lr?.caught, lr?.line, cos?.line_id]);
+    ok((await V.rpc('legend_encounter', { p_dex: 789 })).error === 'ALREADY_CAUGHT', 'once per account');
+    ok(row(s1, 800)?.ok === true && s1.notices.some((n) => n.kind === 'legend_ready' && n.data?.dex === 800), '네크로즈마 (코스모그를 잡아야) wakes up right after', row(s1, 800));
+    await setS('legend_quests', q);
+
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[60] 해금 단계 (0051): 학교 도감 50% → 사파리존 · 장소 QR 야생 · 전체 도감 · 한 번 열리면 계속 · 모두에게 열기 · 사파리존 닫힘 · 하던 잡기는 끝냄');
+{
+  const keys = ['unlock_all', 'unlock_safari_pct', 'safari_open', 'wild_chance', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_balls_daily'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'ul5151' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'ul5151'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { sid, c };
+  };
+  const sids = [];
+  const st = async (c) => (await c.rpc('sync')).data.state;
+  const walk = async (c) => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const r = await c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 });
+      if (r.error) return { error: r.error };
+      if (r.data?.encounter || r.data?.reason) return r.data;
+      await wait(400);
+    }
+    return null;
+  };
+  const wildSet = new Set(((await admin.select(`lines?subject=eq.${encodeURIComponent('야생')}&select=id`)).data || []).map((x) => x.id));
+  const places = Object.keys(T).filter((k) => /^A\d\d$/.test(k)).sort();
+  const scanRedeem = async (who, qs) => {
+    const ns = qs.map(() => nonce());
+    const ack = (await who.c.rpc('sync', { p_scans: qs.map((q, i) => ({ n: ns[i], q, t: T[q].token })) })).data?.acks || [];
+    const res = (await booth.rpc('booth_redeem', { p_payload: who.sid })).data?.results || [];
+    return { ack, res: res.filter((x) => ns.includes(x.nonce)) };
+  };
+  try {
+    await setS('unlock_all', false); await setS('unlock_safari_pct', 50); await setS('safari_open', true);
+    await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1); await setS('safari_steps_per_sec', 20); await setS('safari_balls_daily', 20);
+    const V = await mk('해금시험'); sids.push(V.sid);
+    const s0 = await st(V.c);
+    const u0 = s0.unlock, total = (s0.rules.school_keys || []).length;
+    ok(u0 && u0.unlocked === false && u0.got === 0 && u0.total === total && total > 10 && u0.need === Math.ceil(total / 2) && u0.pct === 50 && u0.by == null && u0.all === false,
+       'fresh student: stage 2 locked, sync unlock = 0 / ceil(school total / 2)', u0);
+    const ss0 = (await V.c.rpc('safari_state')).data;
+    ok(ss0?.unlocked === false && ss0.locked === false && ss0.unlock?.need === u0.need, 'safari_state: unlocked false + progress (global lock off)', ss0 && { unlocked: ss0.unlocked, locked: ss0.locked, unlock: ss0.unlock });
+    ok((await V.c.rpc('safari_encounter', { p_steps: 5, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).error === 'SAFARI_LOCKED_STUDENT', 'below 50%: safari_encounter → SAFARI_LOCKED_STUDENT');
+    ok((await V.c.rpc('safari_visit', { p_area: 'beach' })).error === 'SAFARI_LOCKED_STUDENT', 'below 50%: safari_visit → SAFARI_LOCKED_STUDENT');
+    await setS('wild_chance', 1);
+    const r1 = await scanRedeem(V, places.slice(0, Math.min(4, Number(s0.rules.bag_max) || 4)));
+    ok(r1.res.length >= 3 && r1.res.every((x) => x.line_id && !wildSet.has(x.line_id)), `below 50% with wild_chance 100%: place QRs never give a wild Pokémon (${r1.res.length} redeemed)`, { lines: r1.res.map((x) => x.line_id), ack: r1.ack });
+    // 학교 계열을 줘서 50% 넘기기 (단계마다)
+    const school = ((await admin.select(`lines?subject=neq.${encodeURIComponent('야생')}&active=eq.true&withdrawn=eq.false&secret=eq.false&mythic=eq.false&bonus=eq.false&select=id,max_stage&order=id`)).data || []);
+    let u1 = null;
+    for (let i = 0; i < school.length; i++) {
+      for (let g = 1; g <= (school[i].max_stage || 1); g++) await admin.rpc('admin_grant_monster', { p_student_id: V.sid, p_line: school[i].id, p_stage: g });
+      if (i % 4 === 3 || i === school.length - 1) { u1 = (await st(V.c)).unlock; if (u1.unlocked) break; }
+    }
+    ok(u1?.unlocked === true && u1.by === 'progress' && !!u1.at && u1.got >= u1.need, 'reaching 50% of the school dex → unlocked (by progress, unlocked_at stored)', u1);
+    const ss1 = (await V.c.rpc('safari_state')).data;
+    ok(ss1?.unlocked === true, 'safari_state.unlocked true');
+    const e1 = await walk(V.c);
+    ok(e1?.encounter?.id, 'unlocked: safari_encounter gives an encounter', e1);
+    if (e1?.encounter?.id) await V.c.rpc('safari_result', { p_id: e1.encounter.id, p_throws: 1, p_caught: false });
+    ok(!(await V.c.rpc('safari_visit', { p_area: 'beach' })).error, 'unlocked: safari_visit works');
+    const r2 = await scanRedeem(V, places.slice(4, 7));
+    ok(r2.res.length >= 2 && r2.res.every((x) => wildSet.has(x.line_id)), `unlocked with wild_chance 100%: place QRs give wild Pokémon (${r2.res.length})`, { lines: r2.res.map((x) => x.line_id), ack: r2.ack });
+    await setS('wild_chance', 0);
+    // 한 번 열리면 계속: 필요한 % 를 100 으로 (= 학교 도감 칸이 늘어난 것과 같음)
+    await setS('unlock_safari_pct', 100);
+    const u2 = (await st(V.c)).unlock;
+    ok(u2?.unlocked === true && u2.need === u2.total && u2.got < u2.need && u2.by === 'progress', 'once unlocked stays unlocked after the requirement grows (need = total)', u2);
+    ok((await walk(V.c))?.encounter?.id, 'still can walk in the safari');
+    { const p = (await V.c.rpc('safari_state')).data?.pending; if (p?.id) await V.c.rpc('safari_result', { p_id: p.id, p_throws: 1, p_caught: false }); }
+    // 모두에게 열기 → 새 학생도
+    const W = await mk('해금모두'); sids.push(W.sid);
+    ok((await st(W.c)).unlock?.unlocked === false, 'second fresh student: locked');
+    await setS('unlock_all', true);
+    const uw = (await st(W.c)).unlock;
+    ok(uw?.unlocked === true && uw.by === 'all' && uw.all === true && !uw.at, 'unlock_all → a fresh student is unlocked (by all, nothing stored)', uw);
+    const ew = await walk(W.c);
+    ok(ew?.encounter?.id, 'unlock_all: fresh student can walk in the safari', ew);
+    // 하던 잡기는 잠겨도 끝냄
+    await setS('unlock_all', false);
+    const ew2 = await W.c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 });
+    ok(!ew2.error && ew2.data?.reason === 'pending' && ew2.data?.encounter?.id === ew?.encounter?.id, 'locked again with an in-progress encounter → safari_encounter returns it (no error)', ew2.error || ew2.data?.reason);
+    ok((await st(W.c)).unlock?.safari_pending === true, 'sync unlock.safari_pending true while it is open');
+    const fin = (await W.c.rpc('safari_result', { p_id: ew?.encounter?.id, p_throws: 1, p_caught: true })).data;
+    ok(fin?.caught === true, 'the in-progress encounter can still finish (caught)', fin);
+    ok((await W.c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).error === 'SAFARI_LOCKED_STUDENT', 'after it is done: locked again (SAFARI_LOCKED_STUDENT)');
+    // 사파리존 닫힘이 먼저
+    await setS('safari_open', false);
+    ok((await V.c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).error === 'SAFARI_CLOSED', 'safari_open false still blocks an unlocked student (SAFARI_CLOSED)');
+    await setS('unlock_all', true);
+    ok((await W.c.rpc('safari_visit', { p_area: 'beach' })).error === 'SAFARI_CLOSED', 'safari_open false blocks even with unlock_all');
+    ok((await V.c.rpc('safari_state')).data?.locked === true, 'safari_state.locked true');
+    await setS('safari_open', true); await setS('unlock_all', false);
+    // 운영자 통계
+    const as = (await admin.rpc('admin_unlock_stats')).data;
+    ok(as && as.unlocked >= 1 && as.students >= as.unlocked && as.pct === 100 && as.total === total && as.all === false, 'admin_unlock_stats', as);
+    ok((await V.c.rpc('admin_unlock_stats')).error === 'NOT_ADMIN', 'students cannot read admin_unlock_stats');
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    if (sids.length) await admin.rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[61] 폼 (0052): 선생님 폼 · 일반 폼 (복사본) · 이벤트 폼 · 학교/전체 셈 · 이름 · 운영자 폼 만들기/끄기/이름 · 그림 따로 · 진화는 폼 안에서');
+{
+  const keys = ['unlock_all', 'safari_open', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_balls_daily'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'fm5151' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'fm5151'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { sid, c };
+  };
+  const sids = [], made = [], gifts = [];
+  const st = async (c) => (await c.rpc('sync')).data.state;
+  const all = async (path) => { const out = []; for (let o = 0; ; o += 1000) { const d = (await admin.select(`${path}&limit=1000&offset=${o}`)).data || []; out.push(...d); if (d.length < 1000) return out; } };
+  try {
+    // 1) 구조: 선생님 폼마다 일반 폼 (같은 도감 번호 · 종족값 · 타입), 이벤트 폼 = 가족 번호
+    const lines = await all('lines?select=id,subject,form_kind,family_id,form_label,teacher,active,rarity&order=id');
+    const sp = await all('species?select=id,line_id,stage,dex,name,hp,atk,def,spa,spd,spe,btype,form_of&order=id');
+    const L = new Map(lines.map((l) => [l.id, l]));
+    const spOf = (id) => sp.filter((s) => s.line_id === id);
+    const teach = lines.filter((l) => l.form_kind === 'teacher' && l.id < 1000);
+    const bad = teach.filter((t) => {
+      const b = L.get(t.family_id);
+      if (!b || b.form_kind !== 'normal' || b.subject !== '야생' || b.id !== 1000 + t.id || b.family_id !== b.id) return true;
+      const a = spOf(t.id), c = spOf(b.id);
+      return a.length !== c.length || a.some((s) => { const x = c.find((y) => y.id === s.id + 20000);
+        return !x || x.dex !== s.dex || x.btype !== s.btype || x.stage !== s.stage || [x.hp, x.atk, x.def, x.spa, x.spd, x.spe].join() !== [s.hp, s.atk, s.def, s.spa, s.spd, s.spe].join() || s.form_of !== x.id; });
+    });
+    ok(teach.length === 68 && bad.length === 0, `every teacher line (${teach.length}) has a normal form 1000+id with the same species (+20000), stats, types, dex`, bad.map((x) => x.id));
+    ok(teach.every((t) => t.form_label && t.form_label.endsWith('쌤')) && L.get(12).form_label === '물리 쌤' && L.get(1).form_label === '국어 1 쌤', 'teacher labels (물리 쌤 · 국어 1 쌤)', [L.get(12).form_label, L.get(1).form_label]);
+    ok([35, 36, 37, 38, 41, 77, 79].every((id) => L.get(id)?.form_kind === 'special' && L.get(id).family_id === id), 'special legends (교장/교감 · 비밀 · 탐구 · 보상 · 야자 · 환상) = special, no copy');
+    const ev = sp.filter((s) => s.id === 1321 || s.id === 1324);
+    ok(ev.map((s) => s.dex).join() === '658,25' && L.get(441).form_kind === 'event' && L.get(441).family_id === 354 && L.get(442).family_id === 1012
+       && ev[0].form_of === 1062 && ev[1].form_of === 20035, 'event forms: 지우개굴닌자 in the 개굴닌자 family (658), 지우의 피카츄 in the 피카츄 family (25)', ev);
+    ok(L.get(118).family_id === 117 && L.get(103).family_id === 1033 && L.get(267).family_id === 1002, 'branch-only lines join their base family (쥬피썬더 → 이브이, 홍수몬 → 배루키 normal, 엘레이드 → 랄토스 normal)', [L.get(118).family_id, L.get(103).family_id, L.get(267).family_id]);
+    const evo = await all('evolutions?select=from_species,to_species&from_species=gte.20000&from_species=lt.40000');
+    ok(evo.length > 50 && evo.every((e) => sp.find((s) => s.id === e.to_species)?.line_id === sp.find((s) => s.id === e.from_species)?.line_id), `normal-form evolutions stay inside the copy (${evo.length})`);
+    const sk = (await admin.rpc('admin_unlock_stats')).data;
+    ok(sk?.total === 192, 'school dex size unchanged (192)', sk?.total);
+
+    // 2) 사파리: 일반 폼 (복사본) 은 나오고, 선생님 폼은 안 나옴
+    await setS('unlock_all', true); await setS('safari_open', true);
+    await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1); await setS('safari_steps_per_sec', 20); await setS('safari_balls_daily', 20);
+    const V = await mk('폼시험'); sids.push(V.sid);
+    const seenL = [];
+    for (let i = 0; i < 45; i++) {
+      let e = null;
+      for (const t0 = Date.now(); Date.now() - t0 < 6000 && !e;) {
+        const r = await V.c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 });
+        if (r.error) break;
+        e = r.data?.encounter; if (!e) await wait(300);
+      }
+      if (!e) break;
+      const s = sp.find((x) => x.id === e.species_id); if (s) seenL.push(s.line_id);
+      await V.c.rpc('safari_result', { p_id: e.id, p_throws: 1, p_caught: false });
+    }
+    ok(seenL.length >= 15 && !seenL.some((l) => L.get(l)?.form_kind !== 'normal'), `safari: ${seenL.length} encounters, all normal forms (no teacher / event)`, seenL.filter((l) => L.get(l)?.form_kind !== 'normal'));
+    ok(seenL.some((l) => l >= 1000 && l < 2000), `safari: normal forms of former teacher species appear (${seenL.filter((l) => l >= 1000 && l < 2000).join(',')})`);
+
+    // 3) 학교 = 선생님 폼만 · 전체 = 번호마다 한 번 · 이벤트 폼은 안 셈
+    const W = await mk('폼셈'); sids.push(W.sid);
+    const prof = async () => (await admin.select(`profiles?student_id=eq.${W.sid}&select=dex_count`)).data?.[0]?.dex_count;
+    await admin.rpc('admin_grant_monster', { p_student_id: W.sid, p_line: 1012, p_stage: 2 });   // 일반 피카츄 (20035)
+    const s1 = await st(W.c);
+    ok(s1.unlock?.got === 0 && (s1.seen || []).includes(20035) && await prof() === 2, 'normal 피카츄 does NOT fill the school 25 cell; 전체 = 2 (피츄 · 피카츄)', [s1.unlock?.got, await prof()]);
+    await admin.rpc('admin_grant_monster', { p_student_id: W.sid, p_line: 12, p_stage: 2 });     // 물리 쌤의 피카츄 (35)
+    const s2 = await st(W.c);
+    ok(s2.unlock?.got === 2 && await prof() === 2, 'teacher 피카츄 fills school (피츄 · 피카츄 = 2); 전체 still 2 (no double count)', [s2.unlock?.got, await prof()]);
+    const tag = Math.random().toString(36).slice(2, 7);
+    const g = (await admin.rpc('admin_create_gift', { p_code: `폼${tag}`, p_title: '폼 시험', p_dex: null, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null, p_species: 1324 })).data;
+    if (g?.id) gifts.push(g.id);
+    ok(g?.species_id === 1324, 'admin_create_gift p_species → 지우의 피카츄', g);
+    const gd = (await admin.rpc('admin_create_gift', { p_code: `폼d${tag}`, p_title: null, p_dex: 25, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null })).data;
+    if (gd?.id) gifts.push(gd.id);
+    ok(gd?.species_id === 20035, 'admin_create_gift p_dex 25 → the normal 피카츄 (not teacher / event)', gd?.species_id);
+    const cl = (await W.c.rpc('gift_claim', { p_code: `폼${tag}` })).data;
+    const s3 = await st(W.c);
+    ok(cl?.ok && (s3.seen || []).includes(1324) && s3.unlock?.got === 2 && await prof() === 2, 'event form claimed: seen, but no school / 전체 count change', [cl?.ok, s3.unlock?.got, await prof()]);
+
+    // 4) 이름: 배틀 속 이름 = "물리 쌤의 피카츄"
+    const mons = (s3.mons || []);
+    const tm = mons.find((m) => m.line_id === 12);
+    const b = await W.c.rpc('battle_start_cpu', { p_mons: [tm?.id] });
+    ok(!b.error && JSON.stringify(b.data || {}).includes('물리 쌤의 피카츄'), 'battle shows the teacher form name (_sp_label)', b.error);
+    if (b.data?.id) await W.c.rpc('battle_forfeit', { p_id: b.data.id });
+    let teacherFoe = 0;
+    const others = mons.filter((m) => m.line_id !== 12).map((m) => m.id);
+    for (let i = 0; i < 4; i++) {
+      const bb = await W.c.rpc('battle_start_cpu', { p_mons: others.slice(0, 2) });
+      if ((JSON.stringify(bb.data || {}).match(/쌤의/g) || []).length) teacherFoe++;
+      if (bb.data?.id) await W.c.rpc('battle_forfeit', { p_id: bb.data.id });
+    }
+    ok(teacherFoe === 0, 'practice-battle foes are never teacher forms', teacherFoe);
+
+    // 5) 진화는 폼 안에서 (갈래 = 랄토스 국어 2 쌤 / 일반 폼)
+    await admin.rpc('admin_adjust_tickets', { p_student_id: W.sid, p_delta: 8 });
+    await admin.rpc('admin_grant_monster', { p_student_id: W.sid, p_line: 2, p_stage: 2 });
+    await admin.rpc('admin_grant_monster', { p_student_id: W.sid, p_line: 1002, p_stage: 2 });
+    const m4 = (await st(W.c)).mons || [];
+    for (const ln of [2, 1002]) {
+      const m = m4.find((x) => x.line_id === ln && x.stage === 2);
+      let r = null;
+      for (let k = 0; k < 4 && !r?.success; k++) r = (await W.c.rpc('evolve', { p_mon: m?.id })).data;
+      const to = sp.find((s) => s.id === r?.species_id);
+      ok(r?.success && to?.line_id === ln && to.stage === 3, `evolution stays in its form (line ${ln} → ${to?.name} #${to?.id})`, r);
+    }
+
+    // 6) 운영자: 선생님 폼 만들기 (갈래 가족 이브이) · 이름 · 바꾸기 · 끄기 · 옮기기
+    ok((await W.c.rpc('admin_create_teacher_form', { p_family: 117, p_teacher: 'x', p_subject: 'y' })).error === 'NOT_ADMIN', 'students cannot create a teacher form');
+    ok((await admin.rpc('admin_create_teacher_form', { p_family: 118, p_teacher: '시험 선생님', p_subject: '과학' })).error === 'NOT_FAMILY', 'a branch-only line is not a family (NOT_FAMILY)');
+    ok((await admin.rpc('admin_create_teacher_form', { p_family: 12, p_teacher: '시험 선생님', p_subject: '과학' })).error === 'NOT_FAMILY', 'a teacher line is not a family (NOT_FAMILY)');
+    ok((await admin.rpc('admin_create_teacher_form', { p_family: 117, p_teacher: '시험', p_subject: '야생' })).error === 'BAD_TEACHER', 'subject 야생 → BAD_TEACHER');
+    const c1 = (await admin.rpc('admin_create_teacher_form', { p_family: 117, p_teacher: '시험 선생님 9', p_subject: '과학' })).data;
+    if (c1?.line) made.push(c1.line);
+    const t1 = (await admin.select(`lines?id=eq.${c1?.line}&select=id,form_kind,family_id,form_label,subject,active`)).data?.[0];
+    const tsp = (await admin.select(`species?line_id=eq.${c1?.line}&select=id,stage,dex,form_of&order=id`)).data || [];
+    const tev = (await admin.select(`evolutions?from_species=in.(${tsp.map((x) => x.id).join(',') || 0})&select=from_species,to_species`)).data || [];
+    ok(c1?.ok && c1.line >= 2000 && t1?.form_kind === 'teacher' && t1.family_id === 117 && t1.form_label === '시험 9 쌤' && tsp.length === spOf(117).length
+       && tsp.every((x) => x.id > 40000 && spOf(117).some((s) => s.id === x.form_of && s.dex === x.dex)) && tev.length === 8 && tev.every((e) => tsp.some((x) => x.id === e.to_species)),
+       'admin_create_teacher_form on 이브이: new line 2000+, species 40000+ (form_of), 8 branch evolutions inside the form', { c1, t1, n: tsp.length, ev: tev.length });
+    const sk1 = (await admin.rpc('admin_unlock_stats')).data?.total;
+    ok(sk1 === 192 + 9, 'new teacher form adds its dex numbers to the school dex (+9)', sk1);
+    ok((await admin.rpc('admin_create_teacher_form', { p_family: 117, p_teacher: '두번째', p_subject: '수학' })).error === 'HAS_TEACHER', 'family already has an active teacher form → HAS_TEACHER');
+    const rn = (await admin.rpc('admin_rename_teacher', { p_line: c1?.line, p_teacher: '화학 선생님 9', p_subject: '과학' })).data;
+    ok(rn?.label === '화학 9 쌤', 'admin_rename_teacher updates the label', rn);
+    ok((await admin.rpc('admin_rename_teacher', { p_line: 1012, p_teacher: 'x', p_subject: 'y' })).error === 'NOT_TEACHER_FORM', 'cannot rename a normal form');
+    const c2 = (await admin.rpc('admin_create_teacher_form', { p_family: 117, p_teacher: '두번째 선생님', p_subject: '수학', p_replace: true })).data;
+    if (c2?.line) made.push(c2.line);
+    const a12 = (await admin.select(`lines?id=in.(${c1?.line},${c2?.line})&select=id,active&order=id`)).data || [];
+    ok(c2?.ok && (c2.turned_off || []).includes(c1?.line) && a12[0]?.active === false && a12[1]?.active === true, 'p_replace: old form turned off, new one active', a12);
+    ok((await admin.rpc('admin_set_form_active', { p_line: c1?.line, p_active: true })).error === 'HAS_TEACHER', 'cannot turn on a second teacher form in one family');
+    const off = (await admin.rpc('admin_set_form_active', { p_line: c2?.line, p_active: false })).data;
+    ok(off?.ok && off.active === false && off.school_total === 192, 'admin_set_form_active false → school dex back to 192', off);
+    ok((await admin.rpc('admin_set_form_active', { p_line: 1012, p_active: false })).error === 'NOT_TEACHER_FORM', 'cannot switch a normal form with admin_set_form_active');
+    await admin.rpc('admin_set_form_active', { p_line: c2?.line, p_active: true });
+    const fam2 = lines.find((l) => l.form_kind === 'normal' && l.family_id === l.id && l.id >= 83 && l.id < 400 && !lines.some((x) => x.form_kind === 'teacher' && x.family_id === l.id) && l.rarity !== 'legendary');
+    const c3 = (await admin.rpc('admin_create_teacher_form', { p_family: fam2.id, p_teacher: '두번째 선생님', p_subject: '수학', p_move_from: c2?.line })).data;
+    if (c3?.line) made.push(c3.line);
+    const a3 = (await admin.select(`lines?id=in.(${c2?.line},${c3?.line})&select=id,active,teacher&order=id`)).data || [];
+    ok(c3?.ok && c3.moved_from === c2?.line && a3[0]?.active === false && a3[1]?.active === true && a3[1].teacher === '두번째 선생님', 'p_move_from: teacher moves to another family (old form off, quizzes/QR follow)', { c3, a3 });
+
+    // 7) 그림: 선생님 폼 종에만 (일반 폼 그대로)
+    const sp0 = (await admin.select('species?id=eq.35&select=sprite')).data?.[0]?.sprite ?? null;
+    await admin.patch('species?id=eq.35', { sprite: '35-ftest.png' });
+    const ov = (await anon.rpc('sprite_overrides')).data || {};
+    ok(String(ov['35'] || '').startsWith('35-ftest.png') && !ov['20035'] && !String(ov['1324'] || '').includes('ftest'), 'a face sprite on the teacher form species only (normal 20035 / event untouched)', [ov['35'], ov['20035']]);
+    await admin.patch('species?id=eq.35', { sprite: sp0 });
+    ok((await admin.select('species?id=eq.35&select=sprite')).data?.[0]?.sprite === sp0, 'sprite restored');
+  } finally {
+    for (const id of gifts) await admin.rpc('admin_delete_gift', { p_id: id });
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    if (sids.length) await admin.rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '삭제' });
+    if (made.length) await fetch(`${URL_}/rest/v1/lines?id=in.(${made.join(',')})`, { method: 'DELETE', headers: { apikey: KEY, Authorization: `Bearer ${ADMIN_TOK}` } });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);
 await patchSetting('roam_chance', ROAM0);
 await patchSetting('battle_fields', BF_ORIG);
 await patchSetting('wild_shiny_chance', WSHINY0);
+await patchSetting('unlock_all', UNLOCK0);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

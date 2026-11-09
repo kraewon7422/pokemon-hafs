@@ -176,7 +176,7 @@ export function viewBattle() {
   const invites = S.btInbox?.invites || [];
   return [
     h('div.box.stack',
-      h('div.banner', h('b', pix('spark'), ' 배틀'), today ? h('span.chip', `오늘 보상 ${today.wins}/${today.max}`) : null),
+      h('div.banner', h('b', pix('spark'), ' 배틀'), today ? h('span.chip', today.max >= 999 ? `오늘 이긴 배틀 ${today.wins}` : `오늘 보상 ${today.wins}/${today.max}`) : null),
       h('p', { style: { margin: 0 } }, '내 포켓몬으로 겨뤄요. 친구를 이기면 진화의 돌 1개! (하루 3번 · 같은 친구는 하루 1번)'),
       act && h('button.btn.big.gold', { onclick: () => resumeBattle(act.id) }, pix('spark'),
         act.status === 'invite' ? '보낸 배틀 신청 보기' : pvp ? '하던 실시간 배틀 이어 하기' : '하던 배틀 이어 하기'),
@@ -590,8 +590,25 @@ export function openBattle(b0) {
     const mon = (b.sides || []).flatMap((sd, i) => (s == null || s === i ? sd.mons || [] : [])).find((x) => x?.name === fixNames(r[2], ren) && x.syn);
     return mon && SYN[mon.syn] ? `${m} ${SYN[mon.syn]} 올라갔다!` : m;
   };
+  // 여러 번 맞는 기술 (물수리검 2~5번 등, ui8): 서버는 한 번 맞을 때마다 { hp, dmg } 를 하나씩 보냄 → 같은 기술 (use ~ 다음 use) 에서
+  //   같은 상대가 2번 이상 맞으면 그 칸들 = 한 번씩 따로 (짧은 번쩍 · 데미지 숫자 · 소리 · HP 한 칸씩, 사이 쉼). 예전엔 0.5초 번쩍이
+  //   0.32초마다 다시 시작돼서 한 번 맞은 것처럼 보였음
+  const multiHits = (log) => {
+    const out = new Map(); let run = [];
+    const flush = () => { const by = new Map(); for (const e of run) { const u = e.hp[0]; if (!by.has(u)) by.set(u, []); by.get(u).push(e); }
+      for (const es of by.values()) if (es.length > 1) es.forEach((e, k) => out.set(e, { k: k + 1, n: es.length })); run = []; };
+    for (const e of log || []) { if (e.use || e.sw || e.back != null) flush(); if (e.hp && e.dmg > 0) run.push(e); }
+    flush();
+    return out;
+  };
+  const dmgTick = (u, dmg, k) => {
+    const t = h('b.bt-dmg', { style: { '--k': k % 2 ? -1 : 1 } }, `-${dmg}`);
+    SL[u].spr.append(t);
+    setTimeout(() => t.remove(), reducedMotion() ? 500 : 800);
+  };
   const play = async (log, prev) => {
     playing = true; el.menu.replaceChildren();
+    const multi = multiHits(log);
     for (const e of log || []) {
       if (closed) return;
       const mineSide = (u) => (u >> 1) === me();
@@ -615,7 +632,14 @@ export function openBattle(b0) {
       if ('wx' in e) { env.wx = e.wx; drawEnv(); envStart(e.wx); }
       if ('ter' in e) { env.ter = e.ter; drawEnv(); envStart(e.ter); }
       if (e.use) bump(SL[e.use[0]].spr, 'atk');
-      if (e.hp) {
+      const mh = e.hp && multi.get(e);
+      if (mh) {
+        const [u, v] = e.hp;
+        SL[u].spr.classList.remove('hit');
+        bump(SL[u].spr, 'hit1'); sfx.hit(); vibrate(20); dmgTick(u, e.dmg, mh.k);
+        setHp(u, v);
+        if (!e.m) { await sleep(reducedMotion() ? 200 : 430); continue; }   // 다음 번 맞기까지 쉼 (HP 칸이 한 칸씩 내려가는 게 보이게)
+      } else if (e.hp) {
         const [u, v] = e.hp;
         if (v < view.hp[u]) { bump(SL[u].spr, 'hit'); sfx.hit(); vibrate(25); }
         setHp(u, v);

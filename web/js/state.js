@@ -28,7 +28,9 @@ export const qrName = (id) => S.catalog?.qrs.find((q) => q.id === id)?.name;
 export const abilityOf = (key) => (key && (S.catalog?.abilities || []).find((a) => a.key === key)) || null;
 // 계열의 곧은 길 (첫 갈래) 의 종 번호. 갈래 종 (0037: 쥬피썬더 · 엘레이드 …) 은 id 10000+ → 포켓몬마다 species_id 를 씀 (spIdOf · monSp)
 export const dexOf = (line, stage) => (line - 1) * 3 + stage;
-// 도감 번호 = 실제 전국도감 번호 (No.001 이상해씨 … No.809 멜메탈). species.id 는 (계열-1)*3+단계 그대로 (서버가 씀)
+// 계열 · 단계의 종 (0052: 폼 계열 1000+ 은 종 번호가 계열에서 안 나옴 → 카탈로그에서, 서버 _col_species 처럼 가장 작은 번호)
+export const spIdOfLine = (line, stage = 1) => (S.catalog?.species || []).filter((x) => x.line_id === line && x.stage === stage).sort((a, b) => a.id - b.id)[0]?.id ?? dexOf(line, stage);
+// 도감 번호 = 실제 전국도감 번호 (No.001 이상해씨 … No.807 제라오라, 0049: 멜탄 808 · 멜메탈 809 없음 · 이벤트 810~). species.id 는 (계열-1)*3+단계 그대로 (서버가 씀)
 export const dexNo = (sp) => `No.${String(sp?.dex || 0).padStart(3, '0')}`;
 // 도감 칸 = 전국도감 번호 (같은 번호가 두 계열에 있어도 한 칸). 번호 없는 운영자 포켓몬은 -id
 export const dexKey = (sp) => sp?.dex || -(sp?.id || 0);
@@ -89,9 +91,10 @@ export function seenIds() {
   for (const c of collection()) for (let st = 1; st <= c.stage; st++) out.add(dexOf(c.line_id, st));
   return out;
 }
-export function seenKeys() {
+// 도감 칸 (전국도감 번호) 중 본 것. 0052: 이벤트 폼은 칸을 채우지 않음 (전체 수에 안 셈), pred = 그 종만 (학교 = 선생님 · 특별 폼)
+export function seenKeys(pred = (sp) => !isEvent(sp.line_id)) {
   const out = new Set();
-  for (const id of seenIds()) { const sp = speciesOf(id); if (sp) out.add(dexKey(sp)); }
+  for (const id of seenIds()) { const sp = speciesOf(id); if (sp && pred(sp)) out.add(dexKey(sp)); }
   return out;
 }
 export const isWithdrawn = (line) => (S.snap?.rules?.withdrawn || []).includes(line) || !!lineOf(line)?.withdrawn;
@@ -101,19 +104,76 @@ export const isBonus = (line) => !!lineOf(line)?.bonus || isSecret(line) || isMy
 // 야생 포켓몬 = 선생님이 없는 계열 (QR 의 야생 · 걸음 · 알 · 레이드로 만남)
 export const isWild = (line) => lineOf(line)?.subject === '야생';
 // 이벤트 포켓몬 (0044: 지우개굴닌자 · 지우의 피카츄, 도감 810~) = 이상한 소포로만 받음. 야생 계열 + bonus (도감 수에 안 셈)
-export const isEvent = (line) => isWild(line) && !!lineOf(line)?.bonus;
-// 학교 도감 = 선생님 포켓몬 + 특별 전설 (야생·비밀·환상·비공개 제외) → 도감 50%·100% 보상과 '도감 완성' 은 이것 기준
+export const isEvent = (line) => formKind(line) === 'event';
+// ── 폼 (0052): 한 도감 번호에 일반 · 선생님 ("물리 쌤의 피카츄") · 이벤트 (지우의 피카츄) 모습. lines.form_kind · family_id · form_label, species.form_of
+//   예전 서버 (form_kind 없음) = 야생 계열은 일반 (bonus 면 이벤트), 나머지는 선생님/특별
+export function formKind(line) {
+  const l = lineOf(line);
+  if (!l) return 'normal';
+  if (l.form_kind) return l.form_kind;
+  if (l.subject === '야생') return l.bonus ? 'event' : 'normal';
+  return l.bonus || l.secret || l.mythic || l.rarity === 'legendary' ? 'special' : 'teacher';
+}
+export const isTeacherForm = (line) => formKind(line) === 'teacher';
+export const familyOf = (line) => lineOf(line)?.family_id || line;
+// 보여 줄 이름 (서버 _sp_label 과 같음): 선생님 폼 = "물리 쌤의 피카츄". 이름 바탕 = sp.base_name (applyFormNames 가 sp.name 에 넣어 둠)
+export function displayName(sp) {
+  if (!sp) return '';
+  const base = sp.base_name ?? sp.name;
+  const l = lineOf(sp.line_id);
+  return isTeacherForm(sp.line_id) && l?.form_label ? `${l.form_label}의 ${base}` : base;
+}
+// 카탈로그를 받거나 꺼낼 때 한 번: 모든 화면 (박스 · 배틀 · 잡기 · 축하 · 트레이너 카드 …) 이 sp.name 을 쓰므로 거기에 보여 줄 이름을 넣음
+export function applyFormNames(cat) {
+  if (!cat?.species) return cat;
+  const prev = S.catalog; S.catalog = cat;
+  for (const sp of cat.species) { sp.base_name ??= sp.name; sp.name = displayName(sp); }
+  S.catalog = prev ?? cat;
+  return cat;
+}
+// 이 도감 번호의 폼들: [{ key, kind, label, sp, line }] — 일반 하나 (가진 것 → 가족 대표 계열 → 첫 종), 선생님 폼 (켜진 것 · 본 것), 이벤트
+export function formsOfDex(dex) {
+  const all = (S.catalog?.species || []).filter((sp) => sp.dex === dex && !isWithdrawn(sp.line_id));
+  const seen = seenIds();
+  const out = [];
+  const normals = all.filter((sp) => formKind(sp.line_id) === 'normal');
+  if (normals.length) {
+    const rep = normals.find((sp) => seen.has(sp.id)) || normals.find((sp) => familyOf(sp.line_id) === sp.line_id) || normals[0];
+    out.push({ key: 'normal', kind: 'normal', label: '일반', sp: rep, caught: normals.some((sp) => seen.has(sp.id)) });
+  }
+  for (const sp of all) {
+    const k = formKind(sp.line_id); const l = lineOf(sp.line_id);
+    if (k === 'normal') continue;
+    if ((k === 'teacher' || k === 'special') && l?.active === false && !seen.has(sp.id)) continue;
+    if ((l?.secret || l?.mythic) && !seen.has(sp.id)) continue;
+    const key = `${k}:${sp.line_id}`;
+    if (out.some((f) => f.key === key)) continue;
+    out.push({ key, kind: k, label: k === 'teacher' ? (l?.form_label || l?.teacher || '선생님') : k === 'event' ? '이벤트' : (l?.teacher || '특별'), sp, caught: seen.has(sp.id) });
+  }
+  return out;
+}
+// 학교 도감 (0049) = 도감 '학교' 탭에 늘 보이는 칸: 야생이 아닌 계열 (선생님 · 교장/교감 · 탐구 활동 · 야자 전설, 갈래 종 포함),
+//   잡기 전엔 안 보이는 비밀 · 환상과 비공개, 도감 보상으로 받는 계열 (뮤츠 · 지가르데) 은 뺌 → 도감 50%·100% 보상 · 빛나는 부적 · '도감 완성' 기준.
+//   서버가 sync rules.school_keys 로 그 칸 목록 (_school_keys, 전국도감 번호) 을 보냄 → 앱도 그 목록으로 셈 (서버 보상과 늘 같음)
 // 전국 도감 = 야생까지 모든 포켓몬 (비밀·환상·비공개 제외)
-// 0037: 칸 = 전국도감 번호 (서버 _dex_rewards 와 같은 셈)
+const DEX_REWARD_LINES = [41, 42];   // 예전 서버 (school_keys 없음) 일 때만: 설정 dex_rewards 기본값
 export function dexStats() {
   const seen = seenKeys();
+  const seenSchool = seenKeys((sp) => !isWild(sp.line_id));   // 0052: 학교 칸 = 선생님 · 특별 폼으로 채운 것 (서버 _seen_school)
   const all = new Set(S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id)).map(dexKey));
-  const school = new Set(S.catalog.species.filter((sp) => !isBonus(sp.line_id) && !isWithdrawn(sp.line_id) && !isWild(sp.line_id)).map(dexKey));
-  const cnt = (set) => [...set].filter((k) => seen.has(k)).length;
-  const found = cnt(school);
+  const keys = S.snap?.rules?.school_keys;
+  const school = Array.isArray(keys) ? new Set(keys)
+    : new Set(S.catalog.species.filter((sp) => !isWild(sp.line_id) && !isSecret(sp.line_id) && !isMythic(sp.line_id) && !isWithdrawn(sp.line_id)
+                                       && lineOf(sp.line_id)?.active !== false && !DEX_REWARD_LINES.includes(sp.line_id)).map(dexKey));
+  const cnt = (set, have = seen) => [...set].filter((k) => have.has(k)).length;
+  const found = cnt(school, seenSchool);
   return { found, total: school.size, complete: school.size > 0 && found === school.size,
            allFound: cnt(all), allTotal: all.size,
            secret: collection().some((c) => isSecret(c.line_id)) };
 }
 export const titlesOf = (p, d = dexStats()) => [...(p.titles || []), d.complete && '도감 마스터', d.secret && '비밀 탐험가'].filter(Boolean);
 export const vibrate = (p) => { try { navigator.vibrate?.(p); } catch { /* iOS: none */ } };
+// 해금 단계 (0051): sync 의 unlock = { unlocked, by, got, need, total, pct, minigame, at, all, safari_pending }.
+//   2단계 (학교 도감 pct% 또는 운영자 '모두에게 열기') = 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감. 예전 서버 (unlock 없음) = 열림
+export const unlockInfo = () => S.snap?.unlock || { unlocked: true, got: 0, need: 0, total: 0, pct: 0, old: true };
+export const stage2 = () => unlockInfo().unlocked !== false;

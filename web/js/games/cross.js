@@ -1,7 +1,7 @@
 // 포켓몬 등굣길: 내 포켓몬이 한 칸씩 뛰어 학교 가는 길을 끝없이 올라간다. 길은 4가지 테마가 차례로 바뀌며 돈다:
 //   학교(잔디·찻길·개울·기찻길) → 바닷가(모래·보트 물길·서핑보드/거북 등껍질·해변 열차) → 화산(현무암·광차 길·용암 강·광산 열차)
 //   → 우주(달 표면·UFO 길·소행성 뗏목·유성 줄기) → 다시 학교 (한 바퀴 돌 때마다 더 빨라짐). 테마마다 약 70줄.
-// 화면은 천천히 위로 올라가고(갈수록 빨라짐) 내 포켓몬이 아래 끝으로 밀려나면 '지각 괴물'이 올라와 잡아간다.
+// 화면은 천천히 위로 올라가고(갈수록 빨라짐) 내 포켓몬이 아래 끝으로 밀려나면 레지기가스가 올라와 잡아간다.
 // 점수 = 가장 멀리 간 줄(칸) (주운 상점★ 은 따로 세고 점수에 안 더함). 서버 상한: 점수 ≤ 초×12+30 → 한 번 뛰기 0.09초(최대 초당 약 11줄),
 // 끝낼 때 min(점수, 초×11+20) 으로 한 번 더 묶음. 멈춤(mg-pause)·숨긴 탭 시간은 ms 에 안 들어감 (게임 틱마다 dt 를 더함).
 // 그림은 대부분 이 파일에서 도트로 그림. 바닷가 양동이·삽, 우주 소행성·불꽃 몇 개만 CC0 그림(web/img/games/cross/CREDITS.txt).
@@ -16,7 +16,7 @@ const HOP = 0.09;              // 한 번 뛰기 (쉼 없음) → 최대 초당 
 const QMAX = 2;                // 뛰는 중에 미리 받아 두는 입력 수
 const SUB = 1 / 120;           // 물리 잘게 쪼개기 (빠른 뛰기에서 차를 뚫고 지나가지 않게)
 const PLAYER_SY = GH - 80;     // 카메라가 맞추는 내 포켓몬 화면 y (줄 가운데)
-const CATCH_Y = GH - 6;        // 내 포켓몬 화면 y 가 이보다 아래면 지각 괴물에게 잡힘
+const CATCH_Y = GH - 6;        // 내 포켓몬 화면 y 가 이보다 아래면 레지기가스에게 잡힘
 const WARN_Y = Math.round(GH * 0.8); // 화면 아래 20% → 경고
 const SWIPE = 18;              // 손가락이 이만큼(CSS px) 움직이면 바로 그 방향으로 뜀
 const THEME_LEN = 70;          // 테마 하나의 줄 수
@@ -1035,13 +1035,38 @@ function chaserFrames() {
     return b;
   });
 }
-function handArt() {
+function handArt(pal = K) {
   const b = new G(22, 40);
-  b.rect(7, 12, 8, 28, K.b2); b.rect(7, 12, 2, 28, K.b3);
-  b.ell(11, 11, 7, 5, K.b2);
-  [[4, 0], [10, -2], [16, 0]].forEach(([x, dy]) => { for (let y = 2 + dy; y < 10; y++) b.set(x + Math.round((y - 2) / 4) * (x < 10 ? 1 : x > 10 ? -1 : 0), y + 2, K.b3); b.set(x, 2 + dy + 1, K.face); });
-  b.outline(K.o);
+  b.rect(7, 12, 8, 28, pal.b2); b.rect(7, 12, 2, 28, pal.b3);
+  b.ell(11, 11, 7, 5, pal.b2);
+  [[4, 0], [10, -2], [16, 0]].forEach(([x, dy]) => { for (let y = 2 + dy; y < 10; y++) b.set(x + Math.round((y - 2) / 4) * (x < 10 ? 1 : x > 10 ? -1 : 0), y + 2, pal.b3); b.set(x, 2 + dy + 1, pal.face); });
+  b.outline(pal.o);
   return b;
+}
+// ─────────── 레지기가스 (ui8: 쫓아오는 것 = 앱 포켓몬 그림판의 레지기가스, 2배 도트) ───────────
+// 그림판에 없으면 (못 받음) 위의 예전 그림자 괴물로. 1번 그림 = 얼굴의 노랑·빨강 점이 번쩍. pal = 손 색 (그림에서 고름)
+const GIGAS = 826;   // species id (전국도감 No.486) — 그림판·atlasURL 은 species id 로 찾음
+function gigasArt(img, frame) {
+  const cv = document.createElement('canvas'); cv.width = 64; cv.height = 64; const x = cv.getContext('2d');
+  x.drawImage(img, (frame % 12) * 64, Math.floor(frame / 12) * 64, 64, 64, 0, 0, 64, 64);
+  const d = x.getImageData(0, 0, 64, 64).data;
+  let x0 = 64, x1 = -1, y0 = 64, y1 = -1;
+  for (let j = 0; j < 64; j++) for (let i = 0; i < 64; i++) if (d[(j * 64 + i) * 4 + 3] > 100) { x0 = Math.min(x0, i); x1 = Math.max(x1, i); y0 = Math.min(y0, j); y1 = Math.max(y1, j); }
+  if (x1 < 0) return null;
+  const S = 2, w = (x1 - x0 + 1) * S, h = (y1 - y0 + 1) * S;
+  const g0 = new G(w, h), g1 = new G(w, h);
+  const cnt = new Map();
+  for (let j = y0; j <= y1; j++) for (let i = x0; i <= x1; i++) {
+    const k = (j * 64 + i) * 4; if (d[k + 3] <= 100) continue;
+    const r = d[k], g = d[k + 1], b = d[k + 2], c = hex2(r, g, b);
+    const warm = r > 170 && b < 110 && r - b > 90;          // 얼굴 점 (노랑 · 빨강)
+    const lum = r * 0.3 + g * 0.59 + b * 0.11;
+    if (lum > 70 && !warm) cnt.set(c, [(cnt.get(c)?.[0] || 0) + 1, lum]);
+    for (let q = 0; q < S; q++) for (let p = 0; p < S; p++) { g0.set((i - x0) * S + p, (j - y0) * S + q, c); g1.set((i - x0) * S + p, (j - y0) * S + q, warm ? '#fff6b0' : c); }
+  }
+  const top = [...cnt.entries()].sort((a, b) => b[1][0] - a[1][0]).slice(0, 4);
+  const b2 = top[0]?.[0] || K.b2, b3 = top.slice().sort((a, b) => b[1][1] - a[1][1])[0]?.[0] || K.b3;
+  return { frames: [g0, g1], pal: { b2, b3, face: b3, o: K.o } };
 }
 
 // 내 포켓몬 줄이기 — 몸 크기에 따라 2:1 / 3:1 / 4:1 (한 칸 16 도트에 맞게). 블록마다 가장 많은 색, 테두리·눈 같은 어두운 점은 남김
@@ -1167,7 +1192,7 @@ export default {
     const fontsReady = (document.fonts?.load ? Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}) : Promise.resolve());
     const pDex = Math.max(1, Number(api.partner?.()) || 1);
     let SHEET = { url: '', frame: () => 0 };
-    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex])]).then(([Phaser, , sh]) => {
+    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex, GIGAS])]).then(([Phaser, , sh]) => {
       SHEET = sh;   // setup() 이 씀 (예전엔 여기 안에서만 보여서 내 포켓몬 대신 대체 그림이 나왔음)
       const ATLAS_URL = SHEET.url;
       if (dead) return;
@@ -1203,6 +1228,9 @@ export default {
       } catch { /* 빈 그림으로 */ }
       const PG = (k) => propsG[k] || new G(PROPS[k][2], PROPS[k][3]);
 
+      // 레지기가스 (쫓아오는 것): 그림판 → 2배 도트. 없으면 예전 그림자 괴물
+      let GIG = null;
+      try { GIG = gigasArt(sc.textures.get('mons').getSourceImage(), SHEET.frame(GIGAS)); } catch { /* 예전 그림 */ }
       // 텍스처는 처음 쓸 때 만듦 (테마별로 필요한 것만)
       const NF = {};
       const OBJ = {
@@ -1211,7 +1239,7 @@ export default {
         umbr: () => [umbrellaArt()], cooler: () => [coolerArt()], pile: () => [propArt(PG, 'pileB', 18), propArt(PG, 'pileR', 18)],
         boulder: () => [boulderArt()], vent: ventFrames, spike: () => [spikeArt()], dtree: () => [deadTreeArt()], crystal: () => [crystalArt()],
         mrock: () => [moonRockArt()], crater: () => [craterArt()], dish: () => [dishArt()], aster: () => [propArt(PG, 'aster', 16, 16)], crate: () => [crateArt()], antenna: antennaFrames,
-        star: starFrames, shad: () => [shadowArt()], chaser: chaserFrames, hand: () => [handArt()],
+        star: starFrames, shad: () => [shadowArt()], chaser: () => GIG?.frames || chaserFrames(), hand: () => [handArt(GIG?.pal)],
       };
       const ANIM = new Set(['vent', 'antenna']);
       const make = (k) => {
@@ -1259,7 +1287,7 @@ export default {
       const shad = sc.add.image(0, 0, need('shad'), 0);
       const fxG = sc.add.graphics().setDepth(1e5);
       const warnG = sc.add.graphics().setDepth(-9e4);
-      // 지각 괴물 (화면에 붙어 있음)
+      // 레지기가스 (화면에 붙어 있음, 위 끝을 GH - rise 에 맞춤)
       const chImg = sc.add.image(GW / 2, GH + 10, need('chaser'), 0).setOrigin(0.5, 0).setScrollFactor(0).setDepth(8e5).setVisible(false);
       const hand = sc.add.image(0, 0, need('hand'), 0).setOrigin(0.5, 0).setScrollFactor(0).setDepth(8e5 + 1).setVisible(false);
       const vig = sc.add.graphics().setScrollFactor(0).setDepth(8e5 - 1);
@@ -1278,7 +1306,7 @@ export default {
       const tTitle1 = TXT(GW / 2, 18, '포켓몬').setOrigin(0.5, 0).setScale(2).setColor('#fff4a8');
       const tTitle2 = TXT(GW / 2, 46, '등굣길').setOrigin(0.5, 0).setScale(2).setColor('#fff4a8');
       const tSub = TXT(GW / 2, 80, '종 치기 전에 학교로!', 12, false, '#d8f0e0').setOrigin(0.5, 0);
-      const help = ['탭 = 앞으로 한 칸', '밀기 = 좌·우·뒤로', '멈추면 지각 괴물이!', '★ 상점도 모아요']
+      const help = ['탭 = 앞으로 한 칸', '밀기 = 좌·우·뒤로', '멈추면 레지기가스가!', '★ 상점도 모아요']
         .map((s, i) => TXT(GW / 2, 110 + i * 14, s, 12, false, i === 2 ? '#ffb0a0' : i === 3 ? '#fff4a8' : '#ffffff').setOrigin(0.5, 0));
       const tTap = TXT(GW / 2, 250, '탭해서 시작').setOrigin(0.5, 0);
       const tBan = TXT(GW / 2, 30, '').setOrigin(0.5, 0).setScale(2).setColor('#fff4a8').setDepth(1e6 + 3);
@@ -1418,7 +1446,7 @@ export default {
         }
         const why = hitBy(lane(P.row), P.x);
         if (why) { gameOver(why); return; }
-        // 지각 괴물: 화면 아래 끝으로 밀려나면 잡힘
+        // 레지기가스: 화면 아래 끝으로 밀려나면 잡힘
         const sy = P.y - camY;
         danger = clamp((sy - WARN_Y) / (CATCH_Y - WARN_Y), 0, 1);
         if (sy > CATCH_Y) { gameOver('chaser'); return; }
@@ -1513,7 +1541,7 @@ export default {
         const dep = P.y + T / 2 - 1.5 + (mode === 'over' && (reason === 'car' || reason === 'train') ? 1.2 : 0); // 치이면 납작해진 모습이 차 위로 보이게
         let sink = 0;
         mon.setScale(1).setCrop().setAngle(0).setVisible(true).setDepth(dep).clearTint();
-        // 지각 괴물: 경고 때는 아래에서 살짝 엿보고, 잡을 때는 올라와서 손으로 끌고 감
+        // 레지기가스: 경고 때는 아래에서 살짝 엿보고, 잡을 때는 올라와서 손으로 끌고 감
         const chase = mode === 'over' && reason === 'chaser';
         let rise = 0;
         if (chase) {
@@ -1599,7 +1627,7 @@ export default {
           hud.fillStyle(0x182030, 0.82); hud.fillRoundedRect(6, 94, GW - 12, 72, 8);
           hud.lineStyle(1, 0xffffff, 0.7); hud.strokeRoundedRect(6, 94, GW - 12, 72, 8);
           const th = thHere();
-          const msg = reason === 'chaser' ? '지각 괴물에게 잡혔다!' : DEATH[reason][th];
+          const msg = reason === 'chaser' ? '레지기가스에게 잡혔다!' : DEATH[reason][th];
           tOver.setText(msg).setVisible(true).setColor(reason === 'chaser' ? '#ffb0a0' : reason === 'water' || reason === 'edge' ? (th === 2 ? '#ffc890' : '#bfe6f8') : '#ffffff');
           tOverM.setText(`${score()}칸`).setVisible(true);
           tOverS.setText(P.stars ? `상점 ${P.stars}개도 모았어요` : `${P.best}칸 왔어요`).setVisible(true);
@@ -1636,7 +1664,7 @@ export default {
         stage.crossTp = (row, x) => { P.row = row; P.best = Math.max(P.best, row); P.y = laneCY(row); P.x = x ?? colX(4); P.log = null; P.hop = null; camY = P.y - PLAYER_SY; };
         stage.crossFreeze = (v) => { botOn = !!v; }; // 소리 끔 (스크린숏용)
         // 봇: 앞을 내다보고 안전하면 앞으로, 아니면 기다리거나 옆으로. 화면 없이 빨리 감음 (실제 game step 그대로 씀)
-        // react = 반응 늦음(초), idleAt = 이 줄에 닿으면 그 뒤로 가만히 있음 (지각 괴물 시험)
+        // react = 반응 늦음(초), idleAt = 이 줄에 닿으면 그 뒤로 가만히 있음 (레지기가스 시험)
         stage.crossBot = ({ maxT = 600, react = 0, idleAt = -1, jitter = 0, seed = 1, trace = false, cmul = 1 } = {}) => {
           creepMul = cmul;
           const tr0 = [];

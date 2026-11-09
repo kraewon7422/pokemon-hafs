@@ -9,8 +9,8 @@ import { spriteCanvas, paint, monSprite, aliasSprites, ensureSprites } from './s
 import { sfx, unlockAudio, isSfxOn, setSfxOn, isBgmOn, setBgmOn, bgmScene } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
-import { S, app, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
-import { fmtTime, openDetail, viewDex, viewMap } from './dex.js';
+import { S, app, applyFormNames, spIdOfLine, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, stage2, titlesOf, unlockInfo, vibrate } from './state.js';
+import { fmtTime, openDetail, unlockBar, UNLOCK_PERKS, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
 import { loadBag, openBagScreen } from './bag.js';
@@ -88,7 +88,7 @@ export async function boot() {
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
   S.snap ||= null;   // 이 기기에 저장된 기록이 없으면 undefined 로 옴 → 늘 null (= 아직 첫 동기화 전)
   if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog))) S.catalog = null;   // 0032·0034·0037·0039 전 목록은 버리고 새로 받음
-  if (S.catalog?.lines) { sortDex(S.catalog); aliasSprites(S.catalog.species); }
+  if (S.catalog?.lines) { sortDex(S.catalog); applyFormNames(S.catalog); aliasSprites(S.catalog.species); }
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
 
@@ -174,8 +174,8 @@ export function renderRetry(msg) {
 
 export async function loadCatalog() {
   const [lines, species, qrs, moves, speciesMoves, typeChart, items, evolutions, abilities] = await Promise.all([
-    selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic', (q) => q.order('id')),
-    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item,abilities,hidden_ability', (q) => q.order('id')),
+    selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic,family_id,form_kind,form_label', (q) => q.order('id')),   // 0052 폼
+    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item,abilities,hidden_ability,form_of', (q) => q.order('id')),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
     selectAll('species_moves', 'species_id,slot,move_id', (q) => q.order('species_id').order('slot')),
@@ -193,6 +193,7 @@ export async function loadCatalog() {
                 evolutions: evolutions.error ? null : evolutions.data || [],   // null = 예전 서버 (계열의 다음 단계로 진화)
                 abilities: abilities.error ? [] : abilities.data || [] };
   sortDex(S.catalog);
+  applyFormNames(S.catalog);   // 0052: 선생님 폼 = "물리 쌤의 피카츄" (sp.base_name = 원래 이름)
   aliasSprites(S.catalog.species);
   await kv.set('catalog', S.catalog);
 }
@@ -228,6 +229,13 @@ export function sync(opts = {}) {
       for (const [, st] of acks) if (ACK_MSG[st]) toast(ACK_MSG[st], 4000);
       S.outbox = S.outbox.filter((o) => !FINAL.has(acks.get(o.n)));
       await kv.set('outbox', S.outbox);
+      // 0049: 인터넷이 끊겨 기기에 남겨 둔 사파리 잡기 결과 → 사파리존을 다시 열지 않아도 보냄 (그대로 두면 충전 시각이 지나 도망으로 정리됨).
+      //   보내면 서버가 박스에 넣고, 다음 sync 의 graded 티켓으로 '잡았다' 알림 (던지기 장면 없음)
+      import('./safari-sync.js').then(async (m) => {
+        if (!(await m.queuedResult())) return;
+        const f = await m.flushResult();
+        if (f?.ok || f?.gone) sync({ force: true }).catch(() => {});
+      }).catch(() => {});
 
       if (res.same) {                               // nothing changed on the server: tiny response
         S.snap.synced_at = new Date().toISOString();
@@ -258,6 +266,7 @@ export function sync(opts = {}) {
       S.syncing = null;
       if ($('nav.tabs')) { renderStatus(); if (!S.overlay) renderTab(); }
       if ($('nav.tabs') && S.snap?.notices?.length) setTimeout(() => playNotices().catch(() => {}), 400);   // 0038: 특별한 보상 알림 (전체 화면 연출, 안 본 것만)
+      if ($('nav.tabs') && S.snap?.unlock?.unlocked) setTimeout(() => maybeUnlockFanfare().catch(() => {}), 1500);   // 0051: 2단계가 처음 열림
     }
   })();
   return S.syncing;
@@ -316,7 +325,7 @@ export function logoTap() {
   logoTaps = [];
   const mine = collection().filter((c) => !isWithdrawn(c.line_id));
   const pick = mine.length ? mine[Math.floor(Math.random() * mine.length)] : null;
-  const dex = pick ? dexOf(pick.line_id, pick.stage) : S.catalog.species[Math.floor(Math.random() * S.catalog.species.length)].id;
+  const dex = pick ? spIdOfLine(pick.line_id, pick.stage) : S.catalog.species[Math.floor(Math.random() * S.catalog.species.length)].id;
   const runner = h('div.parade', { 'aria-hidden': 'true' }, spriteCanvas(dex, 96, pick ? 'normal' : 'silhouette'));
   document.body.append(runner);
   sfx.catch(); vibrate([30, 40, 30, 40, 30]);
@@ -451,6 +460,7 @@ export function viewHome() {
     minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', pix('clock'), `마감까지 ${minsLeft}분! 티켓은 마감 전에 부스에서 써 주세요.`),
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
+    unlockHomeBox(),
 
     h(`section.trainer${D.complete ? '.gold-card' : ''}`, { 'aria-label': '트레이너 카드' },
       h('div.idno', h('span', 'TRAINER CARD'), h('span', p.student_id.startsWith('g:') ? 'GUEST' : `ID No. ${p.student_id}`)),
@@ -486,6 +496,53 @@ export function viewHome() {
 
     hint && h('section.box.hint', h('b', pix(hint.egg ? 'gift' : 'bulb'), hint.egg ? '수수께끼  ' : '힌트  '), hint.hint),
   ];
+}
+
+// 해금 단계 (0051): 2단계 전엔 홈에 진행 상황 (학교 포켓몬 got/need → 사파리존 · 야생 포켓몬 · 전체 도감)
+function unlockHomeBox() {
+  if (stage2()) {   // 열렸으면 처음 한 번 축하 (로그인 직후 sync 는 홈을 그리기 전이라 여기서도 확인)
+    if (S.snap?.unlock?.unlocked && !unlockRetry && !unlockBusy) unlockRetry = setTimeout(() => { unlockRetry = null; maybeUnlockFanfare().catch(() => {}); }, 1500);
+    return null;
+  }
+  const u = unlockInfo();
+  return h('section.box.ul-home', { 'aria-label': '해금 단계' },
+    h('div.ul-home-head', pix('spark'), h('b', '다음 해금: 사파리존')),
+    unlockBar(),
+    h('p.ul-home-txt', `학교 포켓몬 ${u.got}/${u.need} — ${u.need}마리 모으면 사파리존이 열려요! (앞으로 ${Math.max(0, u.need - u.got)}마리)`),
+    h('small.muted', '함께 열림: 장소 QR의 야생 포켓몬 · 전체 도감'),
+    h('button.btn.small', { onclick: () => { sfx.select(); S.dexScope = 'school'; go('dex'); } }, pix('book'), '학교 포켓몬 보기'));
+}
+// 2단계가 처음 열렸을 때 한 번 (기기 · 학생마다): "사파리존이 열렸다!" 축하 화면
+let unlockBusy = false;
+let unlockRetry = null;
+async function maybeUnlockFanfare() {
+  const u = S.snap?.unlock;
+  if (!u?.unlocked || unlockBusy || !$('nav.tabs')) return;
+  if (S.overlay || S.bagOpen) {   // 다른 장면 (알림 · 잡기 · 가방) 이 끝나면 바로 이어서
+    if (!unlockRetry) unlockRetry = setTimeout(() => { unlockRetry = null; maybeUnlockFanfare().catch(() => {}); }, 3000);
+    return;
+  }
+  const key = `unlock2:${S.snap?.profile?.student_id || ''}`;
+  if (await kv.get(key)) return;
+  unlockBusy = true;
+  try {
+    await kv.set(key, true);
+    const kanga = S.catalog?.species.find((sp) => sp.dex === 115)?.id || dexOf(35, 1);
+    const text = h('div.box.textbox');
+    const btns = h('div.ul-fan-btns');
+    const ov = overlay(h('div.stage.ul-fanfare', h('div.scene.golden', h('div.rays'), h('span.spr', spriteCanvas(kanga, 160))), h('div', text, btns)), 'full');
+    try { sfx.fanfare(); } catch { /* */ }
+    vibrate([80, 60, 80, 60, 200]);
+    const head = u.by === 'all' ? '운영진이 모두에게 문을 열었어요!' : `학교 포켓몬을 ${u.got}마리 모았어요!`;
+    await typeText(text, [head, '사파리존이 열렸다!', ...UNLOCK_PERKS.slice(1).map(([t, d]) => `· ${t}: ${d}`)].join('\n'));
+    const choice = await new Promise((res) => {
+      btns.replaceChildren(
+        h('button.btn.big.primary', { onclick: () => res('go') }, '사파리존 가 보기'),
+        h('button.btn.big', { onclick: () => res('close') }, '닫기'));
+    });
+    if (S.overlay === ov) closeOverlay();
+    if (choice === 'go') { S.mapMode = 'safari'; go('map'); } else renderTab();
+  } finally { unlockBusy = false; }
 }
 
 // install banner on home: until installed or closed (closing only hides it on this device)
@@ -1183,6 +1240,16 @@ export async function celebrate(tickets, prevLines) {
     const disg = speciesOf(S.snap?.disguised?.[t.nonce]);
     const seen = disg || sp;
     const shiny = !!S.snap?.shiny_t?.[t.nonce];   // 0042: 받을 때 서버가 굴린 반짝
+    // 0049: 이미 앱 안에서 잡은 티켓 (사파리 · 걸음 야생 · 전설 · 방랑 · 잡기 레이드: 서버 graded) → 다시 던지게 하지 않고 '잡았다' 알림만
+    //   (잡는 중 · 축하 중 새로 고침, 끊긴 결과를 나중에 다시 보냄 → 이 기기가 축하했다고 적지 못한 경우)
+    if (t.graded) {
+      const isNew = !prevLines.has(sp.line_id);
+      prevLines.add(sp.line_id);
+      await done(t);
+      const ov = await showCatch(sp, { isNew, sub: t.qr_name, shiny });
+      await tapToContinue(ov); closeOverlay();
+      continue;
+    }
     // 0028/0030: 먼저 몬스터볼로 잡기 (공 3개 다 빗나가면 아주 가끔 도망). 장면을 못 띄우면 바로 축하로
     let c = null;
     try {
@@ -1268,9 +1335,11 @@ export async function catchEncounter(enc) {
       try { return { r: await rpc(legend ? 'legend_result' : 'encounter_result', { p_id: enc.id, p_caught: caught, p_grade: x.grade || 'none', p_curve: !!x.curve }, { retries: 1 }) }; } catch (e) { return { e }; }
     };
     let sentP = null;   // 장면 안에서 보낸 결과 (약속 — 장면이 중간에 깨져도 두 번 보내지 않게 바로 적어 둠)
+    // 0049: 서버가 잡았다고 답한 순간 그 티켓을 '축하함' 으로 적음 — 장면이 끝나기 전에 새로 고쳐도 다음 sync 가 던지기 장면을 다시 띄우지 않게
+    const markDone = async (r) => { if (r?.nonce && !S.celebrated.has(r.nonce)) { S.celebrated.add(r.nonce); await kv.set('celebrated', [...S.celebrated]); } };
     const confirm = (caught, x) => {
       sentP = send(caught, x);
-      return sentP.then((o) => { const r = safari ? o.f?.r : o.r; return r ? !(r.fled || r.caught === false) : null; });
+      return sentP.then(async (o) => { const r = safari ? o.f?.r : o.r; await markDone(r); return r ? !(r.fled || r.caught === false) : null; });
     };
     try {
       const { catchScene } = await import('./catch.js');
@@ -1338,7 +1407,7 @@ export async function catchEncounter(enc) {
 export function openQuiz() {
   const q = S.snap.quizzes?.[0];
   if (!q) return;
-  const sp = speciesOf(dexOf(q.line_id, 1));
+  const sp = speciesOf(spIdOfLine(q.line_id, 1));
   let picked = -1;
   const decide = h('button.btn.big.primary', { disabled: true }, '결정');
   const result = h('div');

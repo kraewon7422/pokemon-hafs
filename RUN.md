@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → `supabase/migrations/` 0001 → 0044 순서대로 실행 (0034 다음에 `supabase/seed_pokemon.sql` 실행 — 0037 을 넣은 뒤에도 한 번 더 실행: 갈래 진화 종 20마리 + `evolutions` 표가 seed 에 들어 있음 → `node tools/upload_pokemon_sprites.mjs` 로 포켓몬 그림 올리기 (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD 를 줌, 파일 맨 위 설명) — 사람이 없을 때) → 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음). 배틀 데이터는 `seed_battle.sql` 실행 (라인 번호가 같아야 함, 0020 다음에 — 기술·배우기·가방 물건이 들어 있음). ⚠️ 0020 은 기술을 지우고 다시 번호를 매기므로 **0020 → seed_battle.sql 을 사람이 없을 때 연달아** 실행하고, 연습 배틀 한 판으로 기술이 보이는지 확인 (둘 사이에 시작한 배틀은 기술이 없어 발버둥만 씀)
+1. Supabase 새 프로젝트 (서울) → 데이터베이스 순서 (지금 파일 기준, README '실전 서버 만들기' 와 같음): `0001`→`0020` → 바로 `seed_battle.sql` → `0021`→`0039` → `seed_pokemon.sql` (0038 의 열 · 0039 의 특성 표를 쓰므로 0039 다음에만 됨) → `select count(*) from lines where ultra;` 가 0 이면 0038 의 울트라 · 전설 표시 update 두 줄을 다시 실행 → `0040`→`0053` → `seed_pokemon.sql` 한 번 더 (끝에서 `_forms_build()` 로 선생님 폼 · 일반 폼을 만듦, 여러 번 돌려도 안전) → `node tools/upload_pokemon_sprites.mjs` (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD, 103·106·1321·1324 포함) — 모두 사람이 없을 때. ⚠️ 이 순서는 파일 내용으로 맞춘 것이고 빈 데이터베이스에서 처음부터 돌려 본 적은 아직 없음 → 실전 전에 빈 프로젝트에서 한 번 돌려 볼 것. 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음).
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
@@ -109,6 +109,18 @@ python tools/build_atlas.py                                                   # 
 - 그림: `python tools/build_safari_tiles.py --preview` (0048 타일은 맨 뒤에 붙음 → 예전 타일 자리 그대로). 지도 점검: `node .work/s7/maps-check.mjs` (막는 칸 · 모든 칸 닿는지 · 얼음 미끄러짐 · warp).
 - 화면: 사파리존 맨 위 모래길 → 설원 ("눈이 펑펑 내리고 있다!", 얼어붙은 연못은 미끄러짐) · 왼쪽 아래 모래길 → 용암 지대 ("후끈한 열기가 느껴진다!") · 왼쪽 위 발전소 문 → 1층 → 계단 → 2층. 네 곳 (해변 · 사막 · 설원 · 용암) 을 다녀오면 호수에 섬 + 다리 가운데 계단 → 용의 굴.
 - **축제 시작할 때**: 학생들이 먼저 QR 을 찾게 하려면 운영자 [축제 운영] → 야생 포켓몬 → '사파리존 열기' 를 끔 (학생 앱 사파리존 = "아직 닫혀 있어요" 덮개, 현황판에 '사파리존 닫힘'). 스테이징 기본은 켜짐.
+
+## 0049 핵심 고침 확인 (스테이징)
+- 실전 순서: `0049_core_fixes.sql` (멜탄 계열 440 을 지움 — 가진 학생은 진화의 돌 1개씩, item_log 'meltan_removed') → `supabase/seed_pokemon.sql` 다시 (808 · 809 없음, 사람이 없을 때).
+  MCP 로 넣을 때 DELETE 가 든 멜탄 부분은 확인 창이 뜨면 임시 실행 함수로 (`.work/pokemon/exec.mjs`, 끝나면 `_tmp_seed_exec` 를 다시 DISABLED).
+- 서버: `node tests/rpc_test.mjs` → [58] (알 · 연습 배틀에 울트라비스트 없음 · 사파리 결과 두 번 보내도 같은 결과 · graded 티켓 · 갈래 진화 90번 고르게 · BRANCH_LINE · school_keys · 멜탄 없음).
+- 화면: `node C:/dev/tools/pw-webkit/c8_safari.mjs <port> <tag>` (잡은 뒤 새로 고침 / 응답 끊김 → 다시 던지기 장면이 안 뜨는지), `c8_shiny.mjs <port>` (이로치 레이드 잡기 · 티켓 · 셀프 수령).
+- 운영: 선생님 계열 2 · 18 · 33 · 46 · 50 · 69 는 지금 갈래 계열 (랄토스 · 발챙이 · 배루키 · 야돈 · 눈꼬마 · 뚜벅쵸) → 운영자 [몬스터] → 선생님 배정에서 다른 야생 포켓몬으로 옮기기를 권함 (자동으로 옮기지 않음).
+
+## 0050 전설의 특별한 곳 확인 (스테이징)
+- 서버: `node tests/rpc_test.mjs` → [59] (새 전설 33마리 = legend_src safari · 퀘스트 47개 · zone_catch 셈 · 코스모그 깨어남 → 잡기 → 네크로즈마).
+- 그림: `python tools/build_safari_tiles.py --preview` (0050 타일은 맨 뒤 → 예전 타일 자리 그대로). 지도 점검: `node .work/d8/maps-check.mjs` (전설 자리마다 닿는지 · 힌트 · 묶음).
+- 화면: 해변 동쪽 끝 나루 → 꿈의 섬 · 깊은 연못 동쪽 길 → 성검의 숲 · 용의 굴 위쪽 사다리 → 용의 굴 깊은 곳 · 울트라 스페이스 위쪽 워프홀 → 별의 제단 · 사막 서쪽 유적 계단 → 고대 유적. 사육사 → "어떤 포켓몬에 대한 이야기를 듣고 싶니?" → 곳 → 전설.
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.

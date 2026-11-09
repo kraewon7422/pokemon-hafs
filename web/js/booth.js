@@ -4,7 +4,7 @@ import { CONFIG } from './config.js';
 import { sb, rpc, errorText, selectAll } from './sb.js';
 import { isBag, fixKoreanIME } from './qrfmt.js';
 import { Scanner } from './scanner.js';
-import { spriteCanvas } from './sprites.js';
+import { spriteCanvas, aliasSprites } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, sleep, pixelFontScale } from './ui.js';
 import { idLogin, renderGoogleButton, signOut } from './auth.js';
@@ -48,8 +48,10 @@ async function start() {
   try {
     const p = await rpc('ensure_profile');
     if (!['booth', 'admin'].includes(p.role)) { await signOut(); return renderLogin('부스 스태프 계정이 아니에요.'); }
-    const { data } = await selectAll('species', 'id,name', (q) => q.order('id'));
-    species = data || [];
+    // 0052 폼: 선생님 폼 = "물리 쌤의 피카츄" (서버 _sp_label 과 같은 이름), 폼 종 (20000+) 그림 = 같은 도감 번호
+    species = ((await selectAll('species', 'id,name,dex,line:lines!species_line_id_fkey(form_kind,form_label)', (q) => q.order('id'))).data || [])
+      .map((s) => ({ ...s, name: s.line?.form_kind === 'teacher' && s.line.form_label ? `${s.line.form_label}의 ${s.name}` : s.name }));
+    aliasSprites(species);
     renderBooth(p);
     rpc('sync').catch(() => {});
     setInterval(() => rpc('sync').catch(() => toast('⚠ 서버 연결 끊김 - 핫스팟을 확인하세요', 4000)), 60_000);  // heartbeat for the dashboard

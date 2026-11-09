@@ -548,11 +548,18 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bt-spr.me.atk { animation: bt-atk-me .32s steps(3); }
 .bt-spr.foe.atk { animation: bt-atk-foe .32s steps(3); }
 .bt-spr.hit { animation: bt-hit .5s steps(2) 1; }
+.bt-spr.hit1 { animation: bt-hit1 .22s steps(2) 1; }   /* ui8: 여러 번 맞는 기술의 한 번 (짧게 → 번마다 따로 보임) */
+.bt-dmg { position: absolute; left: 50%; top: 18%; z-index: 4; pointer-events: none; translate: -50% 0; white-space: nowrap; line-height: 1;
+  font-size: var(--fs-m, 16px); color: #fff; text-shadow: 2px 0 #283048, -2px 0 #283048, 0 2px #283048, 0 -2px #283048;
+  animation: bt-dmg .8s steps(8) forwards; }
+@keyframes bt-dmg { 0% { transform: translate(calc(var(--k, 1) * 6px), 0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(calc(var(--k, 1) * 14px), -28px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bt-dmg { animation: none; } }
 .bt-spr.faint { animation: bt-faint .55s steps(5) forwards; }
 @keyframes bt-pop { from { transform: scale(.15); filter: brightness(6); } to { transform: none; filter: none; } }
 @keyframes bt-atk-me { 50% { transform: translate(16%, -8%); } }
 @keyframes bt-atk-foe { 50% { transform: translate(-16%, 8%); } }
 @keyframes bt-hit { 0%, 50% { opacity: .15; } 25%, 75% { opacity: 1; } }
+@keyframes bt-hit1 { 0% { opacity: .15; } 50% { opacity: 1; } }
 @keyframes bt-faint { to { transform: translateY(45%); opacity: 0; } }
 
 /* 능력 변화 (0039): 가는 줄무늬가 원뿔 모양으로 — 올라가면 빨강·주황이 위로 (위가 좁음), 내려가면 파랑이 아래로 (아래가 좁음).
@@ -1182,14 +1189,20 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .partner-pick small + small { font-size: 11px; color: #586890; }
 .sum-body { display: grid; gap: 6px; min-width: 0; }   /* 0036: 설명·제목이 한 줄에 붙지 않게 (320px) */
 
-/* 0037 도감 쪽 넘기기 + 지방 바로 가기 */
+/* 0037 도감 쪽 넘기기 */
 .dex-pager { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
 .dex-pager .btn.small { min-width: 48px; min-height: 44px; }
 .dex-pager .dp-mid { display: grid; justify-items: center; text-align: center; line-height: 1.2; }
 .dex-pager .dp-mid small { font-size: var(--fs-s); color: #4a5268; white-space: nowrap; }
 .dex-event-note { margin: 0; font-size: var(--fs-s); text-align: center; color: #4a5268; word-break: keep-all; }   /* 0044 이벤트 포켓몬 (소포로만) */
-.dex-regions .chip { word-break: keep-all; white-space: nowrap; }
-.dex-regions .chip:disabled { opacity: .45; cursor: default; }
+/* 0052 폼 바꾸기 (도감 자세히): 일반 · 선생님 · 이벤트 모습 */
+.form-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.form-tab { flex: 1 1 96px; min-width: 0; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 8px;
+  border: 2px solid var(--line, #3a4258); border-radius: 10px; background: #fff; color: inherit; font: inherit; font-size: var(--fs-s); cursor: pointer; }
+.form-tab[aria-pressed="true"] { background: #fff4c2; border-color: var(--gold, #d8a200); font-weight: 700; }
+.form-tab .ft-label { overflow-wrap: anywhere; word-break: keep-all; text-align: left; }
+.form-tab .ft-caught { font-style: normal; color: var(--green, #2f9e44); font-size: 12px; }
+.form-tab canvas { flex: none; }
 /* 0037 갈래 진화: 진화 길 칸 + 고르기 */
 .chain-cell { display: grid; justify-items: center; text-align: center; word-break: keep-all; }
 .chain-col { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 6px; justify-items: center; }
@@ -1285,3 +1298,28 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .status { word-break: keep-all; overflow-wrap: normal; min-width: 0; }
 /* 0042: 사파리 글 상자 줄 수 재기 (보이지 않음) */
 .sf-probe { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }
+/* 0051 해금 단계: 홈 진행 상자 · 지도 탭 잠긴 사파리존 · 도감 안내 · 처음 열림 축하 */
+.ul-progress { display: grid; gap: 4px; }
+.ul-progress .banner b { white-space: nowrap; }
+.ul-home { display: grid; gap: 6px; background: #fff8dc; border-color: #b08a28; }
+.ul-home-head { display: flex; align-items: center; gap: 6px; }
+.ul-home-txt { margin: 0; word-break: keep-all; overflow-wrap: break-word; }
+.ul-home small { word-break: keep-all; overflow-wrap: break-word; }
+.ul-home .btn.small { justify-self: start; }
+.ul-locked { display: grid; gap: 10px; text-align: center; justify-items: stretch; word-break: keep-all; overflow-wrap: break-word; }
+.ul-locked p { margin: 0; }
+.ul-gate { position: relative; justify-self: center; width: 128px; height: 128px; display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle, #d8e8c0 0 55%, #a8c088 56% 100%); border: 3px solid var(--ink); }
+.ul-lock { position: absolute; right: 4px; bottom: 6px; width: 34px; height: 36px; image-rendering: pixelated; background:
+  linear-gradient(#e8b030, #e8b030) 3px 15px / 28px 19px no-repeat,
+  radial-gradient(circle at 17px 15px, transparent 7px, #384050 7px 10px, transparent 10px) 0 0 / 34px 30px no-repeat; }
+.ul-title { font-size: var(--fs-l); }
+.ul-left { font-size: var(--fs-s); }
+.ul-perk-head { font-weight: bold; text-align: left; margin-top: 4px; }
+.ul-perks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; text-align: left; }
+.ul-perks li { display: grid; gap: 2px; padding: 6px 8px; border: 2px dashed #8890a0; border-radius: 6px; background: #f2f4f8; }
+.ul-perks small { font-size: var(--fs-s); }
+.ul-dex-note { display: block; margin-top: 4px; color: #6a4a08; font-weight: 700; word-break: keep-all; overflow-wrap: break-word; }
+.ul-fanfare .ul-fan-btns { display: flex; gap: 8px; margin-top: 8px; }
+.ul-fanfare .ul-fan-btns .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; }
+.ul-fanfare .ul-fan-btns .btn.primary { flex: 2 1 0; padding-left: 8px; padding-right: 8px; }

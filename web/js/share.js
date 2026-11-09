@@ -39,15 +39,43 @@ function text(g, s, x, y, { size = 44, bold = false, col = INK, shadow = null, a
   g.fillStyle = col; g.fillText(s, x, y);
   return sz;
 }
-async function drawMon(g, m, cx, footY, scale) {
+// 그림의 실제 보이는 부분 (투명 아닌 픽셀) 상자 — 큰 포켓몬이 액자 밖으로 튀어나오지 않게 맞출 때 씀
+const bboxCache = new Map();
+function cellBox(cell) {
+  if (bboxCache.has(cell)) return bboxCache.get(cell);
+  let box = { x: 0, y: 0, w: 64, h: 64 };
+  try {
+    const t = document.createElement('canvas'); t.width = 64; t.height = 64;
+    const tg = t.getContext('2d'); tg.drawImage(cell, 0, 0, 64, 64, 0, 0, 64, 64);
+    const d = tg.getImageData(0, 0, 64, 64).data;
+    let x0 = 64, y0 = 64, x1 = -1, y1 = -1;
+    for (let y = 0; y < 64; y++) for (let x = 0; x < 64; x++) if (d[(y * 64 + x) * 4 + 3] > 8) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+    if (x1 >= 0) box = { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
+  } catch { /* 읽을 수 없으면 칸 전체 */ }
+  bboxCache.set(cell, box);
+  return box;
+}
+// 포켓몬 그리기: 발이 footY, 가운데 cx. fit = { w, h } 를 주면 그 안에 들어가게 (정수 배율 우선) 줄임
+async function drawMon(g, m, cx, footY, scale, fit = null) {
   const id = spIdOf(m); const shiny = !!m.shiny_on;
   try { await ensureSprites([id], shiny); } catch { /* 오프라인: 받아 둔 것만 */ }
   const cell = monCell(id, shiny) || monCell(id, false);
+  const b = cell ? cellBox(cell) : { x: 0, y: 0, w: 64, h: 64 };
+  let k = scale;
+  if (fit) {
+    const f = Math.min(fit.w / b.w, fit.h / b.h);
+    if (f < k) k = Math.max(0.5, Math.floor(f * 4) / 4);   // 0.25 단위로만 줄임 (너무 작아지지 않게)
+  }
   // 그림자 (도트 타원)
-  const sw = 26 * scale, sh = 6 * scale;
+  const sw = 26 * k, sh = 6 * k;
   g.fillStyle = 'rgba(16, 24, 40, .28)';
-  for (let r = 0; r < sh; r += U) { const k = Math.sqrt(1 - ((r - sh / 2) / (sh / 2)) ** 2); const w = Math.round((sw * k) / U) * U; g.fillRect(cx - w / 2, footY - sh / 2 + r - 2 * scale, w, U); }
-  if (cell) { g.imageSmoothingEnabled = false; g.drawImage(cell, 0, 0, 64, 64, Math.round(cx - 32 * scale), Math.round(footY - 64 * scale), 64 * scale, 64 * scale); }
+  for (let r = 0; r < sh; r += U) { const kk = Math.sqrt(1 - ((r - sh / 2) / (sh / 2)) ** 2); const w = Math.round((sw * kk) / U) * U; g.fillRect(cx - w / 2, footY - sh / 2 + r - 2 * k, w, U); }
+  if (cell) {
+    g.imageSmoothingEnabled = false;
+    // 보이는 부분의 가운데를 cx 에, 아래 끝을 footY 에
+    const dx = Math.round(cx - (b.x + b.w / 2) * k), dy = Math.round(footY - (b.y + b.h) * k);
+    g.drawImage(cell, 0, 0, 64, 64, dx, dy, 64 * k, 64 * k);
+  }
 }
 // 몬스터볼 도트 (16×16 칸, 앱 가운데 QR 버튼과 같은 빨강 · 흰색): 칸마다 원 안인지 재서 칠함
 function logo(g, x, y, size) {
@@ -180,7 +208,7 @@ export async function drawCard() {
   const PS = 70 * U, PX = IR - PS, PY = HY + HH + 6 * U;            // 액자 280px
   pbox(g, PX, PY, PS, PS, GOLD, 3);
   pbox(g, PX + 2 * U, PY + 2 * U, PS - 4 * U, PS - 4 * U, PAPER, 3);
-  if (partner) await drawMon(g, partner, PX + PS / 2, PY + PS - 6 * U, 4);
+  if (partner) await drawMon(g, partner, PX + PS / 2, PY + PS - 6 * U, 4, { w: PS - 10 * U, h: PS - 12 * U });
   else text(g, '?', PX + PS / 2, PY + PS / 2 + 18 * U, { size: 160, bold: true, col: '#ead39a', align: 'center' });
   const NX = IX + 4 * U, NW = PX - 8 * U - NX;                      // 이름 칸 너비 ≈ 620px
   const nick0 = String(p.nickname || '').trim();
@@ -239,7 +267,7 @@ export async function drawCard() {
     const m = list[i];
     if (!m) { pbox(g, sx, sy, slotW, slotH, 'rgba(255, 252, 236, .45)', 2); dashed(g, sx, sy, slotW, slotH, '#b08a38'); continue; }
     pbox(g, sx, sy, slotW, slotH, GOLD, 2); pbox(g, sx + U, sy + U, slotW - 2 * U, slotH - 2 * U, PAPER, 2);
-    await drawMon(g, m, sx + slotW / 2, sy + 35 * U, 2);
+    await drawMon(g, m, sx + slotW / 2, sy + 35 * U, 2, { w: slotW - 10 * U, h: 25 * U });   // Lv 글자 아래 ~ 이름 위
     text(g, `Lv.${m.level}`, sx + slotW - 4 * U, sy + 9 * U, { size: 26, bold: true, col: LBL, align: 'right' });
     if (m.shiny_on) text(g, '★', sx + 4 * U, sy + 9 * U, { size: 26, bold: true, col: '#d89a10' });
     const sn = fit(g, monSp(m)?.name || '???', slotW - 8 * U, 32, 24);
@@ -352,7 +380,7 @@ export async function drawPhoto(m, bgKey) {
   const [c, g] = canvas(1080, 1080);
   rect(g, 0, 0, 1080, 1080, '#283048');
   await bg.draw(g);
-  await drawMon(g, m, 540, bg.foot, 9);
+  await drawMon(g, m, 540, bg.foot, 9, { w: 900, h: bg.foot - 60 });
   // 이름 상자 (GBA 글상자)
   const bx = 48, bw = 984, bh = 30 * U, byy = 1080 - 48 - bh;
   pbox(g, bx, byy, bw, bh, '#182030', 3); pbox(g, bx + 2 * U, byy + 2 * U, bw - 4 * U, bh - 4 * U, '#4a6a9a', 3); pbox(g, bx + 4 * U, byy + 4 * U, bw - 8 * U, bh - 8 * U, '#f8f8f8', 2);

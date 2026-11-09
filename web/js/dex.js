@@ -4,8 +4,8 @@ import { kv } from './db.js';
 import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isEvent, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, vibrate } from './state.js';
-import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
+import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, familyOf, formKind, formsOfDex, isEvent, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenIds, seenKeys, speciesOf, spIdOf, spPath, stage2, unlockInfo, vibrate } from './state.js';
+import { closeOverlay, eggTap, go, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
 import { rumourBox } from './legends.js';
 
 // ───────────────────────── 지도 ─────────────────────────
@@ -19,10 +19,38 @@ export function viewMap() {
     h('button', { 'aria-pressed': String(mode === 'qr'), onclick: () => setMode('qr') }, 'QR 지도'),
     h('button', { 'aria-pressed': String(mode === 'safari'), onclick: () => setMode('safari') }, '사파리존'));
   if (mode === 'qr') return [bar, ...viewQrMap()];
+  if (!stage2() && !unlockInfo().safari_pending) return [bar, safariLocked()];   // 0051: 학교 포켓몬을 더 모아야 열림 (하던 잡기가 있으면 끝내게 열어 둠)
   if (safariMod) return [bar, safariMod.viewSafari()];
   import('./safari.js').then((m) => { safariMod = m; if (S.tab === 'map' && S.mapMode === 'safari') renderTab(); })
     .catch(() => toast('사파리존을 불러오지 못했어요. 인터넷을 확인해 주세요.', { kind: 'error' }));
   return [bar, h('div.box', '사파리존을 불러오는 중…')];
+}
+
+// ── 해금 단계 (0051) ──
+const spOfDex = (d) => S.catalog?.species.find((sp) => sp.dex === d)?.id || 1;
+// 2단계까지의 진행 막대: 학교 포켓몬 got / need
+export function unlockBar() {
+  const u = unlockInfo();
+  const need = Math.max(1, u.need || 0);
+  return h('div.ul-progress', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': need, 'aria-valuenow': Math.min(u.got, need), 'aria-label': '학교 포켓몬 모은 수' },
+    h('div.banner', h('span', '학교 포켓몬'), h('b', `${Math.min(u.got, need)} / ${need}`)),
+    h('div.bar', h('i', { style: { width: `${Math.min(1, u.got / need) * 100}%` } })));
+}
+export const UNLOCK_PERKS = [['사파리존', '지도 탭에서 걸어 다니며 포켓몬 잡기'], ['야생 포켓몬', '장소 QR을 찍으면 야생 포켓몬도 나와요'], ['전체 도감', '전국의 모든 포켓몬 칸이 보여요']];
+const perkList = () => h('ul.ul-perks', UNLOCK_PERKS.map(([t, d]) => h('li', h('b', t), h('small', d))));
+// 지도 탭 · 사파리존 (2단계 전): 잠긴 문 + 진행 상황
+function safariLocked() {
+  const u = unlockInfo();
+  const left = Math.max(0, (u.need || 0) - (u.got || 0));
+  return h('div.box.ul-locked',
+    h('div.ul-gate', { 'aria-hidden': 'true' }, spriteCanvas(spOfDex(115), 96, 'silhouette'), h('span.ul-lock')),
+    h('b.ul-title', '사파리존은 아직 잠겨 있어요'),
+    h('p', `학교 포켓몬 (선생님 포켓몬 · 숨은 포켓몬) 을 ${u.need}마리 모으면 열려요!`),
+    unlockBar(),
+    h('p.ul-left', left ? `앞으로 ${left}마리! 장소 QR · 퀴즈 · 레이드로 모아 보세요.` : '거의 다 왔어요! 잠시 뒤에 다시 열어 보세요.'),
+    h('div.ul-perk-head', '열리면 함께 생기는 것'),
+    perkList(),
+    h('button.btn.big.primary', { onclick: () => { sfx.select(); S.dexScope = 'school'; go('dex'); } }, pix('book'), '도감에서 학교 포켓몬 보기'));
 }
 
 function viewQrMap() {
@@ -95,32 +123,43 @@ export const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour
 const SCOPES = [['all', '전체'], ['school', '학교'], ['wild', '야생'], ['mine', '잡은 포켓몬']];
 export const TYPES = ['노말', '불꽃', '물', '풀', '전기', '얼음', '격투', '독', '땅', '비행', '에스퍼', '벌레', '바위', '고스트', '드래곤', '악', '강철', '페어리'];
 
-// 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸 + 지방으로 바로 가기. 범위 · 타입을 바꾸면 첫 쪽부터
+// 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸. 범위 · 타입을 바꾸면 첫 쪽부터 (지방 바로 가기 줄은 ui8 에서 뺌 — 실제 구성과 안 맞았음)
 export const DEX_PER_PAGE = 60;
-export const REGIONS = [['관동', 1], ['성도', 152], ['호연', 252], ['신오', 387], ['하나', 494], ['칼로스', 650], ['알로라', 722], ['이벤트', 810]];   // 이벤트 = 0044 소포 포켓몬
 export const EVENT_NOTE = '이상한 소포로만 받을 수 있어요.';
-const regionOf = (d) => REGIONS.reduce((r, x) => (d >= x[1] ? x : r), REGIONS[0])[0];
-// 같은 전국도감 번호의 종이 여럿이면 (갈래 종 · 따로 있는 야생 계열) 한 칸: 내가 가진 종 → 진화 갈래 쪽 (계열 안의 종) → 첫 종
+// 같은 전국도감 번호의 종이 여럿이면 (폼 0052 · 갈래 종 · 따로 있는 야생 계열) 한 칸: 내가 가진 종 → 본 종 → 일반 폼 (가족 대표 계열) → 진화 갈래 쪽 → 첫 종
 const monsOfKey = (k) => mons().filter((m) => dexKey(monSp(m)) === k);
-function pickRep(group) {
+function pickRep(group, seen) {
   const mine = new Set(mons().map(spIdOf));
-  return group.find((sp) => mine.has(sp.id)) || group.find((sp) => sp.id >= 10000) || group[0];
+  return group.find((sp) => mine.has(sp.id)) || group.find((sp) => seen.has(sp.id))
+    || group.find((sp) => formKind(sp.line_id) === 'normal' && familyOf(sp.line_id) === sp.line_id)
+    || group.find((sp) => sp.id >= 10000) || group[0];
 }
+const baseName = (sp) => sp?.base_name ?? sp?.name ?? '';
+// 폼 (0052) 의 얻는 방법
+const formHow = (sp) => {
+  const k = formKind(sp.line_id); const l = lineOf(sp.line_id);
+  if (k === 'event') return EVENT_NOTE;
+  if (k === 'teacher') return `${l?.teacher || '선생님'} (${l?.subject || ''}) · 장소 QR · 퀴즈`;
+  if (k === 'special') return l?.teacher || '특별한 방법';
+  return '야생 (QR · 걷기 · 알 · 사파리존)';
+};
 
 export function viewDex() {
   const { species } = S.catalog;
-  const seen = seenKeys();
-  const reached = (sp) => seen.has(dexKey(sp));
+  const seenId = seenIds();
+  const reached = (sp) => seenId.has(sp.id);   // 0052: 폼마다 (학교 칸 = 선생님 폼을 잡아야 채워짐)
   const D = dexStats();
-  const scope = S.dexScope || 'all';
+  const open = stage2();                      // 0051: 2단계 전엔 학교 탭만 (범위 버튼 · 전국 도감 줄 없음)
+  const scope = open ? S.dexScope || 'all' : 'school';
   const tf = TYPES.includes(S.dexFilter) ? S.dexFilter : 'all';
   const ok = (sp) => (!isSecret(sp.line_id) || (scope === 'all' && tf === 'all') || owned(sp.line_id))
     && (!isMythic(sp.line_id) || owned(sp.line_id))                                   // 환상 = 잡기 전엔 도감에 없음
-    && (scope === 'all' || (scope === 'school' ? !isWild(sp.line_id) : scope === 'wild' ? isWild(sp.line_id) : reached(sp)))
+    && (formKind(sp.line_id) !== 'teacher' || lineOf(sp.line_id)?.active !== false || reached(sp))   // 꺼진 선생님 폼 = 잡은 학생만
+    && (scope === 'all' || (scope === 'school' ? !isWild(sp.line_id) : scope === 'wild' ? isWild(sp.line_id) && !isEvent(sp.line_id) : reached(sp)))
     && (tf === 'all' || typesOf(sp).includes(tf));
   const groups = new Map();      // 전국도감 번호 → 종들 (species 는 이미 번호 순)
   for (const sp of species) if (ok(sp)) { const k = dexKey(sp); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sp); }
-  const list = [...groups.values()].map(pickRep);
+  const list = [...groups.values()].map((g) => { const r = pickRep(g, seenId); r.__got = g.some(reached); return r; });
   const pages = Math.max(1, Math.ceil(list.length / DEX_PER_PAGE));
   const fkey = `${scope}|${tf}`;
   if (S.dexPageKey !== fkey) { S.dexPageKey = fkey; S.dexPage = 0; }
@@ -134,15 +173,6 @@ export function viewDex() {
     h('button.btn.small', { type: 'button', disabled: page === 0, onclick: () => go(page - 1, bottom), 'aria-label': '이전 쪽' }, '◀'),
     h('span.dp-mid', h('b', `${page + 1} / ${pages}`), shown.length ? h('small', `${dexNo(shown[0])} ~ ${dexNo(shown[shown.length - 1])}`) : null),
     h('button.btn.small', { type: 'button', disabled: page >= pages - 1, onclick: () => go(page + 1, bottom), 'aria-label': '다음 쪽' }, '▶'));
-  // 누른 지방이 이 쪽에 있으면 그것, 아니면 이 쪽 첫 칸의 지방
-  const here = new Set(shown.map((sp) => regionOf(sp.dex || 1)));
-  const cur = here.has(S.dexRegion) ? S.dexRegion : shown.length ? regionOf(shown[0].dex || 1) : null;
-  const regions = pages > 1 && h('div.filters.dex-regions', { role: 'toolbar', 'aria-label': '지방으로 가기' },
-    REGIONS.map(([n, from], i) => {
-      const to = REGIONS[i + 1]?.[1] ?? 99999;
-      const at = list.findIndex((sp) => (sp.dex || 99999) >= from && (sp.dex || 99999) < to);
-      return h('button.chip', { type: 'button', disabled: at < 0, 'aria-pressed': String(cur === n), onclick: () => { S.dexRegion = n; go(Math.floor(at / DEX_PER_PAGE)); } }, n);
-    }));
   const p = S.snap.profile;
   const evoReady = mons().filter((c) => canLevelEvolve(c)).length;
   return [
@@ -150,22 +180,22 @@ export function viewDex() {
       h('div.banner', h('b', '포켓몬 도감'), h('span', `학교 ${D.found} / ${D.total}`)),
       h('div.bar', h('i', { style: { width: `${(D.found / Math.max(1, D.total)) * 100}%` } })),
       h('div.banner', { style: { fontSize: '13px' } },
-        h('span', `전국 도감 ${D.allFound} / ${D.allTotal}`),
+        open ? h('span', `전국 도감 ${D.allFound} / ${D.allTotal}`) : h('span', '선생님 · 숨은 포켓몬'),
         h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
+      !open && h('small.ul-dex-note', pix('school'), ` 학교 포켓몬을 ${unlockInfo().need}마리 모으면 사파리존과 전체 도감이 열려요! (지금 ${unlockInfo().got} / ${unlockInfo().need})`),
       evoReady ? h('small.evo-ready', pix('spark'), ` 진화할 수 있는 포켓몬이 ${evoReady}마리 있어요!`) : null),
-    h('div.filters', { role: 'toolbar', 'aria-label': '범위' },
+    open && h('div.filters', { role: 'toolbar', 'aria-label': '범위' },
       SCOPES.map(([k, t]) => h('button.chip', { 'aria-pressed': String(scope === k), onclick: () => { S.dexScope = k; renderTab(); } }, t))),
     h('div.filters.type-filters', { role: 'toolbar', 'aria-label': '타입' },
       ['all', ...TYPES].map((t) => h(`button.chip${t === 'all' ? '' : '.t-' + t}`, {
         'aria-pressed': String(tf === t),
         onclick: () => { S.dexFilter = t; renderTab(); },
       }, t === 'all' ? '모든 타입' : t))),
-    regions,
     pager(false),
     list.length ? null : h('p.muted', { style: { textAlign: 'center' } }, '여기에 맞는 포켓몬이 없어요.'),
     h('div.dex-grid', shown.map((sp) => {
       if (isWithdrawn(sp.line_id)) return h('div.dex-cell.unknown.withdrawn', h('span.no', dexNo(sp)), spriteCanvas(sp.id, 72, 'silhouette'), h('span.nm', '비공개'));
-      const got = reached(sp);
+      const got = sp.__got;
       // 0036: 같은 종을 여러 마리 가질 수 있음 → 그중 한 마리라도 진화할 수 있으면 '진화'
       const canEvo = got && monsOfKey(dexKey(sp)).some((m) => evoOpts(m).length > 0 && (canLevelEvolve(m) || p.evo_tickets > 0));
       return h(`button.dex-cell${got ? '.caught' : '.unknown'}`, {
@@ -176,10 +206,9 @@ export function viewDex() {
       },
       h('span.no', dexNo(sp)),
       spriteCanvas(sp.id, 72, got ? 'normal' : 'silhouette'),
-      h('span.nm', got ? sp.name : '???'),
+      h('span.nm', got ? baseName(sp) : '???'),
       canEvo && h('span.evo-dot', '진화'));
     })),
-    shown.some((sp) => isEvent(sp.line_id)) && h('p.dex-event-note', pix('gift'), ` 이벤트 포켓몬 (${dexNo(shown.find((sp) => isEvent(sp.line_id)))}~): ${EVENT_NOTE}`),
     pager(true),
   ];
 }
@@ -212,11 +241,11 @@ function evoInfo(c, e, p, chance) {
            reason: e.lv ? `${josa(`Lv.${e.lv}`, '이', '가')} 되면 진화해요 (진화의 돌 없음)` : '진화의 돌이 필요해요', btn: `진화의 돌로 진화 (성공 ${pct})` };
 }
 
-// 진화: 진화 레벨이 되면 진화의 돌 없이 100%, 그 전에는 진화의 돌로 (확률). 갈래가 여럿이면 고르기 (evoChooser)
+// 진화: 진화 레벨이 되면 진화의 돌 없이 100%, 그 전에는 진화의 돌로 (확률). 갈래가 여럿이면 서버가 무작위로 (evoRandom, 0049)
 function evoPanel(c, chance, p) {
   const opts = evoOpts(c);
   const off = !S.online ? '진화는 인터넷이 필요해요' : !S.snap.festival_open ? '지금은 진화할 수 없어요' : null;
-  if (opts.length > 1) return evoChooser(c, opts, chance, p, off);
+  if (opts.length > 1) return evoRandom(c, opts, chance, p, off);
   const e = opts[0];
   if (!e) return h('div.box.evo-panel', '이 포켓몬은 더 진화하지 않아요.');
   const x = evoInfo(c, e, p, chance);
@@ -243,18 +272,31 @@ function evoPanel(c, chance, p) {
       : '진화의 돌은 실패해도 다음 확률이 올라가고, 몇 번 실패하면 반드시 성공해요.'));
 }
 
-// 갈래 진화 고르기 (이브이 → 8가지 …): 그림 + 이름 + 조건. 지금 못 하는 갈래는 흐리게 + 이유
-function evoChooser(c, opts, chance, p, off) {
+// 갈래 진화 (0049): 고르지 않음 — 서버가 갈 수 있는 갈래 중 하나를 같은 확률로 고름 (결과는 진화 장면에서).
+//   진화 레벨이 된 레벨 갈래가 있으면 그중에서 돌 없이, 없으면 진화의 돌 1개로 모든 갈래 중에서 (돌 갈래 = 반드시, 레벨 갈래를 일찍 = 확률)
+function evoRandom(c, opts, chance, p, off) {
+  const lv = c.level || 1;
+  const free = opts.filter((e) => e.how === 'level' && e.lv && lv >= e.lv);
+  const pool = free.length ? free : opts;
+  const seen = seenKeys();
+  const pct = chance >= 1 ? '반드시' : `${Math.round(chance * 100)}%`;
+  const allItem = opts.every((e) => e.how === 'item');
+  const lvs = opts.filter((e) => e.how === 'level' && e.lv).map((e) => e.lv);
+  const nextLv = lvs.length ? Math.min(...lvs) : null;
+  const why = off || (!free.length && !p.evo_tickets ? '진화의 돌이 필요해요 (퀴즈·배틀·룰렛에서 가끔 받아요)' : null);
   return h('div.box.evo-panel',
-    h('div.banner', h('b', '어떤 모습으로 진화할까?'), h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
-    h('div.evo-choices', opts.map((e) => {
-      const x = evoInfo(c, e, p, chance);
-      const why = off || (!x.ok ? x.reason : null);
-      return h('button.evo-choice', { type: 'button', disabled: !!why, 'aria-label': `${x.sp?.name || '?'}: ${why || x.cond}`,
-        onclick: () => doEvolve(c, e.to_species) },
-      spriteCanvas(e.to_species, 56), h('b', x.sp?.name || '?'), h('small', why || x.cond));
+    h('div.banner', h('b', `${pool.length}가지 중 하나로 진화!`), h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
+    h('div.evo-choices', { 'aria-label': '진화할 수 있는 모습' }, pool.map((e) => {
+      const sp = speciesOf(e.to_species); const known = !!sp && seen.has(dexKey(sp));   // 도감에서 본 모습만 이름 · 색
+      return h('div.evo-choice', spriteCanvas(e.to_species, 56, known ? 'normal' : 'silhouette'), h('b', known ? sp.name : '???'),
+        h('small', e.how === 'item' ? '진화의 돌' : `Lv.${e.lv}`));
     })),
-    h('small', `지금 Lv.${c.level || 1}. 돌 진화는 진화의 돌 1개로 반드시, 레벨 진화는 그 레벨이 되면 돌 없이 반드시 진화해요.`));
+    h('button.btn.big.gold', { disabled: !!why, onclick: () => doEvolve(c) },
+      why || (free.length ? '진화시키기! (진화의 돌 없이)' : allItem ? '진화의 돌로 진화 (100%)' : '진화의 돌로 진화')),
+    h('small', free.length
+      ? `진화 레벨이 되어서 진화의 돌 없이 반드시 진화해요. 어떤 모습이 될지는 진화해 봐야 알아요 (모두 같은 확률).`
+      : `진화의 돌 1개로 ${opts.length}가지 중 하나가 같은 확률로 정해져요.${allItem ? ' 반드시 진화해요.' : ` 돌로 진화하는 모습이면 반드시, 레벨로 진화하는 모습이면 ${pct} 확률이에요.`}`
+        + (nextLv ? ` ${josa(`Lv.${nextLv}`, '이', '가')} 되면 레벨로 진화하는 모습 중 하나로 돌 없이 진화해요.` : '')));
 }
 
 export function openDetail(sp) {
@@ -284,19 +326,34 @@ export function openDetail(sp) {
     return i ? [h('span.arrow', '▶'), col] : [col];
   });
   // 0036: 이 종을 지금 몇 마리 가졌는지 + 한 마리씩 (누르면 박스의 그 포켓몬 요약 → 진화 · 놓아주기 …). 0037: 같은 전국도감 번호면 같은 칸
-  const mine = monsOfKey(dexKey(sp)).sort((a, b) => b.level - a.level || a.pos - b.pos);
+  // 0052: 폼마다 따로 (일반 폼끼리는 한 칸 — 이브이 갈래 · 따로 있는 계열)
+  const kind = formKind(sp.line_id);
+  const mine = monsOfKey(dexKey(sp)).filter((m) => formKind(m.line_id) === kind && (kind === 'normal' || m.line_id === sp.line_id))
+    .sort((a, b) => b.level - a.level || a.pos - b.pos);
+  const forms = sp.dex ? formsOfDex(sp.dex) : [];
+  const formBar = forms.length > 1 && h('div.form-tabs', { role: 'group', 'aria-label': '모습 (폼)' }, forms.map((f) => {
+    const on = f.kind === 'normal' ? kind === 'normal' : f.sp.line_id === sp.line_id;
+    return h('button.form-tab', { type: 'button', 'aria-pressed': String(on),
+      onclick: () => {
+        if (on) return;
+        if (!f.caught) { sfx.blip(); toast(`${f.label} 모습은 아직 못 잡았어요. ${formHow(f.sp)}`, 3500); return; }
+        closeOverlay({ replacing: true }); openDetail(f.sp);
+      } },
+    spriteCanvas(f.sp.id, 32, f.caught ? 'normal' : 'silhouette'), h('span.ft-label', f.label), f.caught ? h('i.ft-caught', { 'aria-label': '잡음' }, '✓') : null);
+  }));
   sheet([
     h('div.grab'),
     h(`div.habitat.t-${typesOf(sp)[0]}`, c ? monSprite(sp.id, 176, c) : spriteCanvas(sp.id, 176),
       // 잡은 포켓몬만: 가방(상태·레벨·기술)으로 바로 가기 — 가방의 '도감' 탭과 짝
       mine.length > 0 && h('button.habitat-bag', { type: 'button', onclick: () => toBag(mine[0].id) }, h('span.hb-arrow', '◀'), pix('bag'), '박스')),
+    formBar,
     h('div.box',
       h('div.banner', h('b', `${dexNo(sp)} ${sp.name}`), h('span.types', typeChips(sp))),
       h('div.kv',
         h('span', '분류'), h('span', sp.category),
         h('span', '키 / 몸무게'), h('span', `${sp.height} / ${sp.weight}`),
-        isWild(sp.line_id) ? h('span', '만나는 곳') : h('span', '정체'),
-        h('span', isEvent(sp.line_id) ? EVENT_NOTE : isWild(sp.line_id) ? '야생 (QR · 걷기 · 알 · 레이드)' : line.teacher),
+        h('span', kind === 'teacher' || kind === 'special' ? '정체' : '만나는 곳'),
+        h('span', formHow(sp)),
         h('span', '잡은 횟수'), h('span', `${c?.catch_count || 0}번`),
         h('span', '가진 수'), h('span', `${mine.length}마리`))),
     mine.length > 0 && h('div.box.my-mons', h('b', `내 ${sp.name} ${mine.length}마리`),
