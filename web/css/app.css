@@ -1343,7 +1343,7 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .trade-card .types { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
 .trade-card .type { font-size: 11px; padding: 0 4px; line-height: 16px; border-width: 1px; }
 .trade-ab, .trade-moves { font-size: 12px; line-height: 1.35; color: #384050; }
-.trade-ok { margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: #2f9e44; color: #fff; font-size: 12px; line-height: 1.6; }
+.trade-ok { white-space: nowrap; margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: #2f9e44; color: #fff; font-size: 12px; line-height: 1.6; }
 .trade-status { margin: 0; padding: 8px 10px; border: 3px solid var(--ink); border-radius: 8px; background: #fffbe8; font-weight: 700; line-height: 1.4; }
 .trade-btns { display: flex; flex-direction: column; gap: 8px; }
 .trade-pick { overflow-y: auto; }

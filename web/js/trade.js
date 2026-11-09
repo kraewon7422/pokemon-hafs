@@ -152,7 +152,7 @@ function pic(r, m, size = 72) {
 
 function card(r, m, mine, ok) {
   const t = r.t;
-  const who = mine ? '내가 보낼 포켓몬' : `${josa(nameOf(t), '이', '가')} 보낼 포켓몬`;
+  const who = mine ? '내가 보낼 포켓몬' : '상대가 보낼 포켓몬';
   if (!m) {
     return h('div.trade-card.empty', h('small.trade-who', who),
       h('div.trade-pic', h('span.trade-wait', { html: BALL_SVG })),
@@ -170,7 +170,7 @@ function card(r, m, mine, ok) {
     ab ? h('small.trade-ab', `특성 ${ab.name}`) : null,
     moves.length ? h('small.trade-moves', moves.join(' · ')) : null,
     m.held ? h('small.muted', `지닌 물건 ${itemOf(m.held)?.name || ''}은 ${mine ? '내' : '친구'} 가방으로 돌아가요`) : null,
-    ok ? h('span.trade-ok', '교환하기를 눌렀어요') : null);
+    ok ? h('span.trade-ok', '준비 완료') : null);
 }
 
 function statusText(t) {
