@@ -1195,6 +1195,14 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .dex-pager .dp-mid { display: grid; justify-items: center; text-align: center; line-height: 1.2; }
 .dex-pager .dp-mid small { font-size: var(--fs-s); color: #4a5268; white-space: nowrap; }
 .dex-event-note { margin: 0; font-size: var(--fs-s); text-align: center; color: #4a5268; word-break: keep-all; }   /* 0044 이벤트 포켓몬 (소포로만) */
+/* 0052 폼 바꾸기 (도감 자세히): 일반 · 선생님 · 이벤트 모습 */
+.form-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.form-tab { flex: 1 1 96px; min-width: 0; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 8px;
+  border: 2px solid var(--line, #3a4258); border-radius: 10px; background: #fff; color: inherit; font: inherit; font-size: var(--fs-s); cursor: pointer; }
+.form-tab[aria-pressed="true"] { background: #fff4c2; border-color: var(--gold, #d8a200); font-weight: 700; }
+.form-tab .ft-label { overflow-wrap: anywhere; word-break: keep-all; text-align: left; }
+.form-tab .ft-caught { font-style: normal; color: var(--green, #2f9e44); font-size: 12px; }
+.form-tab canvas { flex: none; }
 /* 0037 갈래 진화: 진화 길 칸 + 고르기 */
 .chain-cell { display: grid; justify-items: center; text-align: center; word-break: keep-all; }
 .chain-col { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 6px; justify-items: center; }

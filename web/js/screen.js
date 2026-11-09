@@ -3,7 +3,7 @@
 import { CONFIG } from './config.js';
 import { sb, rpc, errorText, selectAll } from './sb.js';
 import { drawQR, placeUrl } from './qrfmt.js';
-import { spriteCanvas } from './sprites.js';
+import { spriteCanvas, aliasSprites } from './sprites.js';
 import { h, $, josa, timeAgo } from './ui.js';
 import { idLogin, renderGoogleButton } from './auth.js';
 
@@ -38,7 +38,10 @@ async function start() {
     const p = await rpc('ensure_profile');
     if (!['booth', 'admin'].includes(p.role)) return renderLogin('부스/운영자 계정이 필요해요.');
   } catch (e) { return renderLogin(errorText(e.message)); }
-  species = (await selectAll('species', 'id,name', (q) => q.order('id'))).data || [];
+  // 0052 폼: 선생님 폼 = "물리 쌤의 피카츄" (서버 _sp_label 과 같은 이름), 폼 종 (20000+) 그림 = 같은 도감 번호
+  species = ((await selectAll('species', 'id,name,dex,line:lines!species_line_id_fkey(form_kind,form_label)', (q) => q.order('id'))).data || [])
+    .map((s) => ({ ...s, name: s.line?.form_kind === 'teacher' && s.line.form_label ? `${s.line.form_label}의 ${s.name}` : s.name }));
+  aliasSprites(species);
   root.replaceChildren(h('div.screen',
     h('section', h('h2', `🏆 ${CONFIG.GAME_TITLE} TOP 10`), h('ol.top10#top')),
     h('section',

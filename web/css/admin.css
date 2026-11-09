@@ -175,6 +175,20 @@ table.tbl td.small-txt { word-break: break-all; overflow-wrap: anywhere; min-wid
 .line-item:hover { border-color: #b9cdfa; }
 .line-item[aria-pressed='true'] { border-color: var(--brand); background: #f3f7ff; }
 .line-item .meta { display: grid; gap: 2px; font-size: 13px; }
+.line-item .meta { min-width: 0; }
+/* 0052 폼: 가족 목록의 폼 표 · 폼 고르기 · 선생님 찾기 */
+.fam-badges { display: flex; flex-wrap: wrap; gap: 4px; }
+.fam-badges .chip { white-space: normal; word-break: keep-all; overflow-wrap: anywhere; }
+.mon-view .seg-btn { flex: 1 1 140px; }
+.form-picks { display: flex; flex-wrap: wrap; gap: 6px; }
+.form-pick { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 4px 10px 4px 6px; background: #fff; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; text-align: left; max-width: 100%; }
+.form-pick span { display: grid; min-width: 0; font-size: 13px; }
+.form-pick b, .form-pick small { word-break: keep-all; overflow-wrap: anywhere; }
+.form-pick small { color: var(--sub); }
+.form-pick[aria-pressed='true'] { border-color: var(--brand); background: #f3f7ff; box-shadow: inset 0 0 0 1px var(--brand); }
+.teacher-tbl td { vertical-align: middle; }
+.tt-mon { display: inline-flex; align-items: center; gap: 6px; }
+@media (max-width: 520px) { .teacher-tbl th:nth-child(5), .teacher-tbl td:nth-child(5) { display: none; } .teacher-tbl th, .teacher-tbl td { padding: 6px; } }
 .line-group { display: grid; gap: 6px; }
 .line-group + .line-group { margin-top: 8px; }
 .line-group-h { position: sticky; top: 0; z-index: 1; background: var(--card); padding: 4px 0 2px; font-size: 13px; color: var(--sub); font-weight: 600; border-bottom: 1px solid var(--line); }
