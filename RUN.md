@@ -128,6 +128,9 @@ python tools/build_atlas.py                                                   # 
 - 보스 강하기: rpc `admin_legend_sim(p_dex, p_team [{sp, lv}…], p_n ≤ 20)` (AI 끼리, 운영자만) 또는 운영자 [전설·소포] → 전설 배틀 강하기 → "AI 끼리 10판 시험".
 - 화면: Playwright 화면 시험 `b11_legend.mjs <c375|c320|pc> <win|lose>` (만남 → 배틀 → 지쳤다 → 잡기 / 도망 → 사라짐), `b11_ball.mjs <before|after> <phone|pc> [운]` (공 흔들림 프레임), `b11_admin.mjs <c375|c320|pc>` (운영자 카드). 화면 시험 스크립트는 저장소 밖(개발 PC)에 있습니다.
 
+## 0057 sync 가볍게
+- `0057_sync_light.sql`: 학생마다 전설 퀘스트가 보는 자료의 지문(`_quest_fp`)을 저장해, 바뀐 것이 없으면 퀘스트 47개 확인을 건너뛰고 sync 의 legends 목록도 저장해 둔 것을 씀 (sync 약 150~190ms → 27ms). raid_players(user_id) 인덱스.
+
 ## 0056 포켓몬 교환 확인 (스테이징)
 - 순서: `0056_trade.sql` 하나 (표 trades · trade_seen, collection 에 열 추가 — 지우는 것 없음, 끝의 권한 블록 꼭 포함).
 - 서버: `node tests/rpc_test.mjs` → [63] (배틀 QR 로 교환방 · 둘 다 확인 · 바뀌면 확인 풀림 · 그만두기 · 못 바꾸는 포켓몬 코드 · 하루 횟수 · trade_open 끄기 · 바꾸기 직전 다시 확인 · 되돌려 받기 도감 · 두 번 눌러도 한 번 · 교환 진화 · 방 시간 끝 · 운영자 목록).
@@ -137,4 +140,4 @@ python tools/build_atlas.py                                                   # 
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.
 
 ## 축제 규모 부하 테스트 (스테이징)
-`node tests/festival_load.mjs 60 1` — 학생 600명이 쓰는 요청 섞음(동기화·배틀 신청 확인·레이드 탭·배틀·랭킹)을 70 req/s 로 60초. 두 번째 숫자 2 = 두 배. 로그인 제한 때문에 테스트 계정 4개로 보냄. 2026-10-28: 70 req/s 오류 0 · p95 ≤ 170ms, 140 req/s 오류 0 · p99 약 2초.
+`node tests/festival_load.mjs 60 1 24` — 학생 600명이 쓰는 요청 섞음(동기화·배틀 신청 확인·레이드 탭·배틀·랭킹)을 70 req/s 로 60초. 두 번째 숫자 2 = 두 배, 세 번째 = 임시 학생 수 (기본 24, 로그인 제한 때문에 25 이하). 임시 학생(020500~020999, 이름 '부하시험')은 끝에서 지움 — 중간에 멈추면 운영자 페이지에서 지우기. 게임 함수가 학생 줄(profiles)을 잠그므로 계정 몇 개에 몰면 실제보다 훨씬 느리게 나옴. 2026-11-10: 테스트 서버(가장 작은 공유 CPU)는 하루 종일 시험한 뒤 초당 21개에서도 30초 초과 → 실전 서버는 Small 이상으로 만들고 거기서 다시 시험. 2026-10-28: 70 req/s 오류 0 · p95 ≤ 170ms, 140 req/s 오류 0 · p99 약 2초.
