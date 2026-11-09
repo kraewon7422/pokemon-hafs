@@ -99,7 +99,7 @@ const SETTING_HELP = {
   egg_incubators: '부화기 칸 수 (1~3칸, 기본 3)',
   egg_legend: '보라 알에서 전설이 나올 확률 (0~1, 기본 0.1 = 10%)',
   safari_open: '사파리존 열기 ON/OFF (false = 학생 앱에 "아직 닫혀 있어요")',
-  unlock_safari_pct: '2단계 해금: 학교 도감을 몇 % 모으면 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감이 열리나 (0~100, 기본 50)',
+  unlock_safari_pct: '2단계 해금: 학교 도감을 몇 % 모으면 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감이 열리나 (0~100, 기본 30)',
   unlock_all: '2단계 해금을 모두에게 열기 ON/OFF (true = 모은 수와 상관없이 모두 열림, 기본 false) — [축제 운영] 탭의 스위치',
   safari_balls_daily: '사파리존: 충전 주기마다 한 사람이 받는 사파리볼 (개, 기본 20)',
   safari_reset_hours: '사파리존: 사파리볼 충전 주기 (시간, 0.25~24, 기본 0.5 = 30분)',
@@ -2472,7 +2472,7 @@ const DEFAULTS = {
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
   safari_open: true,   // 0048 사파리존 잠금
-  unlock_safari_pct: 50, unlock_all: false,   // 0051 해금 단계
+  unlock_safari_pct: 30, unlock_all: false,   // 0051 해금 단계
   safari_balls_daily: 20, safari_reset_hours: 0.5, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_flee: 0.25, safari_steps_per_sec: 10,   // 0040: 30분 충전 · 만남 상한 없음 · 걸음 10/초
   safari_flee_level: 0.1,
   safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
@@ -2529,31 +2529,31 @@ const DEFAULTS = {
   // 0038_legends.sql
   ditto_disguise_chance: 0.005, roam_chance: 0.3, roam_balls: 8, legend_balls: 10, legend_daily_tries: 3, gift_fail_limit: 8, safari_cave_type_mult: 4,
   legend_quests: [
-    { dex: 480, kind: 'quiz_streak', n: 10, reward: 'ticket' }, { dex: 481, kind: 'battle_wins', n: 10, reward: 'ticket' },
+    { dex: 480, kind: 'quiz_streak', n: 10, reward: 'ticket' }, { dex: 481, kind: 'battle_wins', n: 20, reward: 'ticket' },
     { dex: 482, kind: 'catches', n: 30, reward: 'ticket' }, { dex: 483, kind: 'raid_slots', n: 3, reward: 'ticket' }, { dex: 484, kind: 'qr_all', reward: 'ticket' },
-    { dex: 377, kind: 'type_catch', types: ['바위'], n: 8, reward: 'map' }, { dex: 378, kind: 'type_catch', types: ['얼음'], n: 5, reward: 'map' },
+    { dex: 377, kind: 'type_catch', types: ['바위'], n: 8, reward: 'map' }, { dex: 378, kind: 'type_catch', types: ['얼음'], n: 10, reward: 'map' },
     { dex: 379, kind: 'type_catch', types: ['강철'], n: 8, reward: 'map' }, { dex: 486, kind: 'caught_all', of: [377, 378, 379], reward: 'map' },
     { dex: 249, kind: 'type_catch', types: ['물'], n: 20, reward: 'map' }, { dex: 250, kind: 'type_catch', types: ['불꽃', '비행'], n: 20, reward: 'map' },
     { dex: 382, kind: 'safari_catches', n: 15, reward: 'map' }, { dex: 383, kind: 'type_catch', types: ['땅'], n: 15, reward: 'map' },
     { dex: 384, kind: 'caught_all', of: [382, 383], reward: 'map' },
-    // 0050_legends.sql
-    { dex: 380, kind: 'type_catch', types: ['에스퍼'], n: 6, reward: 'map' }, { dex: 381, kind: 'type_catch', types: ['드래곤'], n: 3, reward: 'map' },
-    { dex: 488, kind: 'type_catch', types: ['페어리'], n: 6, reward: 'map' }, { dex: 491, kind: 'caught_all', of: [488], reward: 'map' },
-    { dex: 489, kind: 'type_catch', types: ['물'], n: 10, reward: 'map' }, { dex: 785, kind: 'type_catch', types: ['전기'], n: 6, reward: 'map' },
-    { dex: 786, kind: 'battle_wins', n: 5, reward: 'map' }, { dex: 787, kind: 'type_catch', types: ['풀'], n: 8, reward: 'map' },
-    { dex: 788, kind: 'safari_catches', n: 25, reward: 'map' }, { dex: 638, kind: 'type_catch', types: ['강철'], n: 5, reward: 'map' },
-    { dex: 639, kind: 'type_catch', types: ['바위'], n: 5, reward: 'map' }, { dex: 640, kind: 'type_catch', types: ['격투'], n: 5, reward: 'map' },
+    // 0050_legends.sql (0054_legend_maps.sql: 쉬운 전설 조건을 올림)
+    { dex: 380, kind: 'type_catch', types: ['에스퍼'], n: 10, reward: 'map' }, { dex: 381, kind: 'type_catch', types: ['드래곤'], n: 6, reward: 'map' },
+    { dex: 488, kind: 'type_catch', types: ['페어리'], n: 10, reward: 'map' }, { dex: 491, kind: 'caught_all', of: [488], reward: 'map' },
+    { dex: 489, kind: 'type_catch', types: ['물'], n: 20, reward: 'map' }, { dex: 785, kind: 'type_catch', types: ['전기'], n: 10, reward: 'map' },
+    { dex: 786, kind: 'battle_wins', n: 15, reward: 'map' }, { dex: 787, kind: 'type_catch', types: ['풀'], n: 12, reward: 'map' },
+    { dex: 788, kind: 'safari_catches', n: 25, reward: 'map' }, { dex: 638, kind: 'type_catch', types: ['강철'], n: 10, reward: 'map' },
+    { dex: 639, kind: 'type_catch', types: ['바위'], n: 10, reward: 'map' }, { dex: 640, kind: 'type_catch', types: ['격투'], n: 10, reward: 'map' },
     { dex: 647, kind: 'caught_all', of: [638, 639, 640], reward: 'map' }, { dex: 492, kind: 'type_catch', types: ['풀', '벌레'], n: 15, reward: 'map' },
     { dex: 641, kind: 'type_catch', types: ['비행'], n: 10, reward: 'map' }, { dex: 642, kind: 'type_catch', types: ['전기'], n: 10, reward: 'map' },
-    { dex: 645, kind: 'caught_all', of: [641, 642], reward: 'map' }, { dex: 643, kind: 'zone_catch', zone: 'dragon', n: 3, reward: 'map' },
-    { dex: 644, kind: 'zone_catch', zone: 'dragon', n: 5, reward: 'map' }, { dex: 646, kind: 'caught_all', of: [643, 644], reward: 'map' },
-    { dex: 789, kind: 'zone_catch', zone: 'ultra', n: 2, reward: 'map' }, { dex: 800, kind: 'caught_all', of: [789], reward: 'map' },
-    { dex: 385, kind: 'quiz_streak', n: 7, reward: 'map' }, { dex: 386, kind: 'zone_catch', zone: 'ultra', n: 4, reward: 'map' },
-    { dex: 720, kind: 'raid_slots', n: 2, reward: 'map' }, { dex: 494, kind: 'battle_wins', n: 3, reward: 'map' },
-    { dex: 649, kind: 'type_catch', types: ['벌레'], n: 10, reward: 'map' }, { dex: 719, kind: 'zone_catch', zone: 'desert', n: 8, reward: 'map' },
-    { dex: 802, kind: 'type_catch', types: ['고스트'], n: 8, reward: 'map' }, { dex: 807, kind: 'zone_catch', zone: 'plant', n: 5, reward: 'map' },
+    { dex: 645, kind: 'caught_all', of: [641, 642], reward: 'map' }, { dex: 643, kind: 'zone_catch', zone: 'dragon', n: 6, reward: 'map' },
+    { dex: 644, kind: 'zone_catch', zone: 'dragon', n: 10, reward: 'map' }, { dex: 646, kind: 'caught_all', of: [643, 644], reward: 'map' },
+    { dex: 789, kind: 'zone_catch', zone: 'ultra', n: 5, reward: 'map' }, { dex: 800, kind: 'caught_all', of: [789], reward: 'map' },
+    { dex: 385, kind: 'quiz_streak', n: 7, reward: 'map' }, { dex: 386, kind: 'zone_catch', zone: 'ultra', n: 8, reward: 'map' },
+    { dex: 720, kind: 'raid_slots', n: 3, reward: 'map' }, { dex: 494, kind: 'battle_wins', n: 10, reward: 'map' },
+    { dex: 649, kind: 'type_catch', types: ['벌레'], n: 10, reward: 'map' }, { dex: 719, kind: 'zone_catch', zone: 'desert', n: 12, reward: 'map' },
+    { dex: 802, kind: 'type_catch', types: ['고스트'], n: 8, reward: 'map' }, { dex: 807, kind: 'zone_catch', zone: 'plant', n: 12, reward: 'map' },
     { dex: 801, kind: 'type_catch', types: ['강철', '페어리'], n: 12, reward: 'map' }, { dex: 772, kind: 'catches', n: 40, reward: 'map' },
-    { dex: 485, kind: 'zone_catch', zone: 'lava', n: 6, reward: 'map' }],
+    { dex: 485, kind: 'zone_catch', zone: 'lava', n: 10, reward: 'map' }],
 };
 const hasDefault = (key) => Object.prototype.hasOwnProperty.call(DEFAULTS, key);
 const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys)

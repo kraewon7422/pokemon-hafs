@@ -29,7 +29,8 @@
   dgrass dgrassR<0-1> dcactusS drock drubble dskull dbones druin<0-1> dsign  마른 모래 풀숲 (+흔들림) · 술통 선인장 · 사암 바위 · 돌 부스러기 · 머리뼈 · 뼈 · 유적 바닥 · 표지판
   dcactus dpillar ddune        기둥 선인장 16×24 · 유적 사암 돌기둥 16×32 · 모래 언덕 48×32 (3×2 칸)
   (0048) 설원 sn*/swall* · 용암 lv*/lwall*/lava* · 발전소 pl* · 용의 굴 e*/ewall* · 다리 계단 bstair — 이름표는 아래 '0048' 부분
-  (0050) 전설의 특별한 곳 moon* grac* eladderD ustar dstairs · tapu 16×32 · swordst 16×24 — 이름표는 아래 '0050' 부분
+  (0050) 전설의 특별한 곳 moon* grac* eladderD ustar dstairs · swordst 16×24 — 이름표는 아래 '0050' 부분 (tapu 는 0054 에서 뺌)
+  (0054) 퍼즐 칸 plbtn* plgate* lvstone lvsink* bbar bwet bwete* fbed* gstairs gstairD — 그림판 맨 아래 줄, 이름표는 아래 '0054' 부분
 주인공 safari-hero.png · 사육사 safari-keeper.png: 16×24 칸, 줄 = 아래·위·왼쪽·오른쪽, 칸 = 서기·걸음1·걸음2.
 """
 import json
@@ -2357,7 +2358,7 @@ def plsign_t():
 #   moon<0-1>   초승달 꽃 (꿈의 섬, 걸을 수 있는 장식, 2장 흔들림) · grac<A|B>  그라시데아 꽃 (성검의 숲 꽃밭)
 #   eladderD    용의 굴 바닥 구멍 + 내려가는 사다리 · ustar  별의 제단 금빛 별 무늬 (발판 위 덧그림)
 #   dstairs     사막 유적 바닥의 내려가는 돌계단
-#   tapu 16×32  수호신의 돌기둥 (꿈의 섬, 막힌 칸, 윗칸으로 솟음) · swordst 16×24  검이 꽂힌 바위 (성검의 숲, 막힌 칸)
+#   swordst 16×24  검이 꽂힌 바위 (성검의 숲, 막힌 칸)
 LG = {k: hx(v) for k, v in dict(
     mk='#5c3c8c', m0='#c8a8f8', m1='#eedcff', m2='#9c78e0', mc='#fff6a8', mC='#f0c848',      # 초승달 꽃 (연보라 + 노란 속)
     gk='#a83868', g0='#f890c0', g1='#ffd0e4', g2='#d8609c', gc='#fff8f0',                      # 그라시데아 (분홍 + 흰 속)
@@ -2501,52 +2502,6 @@ def dstairs():
     return t
 
 
-def tapu():
-    """16×32 수호신의 돌기둥: 받침 · 나무색 기둥 (새긴 줄 · 빨강 파랑 무늬) · 위에 세 갈래 노란 볏 + 짙은 탈 (비스듬한 흰 눈 · 이빨 입)."""
-    t = Tile(16, 32)
-    for y in range(27, 32):                      # 받침돌
-        for x in range(2, 14):
-            edge = x in (2, 13) or y in (27, 31)
-            t.px(x, y, LG['tk'] if edge else LG['t1'] if y == 28 else LG['t0'] if x < 10 else LG['t2'])
-    for y in range(16, 28):                      # 기둥
-        for x in range(4, 12):
-            c = LG['tk'] if x in (4, 11) else LG['t1'] if x <= 5 else LG['t2'] if x >= 9 else LG['t0']
-            if y in (19, 25) and 4 < x < 11:
-                c = LG['t3']
-            t.px(x, y, c)
-    for y in range(20, 25):                      # 무늬 (빨강 · 파랑 마름모)
-        d = abs(y - 22)
-        for x in range(8 - (2 - d), 8 + (2 - d)):
-            t.px(x, y, LG['tr'] if x < 8 else LG['tb'])
-    CREST = [   # 세 갈래 볏 (y 0..6)
-        '...k...kk...k...',
-        '..kyk..kyk..kyk.',
-        '..kyyk.kyk.kyyk.',
-        '...kyykyyykyyk..',
-        '....kyyyyyyyk...',
-        '....kYyyyyyYk...',
-        '...kkkkkkkkkkk..',
-    ]
-    t.art(CREST, {'k': LG['tY'], 'y': LG['ty'], 'Y': LG['tw']})
-    MASK = [    # 탈 (y 6..16)
-        '...kkkkkkkkkk...',
-        '..kMMMMMMMMMMk..',
-        '..kMwwMMMMwwMk..',
-        '..kMMweMMewMMk..',
-        '..kMrMMMMMMrMk..',
-        '..kMMMMddMMMMk..',
-        '..kMkkkkkkkkMk..',
-        '..kMkwkwkwkkMk..',
-        '..kMkkkkkkkkMk..',
-        '...kMMMMMMMMk...',
-        '....kkkkkkkk....',
-    ]
-    t.art(MASK, {'k': LG['tk'], 'M': LG['t3'], 'w': LG['tw'], 'e': LG['te'], 'r': LG['tr'], 'd': LG['t2']}, 0, 6)
-    for y in range(18, 32):
-        t.px(14, y, hx('#c8a868'))               # 그림자 (모래 위)
-    return t
-
-
 def swordst():
     """16×24 검이 꽂힌 바위: 모난 회색 바위 (왼쪽 위 빛 · 오른쪽 아래 그늘 · 금) + 은빛 칼날 + 금빛 가로대 · 청록 보석."""
     t = Tile(16, 24)
@@ -2581,6 +2536,251 @@ def swordst():
 def legend_tiles():
     return [('moon0', moon(0)), ('moon1', moon(1)), ('gracA', grac('A')), ('gracB', grac('B')),
             ('eladderD', eladder_down()), ('ustar', ustar()), ('dstairs', dstairs())]
+
+
+# ─────────── 0054: 퍼즐 칸 (발전소 스위치 · 문 / 용암 가라앉는 돌 / 바닷길 · 모래톱 / 꽃의 섬 꽃밭 · 돌계단 / 용의 굴 땅속 계단) ───────────
+# 3세대 뉴보라 · 불바다 동굴 · 해변 느낌으로 새로 그림 (원본 타일을 베끼지 않음). 그림판 맨 아래 새 줄 (앞 타일 자리 · 픽셀 그대로). 이름:
+#   plbtnG<0|1> plbtnB<0|1>  바닥 스위치 (덧그림: 0 = 튀어나옴 · 1 = 눌려 빛남) · plgateG plgateB 올라온 문 (막힘) · plgateGd plgateBd 내려간 문 (바닥 판)
+#   lvstone  가라앉지 않는 돌 · lvsink0 가라앉는 돌 (금 간 현무암) · lvsinkW<0|1> 곧 가라앉음 (달아오른 금 · 반쯤 잠김) · lvsinkS 가라앉음 (용암 거품)
+#   bbar  모래톱 (깊은 바다 위 덧그림) · bwet  드러난 바닷길 (젖은 모래) · bwete<0-15>  바닷길 물거품 가장자리 (숫자 = 이웃도 길인 쪽 N1 E2 S4 W8)
+#   fbedA<0|1> fbedB<0|1>  빽빽한 꽃밭 (빨강 · 노랑 / 분홍 · 하양, 2장 흔들림) · gstairs  꽃의 섬 단 사이 돌계단 · gstairD  풀밭에서 땅속으로 내려가는 돌계단
+def _ell(x, y, cx, cy, rx, ry):
+    return ((x - cx) / rx) ** 2 + ((y - cy) / ry) ** 2
+
+
+def plbtn(col, pressed):
+    c0, c1, c2 = (PL['g0'], PL['g1'], PL['g2']) if col == 'G' else (PL['b0'], PL['b1'], PL['b2'])
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            r = _ell(x, y, 7.5, 8.5, 6.6, 4.6)
+            if r < 1.0:
+                t.px(x, y, PL['rk'] if r >= 0.78 else PL['rf1'] if (r >= 0.55 and y < 8) else PL['rf2'] if r >= 0.55 else c2)
+    if not pressed:                                # 튀어나온 단추: 위로 솟은 둥근 머리 + 밝은 점
+        for x in range(4, 12):
+            t.px(x, 9, c2); t.px(x, 10, PL['rk'] if x in (4, 11) else c2)
+        for y in range(16):
+            for x in range(16):
+                r = _ell(x, y, 7.5, 6.8, 4.2, 2.8)
+                if r < 1.0:
+                    t.px(x, y, c2 if r >= 0.7 else c0)
+        t.px(5, 6, c1); t.px(6, 5, c1); t.px(7, 5, c1); t.px(6, 6, hx('#ffffff'))
+    else:                                          # 눌림: 납작 · 밝게 빛나는 테두리 + 반짝
+        for y in range(16):
+            for x in range(16):
+                r = _ell(x, y, 7.5, 8.5, 4.2, 2.6)
+                if r < 1.0:
+                    t.px(x, y, c1 if r < 0.55 else c0)
+        for (x, y) in [(1, 8), (14, 8), (7, 2), (8, 2), (3, 4), (12, 4), (3, 13), (12, 13)]:
+            t.px(x, y, c1)
+        t.px(6, 8, hx('#ffffff')); t.px(7, 8, hx('#ffffff'))
+    return t
+
+
+def plgate(col, down):
+    c0, c1, c2 = (PL['g0'], PL['g1'], PL['g2']) if col == 'G' else (PL['b0'], PL['b1'], PL['b2'])
+    t = Tile()
+    if down:                                       # 바닥에 내려간 판: 홈 테두리 + 줄무늬 (밟고 지나감)
+        for y in range(3, 14):
+            for x in range(1, 15):
+                edge = y in (3, 13) or x in (1, 14)
+                t.px(x, y, PL['rs'] if edge else (c2 if (x + y) % 4 < 2 else PL['rf2']))
+        for x in range(2, 14):
+            t.px(x, 4, PL['rk'])
+        return t
+    for x in range(1, 15):                         # 바닥 그늘
+        t.px(x, 15, PL['sh'])
+    for y in range(1, 15):                         # 올라온 벽 덩어리: 윗면 (밝음) + 앞면 (줄무늬 · 리벳) + 어두운 테두리
+        for x in range(1, 15):
+            if x in (1, 14) or y in (1, 14):
+                t.px(x, y, PL['pk'])
+            elif y <= 4:
+                t.px(x, y, c1 if y == 2 else c0)
+            elif y == 5:
+                t.px(x, y, c2)
+            else:
+                t.px(x, y, c0 if x % 4 in (1, 2) else c2)
+    for (x, y) in [(3, 7), (12, 7), (3, 12), (12, 12)]:
+        t.px(x, y, PL['r1'])
+    for x in range(4, 12):                         # 가운데 전기 줄 (번쩍)
+        t.px(x, 9, hx('#fffbe0') if x % 2 else c1)
+    return t
+
+
+def lvrock_shape(t, pal, oy=0, crack=None, lip=None):
+    """용암 위 납작한 돌 (가운데 14×11). pal = (테두리, 그늘, 몸, 밝음)."""
+    k, d, m, l = pal
+    for y in range(16):
+        for x in range(16):
+            r = _ell(x, y - oy, 7.5, 8.5, 6.8, 5.4)
+            if r < 1.0:
+                if r >= 0.8:
+                    t.px(x, y, k)
+                elif y - oy >= 10 and r >= 0.45:
+                    t.px(x, y, d)
+                elif y - oy <= 6 and r >= 0.35 and x < 10:
+                    t.px(x, y, l)
+                else:
+                    t.px(x, y, m)
+    for (x, y) in crack or []:
+        t.px(x, y + oy, lip)
+    return t
+
+
+SINK_CRACK = [(5, 7), (6, 8), (7, 8), (8, 9), (9, 9), (10, 10), (7, 9), (6, 10), (11, 7), (10, 8)]
+
+
+def lvstone():
+    t = Tile()
+    lvrock_shape(t, (LV['rK'], LV['g3'], LV['g2'], LV['g1']))
+    for (x, y) in [(5, 6), (9, 8), (6, 10)]:
+        t.px(x, y, LV['g0'])
+    return t
+
+
+def lvsink(phase):
+    t = Tile()
+    if phase == 'S':                               # 가라앉음: 용암 위 거품 · 어두운 고리
+        for y in range(16):
+            for x in range(16):
+                r = _ell(x, y, 7.5, 8.5, 5.0, 3.6)
+                if 0.75 < r < 1.0:
+                    t.px(x, y, LV['lD'])
+        for (x, y, c) in [(6, 7, 'l3'), (7, 7, 'l3'), (9, 9, 'l2'), (5, 10, 'l2'), (10, 6, 'l3')]:
+            t.px(x, y, LV[c])
+        return t
+    pal = (hx('#2c1410'), hx('#4c2820'), hx('#6c3c30'), hx('#8c5444'))
+    oy = {'0': 0, 'W0': 1, 'W1': 2}[phase]
+    lvrock_shape(t, pal, oy, SINK_CRACK, {'0': hx('#3c1c14'), 'W0': LV['l1'], 'W1': LV['l3']}[phase])
+    if phase != '0':                               # 아래쪽이 용암에 잠김 (주황 물결이 돌 위로)
+        for y in range(16 - oy - 3, 16):
+            for x in range(1, 15):
+                if t.get(x, y)[3]:
+                    t.px(x, y, LV['l1'] if (x + y) % 3 else LV['l2'])
+    return t
+
+
+def bbar():
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            r = _ell(x, y, 7.5, 8.0, 7.2, 5.6)
+            if r < 1.0:
+                t.px(x, y, BC['qF'] if r >= 0.86 else BC['bw'] if r >= 0.66 else BC['bs0'])
+            elif r < 1.25 and (x + y) % 2 == 0:
+                t.px(x, y, BC['qf'])
+    for (x, y) in [(5, 6), (6, 6), (9, 9)]:
+        t.px(x, y, BC['bs1'])
+    for (x, y) in [(10, 6), (11, 7), (9, 7), (10, 8)]:  # 작은 조개 표시
+        t.px(x, y, BC['sh1'])
+    t.px(10, 7, BC['sh0'])
+    return t
+
+
+def bwet():
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            t.px(x, y, BC['bw'])
+    for (x, y) in [(2, 3), (9, 2), (13, 7), (5, 11), (11, 13), (1, 8)]:
+        t.px(x, y, BC['bs2']); t.px(x + 1, y, BC['bs0'])
+    for x in range(3, 8):                          # 물이 빠진 자국 (물결 무늬)
+        t.px(x, 6 + (x % 2), BC['bs3'])
+    for x in range(9, 14):
+        t.px(x, 11 + (x % 2), BC['bs3'])
+    return t
+
+
+def bwet_edge(mask):
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            d = edge_dist(x, y, mask, r=3)
+            if d < 1:
+                t.px(x, y, BC['qF'])
+            elif d < 2:
+                t.px(x, y, BC['qf'] if (x + y) % 2 else BC['qF'])
+            elif d < 3 and (x * 3 + y) % 4 == 0:
+                t.px(x, y, BC['qf'])
+    return t
+
+
+FBED = [  # 빽빽한 꽃밭 (투명 바탕): a b = 꽃 두 색 · c = 꽃 속 · l L = 잎 · k = 잎 그늘
+    '.lLl.akaL.lbkbl.',
+    'lLaaakaaal.bbbkl',
+    'kaacaakaLlbbcbbk',
+    'lkaaakLlLkbbbblL',
+    '.lLaLlbkblLaklL.',
+    'Ll.lkbbbbklaaakl',
+    'lkL.bbcbblaacaal',
+    'k.lLkbbbkLlaaakL',
+    '.akalL.lLkLlaLl.',
+    'aaaaklbkblL.lkbk',
+    'acaalbbbbbkLlbbb',
+    'kaaakbbcbblLkbcb',
+    'lkakLlbbbklakkbb',
+    '.lLl.lLbkLaaakl.',
+    'lbkbllkLlaacaalL',
+    'bbbbbkL.lkaaaklk',
+]
+
+
+def fbed(which, f):
+    pal = {'l': C['lf'], 'L': C['lL'], 'k': C['st']}
+    if which == 'A':
+        pal.update(a=hx('#e84848'), b=C['ye'], c=C['fc'])
+    else:
+        pal.update(a=C['pk'], b=C['wh'], c=C['ye'])
+    t = Tile()
+    rows = FBED if f == 0 else [r[1:] + r[0] for r in FBED]     # 2장: 한 칸씩 흔들림
+    t.art(rows, pal)
+    return t
+
+
+def gstairs():
+    """꽃의 섬 단 사이 돌계단 (꽉 찬 칸): 회색 디딤판 넷 · 앞 턱 밝게 · 양옆 돌 난간."""
+    t = Tile()
+    for y in range(16):
+        for x in range(16):
+            if x < 2 or x > 13:
+                t.px(x, y, C['m2'] if x in (0, 15) else C['m0'])
+            else:
+                k = y % 4
+                t.px(x, y, C['m3'] if k == 0 else C['m1'] if k == 1 else C['m0'] if k == 2 else C['m2'])
+    for y in range(16):
+        t.px(2, y, C['mK']); t.px(13, y, C['mK'])
+    return t
+
+
+def gstair_down():
+    """풀밭에서 땅속으로 내려가는 돌계단 (덧그림): 돌 테두리 · 내려갈수록 좁고 어두운 디딤판."""
+    t = Tile()
+    for y in range(1, 16):
+        for x in range(1, 15):
+            if x in (1, 14) or y == 1:
+                t.px(x, y, C['mK'])
+            elif x in (2, 13) or y == 2:
+                t.px(x, y, C['m1'] if y == 2 else C['m0'])
+    steps = [(3, C['m3'], C['m0']), (6, C['m1'], C['m2']), (9, C['m2'], hx('#4c5070')), (12, hx('#4c5070'), hx('#2c3048'))]
+    for i, (y0, lip, face) in enumerate(steps):
+        x0, x1 = 3 + i, 12 - i
+        for y in range(y0, min(16, y0 + 3)):
+            for x in range(3, 13):
+                t.px(x, y, hx('#24283c') if (x < x0 or x > x1) else (lip if y == y0 else face))
+    for x in range(3, 13):
+        t.px(x, 15, hx('#181a28'))
+    return t
+
+
+def puzzle_tiles():
+    out = [('plbtnG0', plbtn('G', False)), ('plbtnG1', plbtn('G', True)), ('plbtnB0', plbtn('B', False)), ('plbtnB1', plbtn('B', True)),
+           ('plgateG', plgate('G', False)), ('plgateGd', plgate('G', True)), ('plgateB', plgate('B', False)), ('plgateBd', plgate('B', True)),
+           ('lvstone', lvstone()), ('lvsink0', lvsink('0')), ('lvsinkW0', lvsink('W0')), ('lvsinkW1', lvsink('W1')), ('lvsinkS', lvsink('S')),
+           ('bbar', bbar()), ('bwet', bwet())]
+    out += [(f'bwete{m}', bwet_edge(m)) for m in range(16)]
+    out += [('fbedA0', fbed('A', 0)), ('fbedA1', fbed('A', 1)), ('fbedB0', fbed('B', 0)), ('fbedB1', fbed('B', 1)),
+            ('gstairs', gstairs()), ('gstairD', gstair_down())]
+    return out
 
 
 # ─────────── 주인공: HAFS 교복 (남색 재킷 + 금색 테두리) · 사육사 ───────────
@@ -2824,7 +3024,7 @@ def build():
     for name, im, x in [('snpine', snpine(), 0), ('lvtree', lvtree(), 16), ('sncabin', sncabin(), 32), ('plgen', plgen(), 64), ('plbuild', plbuild(), 96)]:
         sheet.paste(im.im, (x, y2))
         idx[name] = [x, y2, im.w, im.h]
-    for name, im, x in [('tapu', tapu(), 0), ('swordst', swordst(), 16)]:   # 0050: 둘째 줄 왼쪽 아래 빈 곳 (y2+40~) — 수호신의 돌기둥 16×32 · 검이 꽂힌 바위 16×24
+    for name, im, x in [('swordst', swordst(), 16)]:   # 0054: tapu (꿈의 섬 수호신의 돌기둥 — 원주민 얼굴처럼 보여서) 뺌 · (0, y2+40) 자리는 빈 채로   # 0050: 둘째 줄 왼쪽 아래 빈 곳 (y2+40~) — 수호신의 돌기둥 16×32 · 검이 꽂힌 바위 16×24
         sheet.paste(im.im, (x, y2 + 40))
         idx[name] = [x, y2 + 40, im.w, im.h]
     # ui8: 울트라 발판 안쪽 모서리 4장 + 빛의 길 가장자리 16장 = 둘째 줄 오른쪽 빈 곳 (x 192~255 · 4칸 × 5줄) → 앞 그림 자리 · 그림판 크기 그대로
@@ -2834,7 +3034,16 @@ def build():
         assert y + TS <= sheet.height
         sheet.paste(t.im, (x, y))
         idx[name] = [x, y, TS, TS]
-    return sheet, idx
+    # 0054: 퍼즐 칸 = 그림판 아래 새 줄 (앞 그림 자리 · 픽셀 그대로)
+    extra = puzzle_tiles()
+    y3 = sheet.height
+    big = Image.new('RGBA', (sheet.width, y3 + ((len(extra) + 15) // 16) * TS), CLEAR)
+    big.paste(sheet, (0, 0))
+    for i, (name, t) in enumerate(extra):
+        x, y = (i % 16) * TS, y3 + (i // 16) * TS
+        big.paste(t.im, (x, y))
+        idx[name] = [x, y, TS, TS]
+    return big, idx
 
 
 def main():

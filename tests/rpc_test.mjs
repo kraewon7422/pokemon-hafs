@@ -2266,8 +2266,8 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
     s1 = await st();
     ok(s1.legends.length === 47 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
        'quest rows in sync: 유크시 quiz streak 0/10', row(s1, 480));
-    ok(row(s1, 481)?.prog === '배틀 승리 0/10' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
-       'battle wins 0/10 · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
+    ok(row(s1, 481)?.prog === '배틀 승리 0/20' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
+       'battle wins 0/20 (0054) · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
     const spots = (await admin.select('qr_points?select=id&kind=eq.static&visible_on_map=eq.true&active=eq.true&order=id')).data.map((x) => x.id);
     await L.c.rpc('sync', { p_scans: [{ n: nonce(), q: spots[0], t: T[spots[0]].token }] });
     ok(row(await st(), 484)?.cur === 1, 'a scanned QR spot counts toward 펄기아');
@@ -3717,7 +3717,7 @@ console.log('\n[59] 전설의 특별한 곳 (0050): 사파리존 전설 33마리
     ok(ev.length === 2 && ev.every((l) => l.legend_src === 'gift'), 'event gifts 810 · 811 stay gift-only', ev);
     const s0 = await st();
     ok(NEW.every((d) => row(s0, d)?.reward === 'map' && row(s0, d).ok === false && row(s0, d).cond), 'sync legends: a row (map · not ready · condition text) for each new legend', NEW.filter((d) => !row(s0, d)));
-    ok(row(s0, 789)?.cond === '울트라 스페이스에서 포켓몬을 2마리 잡아야 한대' && row(s0, 789).prog === '울트라 스페이스에서 잡은 포켓몬 0/2'
+    ok(row(s0, 789)?.cond === '울트라 스페이스에서 포켓몬을 5마리 잡아야 한대' && row(s0, 789).prog === '울트라 스페이스에서 잡은 포켓몬 0/5'
        && row(s0, 643)?.cond.startsWith('용의 굴에서') && row(s0, 485)?.cond.startsWith('용암 지대에서') && row(s0, 719)?.cond.startsWith('사막에서'),
        'zone_catch condition / progress text', [row(s0, 789), row(s0, 643)?.cond]);
     ok(row(s0, 491)?.cond === '크레세리아를 모두 잡아야 한대' && row(s0, 647)?.cond.includes('코바르온·테라키온·비리디온'), 'caught_all text names the partners', [row(s0, 491)?.cond, row(s0, 647)?.cond]);
@@ -3736,10 +3736,10 @@ console.log('\n[59] 전설의 특별한 곳 (0050): 사파리존 전설 33마리
     const cr = (await V.rpc('safari_result', { p_id: enc?.id, p_throws: 1, p_caught: true })).data;
     ok(enc?.zone === 'ultra' && cr?.caught === true, 'caught one Pokémon in the Ultra Space (zone ultra)', [enc?.zone, cr?.caught]);
     let s1 = await st();
-    ok(row(s1, 789)?.ok === true && row(s1, 789).prog === '울트라 스페이스에서 잡은 포켓몬 1/1' && row(s1, 386)?.prog === '울트라 스페이스에서 잡은 포켓몬 1/4',
-       'zone_catch counts Ultra Space catches (코스모그 1/1 ready · 테오키스 1/4)', [row(s1, 789), row(s1, 386)?.prog]);
+    ok(row(s1, 789)?.ok === true && row(s1, 789).prog === '울트라 스페이스에서 잡은 포켓몬 1/1' && row(s1, 386)?.prog === '울트라 스페이스에서 잡은 포켓몬 1/8',
+       'zone_catch counts Ultra Space catches (코스모그 1/1 ready · 테오키스 1/8)', [row(s1, 789), row(s1, 386)?.prog]);
     const nr = s1.notices.find((n) => n.kind === 'legend_ready' && n.data?.dex === 789);
-    ok(nr?.body.startsWith('울트라 스페이스에서 포켓몬을 1마리 잡았어요!') && nr.body.includes('별의 제단'), "'깨어났다' notice: zone_catch reason + 별의 제단", nr?.body);
+    ok(nr?.body.startsWith('울트라 스페이스에서 포켓몬을 1마리 잡았어요!') && nr.body.includes('울트라 스페이스에서 코스모그'), "'깨어났다' notice: zone_catch reason + 울트라 스페이스 (0054: 코스모그 자리)", nr?.body);
     const le = (await V.rpc('legend_encounter', { p_dex: 789 })).data;
     ok(le?.encounter?.kind === 'legend' && le.encounter.balls === 10, 'legend_encounter(코스모그) → legend encounter (10 balls)', le);
     const lr = (await V.rpc('legend_result', { p_id: le?.encounter?.id, p_caught: true, p_grade: 'nice' })).data;
@@ -4013,6 +4013,34 @@ console.log('\n[61] 폼 (0052): 선생님 폼 · 일반 폼 (복사본) · 이�
     if (sids.length) await admin.rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '삭제' });
     if (made.length) await fetch(`${URL_}/rest/v1/lines?id=in.(${made.join(',')})`, { method: 'DELETE', headers: { apikey: KEY, Authorization: `Bearer ${ADMIN_TOK}` } });
   }
+}
+
+console.log('\n[62] 전설 지도 (0054): 쉬운 전설 조건을 올림 · 새 지도 레벨 범위 · 해금 30% · 자리 이름');
+{
+  const rs = (await admin.select('settings?key=in.(legend_quests,safari_level_bands,unlock_safari_pct)&select=key,value')).data || [];
+  const V = Object.fromEntries(rs.map((r) => [r.key, r.value]));
+  const q = (d) => (V.legend_quests || []).find((x) => x.dex === d)?.n;
+  const NEED = { 639: 10, 638: 10, 640: 10, 378: 10, 489: 20, 807: 12, 789: 5, 386: 8, 720: 3, 494: 10, 786: 15, 481: 20, 380: 10, 381: 6, 488: 10, 785: 10, 787: 12, 643: 6, 644: 10, 485: 10, 719: 12 };
+  const low = Object.entries(NEED).filter(([d, n]) => !(q(Number(d)) >= n));
+  ok(low.length === 0 && (V.legend_quests || []).length === 47, 'legend_quests: easy legends raised (테라키온 바위 10 · 비크티니 배틀 10 · 카푸나비나 15 · 엠라이트 20 …), still 47 quests', low);
+  const mapLegends = (V.legend_quests || []).filter((x) => x.reward === 'map' && x.n != null);
+  const hardEnough = (x) => (x.kind === 'quiz_streak' ? x.n >= 7 : x.kind === 'raid_slots' ? x.n >= 3 : x.kind === 'battle_wins' ? x.n >= 10
+    : x.kind === 'zone_catch' && x.zone === 'ultra' ? x.n >= 5 : x.n >= 6);     // 울트라 스페이스는 깊은 동굴 워프홀 너머라 5마리도 충분히 멀다
+  ok(mapLegends.every(hardEnough),
+     'no map legend left trivially easy (catch ≥ 6 · Ultra Space ≥ 5 · wins ≥ 10 · raid slots ≥ 3 · quiz streak ≥ 7)', mapLegends.filter((x) => !hardEnough(x)).map((x) => x.dex));
+  const B = V.safari_level_bands || {};
+  ok(B.beach2?.[3] === 'beach' && B.plant3?.[3] === 'plant' && B.dragon2?.[3] === 'dragon' && B.plant3[0] > B.plant2[0] && B.dragon2[0] > B.dragon[0],
+     'level bands for the new floors (beach2 · plant3 · dragon2, stronger than the floor before)', [B.beach2, B.plant3, B.dragon2]);
+  ok(Number(V.unlock_safari_pct) === 30, 'unlock_safari_pct default 30', V.unlock_safari_pct);
+  let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'lm5454' })).error);
+  try {
+    const C = client(await pwLogin(`${sid}@code.local`, 'lm5454'));
+    await C.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '지도시험' });
+    const L = (await C.rpc('sync')).data?.state?.legends || [];
+    const row = (d) => L.find((x) => x.dex === d);
+    ok(row(639)?.cond === '바위 타입 포켓몬을 10마리 잡아야 한대' && row(494)?.cond === '배틀에서 10번 이겨야 한대' && row(807)?.prog === '발전소에서 잡은 포켓몬 0/12',
+       'sync legend rows show the raised conditions', [row(639)?.cond, row(494)?.cond, row(807)?.prog]);
+  } finally { await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' }); }
 }
 
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
