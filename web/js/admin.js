@@ -1098,7 +1098,7 @@ async function tabMon() {
   const open = (famId, formLine) => { S.selFam = famId; S.selForm = formLine ?? null; drawItems(); drawEdit(); if (window.innerWidth < 900) editBox.scrollIntoView({ block: 'start' }); };
   const inScope = (f) => {
     const sc = S.monScope || 'all';
-    return sc === 'all' || (sc === 'teacher' ? f.teachers.length > 0 : sc === 'none' ? !f.teachers.length && f.normals.length > 0 && !f.specials.length
+    return sc === 'all' || (sc === 'teacher' ? !!activeTeacher(f) : sc === 'none' ? !activeTeacher(f) && f.normals.length > 0 && !f.specials.length
       : sc === 'special' ? f.specials.length > 0 : f.events.length > 0);
   };
   const drawItems = () => {
@@ -1322,7 +1322,7 @@ function picTools(dex, redraw, face = false) {
   if (back) back.onclick = () => busy(back, () => resetPic(dex, redraw));
   const dl = h('button.btn.small', { type: 'button', title: '보통 그림과 반짝이(색이 다른) 그림을 PNG 로 저장' }, '그림 내려받기');
   dl.onclick = () => busy(dl, () => downloadPics(dex));
-  return h('div.pic-tools', custom ? chip('올린 그림', 'ok') : h('span.small-txt.muted', sp?.sprite ? '공식 그림' : dex <= ATLAS_CAP ? '기본 그림' : '그림 없음'), up, back, dl);
+  return h('div.pic-tools', custom ? chip('올린 그림', 'ok') : h('span.small-txt.muted', sp?.sprite ? '공식 그림' : dex <= ATLAS_CAP || hasArt(dex) ? '원래 그림' : '그림 없음'), up, back, dl);
 }
 
 // 그림 내려받기: 0493-아르세우스.png + 0493-아르세우스-shiny.png (번호 = 전국도감 번호, 없으면 종 번호)
