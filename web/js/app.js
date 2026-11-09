@@ -12,7 +12,7 @@ import { inAppBrowser, isIOS, signOut } from './auth.js';
 import { S, app, applyFormNames, spIdOfLine, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, stage2, titlesOf, unlockInfo, vibrate } from './state.js';
 import { fmtTime, openDetail, unlockBar, UNLOCK_PERKS, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
-import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
+import { friendBattleSheet, inviteSheet, isBattleQr, openBattle, viewBattle } from './battle.js';
 import { loadBag, openBagScreen } from './bag.js';
 import { minigameButton } from './games/hub.js';
 import { playNotices, giftButton, noticeTabs, clearNoticeTab, dittoReveal } from './legends.js';
@@ -1165,10 +1165,34 @@ export async function maybeDexComplete() {
 
 // 잡기 설정 (0030). 없으면 (서버가 아직 예전) 도망 없음
 export async function catchConfig() {
-  try { const c = await rpc('catch_config', {}, { retries: 0 }); if (c && typeof c === 'object') return { flee: 0, raid_mode: 'ticket', raid_balls: 10, raid_flee: true, ...c, ok: true }; } catch { /* 예전 서버·오프라인 */ }
-  return { flee: 0, raid_mode: 'ticket', raid_balls: 10, raid_flee: true, ok: false };
+  try {
+    const c = await rpc('catch_config', {}, { retries: 0 });
+    if (c && typeof c === 'object') {
+      if (c.rates) await import('./catch.js').then((m) => m.setCatchRates(c.rates)).catch(() => {});   // 0055: 원 색깔별 잡힘 확률 (기기에도 적어 둠)
+      return { flee: 0, raid_mode: 'ticket', raid_balls: 10, raid_flee: true, legend_bonus: 1, ...c, ok: true };
+    }
+  } catch { /* 예전 서버·오프라인 */ }
+  return { flee: 0, raid_mode: 'ticket', raid_balls: 10, raid_flee: true, legend_bonus: 1, ok: false };
 }
-const missingFn = (e) => /catch_result|schema cache|PGRST202|Could not find/i.test(e?.message || '');
+
+// 0055 전설 배틀: 잡기 전에 legend_battle (내 배틀 팀 vs 강한 전설 1마리). 돌려줌
+//   { skip } 배틀 없음 (예전 만남 · 예전 서버 · 설정 꺼짐) · { won } 이김 → 잡기 · { lost, result } 짐/도망 (만남 끝) · null = 배틀을 그만 둠 (만남은 그대로, 다시 말을 걸면 이어서)
+async function legendBattle(enc, sp) {
+  const ask = async (first) => {
+    try { return await rpc('legend_battle', { p_id: enc.id }, { retries: first ? 0 : 1 }); }
+    catch (e) { if (missingFn(e)) return { skip: true }; toast(errorText(e.message), { kind: 'error' }); return null; }
+  };
+  let r = await ask(true);
+  if (!r || r.skip || r.won) return r;
+  if (r.lost || r.done) return { lost: true, result: r.result };
+  if (!r.battle) return null;
+  await openBattle(r.battle, { legend: { name: sp.name, roam: enc.kind === 'roam', boss: r.boss } });
+  r = await ask(false);
+  if (!r || r.skip || r.won) return r;
+  if (r.lost || r.done) return { lost: true, result: r.result };
+  return null;
+}
+const missingFn = (e) => /catch_result|legend_battle|schema cache|PGRST202|Could not find/i.test(e?.message || '');
 // 부스 잡기 결과를 서버에 (0030 catch_result, 없으면 0028 catch_bonus — 도망 없음)
 async function reportCatch(t, c, fled) {
   if (!t.nonce || !S.online) return null;
@@ -1316,6 +1340,20 @@ export async function catchEncounter(enc) {
     const cfg = await catchConfig();
     const prev = new Set(collection().map((c) => c.line_id));
     let c = null;
+    // 0055: 전설 · 방랑 전설 = 먼저 배틀. 이기면 잡기 (잘 잡힘), 지거나 도망치면 이번 만남은 끝 (오늘 도전 1번)
+    let bonus = 1; let tired = false;
+    if (legend || roam) {
+      const lb = await legendBattle(enc, sp);
+      if (!lb) return;
+      if (lb.lost) {
+        (S.encDone ||= new Set()).add(enc.id);
+        const ov = await showFled(speciesOf(lb.result?.species_id) || sp, legend ? '전설의 포켓몬' : '방랑 전설',
+          legend ? '배틀에서 졌어요. 전설은 그 자리에 그대로 있어요 — 남은 도전 기회로 다시 말을 걸어 봐요!' : '방랑 전설은 다음 시간에 또 다른 곳으로 옮겨 가요.', shiny);
+        await tapToContinue(ov); closeOverlay();
+        return lb.result;
+      }
+      if (lb.won) { bonus = Math.max(1, Number(cfg.legend_bonus) || 1); tired = true; }
+    }
     // 사파리: 앞서 던진 볼 (앱을 닫았다 열었거나 새로 고침) · 보내지 못한 결과 (인터넷 끊김) 를 이어서 (safari-sync.js)
     const ss = safari ? await import('./safari-sync.js') : null;
     const prior = ss ? await ss.priorThrows(enc.id) : 0;
@@ -1349,12 +1387,14 @@ export async function catchEncounter(enc) {
           fleeAfterAll: true, fleeMiss: Number(enc.flee) || 0, canRun: true,
           onThrow: (n) => { ss.noteThrows(enc.id, prior + n); rpc('safari_throws', { p_id: enc.id, p_n: prior + n }).catch(() => {}); }, onMiss, confirm })
         : legend
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true, shiny, confirm,
-          intro: `전설의 포켓몬 ${josa(sp.name, '이', '가')} 나타났다!
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: 'legendary', ball: 'hafs', balls: Number(enc.balls) || 10, fleeAfterAll: true, shiny, confirm, bonus,
+          intro: tired ? `${josa(sp.name, '이', '가')} 지쳤다! 지금이야!
+공 {n}개로 잡아 보자!` : `전설의 포켓몬 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` })
         : wild
-        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true, shiny, confirm,
-          intro: roam ? `방랑 전설 ${josa(sp.name, '이', '가')} 나타났다!
+        ? await catchScene({ dex: sp.id, name: sp.name, rarity: roam ? 'legendary' : lineOf(sp.line_id)?.rarity || 'common', ball: 'red', balls: Number(enc.balls) || 5, fleeAfterAll: true, shiny, confirm, bonus,
+          intro: roam && tired ? `${josa(sp.name, '이', '가')} 지쳤다! 지금이야!
+공 {n}개로 잡아 보자!` : roam ? `방랑 전설 ${josa(sp.name, '이', '가')} 나타났다!
 공 {n}개로 잡아 보자!` : null })
         : await catchScene({ dex: sp.id, name: sp.name, rarity: lineOf(sp.line_id)?.mythic ? 'mythic' : 'legendary', ball: 'hafs',
           balls: Number(enc.balls) || Number(cfg.raid_balls) || 10, fleeAfterAll: cfg.raid_flee !== false, shiny, confirm });

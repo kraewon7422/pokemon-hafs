@@ -502,6 +502,10 @@ details.box > summary::after { content: ' ▾'; }
 details.box[open] > summary::after { content: ' ▴'; }
 
 .battle-overlay { background: #182030; }
+/* 0055 전설 배틀: 열 때 하얗게 세 번 번쩍 (GBA 전설 만남) */
+.legend-battle .bt-stage { animation: lgFlash .9s steps(1, end) 1; }
+@keyframes lgFlash { 0%, 34%, 68% { filter: brightness(3) saturate(0); } 17%, 51%, 85% { filter: none; } }
+@media (prefers-reduced-motion: reduce) { .legend-battle .bt-stage { animation: none; } }
 /* 배틀 화면: 글자를 길게 누르거나 빨리 눌러도 파랗게 선택되지 않게 (HP 숫자 등) */
 .battle-overlay .bt-stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .bt-stage { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 480px; margin: 0 auto; padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); box-sizing: border-box; }
