@@ -398,7 +398,10 @@ export async function resumeBattle(id) {
 // 몬스터볼 (도트): 위 빨강 · 가운데 검은 띠 · 아래 하양
 export const BALL_SVG = '<svg viewBox="0 0 8 8" width="16" height="16" shape-rendering="crispEdges"><path fill="#182030" d="M2 0h4v1h1v1h1v4h-1v1h-1v1h-4v-1h-1v-1h-1v-4h1v-1h1z"/><path fill="#f04830" d="M2 1h4v1h1v2h-6v-2h1z"/><path fill="#fff" d="M1 5h6v1h-1v1h-4v-1h-1z"/><path fill="#fff" d="M3 3h2v2h-2z"/><path fill="#182030" d="M3.5 3.5h1v1h-1z"/></svg>';
 
-export function openBattle(b0) {
+// opts.legend = { name, roam, boss: {hp_mult, stage} } (0055 전설 배틀: 잡기 전에 쓰러트리기) · 돌려줌 = 화면을 닫을 때 마지막 배틀 상태 (약속)
+export function openBattle(b0, opts = {}) {
+  const lg = opts.legend || null;
+  let doneRes; const done = new Promise((r) => { doneRes = r; });
   unlockAudio();
   loadBag({ notify: false }).catch(() => {});
   const ren = new Map();          // 옛 이름 → 지금 이름
@@ -432,7 +435,7 @@ export function openBattle(b0) {
   const view = { act: [null, null, null, null], hp: [0, 0, 0, 0] };
   const el = { text: h('div.bt-text'), arrow: h('i.bt-arrow'), menu: h('div.bt-menu'), timer: h('span.bt-timer'), field: null,
                wx: h('div.bt-wx'), ter: h('div.bt-ter'), env: h('div.bt-env') };
-  const foeName = () => (b.mode === 'cpu' ? '연습 상대' : b.names?.[fo()] || '상대');
+  const foeName = () => (lg ? `야생의 ${lg.name}` : b.mode === 'cpu' ? '연습 상대' : b.names?.[fo()] || '상대');
   const tok = (s) => fixNames(s, ren).replace(/@([01])/g, (_, x) => (Number(x) === me() ? '' : '상대 '));
   const side = (s) => b.sides?.[s];
   const nAct = (s) => side(s)?.act?.length || 0;
@@ -678,7 +681,14 @@ export function openBattle(b0) {
     music.set(null);
     const won = b.winner === me(); const rw = b.reward || {};
     if (won) { sfx.catch(); vibrate([80, 60, 200]); } else sfx.fail();
-    if (b.winner == null) await say2('무승부!');
+    if (lg) {
+      // 0055 전설 배틀: 이기면 지친 전설을 잡으러 · 지거나 도망치면 이번 도전은 끝
+      if (won) { await say2(`${josa(lg.name, '이', '가')} 쓰러질 듯 비틀거린다…`, 300); await say2(`${josa(lg.name, '이', '가')} 지쳤다! 지금이야!`); }
+      else if (b.winner == null) await say2(`${josa(lg.name, '과', '와')} 비겼다…`);
+      else if ((side(me())?.mons || []).some((m) => m.hp > 0)) await say2('무사히 도망쳤다!');
+      else { await say2('나에게는 싸울 수 있는 포켓몬이 없다!'); await say2('눈앞이 캄캄해졌다!'); }
+      if (!won) await say2(`${josa(lg.name, '은', '는')} 어딘가로 모습을 감췄다…`);
+    } else if (b.winner == null) await say2('무승부!');
     else if (won) {
       await say2(`${josa(foeName(), '과', '와')}의 승부에서 이겼다!`);
       if (rw.ticket) await say2(`★ 진화의 돌 1개를 받았다! (오늘 ${rw.today}/${S.btToday?.max || 3})`);
@@ -704,6 +714,12 @@ export function openBattle(b0) {
     // 다시 하기: 연습은 같은 형식으로, 친구와는 방금 그 친구에게 (최근 상대 목록의 맨 앞 = 이 배틀)
     const again = h('div.bt-main');
     const ok = h('button.bt-cmd', { onclick: () => closeOverlay() }, '확인');
+    if (lg) {
+      again.append(h('button.bt-cmd.fight', { onclick: () => closeOverlay() }, won ? '잡으러 가기!' : '확인'));
+      el.text.textContent = won ? `${josa(lg.name, '이', '가')} 지쳤다! 지금이야!` : `${josa(lg.name, '은', '는')} 어딘가로 모습을 감췄다…`;
+      el.menu.replaceChildren(again);
+      return;
+    }
     again.append(...(b.mode === 'cpu' ? [h('button.bt-cmd.fight', { onclick: () => startBattle('cpu', null, b.format) }, '다시 하기'), ok] : [ok]));
     el.menu.replaceChildren(again);
     if (b.mode !== 'cpu') {
@@ -887,7 +903,7 @@ export function openBattle(b0) {
   };
   const giveUp = () => {
     sfx.blip();
-    el.text.textContent = b.mode === 'pvp' ? '정말 기권할까? (진 것으로 판정)' : '정말 도망칠까? (진 것으로 판정)';
+    el.text.textContent = lg ? '정말 도망칠까? (이번 도전은 끝나요)' : b.mode === 'pvp' ? '정말 기권할까? (진 것으로 판정)' : '정말 도망칠까? (진 것으로 판정)';
     el.menu.replaceChildren(h('div.bt-main',
       h('button.bt-cmd', { onclick: async () => { busy = true; try { await apply(await rpc('battle_forfeit', { p_id: b.id }, { retries: 0 })); } catch (e) { toast(errorText(e.message)); } busy = false; } }, '네'),
       h('button.bt-cmd', { onclick: () => { menu.mode = 'main'; renderMenu(); } }, '아니요')));
@@ -899,7 +915,7 @@ export function openBattle(b0) {
     el.timer.classList.toggle('hot', s <= 10);
   };
 
-  const modeLabel = `${{ cpu: '연습 배틀', team: '친구 팀 (AI)', pvp: '실시간 배틀' }[b.mode]} · ${FMT[b.format]?.label || '1 대 1'}`;
+  const modeLabel = lg ? `${lg.roam ? '방랑 전설' : '전설'} 배틀 · 이기면 잡기` : `${{ cpu: '연습 배틀', team: '친구 팀 (AI)', pvp: '실시간 배틀' }[b.mode]} · ${FMT[b.format]?.label || '1 대 1'}`;
   const pads = h('div.bt-layer');
   el.field = h(`div.bt-field.bg-${BT_ENV_BG[b.field?.env] || BT_BG[b.id % BT_BG.length]}${dbl ? '.dbl' : ''}`,
     el.ter, pads, ...SL.map((x) => x.spr), el.wx, el.env,
@@ -910,10 +926,11 @@ export function openBattle(b0) {
     el.field,
     h('div.bt-textbox', el.text, el.arrow), el.menu), 'full');
   ov.classList.add('battle-overlay');
+  if (lg) ov.classList.add('legend-battle');   // 0055: 처음 열 때 하얗게 번쩍 (GBA 의 전설 만남처럼)
   for (const x of SL) { x.box.onclick = () => showInfo(x.u); x.spr.onclick = () => showInfo(x.u); }
   drawEnv();
   el.arrow.hidden = true;
-  ov.onclose = () => { closed = true; music.pop(); clearInterval(S.btPoll); clearInterval(S.btTick); pollInbox(true); };
+  ov.onclose = () => { closed = true; music.pop(); clearInterval(S.btPoll); clearInterval(S.btTick); pollInbox(true); doneRes(b); };
   clearInterval(S.btPoll); clearInterval(S.btTick);
   // 실시간 대전·신청 대기 중에는 2초마다 상태 확인 (턴이 풀렸는지, 수락했는지)
   S.btPoll = setInterval(async () => {
@@ -931,7 +948,16 @@ export function openBattle(b0) {
     const mySlotsEl = SL.filter((x) => (x.u >> 1) === me() && !x.spr.hidden);
     const names = (xs) => xs.map((x) => x.name.textContent);
     const join = (ns) => (ns.length > 1 ? `${josa(ns[0], '과', '와')} ${ns[1]}` : ns[0]);
-    await say2(`${josa(foeName(), '이', '가')} 승부를 걸어왔다!`, 450);
+    if (lg) {
+      // 0055: 전설은 공에서 나오지 않음 — 바로 모습을 드러내고 덤벼듦 + 보스 기운 (체력 배수 · 능력 랭크)
+      for (const x of foeSlots) { x.spr.classList.remove('hide'); x.box.classList.remove('hide'); bump(x.spr, 'enter'); }
+      sfx.ballPop?.();
+      await say2(`야생의 ${josa(lg.name, '이', '가')} 덤벼든다!`, 450);
+      const bs = lg.boss || {};
+      for (const x of foeSlots) statFx(x.u, 1);
+      const aura = [Number(bs.hp_mult) > 1 ? `체력 ×${+Number(bs.hp_mult).toFixed(1)}` : '', Number(bs.stage) > 0 ? `공격·방어·특공·특방 +${bs.stage}` : ''].filter(Boolean).join(' · ');
+      await say2(`${lg.name}의 몸에서 엄청난 기운이 뿜어져 나온다!${aura ? ` (${aura})` : ''}`, 450);
+    } else await say2(`${josa(foeName(), '이', '가')} 승부를 걸어왔다!`, 450);
     const fenv = b.field?.env && ENV[b.field.env] ? b.field.env : null;
     const intro = b.turn === 0 && Array.isArray(b.log) ? b.log : [];
     // 등장 특성이 날씨 · 필드를 바꿨으면 시작 화면은 시간표 날씨부터 (특성 알림 때 바뀜)
@@ -939,8 +965,10 @@ export function openBattle(b0) {
     if (fenv) { envStart(fenv); await say2(`지금은 ${b.field.name}! ${ENV[fenv].start}`, 450); }
     else if (b.field?.types?.length) await say2(`지금은 ${b.field.name}! ${b.field.types.join('·')} 기술의 위력이 올라간다!`, 450);
     if (b.fair) await say2('공정 모드! 모두 Lv.50으로 싸운다. (회복약 없음)', 450);
-    await say2(`${josa(foeName(), '은', '는')} ${josa(join(names(foeSlots)), '을', '를')} 내보냈다!`, 100);
-    for (const x of foeSlots) await throwBall(x.u);
+    if (!lg) {
+      await say2(`${josa(foeName(), '은', '는')} ${josa(join(names(foeSlots)), '을', '를')} 내보냈다!`, 100);
+      for (const x of foeSlots) await throwBall(x.u);
+    }
     await say2(`가랏! ${join(names(mySlotsEl))}!`, 100);
     for (const x of mySlotsEl) await throwBall(x.u);
     // 같은 과 시너지 (0020): 나온 포켓몬의 능력 +1
@@ -960,4 +988,5 @@ export function openBattle(b0) {
     startPicks(); renderMenu();
     if (b.status === 'over') { finished = true; el.text.textContent = b.winner === me() ? '이긴 배틀이에요.' : '끝난 배틀이에요.'; el.menu.replaceChildren(h('button.btn.big', { onclick: () => closeOverlay() }, '닫기')); }
   }
+  return done;
 }

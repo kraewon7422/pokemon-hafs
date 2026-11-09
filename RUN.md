@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → 데이터베이스 순서 (지금 파일 기준, README '실전 서버 만들기' 와 같음): `0001`→`0020` → 바로 `seed_battle.sql` → `0021`→`0039` → `seed_pokemon.sql` (0038 의 열 · 0039 의 특성 표를 쓰므로 0039 다음에만 됨) → `select count(*) from lines where ultra;` 가 0 이면 0038 의 울트라 · 전설 표시 update 두 줄을 다시 실행 → `0040`→`0053` → `seed_pokemon.sql` 한 번 더 (끝에서 `_forms_build()` 로 선생님 폼 · 일반 폼을 만듦, 여러 번 돌려도 안전) → `node tools/upload_pokemon_sprites.mjs` (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD, 103·106·1321·1324 포함) — 모두 사람이 없을 때. ⚠️ 이 순서는 파일 내용으로 맞춘 것이고 빈 데이터베이스에서 처음부터 돌려 본 적은 아직 없음 → 실전 전에 빈 프로젝트에서 한 번 돌려 볼 것. 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음).
+1. Supabase 새 프로젝트 (서울) → 데이터베이스 순서 (지금 파일 기준, README '실전 서버 만들기' 와 같음): `0001`→`0020` → 바로 `seed_battle.sql` → `0021`→`0039` → `seed_pokemon.sql` (0038 의 열 · 0039 의 특성 표를 쓰므로 0039 다음에만 됨) → `select count(*) from lines where ultra;` 가 0 이면 0038 의 울트라 · 전설 표시 update 두 줄을 다시 실행 → `0040`→`0054` → `seed_pokemon.sql` 한 번 더 (끝에서 `_forms_build()` 로 선생님 폼 · 일반 폼을 만듦, 여러 번 돌려도 안전) → `node tools/upload_pokemon_sprites.mjs` (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD, 103·106·1321·1324 포함) — 모두 사람이 없을 때. ⚠️ 이 순서는 파일 내용으로 맞춘 것이고 빈 데이터베이스에서 처음부터 돌려 본 적은 아직 없음 → 실전 전에 빈 프로젝트에서 한 번 돌려 볼 것. 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음).
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
@@ -121,6 +121,12 @@ python tools/build_atlas.py                                                   # 
 - 서버: `node tests/rpc_test.mjs` → [59] (새 전설 33마리 = legend_src safari · 퀘스트 47개 · zone_catch 셈 · 코스모그 깨어남 → 잡기 → 네크로즈마).
 - 그림: `python tools/build_safari_tiles.py --preview` (0050 타일은 맨 뒤 → 예전 타일 자리 그대로). 지도 점검: `node .work/d8/maps-check.mjs` (전설 자리마다 닿는지 · 힌트 · 묶음).
 - 화면: 해변 동쪽 끝 나루 → 꿈의 섬 · 깊은 연못 동쪽 길 → 성검의 숲 · 용의 굴 위쪽 사다리 → 용의 굴 깊은 곳 · 울트라 스페이스 위쪽 워프홀 → 별의 제단 · 사막 서쪽 유적 계단 → 고대 유적. 사육사 → "어떤 포켓몬에 대한 이야기를 듣고 싶니?" → 곳 → 전설.
+
+## 0055 전설 배틀 · 잡기 확률 (원 색깔별) · 반짝 소포 확인 (스테이징)
+- 순서: `0055_legend_battle.sql` 하나 (설정 9개 추가 · admin_create_gift 를 지우고 다시 만듦 → 끝의 권한 블록 꼭 포함).
+- 서버: `node tests/rpc_test.mjs` → [64] (배틀 없이 잡기 NEED_BATTLE · 보스 Lv · 체력 배수 · 랭크 · 이어 하기 · 지면 만남 끝 + 도전 1번 · 이기면 잡힘 · 설정 끄면 예전처럼 · catch_config 확률 · 범위 · 반짝 소포). 시험 동안 legend_battle_on 은 꺼 둠 (끝에서 되돌림).
+- 보스 강하기: rpc `admin_legend_sim(p_dex, p_team [{sp, lv}…], p_n ≤ 20)` (AI 끼리, 운영자만) 또는 운영자 [전설·소포] → 전설 배틀 강하기 → "AI 끼리 10판 시험".
+- 화면: `node C:/dev/tools/pw-webkit/b11_legend.mjs <c375|c320|pc> <win|lose>` (만남 → 배틀 → 지쳤다 → 잡기 / 도망 → 사라짐), `b11_ball.mjs <before|after> <phone|pc> [운]` (공 흔들림 프레임), `b11_admin.mjs <c375|c320|pc>` (운영자 카드).
 
 ## 개발 중 주의
 - 오프라인 캐시(service worker) 때문에 파일을 고쳐도 브라우저가 옛 파일을 보여줄 수 있다 → 개발자도구 Application → Service Workers → Unregister + Clear storage 후 새로고침.

@@ -457,7 +457,7 @@ grant execute on function
   -- 0038
   public.safari_throws(bigint, int), public.notice_seen(bigint[]), public.gift_claim(text),
   public.legend_encounter(int), public.legend_result(bigint, boolean, text, boolean),
-  public.admin_create_gift(text, text, int, text, int, timestamptz, timestamptz, int, int), public.admin_list_gifts(), public.admin_set_gift(bigint, boolean),
+  public.admin_create_gift(text, text, int, text, int, timestamptz, timestamptz, int, int, boolean), public.admin_list_gifts(), public.admin_set_gift(bigint, boolean),
   public.admin_delete_gift(bigint), public.admin_encounter_age(bigint, int),
   public.admin_roam_spots(timestamptz),
   public.my_abilities(), public.admin_bt_sim(jsonb),
@@ -470,6 +470,8 @@ grant execute on function
   -- 0052
   public.admin_create_teacher_form(int, text, text, int, boolean), public.admin_set_form_active(int, boolean),
   public.admin_rename_teacher(int, text, text),
+  -- 0055
+  public.legend_battle(bigint, bigint[]), public.admin_legend_sim(int, jsonb, int),
   -- 0056
   public.trade_open(text), public.trade_current(), public.trade_state(bigint), public.trade_offer(bigint, bigint),
   public.trade_confirm(bigint, int), public.trade_cancel(bigint), public.trade_check(), public.admin_trades(int)
