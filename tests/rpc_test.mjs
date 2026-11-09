@@ -798,8 +798,9 @@ console.log('\n[26] battles (engine on the server, CPU practice, friend team vs 
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 9 } })).error === 'BAD_ACTION', 'bad move slot refused');
   ok((await A.c.rpc('battle_act', { p_id: b.id, p_action: { switch: 0 } })).error === 'BAD_ACTION', 'cannot switch to the monster already out');
   let r = await A.c.rpc('battle_act', { p_id: b.id, p_action: { move: 1 } });
-  ok(r.data?.turn === 1 && r.data.seq === 1 && r.data.log.some(x => /^@0.+(의 .+!|혼란에 빠져 있다!)$/.test(x.m || '')) && r.data.log.some(x => /^@1/.test(x.m || '')), 'one turn: both sides act, log uses @0/@1 tokens', r.data?.log);
-  ok(r.data.sides[0].mons[0].moves[0].pp === b.sides[0].mons[0].moves[0].pp - 1 || r.data.log.some(x => /잠들어|저려서|자신을 공격했다/.test(x.m || '')), 'PP goes down');
+  const meDown = r.data?.log?.some(x => x.faint === 0 && /^@0.+쓰러졌다!$/.test(x.m || ''));   // 상대가 먼저 한 방에 쓰러뜨리면 내 차례가 없음
+  ok(r.data?.turn === 1 && r.data.seq === 1 && (meDown || r.data.log.some(x => /^@0.+(의 .+!|혼란에 빠져 있다!)$/.test(x.m || ''))) && r.data.log.some(x => /^@1/.test(x.m || '')), 'one turn: both sides act, log uses @0/@1 tokens', r.data?.log);
+  ok(r.data.sides[0].mons[0].moves[0].pp === b.sides[0].mons[0].moves[0].pp - 1 || meDown || r.data.log.some(x => /잠들어|저려서|자신을 공격했다/.test(x.m || '')), 'PP goes down');
   b = await play(A.c, r.data);
   ok(b?.status === 'over' && (b.winner === 0 || b.winner === 1) && b.reward?.ticket === false && ['practice', 'lost'].includes(b.reward?.why), 'CPU battle ends; practice gives no ticket', { st: b?.status, w: b?.winner, rw: b?.reward, err: b?.error });
 
