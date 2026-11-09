@@ -12,6 +12,10 @@
 //   발전소 ('plant', 왼쪽 위 건물 안 2층 · 깜빡이는 불빛 · 바닥 어디서나 만남) · 용의 굴 ('dragon') — 바다 · 사막 · 설원 · 용암을 모두 다녀오면
 //   (서버 safari_visit / safari_state.visited · dragon) 호수에 섬과 다리 가운데 계단이 생김. 운영자가 사파리존을 닫으면 (safari_state.locked) 덮개.
 //   나무 · 야자 · 선인장 · 돌기둥 · 건물처럼 위로 솟은 그림은 윗칸에 솟은 부분을 사람 위에 한 번 더 그림 (over 층) — 나무 뒤로 걸어가 보이게.
+// 0054: 전설을 여러 곳으로 나눔 + 던전 같은 길 — 발전소 3층 스위치 퍼즐 (초록 · 파랑 스위치 → 같은 색 문이 내려가고 다른 색이 올라감) ·
+//   용암 호수 가라앉는 돌 다리 (박자에 맞춰 깜빡이다 가라앉음, 그 위에 있으면 마지막으로 선 안전한 칸으로) · 해변 바닷길 (모래톱을 밟으면 바닷길이 드러남) ·
+//   설원 얼음 미끄럼 길 · 꿈의 섬 / 성검의 숲 / 용의 굴 지하 2층 / 고대 유적 지하 1층 미로. 퍼즐 상태 = 지도마다 앱이 들고 있음 (다시 들어오면 처음으로) —
+//   어디서든 되돌아갈 수 있는지는 .work/m11/maps-check.mjs 가 모든 상태를 따라가며 확인. 퍼즐 규칙 (어떤 칸이 막히나) = safari-maps.js puzzleOf · sinkPhase.
 // 0050: 전설의 특별한 곳 (꿈의 섬 · 성검의 숲 · 용의 굴 깊은 곳 · 별의 제단 · 고대 유적 = 야생 포켓몬이 안 나오는 조용한 곳) +
 //   하늘 언덕 · 발전소 2층 · 용암 지대에 새 전설 자리. 사육사 메뉴는 전설을 곳 (LEGEND_SPACES) 마다 묶어서 → 고르면 그 곳의 전설 목록.
 // 키 큰 풀숲 (동굴은 바닥) 을 걸으면 야생 포켓몬이 나오고 사파리볼(하루 N개)로 잡는다.
@@ -27,7 +31,7 @@ import { S } from './state.js';
 import { catchEncounter, sync } from './app.js';
 import { monCell, spriteCanvas } from './sprites.js';
 import TI from '../img/safari-tiles.js';
-import { MAPS, SOLID, ENC, LEGEND_HINTS, LEGEND_SPACES, ZONE_HINTS, ULTRA_BEASTS, DRAGON_ISLE } from './safari-maps.js';
+import { MAPS, SOLID, ENC, LEGEND_HINTS, LEGEND_SPACES, ZONE_HINTS, ULTRA_BEASTS, DRAGON_ISLE, puzzleOf, sinkPhase } from './safari-maps.js';
 import { flushResult, queuedResult, savePos, loadPos } from './safari-sync.js';
 
 export { LEGEND_HINTS, LEGEND_SPACES, ZONE_HINTS, ULTRA_BEASTS };
@@ -143,7 +147,7 @@ const isMesa = (c) => c === 'M';
 const isPlW = (c) => c === 'W' || c === 'p' || c === 'q';
 // 위로 솟은 그림 (지도 종류 → 글자 → [타일 이름, 바닥 칸 높이]): 바닥 칸보다 위로 솟은 부분은 over 층에 한 번 더 (사람 · 사육사 위)
 const TALLS = {
-  out: { T: ['tree', 1], H: ['plbuild', 5], Y: ['swordst', 1] }, beach: { T: ['palm', 1], Y: ['tapu', 1] }, shrine: { I: ['spillar', 1] },
+  out: { T: ['tree', 1], H: ['plbuild', 5], Y: ['swordst', 1] }, beach: { T: ['palm', 1] }, shrine: { I: ['spillar', 1] },
   desert: { C: ['dcactus', 1], P: ['dpillar', 1], D: ['ddune', 2] },
   snow: { T: ['snpine', 1], H: ['sncabin', 2] }, lava: { T: ['lvtree', 1] }, plant: { G: ['plgen', 2] },
 };
@@ -202,7 +206,11 @@ function prerender(sheet, f, m) {
       }
       if (m.kind === 'beach') {      // 0040 해변: 모래 · 얕은 물 (물거품 테두리) · 깊은 바다 · 산호 · 바닷가 풀숲 · 바위 · 조개 (야자나무는 아래에서 따로)
         const wet = (k) => k === 'w' || k === '~' || k === 'c';
-        if (c === '~') { put(`bdeep${f}`, X, Y); put(`bdeepe${maskOf(x, y, (k) => k === '~', true)}`, X, Y); continue; }
+        if (c === '~' || c === 'P' || c === 'B') {         // 0054 P = 바닷속 길 (드러나기 전엔 깊은 바다 · 드러나면 덧그림) · B = 모래톱
+          put(`bdeep${f}`, X, Y); put(`bdeepe${maskOf(x, y, (k) => k === '~' || k === 'P' || k === 'B', true)}`, X, Y);
+          if (c === 'B') put('bbar', X, Y);
+          continue;
+        }
         if (c === 'w' || c === 'c') { const mk = maskOf(x, y, wet, true); put(`bshal${mk}_${f}`, X, Y); for (const k of corners(x, y, mk, wet, true)) put(`bshalc${k}`, X, Y); if (c === 'c') put((x * 3 + y) % 2 ? 'bcoralB' : 'bcoralA', X, Y); continue; }
         put(`bsand${(x * 7 + y * 3) % 5 === 0 ? 1 : 0}`, X, Y);
         const o = { ',': 'tall', R: 'brock', S: 'bsign', h: 'bshell', m: `moon${(f + x) & 1}` }[c];   // 0050 m = 꿈의 섬 초승달 꽃
@@ -235,6 +243,7 @@ function prerender(sheet, f, m) {
         if (c === '=' || c === 'E') { const l = same(x - 1, y, isStair, false), r = same(x + 1, y, isStair, false); put(`sstairs${l && r ? 'C' : r ? 'L' : l ? 'R' : 'C'}`, X, Y); continue; }
         if (c === 'A' || c === 'L') { put('saltar', X, Y); continue; }
         if (c === 'U') { put('cladderU', X, Y); continue; }
+        if (c === 'V') { put('dstairs', X, Y); continue; }       // 0054
         put(`sfloor${(x * 5 + y * 3) % 7 === 0 ? 1 : 0}`, X, Y);
         if (c === 'r') put('crock', X, Y);
         continue;
@@ -260,7 +269,10 @@ function prerender(sheet, f, m) {
           if (mk & 4) for (const k of corners(x, y, mk, isMesa, true)) put(`swallc${k}`, X, Y);
           continue;
         }
-        if (c === 'I') { put(`snice${maskOf(x, y, (k) => k === 'I')}`, X, Y); continue; }
+        if (c === 'I') { put(`snice${maskOf(x, y, (k) => k === 'I' || k === 'R')}`, X, Y); continue; }
+        if (c === 'R' && [[0, 1], [0, -1], [1, 0], [-1, 0]].some(([dx, dy]) => same(x + dx, y + dy, (k) => k === 'I', false))) {   // 0054 얼음 미끄럼 길의 바위
+          put(`snice${maskOf(x, y, (k) => k === 'I' || k === 'R')}`, X, Y); put('snrock', X, Y); continue;
+        }
         if (c === '=') { put('snstairs', X, Y); continue; }
         if (c === 'E') { put('snexit', X, Y); continue; }
         put(`snground${(x * 7 + y * 3) % 5 === 0 ? 1 : 0}`, X, Y);
@@ -275,10 +287,11 @@ function prerender(sheet, f, m) {
           if (mk & 4) for (const k of corners(x, y, mk, isMesa, true)) put(`lwallc${k}`, X, Y);
           continue;
         }
-        if (c === '~') {
-          const isL = (k) => k === '~', mk = maskOf(x, y, isL, true);
+        if (c === '~' || c === '1' || c === '2' || c === 's') {
+          const isL = (k) => k === '~' || k === '1' || k === '2' || k === 's', mk = maskOf(x, y, isL, true);
           put(`lava${f}`, X, Y); put(`lavae${mk}`, X, Y);
           for (const k of corners(x, y, mk, isL, true)) put(`lavac${k}`, X, Y);
+          if (c === 's') put('lvstone', X, Y);
           continue;
         }
         if (c === '=') { put('lvstairs', X, Y); continue; }
@@ -329,8 +342,11 @@ function prerender(sheet, f, m) {
         if (c === 'C') put('mouth', X, Y);
         continue;
       }
+      if (c === '=') { put('gstairs', X, Y); continue; }          // 0054 꽃의 섬 돌계단
       put('ground', X, Y);
       if (c === ',') put('tall', X, Y);
+      else if (c === 'q') put(`fbed${(((x / 2) | 0) + y) & 1 ? 'B' : 'A'}${(f + y) & 1}`, X, Y);   // 0054 꽃의 섬 꽃밭
+      else if (c === 'z') put('gstairD', X, Y);                   // 0054 용의 굴로 내려가는 계단 (호수 섬)
       else if (c === 'f') put(`flower${(x + y) & 1 ? 'B' : 'A'}${(f + x) & 1}`, X, Y);
       else if (c === 'g') put(`grac${(x * 3 + y) & 1 ? 'B' : 'A'}`, X, Y);   // 0050 성검의 숲 그라시데아
       else if (c === 'F') put(`fence${maskOf(x, y, isFence)}`, X, Y);
@@ -348,7 +364,6 @@ function prerender(sheet, f, m) {
     if (n) put(n, x * TS, y * TS);
   }
   if (m.kind === 'beach') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'T') put('palm', x * TS, y * TS);   // 야자나무 16×24
-  if (m.kind === 'beach') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'Y') put('tapu', x * TS, y * TS);   // 0050 수호신의 돌기둥 16×32
   if (m.kind === 'shrine') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (R[y][x] === 'I') put('spillar', x * TS, y * TS);   // 16×32, 윗칸으로 솟음
   if (m.kind === 'desert') for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {   // 기둥 선인장 16×24 · 사암 돌기둥 16×32 · 모래 언덕 48×32 (D = 왼쪽 아래 칸)
     const n = { C: 'dcactus', P: 'dpillar', D: 'ddune' }[R[y][x]];
@@ -360,6 +375,7 @@ const HW = 16, HH = 24;              // 사람 한 칸 (발 = 칸 아래쪽, 머
 const DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
 const DIR_ROW = { down: 0, up: 1, left: 2, right: 3 };
 const BACK = { up: 'down', down: 'up', left: 'right', right: 'left' };
+const DRAGON_MAPS = new Set(['dragon', 'dragon2', 'dragonDeep']);   // 용의 굴이 열려야 갈 수 있는 지도
 
 // ─────────────────────── 화면 (한 번만 만듦) ───────────────────────
 let V = null;            // 화면 · 상태
@@ -390,7 +406,14 @@ function objAt(x, y) {
 }
 // 지도의 울트라 워프홀 칸 (Q) — 한 번만 찾아 둠
 const wormsOf = (m) => (m._worms ||= m.rows.flatMap((r, y) => [...r].map((c, x) => (c === 'Q' ? [x, y] : null)).filter(Boolean)));
-const solidAt = (x, y) => SOLID[M.kind].has(tileAt(x, y)) || !!objAt(x, y);
+// 0054 퍼즐 상태 (지도마다 · 다시 들어오면 처음으로): 발전소 = 열린 색 'g' | 'b' · 바닷길 = 밟은 모래톱 비트
+let pzS = null;
+const sinkC = (c) => c === '1' || c === '2';
+const dynSolid = (x, y, c) => {
+  if (M.kind === 'lava') return sinkC(c) && sinkPhase(c, performance.now()) === 'down';
+  const pz = puzzleOf(M); return !!pz && pz.solid(c, pzS, x, y);
+};
+const solidAt = (x, y) => { const c = tileAt(x, y); return SOLID[M.kind].has(c) || dynSolid(x, y, c) || !!objAt(x, y); };
 
 export function viewSafari() {
   hintsFromServer(S.snap?.legends);     // 0038: sync 로 받은 전설 조건 (사파리존 상태를 받으면 다시)
@@ -567,13 +590,13 @@ function build() {
     loading = false;
     try { localStorage.setItem('sfLocked', st?.locked ? '1' : '0'); } catch { /* */ }
     applyDragon(); paintInfo();
-    if (st && !st.pending && (st.locked || ((mapId === 'dragon' || mapId === 'dragonDeep') && !st.dragon)) && mapId !== START.map && !busy) leaveToStart();
+    if (st && !st.pending && (st.locked || (DRAGON_MAPS.has(mapId) && !st.dragon)) && mapId !== START.map && !busy) leaveToStart();
     else noteVisit(mapId);
     maybeResume();
   };
   // ── 0048 방문 기록 · 용의 굴 · 잠금 ──
   // 지도 id → 서버 방문 구역 (바다 · 사막 · 설원 · 용암 네 곳을 모두 다녀오면 용의 굴이 열림)
-  const AREA_OF = { beach: 'beach', desert: 'desert', snow: 'snow', lava: 'lava', plant1: 'plant', plant2: 'plant', dragon: 'dragon' };
+  const AREA_OF = { beach: 'beach', beach2: 'beach', desert: 'desert', snow: 'snow', lava: 'lava', plant1: 'plant', plant2: 'plant', plant3: 'plant', dragon: 'dragon', dragon2: 'dragon' };
   const visiting = new Set();
   function noteVisit(id) {
     const a = AREA_OF[id];
@@ -779,10 +802,96 @@ function build() {
     fade = { a: fade.a, from: fade.a, to, t0: performance.now(), ms, res, col: fade.col };
     if (!raf) { fade.a = to; fade.res = null; res(); }          // 화면이 안 그려지는 중이면 바로
   });
+  // ── 0054 퍼즐 ──
+  const reveal = new Map();        // 바닷길: 드러난 칸 'x,y' → 드러나기 시작한 시각 (물이 갈라지는 연출)
+  let lastSafe = { x: 0, y: 0 };   // 용암: 마지막으로 선 가라앉지 않는 칸
+  function stepPuzzle(quiet) {
+    const pz = puzzleOf(M); if (!pz) return;
+    const c = tileAt(P.x, P.y), ns = pz.step(c, pzS, P.x, P.y);
+    if (ns === pzS) return;
+    const old = pzS; pzS = ns;
+    if (M.kind === 'plant') {
+      if (!quiet) { try { sfx.select(); } catch { /* */ } say(ns === 'g' ? '초록 스위치를 밟았다! 초록 문이 내려가고 파랑 문이 올라갔다.' : '파랑 스위치를 밟았다! 파랑 문이 내려가고 초록 문이 올라갔다.', 3000); }
+      return;
+    }
+    const now = performance.now();       // 바닷길: 새로 드러난 칸 (가까운 칸부터 차례로)
+    M.rows.forEach((row, yy) => [...row].forEach((cc, xx) => {
+      if (cc === 'P' && pz.open(ns, xx, yy) && !pz.open(old, xx, yy)) reveal.set(`${xx},${yy}`, now + (Math.abs(xx - P.x) + Math.abs(yy - P.y)) * 45);
+    }));
+    if (!quiet) { try { sfx.scan(); } catch { /* */ } say('모래톱을 밟자 바닷물이 양쪽으로 갈라졌다! 바닷길이 드러났다.', 3000); }
+  }
+  // 용암: 서 있던 돌이 가라앉음 → 마지막으로 선 안전한 칸으로 (화면이 붉게 번쩍)
+  async function sinkFall() {
+    if (busy) return;
+    busy = true; clearPad();
+    try { sfx.blip(); } catch { /* */ }
+    say('발밑의 돌이 용암 속으로 가라앉았다! 앗 뜨거워… 안전한 곳으로 돌아왔다.', 3200);
+    fade.col = '255,96,40';
+    await fadeTo(0.85, 160);
+    P.x = P.fx = lastSafe.x; P.y = P.fy = lastSafe.y; P.moving = false; P.from = null;
+    savePos({ map: mapId, x: P.x, y: P.y, dir: P.dir });
+    await fadeTo(0, 380);
+    fade.col = '0,0,0'; busy = false;
+  }
+  // 새로 고침으로 퍼즐 지도 한가운데에서 이어 할 때: 처음 상태로 되돌아갈 길 (그 지도의 첫 warp) 이 없으면 그 warp 옆으로
+  function safeResume() {
+    const pz = puzzleOf(M);
+    if (!pz && !(M.kind === 'lava' && sinkC(tileAt(P.x, P.y)))) return;
+    const warpKeys = Object.keys(M.warps);
+    const seen = new Set([`${P.x},${P.y}`]), q = [[P.x, P.y]];
+    let ok = !dynSolid(P.x, P.y, tileAt(P.x, P.y)) && !sinkC(tileAt(P.x, P.y));
+    if (ok) {
+      ok = false;
+      while (q.length && !ok) {
+        const [x, y] = q.shift();
+        for (const [dx, dy] of Object.values(DIRS)) {
+          const k = `${x + dx},${y + dy}`; if (seen.has(k)) continue; seen.add(k);
+          if (M.warps[k]) { ok = true; break; }
+          if (!solidAt(x + dx, y + dy)) q.push([x + dx, y + dy]);
+        }
+      }
+    }
+    if (ok || !warpKeys.length) return;
+    const [wx, wy] = warpKeys[0].split(',').map(Number);
+    for (const [dx, dy] of Object.values(DIRS)) {
+      const nx = wx + dx, ny = wy + dy;
+      if (nx >= 0 && ny >= 0 && nx < MW() && ny < MH() && !solidAt(nx, ny) && !M.warps[`${nx},${ny}`]) { P.x = P.fx = nx; P.y = P.fy = ny; lastSafe = { x: nx, y: ny }; savePos({ map: mapId, x: nx, y: ny, dir: P.dir }); return; }
+    }
+  }
+  // 퍼즐 칸 덧그림 (매 프레임 · 화면 안만): 스위치 · 문 · 가라앉는 돌 · 드러난 바닷길
+  const dynOf = (m) => (m._dyn ||= m.rows.flatMap((row, y) => [...row].map((c, x) => ((m.kind === 'plant' && '1234'.includes(c)) || (m.kind === 'lava' && sinkC(c)) || (m.seaway && c === 'P') ? [x, y, c] : null)).filter(Boolean)));
+  function drawDyn(now) {
+    const cells = dynOf(M); if (!cells.length) return;
+    const x0 = Math.floor(camX / TS) - 1, y0 = Math.floor(camY / TS) - 1, x1 = x0 + Math.ceil(VW / TS) + 2, y1 = y0 + Math.ceil(VH / TS) + 2;
+    const pz = puzzleOf(M);
+    const tile = (name, x, y) => { const t = TI[name]; if (t) g.drawImage(sheet, t[0], t[1], t[2], t[3], x * TS - camX, y * TS + TS - t[3] - camY, t[2], t[3]); };
+    for (const [x, y, c] of cells) {
+      if (x < x0 || x > x1 || y < y0 || y > y1) continue;
+      if (M.kind === 'plant') {
+        if (c === '1') tile(pzS === 'g' ? 'plbtnG1' : 'plbtnG0', x, y);
+        else if (c === '2') tile(pzS === 'b' ? 'plbtnB1' : 'plbtnB0', x, y);
+        else if (c === '3') tile(pzS === 'g' ? 'plgateGd' : 'plgateG', x, y);
+        else tile(pzS === 'b' ? 'plgateBd' : 'plgateB', x, y);
+      } else if (M.kind === 'lava') {
+        const ph = sinkPhase(c, now);
+        tile(ph === 'up' ? 'lvsink0' : ph === 'warn' ? `lvsinkW${Math.floor(now / 140) % 2}` : 'lvsinkS', x, y);
+      } else if (pz && pz.open(pzS, x, y)) {
+        const t0 = reveal.get(`${x},${y}`) ?? -1e9, k = Math.min(1, Math.max(0, (now - t0) / 260));
+        if (k <= 0) continue;
+        const isP = (xx, yy) => { const cc = tileAt(xx, yy); return cc === 'B' || (cc !== '~' && cc !== 'P' && cc !== 'c' && cc !== 'w') || (cc === 'P' && pz.open(pzS, xx, yy)); };
+        const mk = (isP(x, y - 1) ? 1 : 0) | (isP(x + 1, y) ? 2 : 0) | (isP(x, y + 1) ? 4 : 0) | (isP(x - 1, y) ? 8 : 0);
+        g.globalAlpha = k; tile('bwet', x, y); tile(`bwete${mk}`, x, y); g.globalAlpha = 1;
+      }
+    }
+  }
   function enterMap(id, x, y, dir, banner = true) {
     const wasKind = M.kind;
+    const again = mapId === id;
     mapId = id; M = MAPS[id];
     P.x = P.fx = x; P.y = P.fy = y; P.dir = dir; P.moving = false; P.from = null;
+    if (!again) { pzS = puzzleOf(M)?.init() ?? null; reveal.clear(); }
+    lastSafe = { x, y };
+    stepPuzzle(true);
     mapsOf(id);
     savePos({ map: id, x, y, dir });
     if (banner) { showPlace(M.name); setTimeout(AREA_MSG[M.kind] && wasKind !== M.kind ? sandMsg : sayHint, 700); }   // 바깥 → 동굴 → 울트라 스페이스처럼 땅이 바뀌면 그 땅의 안내
@@ -1007,6 +1116,8 @@ function build() {
     savePos({ map: mapId, x: P.x, y: P.y, dir: P.dir });
     const w = M.warps[`${P.x},${P.y}`];
     if (w) { P.slide = false; go(w); return; }
+    stepPuzzle(false);
+    if (M.kind === 'lava') { if (!sinkC(tileAt(P.x, P.y))) lastSafe = { x: P.x, y: P.y }; else if (dynSolid(P.x, P.y, tileAt(P.x, P.y))) { sinkFall(); return; } }
     if (M.kind === 'snow' && tileAt(P.x, P.y) === 'I') {    // 0048: 얼어붙은 연못 — 막힐 때까지 같은 쪽으로 미끄러짐 (서 있는 모습, 만남 칸 아님)
       const [dx, dy] = DIRS[P.dir];
       if (!solidAt(P.x + dx, P.y + dy)) { P.from = { x: P.x, y: P.y }; P.x += dx; P.y += dy; P.moving = true; P.t0 = performance.now(); P.slide = true; return; }
@@ -1056,6 +1167,8 @@ function build() {
       const k = Math.min(1, (now - P.t0) / STEP_MS);
       P.fx = P.from.x + (P.x - P.from.x) * k; P.fy = P.from.y + (P.y - P.from.y) * k;
       if (k >= 1) { arrive(); if (active() && !P.moving) stepDirs(now); }
+    } else if (M.kind === 'lava' && !busy && !talkQ && !menuQ && sinkC(tileAt(P.x, P.y)) && dynSolid(P.x, P.y, tileAt(P.x, P.y))) {
+      sinkFall();                                                     // 0054: 서 있던 돌이 가라앉음
     } else if (!busy && !talkQ && !menuQ && active()) {
       const ds = wantDirs();
       if (ds.length && joy.id == null && ds[0] !== P.dir && !closed()) { P.dir = ds[0]; P.turnT = now; }   // 키보드: 누른 방향으로 돌고
@@ -1093,6 +1206,7 @@ function build() {
         g.drawImage(sheet, t[0], t[1] + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
       } else g.drawImage(map, gx * TS, gy * TS + sy0, TS, TS - sy0, X, Y + sy0, TS, TS - sy0);
     };
+    drawDyn(now);                                                     // 0054 퍼즐 칸
     if (rustle && now - rustle.t0 < RUSTLE_MS) grass(rustle.x, rustle.y, 0);
     // 그릴 것 (아래쪽에 있는 것이 앞): 주인공 · 사람 · 전설 포켓몬
     const list = [];
@@ -1253,8 +1367,9 @@ function build() {
     if (!m || P.moving || busy || P.stepN || mapId !== START.map || P.x !== START.x || P.y !== START.y) return;   // 이미 다른 곳으로 옮겼으면 그대로
     const c = m.rows[pp.y]?.[pp.x];
     if (c == null || SOLID[m.kind].has(c) || m.warps[`${pp.x},${pp.y}`]) return;
-    if ((pp.map === 'dragon' || pp.map === 'dragonDeep') && !dragonOn && !(st && st.dragon)) return;     // 0048: 용의 굴은 열린 뒤에만 (상태가 오면 refresh 가 다시 확인)
+    if (DRAGON_MAPS.has(pp.map) && !dragonOn && !(st && st.dragon)) return;     // 0048: 용의 굴은 열린 뒤에만 (상태가 오면 refresh 가 다시 확인)
     enterMap(pp.map, pp.x, pp.y, DIRS[pp.dir] ? pp.dir : 'down', pp.map !== START.map);
+    safeResume();                                                     // 0054
   }).catch(() => {});
   const start = () => { requestAnimationFrame(() => { fit(); if (!raf && root.isConnected) raf = requestAnimationFrame(frame); }); };
   // 시험용
@@ -1265,6 +1380,7 @@ function build() {
     joy: () => ({ ...joy, dirs: joy.id != null ? joyDirs() : [] }), spray: () => ({ on: sprayOn(), left: Math.max(0, sprayUntil - Date.now()), text: sprayTime.textContent }),
     useSpray: () => useSpray(), stepMs: STEP_MS, area: () => ({ map: mapId, dist: areaDist(), zone: zoneAt(P.x, P.y) }),
     mapId: () => mapId, goto: (id, x, y, dir = 'down') => enterMap(id, x, y, dir), a: () => pressA(), talking: () => !!talkQ,
+    pz: () => pzS, solid: (x, y) => solidAt(x, y), sinkFall: () => sinkFall(), safeResume: () => safeResume(), lastSafe: () => ({ ...lastSafe }),
     zone: () => zoneAt(P.x, P.y), pend: () => ({ ...pend }), sandMsg: () => sandMsg(), dragon: () => dragonOn, closed: () => closed(), ballsOut: () => ballsOut(), setState: (s) => { st = { ...st, ...s }; applyDragon(); paintInfo(); }, fade: () => fade.a,
   };
   return { root, start, refresh };
