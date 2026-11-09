@@ -902,7 +902,7 @@ export function openBattle(b0, opts = {}) {
     el.timer.classList.toggle('hot', s <= 10);
   };
 
-  const modeLabel = lg ? `${lg.roam ? '방랑 전설' : '전설의 포켓몬'} · 배틀로 지치게 한 뒤 잡기` : `${{ cpu: '연습 배틀', team: '친구 팀 (AI)', pvp: '실시간 배틀' }[b.mode]} · ${FMT[b.format]?.label || '1 대 1'}`;
+  const modeLabel = lg ? `${lg.roam ? '방랑 전설' : '전설'} 배틀 · 이기면 잡기` : `${{ cpu: '연습 배틀', team: '친구 팀 (AI)', pvp: '실시간 배틀' }[b.mode]} · ${FMT[b.format]?.label || '1 대 1'}`;
   const pads = h('div.bt-layer');
   el.field = h(`div.bt-field.bg-${BT_ENV_BG[b.field?.env] || BT_BG[b.id % BT_BG.length]}${dbl ? '.dbl' : ''}`,
     el.ter, pads, ...SL.map((x) => x.spr), el.wx, el.env,

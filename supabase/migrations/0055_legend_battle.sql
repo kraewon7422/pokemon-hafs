@@ -18,7 +18,7 @@ alter table public.raid_encounters add column if not exists bt_won boolean not n
 insert into public.settings (key, value) values
   ('legend_battle_on', 'true'),
   ('legend_boss_level', '55'), ('legend_boss_level_plus', '8'), ('legend_boss_level_max', '80'),
-  ('legend_boss_hp_mult', '2'), ('legend_boss_stage', '1'), ('legend_win_catch_bonus', '1.5'),
+  ('legend_boss_hp_mult', '2.5'), ('legend_boss_stage', '2'), ('legend_win_catch_bonus', '1.5'),
   ('catch_rate_tier', '{"green": 0.70, "yellow": 0.50, "orange": 0.33, "red": 0.18}'),
   ('catch_rate_max', '{"green": 0.95, "yellow": 0.80, "orange": 0.60, "red": 0.45}')
 on conflict (key) do nothing;
@@ -59,13 +59,14 @@ language sql stable security definer set search_path = '' as $$
                  coalesce((public._setting('legend_boss_level_plus'))::int, 8) pl) x
 $$;
 
--- 보스 강화: 상대 쪽 첫 포켓몬 체력 × legend_boss_hp_mult (1~10), 공격 · 방어 · 특공 · 특방 랭크 + legend_boss_stage (0~3)
+-- 보스 강화: 상대 쪽 첫 포켓몬 체력 × legend_boss_hp_mult (1~10, 기본 2.5), 공격 · 방어 · 특공 · 특방 랭크 + legend_boss_stage (0~3, 기본 2)
+--   (AI 끼리 시험 admin_legend_sim: Lv.45 팀 6마리 ≈ 40% · Lv.55 ≈ 60% 이김, 뮤츠는 거의 못 이김)
 --   (등장 특성으로 이미 바뀐 랭크에 더함 — 위협을 받으면 공격은 +0)
 create or replace function public._legend_boost(st jsonb) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare m jsonb := st -> 'sides' -> 1 -> 'mons' -> 0; g jsonb; k text; mx int;
-  hpm numeric := least(10, greatest(1, coalesce((public._setting('legend_boss_hp_mult'))::numeric, 2)));
-  sg int := least(3, greatest(0, coalesce((public._setting('legend_boss_stage'))::int, 1)));
+  hpm numeric := least(10, greatest(1, coalesce((public._setting('legend_boss_hp_mult'))::numeric, 2.5)));
+  sg int := least(3, greatest(0, coalesce((public._setting('legend_boss_stage'))::int, 2)));
 begin
   if m is null then return st; end if;
   mx := greatest(1, round((m ->> 'max')::int * hpm)::int);

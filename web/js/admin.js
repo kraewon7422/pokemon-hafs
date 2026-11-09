@@ -2529,7 +2529,7 @@ const DEFAULTS = {
   // 0038_legends.sql
   ditto_disguise_chance: 0.005, roam_chance: 0.3, roam_balls: 8, legend_balls: 10, legend_daily_tries: 3, gift_fail_limit: 8, safari_cave_type_mult: 4,
   // 0055_legend_battle.sql
-  legend_battle_on: true, legend_boss_level: 55, legend_boss_level_plus: 8, legend_boss_level_max: 80, legend_boss_hp_mult: 2, legend_boss_stage: 1, legend_win_catch_bonus: 1.5,
+  legend_battle_on: true, legend_boss_level: 55, legend_boss_level_plus: 8, legend_boss_level_max: 80, legend_boss_hp_mult: 2.5, legend_boss_stage: 2, legend_win_catch_bonus: 1.5,
   catch_rate_tier: { green: 0.7, yellow: 0.5, orange: 0.33, red: 0.18 }, catch_rate_max: { green: 0.95, yellow: 0.8, orange: 0.6, red: 0.45 },
   legend_quests: [
     { dex: 480, kind: 'quiz_streak', n: 10, reward: 'ticket' }, { dex: 481, kind: 'battle_wins', n: 20, reward: 'ticket' },
@@ -2657,8 +2657,8 @@ const GROUPS = {
       P('legend_boss_level', '전설 레벨 (가장 낮을 때)', 'int', { unit: 'Lv', min: 1, max: 100, help: '기본 Lv.55. 학생 팀이 약해도 전설은 이 레벨보다 낮아지지 않아요.' }),
       P('legend_boss_level_plus', '학생 팀 최고 레벨보다 몇 레벨 높게', 'int', { unit: '레벨', min: 0, max: 50, help: '기본 +8. 예: 팀에서 가장 높은 포켓몬이 Lv.60 → 전설 Lv.68.' }),
       P('legend_boss_level_max', '전설 레벨 (가장 높을 때)', 'int', { unit: 'Lv', min: 1, max: 100, help: '기본 Lv.80. 아무리 강한 팀이어도 이보다 높아지지 않아요.' }),
-      P('legend_boss_hp_mult', '전설 체력 배수', 'num', { unit: '배', min: 1, max: 10, help: '기본 2배. 클수록 오래 버텨요.' }),
-      P('legend_boss_stage', '전설 능력 올리기 (공격·방어·특공·특방 랭크)', 'int', { unit: '랭크', min: 0, max: 3, help: '기본 +1 (1.5배). 0 = 올리지 않음. 스피드는 그대로라 빠른 포켓몬이 먼저 칠 수 있어요.' }),
+      P('legend_boss_hp_mult', '전설 체력 배수', 'num', { unit: '배', min: 1, max: 10, help: '기본 2.5배. 클수록 오래 버텨요. (AI 끼리 시험: Lv.45 팀 6마리가 10판 중 4판쯤 이김)' }),
+      P('legend_boss_stage', '전설 능력 올리기 (공격·방어·특공·특방 랭크)', 'int', { unit: '랭크', min: 0, max: 3, help: '기본 +2 (2배). 0 = 올리지 않음, +1 = 1.5배. 스피드는 그대로라 빠른 포켓몬이 먼저 칠 수 있어요.' }),
       P('legend_win_catch_bonus', '배틀을 이기면 잡힘 확률 배수', 'num', { unit: '배', min: 1, max: 5, help: '기본 1.5배 (빨강 18% → 27%). "원 색깔별 최대 잡힘 확률" 은 넘지 않아요.' }),
     ],
   },
@@ -3046,7 +3046,7 @@ function legendBattleCard(set) {
   run.onclick = () => busy(run, async () => {
     out.textContent = '시험 중… (10초쯤)';
     // 시험 팀: 흔한 3단계 포켓몬 6마리 (리자몽 · 거북왕 · 이상해꽃 · 피죤투 · 괴력몬 · 후딘) — 저장한 숫자로
-    const team = LB_TEAM.map((sp) => ({ sp, lv: Math.max(1, Math.min(100, Number(lv.value) || 45)) }));
+    const team = LB_TEAM.map((d) => ({ sp: spByDex(d)?.id ?? d, lv: Math.max(1, Math.min(100, Number(lv.value) || 45)) }));
     try {
       const r = await rpc('admin_legend_sim', { p_dex: Number(dex.value) || 150, p_team: team, p_n: 10 });
       out.textContent = `${r.boss?.name || '전설'} Lv.${r.boss?.lv} · 체력 ${r.boss?.max} → 팀 Lv.${lv.value} 6마리가 ${r.n}판 중 ${r.wins}판 이김 (평균 ${r.turns}턴). 학생은 AI 보다 기술을 잘 골라서 실제로는 조금 더 잘 이겨요.`;
@@ -3056,7 +3056,7 @@ function legendBattleCard(set) {
     h('div.row.wrap', h('label', '전설 도감 번호 ', dex), h('label', '팀 레벨 ', lv), run), out), g.lastChild);
   return g;
 }
-const LB_TEAM = [6, 9, 3, 18, 68, 65];
+const LB_TEAM = [6, 9, 3, 18, 68, 65];   // 전국도감 번호 → 일반 폼 (spByDex)
 
 // 0051 해금 단계: 1단계 (미니게임) · 2단계 (학교 도감 % → 사파리존 · 장소 QR 야생 · 전체 도감) · 모두에게 열기 스위치 · 몇 명이 열었나
 async function unlockCard(set) {

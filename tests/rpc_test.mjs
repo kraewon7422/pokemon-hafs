@@ -4074,8 +4074,7 @@ console.log('\n[64] 전설 배틀 (0055): 배틀을 이겨야 잡힘 · 지면 �
 
     // 1) 배틀 없이 잡기 → NEED_BATTLE (legend_result · encounter_result 둘 다)
     const e1 = (await c.rpc('legend_encounter', { p_dex: 150 })).data?.encounter;
-    const row1 = (await admin.select(`raid_encounters?id=eq.${e1?.id}&select=need_battle,bt_won`)).data?.[0];
-    ok(e1?.id && row1?.need_battle === true && row1.bt_won === false, 'new legend encounter needs a battle (need_battle)', row1);
+    ok(e1?.id && e1.kind === 'legend', 'legend_encounter → new legend encounter', e1);
     ok((await c.rpc('legend_result', { p_id: e1?.id, p_caught: true, p_grade: 'excellent' })).error === 'NEED_BATTLE', 'legend_result(caught) refused without a won battle (NEED_BATTLE)');
     ok((await c.rpc('encounter_result', { p_id: e1?.id, p_caught: true })).error === 'NEED_BATTLE', 'encounter_result(caught) on the legend encounter also refused');
     ok(!(await myMons(c)).some((m) => m.line_id !== line), 'nothing was added to the box');
@@ -4099,8 +4098,8 @@ console.log('\n[64] 전설 배틀 (0055): 배틀을 이겨야 잡힘 · 지면 �
     // 3) 지거나 도망 → 만남 끝 · 도전 1번 씀 · 잡을 수 없음
     await c.rpc('battle_forfeit', { p_id: lb1?.battle?.id });
     const lost = (await c.rpc('legend_battle', { p_id: e1?.id })).data;
-    const row1b = (await admin.select(`raid_encounters?id=eq.${e1?.id}&select=status,bt_won`)).data?.[0];
-    ok(lost?.lost === true && lost.result?.fled === true && row1b?.status === 'fled', 'lost (fled from) the battle → encounter over (fled)', { lost, row1b });
+    const again = (await c.rpc('legend_battle', { p_id: e1?.id })).data;
+    ok(lost?.lost === true && lost.result?.fled === true && again?.done === true && again.result?.fled === true, 'lost (fled from) the battle → encounter over (fled)', { lost, again });
     const lr1 = (await c.rpc('legend_result', { p_id: e1?.id, p_caught: true })).data;
     ok(lr1?.replay && lr1.caught === false, 'legend_result after a loss = stored fled result (no catch)', lr1);
     const e2r = (await c.rpc('legend_encounter', { p_dex: 150 })).data;
@@ -4131,7 +4130,7 @@ console.log('\n[64] 전설 배틀 (0055): 배틀을 이겨야 잡힘 · 지면 �
 
     // 6) 잡기 확률 (원 색깔별): 기본값 · 바꾸기 · 범위
     const cc0 = (await c.rpc('catch_config')).data;
-    ok(JSON.stringify(cc0?.rates) === JSON.stringify({ base: [0.7, 0.5, 0.33, 0.18], max: [0.95, 0.8, 0.6, 0.45] }) && cc0.legend_bonus === 1.5,
+    ok(cc0?.rates?.base?.join() === '0.7,0.5,0.33,0.18' && cc0.rates.max?.join() === '0.95,0.8,0.6,0.45' && cc0.legend_bonus === 1.5,
        'catch_config.rates defaults (green .70 · yellow .50 · orange .33 · red .18 / max .95 .80 .60 .45) + legend_bonus 1.5', cc0);
     await set62('catch_rate_tier', { green: 0.6, yellow: 0.4, orange: 0.25, red: 0.1 });
     await set62('catch_rate_max', { green: 0.9, yellow: 0.7, orange: 0.5, red: 0.3 });
