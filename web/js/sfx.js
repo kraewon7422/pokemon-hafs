@@ -10,10 +10,7 @@ let bgmOn = lsGet('bgm') != null ? lsGet('bgm') === '1' : !oldMute;
 // iPhone Safari: 소리는 손가락을 뗄 때(touchend/click) 만 켤 수 있고, 전화·화면 잠금 뒤에는 'interrupted' 로 멈춤 → 매번 다시 깨움.
 // 처음 만들 때 아주 짧은 빈 소리를 한 번 틀어야 옛 iOS 에서도 열림
 export function unlockAudio() {
-  if (ctx) {
-    if (ctx.state !== 'running' && !document.hidden) ctx.resume?.().then(kick, () => {});
-    return;
-  }
+  if (ctx) { if (yielded) front(); else if (ctx.state !== 'running') wake(); return; }   // 다른 창에 음악을 넘겼던 창을 누르면 다시 가져옴
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) return;
   try {
@@ -162,6 +159,12 @@ let base = null;           // 앱이 정한 기본 곡 (학생 앱 = 'main'. 부
 const stack = [];          // 배틀·잡기 장면이 잠깐 바꾼 곡 (맨 위가 이김, name undefined = 아래 것 그대로)
 let bus = null;
 let voice = null;          // 지금 나오는 곡 { name, g, srcs:Set, timer, stopped }
+const live = new Set();    // 소리를 내는 중인 곡 전부 (넘겨주며 페이드아웃 중인 곡 포함) — ui8: 곡이 둘 겹쳐 나오지 않게 시작할 때마다 정리
+let retryTimer = 0, retryMs = 2000;   // 곡을 못 받았을 때 (오프라인 · 받는 중 끊김) 다시 해 보기
+let resuming = null;       // ctx.resume() 하나만 (visibilitychange · pageshow · focus · 터치가 한꺼번에 와도)
+let yielded = false;       // 같은 앱의 다른 창/탭이 음악을 가져감 (BroadcastChannel) → 이 창은 조용히
+const ME = Math.random().toString(36).slice(2);
+const chan = (() => { try { return new BroadcastChannel('hafs-bgm'); } catch { return null; } })();
 let gen = 0;               // 곡 바꾸기 순서 (늦게 풀린 곡이 새 요청을 덮지 않게)
 let kickTimer = 0;
 const bytes = {};          // name → Promise<ArrayBuffer> (압축된 파일, 작음)
@@ -224,6 +227,9 @@ function startVoice(name, buf, at = 0) {
   const ls = tr.next ? Math.min(tr.startAt || 0, end - 2 * tr.xf - 1) : Math.min(tr.loopStart, Math.max(0, end - 2 * tr.xf - 1));
   const g = ctx.createGain(); g.connect(bus);
   const v = { name, g, srcs: new Set(), timer: 0, pre: 0, stopped: false, loops: 0, t0: 0 };
+  // ui8: 곡은 언제나 하나 — 넘겨받는 곡 (at) 이 아니면 아직 소리 내는 곡을 모두 페이드아웃
+  if (!at) for (const o of live) stopVoice(o);
+  live.add(v);
   const seg = (when, from, fadeIn) => {
     if (v.stopped) return;
     const s = ctx.createBufferSource(); s.buffer = buf;
@@ -236,31 +242,28 @@ function startVoice(name, buf, at = 0) {
     s.start(when, from);
     s.stop(endAt + 0.05);
     v.srcs.add(s); v.loops++;
-    s.onended = () => { v.srcs.delete(s); try { sg.disconnect(); } catch { /* */ } };
+    s.onended = () => { v.srcs.delete(s); try { sg.disconnect(); } catch { /* */ } if (v.stopped && !v.srcs.size) retire(v); };
     const nextAt = endAt - tr.xf;
-    if (tr.next) {
-      // 다음 곡은 끝나기 25초 전에 받아서 풀어 둠 (처음부터 4곡을 다 받지 않게)
-      clearTimeout(v.pre);
-      v.pre = setTimeout(() => { if (!v.stopped) decode(tr.next).catch(() => {}); }, Math.max(0, (nextAt - 25 - ctx.currentTime) * 1000));
-    }
-    // 다음 구간은 2초 전에 예약 (화면이 꺼져 타이머가 늦어져도 ctx 도 멈추므로 괜찮음)
-    v.timer = setTimeout(async () => {
-      if (v.stopped) return;
+    // ui8: 타이머는 ctx 시계로 (ctxAt). 예전엔 벽시계 setTimeout 이라 화면이 꺼진 동안 (ctx 멈춤) 다음 곡으로 일찍 넘기고
+    //   앞 곡의 소리 줄을 벽시계로 끊어 버려서, 돌아오면 수십 초 동안 음악이 안 나왔음
+    // 다음 곡은 끝나기 25초 전에 받아서 풀어 둠 (처음부터 4곡을 다 받지 않게)
+    if (tr.next) ctxAt(v, 'pre', nextAt - 25, () => { decode(tr.next).catch(() => {}); });
+    // 다음 구간은 2초 전에 예약
+    ctxAt(v, 'timer', nextAt - 2, async () => {
       if (tr.next) {
         let nb = null;
         try { nb = await decode(tr.next); } catch { /* 오프라인 → 같은 곡 다시 */ }
         if (v.stopped) return;
-        if (nb && voice === v && ctx.currentTime < nextAt - 0.05) {
-          // 넘겨줌: 이 곡은 스스로 페이드아웃 (sg 램프) 하고 끝남, 다음 곡은 nextAt 에 페이드인
-          v.stopped = true; clearTimeout(v.pre);
-          voice = startVoice(tr.next, nb, nextAt);
+        if (nb && voice === v) {
+          // 넘겨줌: 이 곡은 스스로 페이드아웃 (sg 램프) 하고 끝남 (마지막 소리가 끝나면 retire), 다음 곡은 nextAt 에 페이드인
+          v.stopped = true; clearTimeout(v.pre); clearTimeout(v.timer);
+          voice = startVoice(tr.next, nb, Math.max(nextAt, ctx.currentTime + 0.03));
           rot = tr.next; lsSet('bgmRot', rot);
-          setTimeout(() => { try { v.g.disconnect(); } catch { /* */ } if (voice?.name !== name) delete decoded[name]; }, (endAt - ctx.currentTime + 0.5) * 1000);
           return;
         }
       }
-      seg(nextAt, ls, true);
-    }, Math.max(0, (nextAt - ctx.currentTime - 2) * 1000));
+      seg(Math.max(nextAt, ctx.currentTime + 0.03), ls, true);
+    });
   };
   const from0 = Math.min(tr.startAt || 0, ls);
   const when = at || ctx.currentTime + 0.03;
@@ -268,32 +271,55 @@ function startVoice(name, buf, at = 0) {
   if (at) { g.gain.setValueAtTime(tr.gain, ctx.currentTime); seg(when, from0, true); } else { g.gain.value = 0; seg(when, from0, false); fadeTo(g, tr.gain, FADE); }
   return v;
 }
+// ctx 시각 t 가 되면 fn (ctx 가 멈춘 동안은 ctx 시계도 멈추므로 기다림). v.stopped 이면 안 함. v[key] 에 하나만
+function ctxAt(v, key, t, fn) {
+  clearTimeout(v[key]);
+  const tick = () => {
+    if (v.stopped) return;
+    const d = t - ctx.currentTime;
+    if (d > 0.02 || ctx.state !== 'running') { v[key] = setTimeout(tick, Math.min(Math.max(250, d * 1000), 30000)); return; }
+    fn();
+  };
+  tick();
+}
+// 곡 하나의 마지막 소리가 끝남 → 줄을 끊고, 안 쓰는 곡은 메모리에서 뺌 (압축 파일은 남김)
+function retire(v) {
+  live.delete(v);
+  try { v.g.disconnect(); } catch { /* */ }
+  if (voice?.name !== v.name && !(groupOf(wanted()) === v.name) && !(pinUntil[v.name] > performance.now())) delete decoded[v.name];
+}
 function stopVoice(v, dur = FADE) {
-  if (!v || v.stopped) return;
-  v.stopped = true;
+  if (!v) return;
+  v.stopped = true;          // 넘겨주며 스스로 페이드아웃 중인 곡도 같이 끝냄 (곡 바꾸기가 겹칠 때)
   clearTimeout(v.timer); clearTimeout(v.pre);
+  if (!v.srcs.size) { retire(v); return; }
   fadeTo(v.g, 0, dur);
   const at = ctx.currentTime + dur + 0.05;
-  for (const s of v.srcs) { try { s.stop(at); } catch { /* */ } }
-  setTimeout(() => {
-    try { v.g.disconnect(); } catch { /* */ }
-    if (voice?.name !== v.name && !(groupOf(wanted()) === v.name) && !(pinUntil[v.name] > performance.now())) delete decoded[v.name];   // 안 쓰는 곡은 메모리에서 뺌 (압축 파일은 남김)
-  }, (dur + 0.3) * 1000);
+  for (const s of v.srcs) { try { s.stop(at); } catch { /* 이미 끝남 */ } }
 }
 
+// 지금 곡이 정말 소리를 내고 있는지 (소리 줄이 끊긴 채 남은 곡을 '나오는 중' 으로 보지 않게)
+const alive = (v) => !!v && !v.stopped && v.srcs.size > 0;
 async function applyBgm() {
-  if (!ctx || ctx.state !== 'running' || document.hidden) return;   // 첫 터치 전 · 화면 꺼짐 → 나중에 다시
+  if (!ctx || ctx.state !== 'running' || document.hidden) return;   // 첫 터치 전 · 화면 꺼짐 → 나중에 다시 (wake / onstatechange 가 kick)
   if (!bus) { bus = ctx.createGain(); bus.gain.value = BUS; bus.connect(ctx.destination); }
-  const target = bgmOn ? wanted() : null;
+  clearTimeout(retryTimer);
+  const target = bgmOn && !yielded ? wanted() : null;
   const my = ++gen;   // 먼저 올림: 앞에서 풀고 있던 곡이 끝나도 이 요청을 덮지 않게
-  if (groupOf(voice?.name ?? null) === target) return;   // 메인 곡 중 아무거나 나오고 있으면 그대로
-  if (!target || !TRACKS[target]) { stopVoice(voice); voice = null; return; }
+  if (alive(voice) && groupOf(voice.name) === target) return;   // 메인 곡 중 아무거나 나오고 있으면 그대로
+  if (!target || !TRACKS[target]) { for (const o of live) stopVoice(o); voice = null; return; }
   const pick = target === 'main' ? rot : target;
   let buf;
-  try { buf = await decode(pick); } catch { return; }   // 오프라인 · 못 푸는 파일 → 음악 없이
-  if (my !== gen || !ctx || ctx.state !== 'running') return;
-  stopVoice(voice);   // 새 곡이 준비된 뒤에 겹쳐 바꿈 (그동안 앞 곡은 계속)
-  voice = startVoice(pick, buf);
+  try { buf = await decode(pick); } catch {
+    // 오프라인 · 받다 끊김 → 조금 뒤에 다시 (2 → 4 → … 30초), 그동안 앞 곡은 그대로
+    if (my === gen) { retryTimer = setTimeout(kick, retryMs); retryMs = Math.min(retryMs * 2, 30000); }
+    return;
+  }
+  retryMs = 2000;
+  if (my !== gen || !ctx || ctx.state !== 'running' || document.hidden) return;   // 그사이 다른 요청 · 화면 꺼짐 → 그쪽 / 돌아올 때
+  if (alive(voice) && groupOf(voice.name) === target) return;   // 그사이 (넘겨주기 등으로) 이미 나오고 있음 → 하나만
+  voice = startVoice(pick, buf);   // 새 곡이 준비된 뒤에 겹쳐 바꿈 (startVoice 가 앞 곡들을 페이드아웃)
+  claim();
   for (let i = startWait.length - 1; i >= 0; i--) if (startWait[i].name === pick) startWait.splice(i, 1)[0].res(voice);   // bgmCue: 시작 시각을 바로 알려 줌
   // 기본 곡이 나오기 시작하면 배틀 곡 파일을 미리 받아 둠 (처음 배틀에서 늦지 않게, 압축 파일만)
   if (target === 'main') setTimeout(() => { fetchBytes('battle').catch(() => {}); }, 8000);
@@ -357,15 +383,31 @@ export function bgmBeat(name, minMs = 0) {
 }
 
 // 화면이 꺼지거나 다른 앱으로 가면 멈춤, 돌아오면 이어서 (iOS 는 터치해야 다시 켜질 수도 → unlockAudio 가 처리)
-document.addEventListener('visibilitychange', () => {
-  if (!ctx) return;
-  if (document.hidden) { if (ctx.state === 'running') ctx.suspend?.().catch?.(() => {}); return; }
-  ctx.resume?.().then(() => {
+// ui8: visibilitychange · pageshow · focus · 터치가 한꺼번에 와도 resume 은 하나만 (resuming), 숨은 동안 resume 이 끝나면 다시 멈춤.
+//   예전엔 숨기 → 보이기 → 숨기를 빨리 하면 (resume 이 끝나기 전 state = 'suspended' 라 suspend 를 건너뜀) 숨은 탭에서 음악이 계속 났음
+function sleepCtx() { if (ctx && ctx.state !== 'closed') ctx.suspend?.().catch?.(() => {}); }
+function wake() {
+  if (!ctx || document.hidden) return;
+  if (ctx.state === 'running') { kick(); return; }
+  if (resuming) return;
+  resuming = Promise.resolve(ctx.resume?.()).then(() => {
+    resuming = null;
+    if (document.hidden) { sleepCtx(); return; }
     if (bus) { const t = ctx.currentTime; bus.gain.cancelScheduledValues(t); bus.gain.setValueAtTime(0, t); bus.gain.linearRampToValueAtTime(BUS, t + 0.5); }
     kick();
-  }, () => {});
+  }, () => { resuming = null; });
+}
+// 같은 앱 창이 둘 (PC 에서 설치한 앱 창 + 브라우저 탭 · QR 링크로 연 새 창): 보이는/누른 창이 음악을 가져가고 다른 창은 조용히
+function claim() { if (bgmOn && wanted()) chan?.postMessage({ claim: ME }); }
+if (chan) chan.onmessage = (e) => { if (e.data?.claim && e.data.claim !== ME && !yielded) { yielded = true; kick(); } };
+function front() { if (document.hidden) return; if (yielded) { yielded = false; kick(); } claim(); wake(); }
+document.addEventListener('visibilitychange', () => {
+  if (!ctx) return;
+  if (document.hidden) { sleepCtx(); return; }
+  front();
 });
-window.addEventListener('pageshow', () => { if (ctx && !document.hidden) unlockAudio(); });
+window.addEventListener('pageshow', () => { if (ctx) front(); });
+window.addEventListener('focus', () => { if (ctx) front(); });
 
 // 시험용 (개발자 도구 · 자동 시험): import('./js/sfx.js').then((m) => m.__bgm())
-export const __bgm = () => ({ t: ctx ? +ctx.currentTime.toFixed(3) : 0, rot, ctx: ctx?.state ?? null, rate: ctx?.sampleRate, want: wanted(), playing: voice?.name ?? null, gain: voice ? +voice.g.gain.value.toFixed(3) : 0, loops: voice?.loops || 0, bgmOn, sfxOn, decoded: Object.keys(decoded), stack: stack.length });
+export const __bgm = () => ({ t: ctx ? +ctx.currentTime.toFixed(3) : 0, rot, ctx: ctx?.state ?? null, rate: ctx?.sampleRate, want: wanted(), playing: voice?.name ?? null, gain: voice ? +voice.g.gain.value.toFixed(3) : 0, loops: voice?.loops || 0, bgmOn, sfxOn, decoded: Object.keys(decoded), stack: stack.length, live: live.size, yielded });

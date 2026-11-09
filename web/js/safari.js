@@ -192,10 +192,12 @@ function prerender(sheet, f, m) {
       const c = R[y][x], X = x * TS, Y = y * TS;
       if (m.kind === 'ultra') {
         if (c === 'X') { put(`uvoid${(f + x + y) & 1}`, X, Y); continue; }
-        put(`uplat${maskOf(x, y, (k) => k !== 'X')}`, X, Y);
-        if (c === '=') put('upath', X, Y);
+        const plat = (k) => k !== 'X', mk = maskOf(x, y, plat);
+        put(`uplat${mk}`, X, Y);
+        if (c === '=') { put('upath', X, Y); put(`upathe${mk}`, X, Y); }   // ui8: 빛의 길도 빈 우주 쪽 가장자리
         else if (c === 'K') put(`ucrystal${(x + y) & 1 ? 'B' : 'A'}`, X, Y);
         else if (c === 'A') put('ustar', X, Y);          // 0050 별의 제단 무늬
+        for (const k of corners(x, y, mk, plat)) put(`uplatc${k}`, X, Y);   // ui8: 안쪽 모서리 (옆 칸 가장자리가 끊기지 않게)
         continue;
       }
       if (m.kind === 'beach') {      // 0040 해변: 모래 · 얕은 물 (물거품 테두리) · 깊은 바다 · 산호 · 바닷가 풀숲 · 바위 · 조개 (야자나무는 아래에서 따로)

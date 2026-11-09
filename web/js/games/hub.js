@@ -17,7 +17,7 @@ const partnerDex = () => { const p = partnerMon(); return p ? spIdOf(p) : 35; };
 // dex = 목록 그림 (species id — 전국도감 번호 아님): 라프라스 · 찌리리공 · 꼬마돌 · 디그다 · 파이리
 // fmt = 랭킹에 보이는 기록 모양, lower = 작을수록 좋음 (서버 _mg_lower 와 같게)
 export const GAMES = [
-  { id: 'surf', short: '서핑', title: '포켓몬 서핑', dex: 343, desc: '파도를 타고 바위·섬을 피해 멀리멀리! 뒤쫓아 오는 문어 포켓몬을 조심해요.',
+  { id: 'surf', short: '서핑', title: '포켓몬 서핑', dex: 343, desc: '파도를 타고 바위·섬을 피해 멀리멀리! 뒤쫓아 오는 대포무노를 조심해요.',
     fmt: (v) => `${v.toLocaleString()}m`, load: () => import('./surf.js') },
   { id: 'dodge', short: '폭탄', title: '폭탄 피하기', dex: 76, desc: '하늘에서 떨어지는 폭탄 포켓몬을 좌우로 피해요. 오래 버틸수록 점수가 올라가요.',
     fmt: (v) => `${v.toLocaleString()}점`, load: () => import('./dodge.js') },
@@ -25,7 +25,7 @@ export const GAMES = [
     fmt: (v) => `${(v / 1000).toFixed(2)}초`, lower: true, free: true, load: () => import('./maze.js') },
   { id: 'land', short: '땅따먹기', title: '땅따먹기', dex: 265, desc: '내 땅 밖으로 선을 그리고 돌아오면 그 안이 내 땅! 꼬리를 밟히면 목숨 하나 (3개). AI 3명과 90초 대결.',
     fmt: (v) => `${(v / 10).toFixed(1)}%`, load: () => import('./land.js') },
-  { id: 'cross', short: '등굣길', title: '포켓몬 등굣길', dex: 61, desc: '내 포켓몬과 학교 가는 길! 학교 → 바닷가 → 화산 → 우주를 한 칸씩 건너요. 멈춰 있으면 지각 괴물이 잡아가요.',
+  { id: 'cross', short: '등굣길', title: '포켓몬 등굣길', dex: 61, desc: '내 포켓몬과 학교 가는 길! 학교 → 바닷가 → 화산 → 우주를 한 칸씩 건너요. 멈춰 있으면 레지기가스가 잡아가요.',
     fmt: (v) => `${v.toLocaleString()}칸`, load: () => import('./cross.js') },
 ];
 // 오프라인 기록: 인터넷이 없을 때 끝난 판은 폰에 (게임마다 가장 좋은 것 하나만) 두었다가 연결되면 보냄

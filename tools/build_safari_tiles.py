@@ -17,6 +17,7 @@
   cladderD cladderU cexit      내려가는/올라가는 사다리 · 밖으로 나가는 밝은 칸
   cbraille mouth               벽면 점자 (덧그림) · 바깥 바위벽 동굴 입구 (덧그림)
   uvoid<0-1> uplat<0-15>       울트라 스페이스 빈 우주 (별 반짝 2장) · 떠 있는 발판 (숫자 = 이웃도 발판)
+  uplatc<nw|ne|sw|se> upathe<0-15>  (ui8) 발판 안쪽 모서리 덧그림 · 빛의 길 가장자리 덧그림 — 둘째 줄 큰 그림 오른쪽 빈 곳 (x 192~255)
   upath ucrystalA ucrystalB    밝은 빛의 길 (덧그림) · 빛나는 수정 (청록 / 분홍)
   worm<0-3>                    울트라 워프홀 소용돌이 32×32 (4장 돌기)
   sfloor<0-1> saltar sstairs<L|R|C>  제단 방 돌바닥 · 흰 대리석 제단 · 돌계단 (난간 쪽)
@@ -737,14 +738,42 @@ def uplat(mask):
             if (x * 7 + y * 3) % 17 == 0:
                 c = UP['p2']
             t.px(x, y, c)
+    return uedge(t, mask)
+
+
+def uedge(t, mask):
+    """발판 가장자리 (빈 우주 쪽): 위 · 옆 = 밝은 2줄, 아래 = 밝은 줄 + 두께 그늘 + 빈 우주.
+    ui8: 아래 두께를 옆줄 다음에 그림 (예전엔 옆줄이 두께 줄 위로 2도트 삐져나와 아래 모서리가 어긋났음)."""
     N, E, S, W = mask & 1, mask & 2, mask & 4, mask & 8
     for i in range(16):
         if not N: t.px(i, 0, UP['pE']); t.px(i, 1, UP['pe'])
         if not W: t.px(0, i, UP['pE']); t.px(1, i, UP['pe'])
         if not E: t.px(15, i, UP['pE']); t.px(14, i, UP['pe'])
-        if not S:   # 발판 두께 (아래로 떨어지는 그늘)
+    if not S:   # 발판 두께 (아래로 떨어지는 그늘)
+        for i in range(16):
             t.px(i, 13, UP['pe']); t.px(i, 14, UP['p2']); t.px(i, 15, UP['v0'])
+        if not W: t.px(0, 13, UP['pE'])        # 옆 밝은 줄이 아래 밝은 줄과 만나는 바깥 모서리
+        if not E: t.px(15, 13, UP['pE'])
     return t
+
+
+def uplatc(c):
+    """(ui8) 발판 안쪽 모서리 덧그림: 두 옆은 발판인데 대각선만 빈 우주 → 옆 칸들의 밝은 줄이 이 칸 모서리에서 이어지게."""
+    t = Tile()
+    if c in ('nw', 'ne'):
+        x0, x1 = (0, 1) if c == 'nw' else (15, 14)
+        t.px(x0, 0, UP['pE']); t.px(x1, 0, UP['pe']); t.px(x0, 1, UP['pe']); t.px(x1, 1, UP['pe'])
+    else:   # 아래 모서리: 옆 칸의 두께 줄 (13 밝은 줄) 이 아래 칸의 옆줄로 꺾여 내려감
+        x0, x1 = (0, 1) if c == 'sw' else (15, 14)
+        t.px(x0, 13, UP['pE']); t.px(x1, 13, UP['pe'])
+        for y in (14, 15):
+            t.px(x0, y, UP['pE']); t.px(x1, y, UP['pe'])
+    return t
+
+
+def upathe(mask):
+    """(ui8) 빛의 길 가장자리 덧그림: 길은 칸을 다 덮어서 빈 우주 쪽 가장자리가 없었음 → 발판과 같은 가장자리를 길 위에."""
+    return uedge(Tile(), mask)
 
 
 def upath():
@@ -2792,10 +2821,19 @@ def build():
     sheet.paste(ddune().im, (208, rows * TS))           # 사막 모래 언덕 48×32 (3×2 칸, 왼쪽 위 칸 D 에 그림)
     idx['ddune'] = [208, rows * TS, 48, 32]
     y2 = rows * TS + 32                                 # 0048: 둘째 줄 큰 그림 (설원 · 용암 · 발전소)
-    for name, im, x in [('snpine', snpine(), 0), ('lvtree', lvtree(), 16), ('sncabin', sncabin(), 32), ('plgen', plgen(), 64), ('plbuild', plbuild(), 96),
-                        ('tapu', tapu(), 192), ('swordst', swordst(), 208)]:   # 0050: 수호신의 돌기둥 16×32 · 검이 꽂힌 바위 16×24
+    for name, im, x in [('snpine', snpine(), 0), ('lvtree', lvtree(), 16), ('sncabin', sncabin(), 32), ('plgen', plgen(), 64), ('plbuild', plbuild(), 96)]:
         sheet.paste(im.im, (x, y2))
         idx[name] = [x, y2, im.w, im.h]
+    for name, im, x in [('tapu', tapu(), 0), ('swordst', swordst(), 16)]:   # 0050: 둘째 줄 왼쪽 아래 빈 곳 (y2+40~) — 수호신의 돌기둥 16×32 · 검이 꽂힌 바위 16×24
+        sheet.paste(im.im, (x, y2 + 40))
+        idx[name] = [x, y2 + 40, im.w, im.h]
+    # ui8: 울트라 발판 안쪽 모서리 4장 + 빛의 길 가장자리 16장 = 둘째 줄 오른쪽 빈 곳 (x 192~255 · 4칸 × 5줄) → 앞 그림 자리 · 그림판 크기 그대로
+    extra = [(f'uplatc{c}', uplatc(c)) for c in ('nw', 'ne', 'sw', 'se')] + [(f'upathe{m}', upathe(m)) for m in range(16)]
+    for i, (name, t) in enumerate(extra):
+        x, y = 192 + (i % 4) * TS, y2 + (i // 4) * TS
+        assert y + TS <= sheet.height
+        sheet.paste(t.im, (x, y))
+        idx[name] = [x, y, TS, TS]
     return sheet, idx
 
 

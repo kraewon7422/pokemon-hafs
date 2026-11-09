@@ -1,7 +1,7 @@
 """진짜 포켓몬으로 바꾸기 (0032) → supabase/seed_pokemon.sql + .work/pokemon/sprites.json
 
 자료: PokeAPI CSV (https://github.com/PokeAPI/pokeapi/tree/master/data/v2/csv) 를 .work/pokeapi/ 에 받아 둔 것.
-  - 1~7세대 (도감 1~809) 전부. 진화 계열 = 한 줄(1~3단계). 갈래 진화는 첫 갈래가 계열을 잇고, 나머지는 따로 1단계 계열.
+  - 1~7세대 (도감 1~809) 전부 (0049: 멜탄 808 · 멜메탈 809 는 뺌, 계열 440 은 빈 번호). 진화 계열 = 한 줄(1~3단계). 갈래 진화는 첫 갈래가 계열을 잇고, 나머지는 따로 1단계 계열.
   - 갈래 진화 (0037): 첫 갈래가 아닌 진화 (이브이 → 쥬피썬더 …)도 원래 계열 안에 '갈래 종'으로 한 번 더 넣음
     (species.id = 10000 + 전국도감 번호, 같은 계열 · 다음 단계). 진화 길은 public.evolutions (from → to, level | item).
     따로 1단계 계열로 있던 것 (야생 쥬피썬더 등)은 그대로 둠 → 도감은 전국도감 번호마다 한 칸.
@@ -289,6 +289,12 @@ for _e in EVENT:                     # 이벤트 포켓몬 (0044): 야생 계열
     assert _e[1] == nid, ('이벤트 계열 번호', _e[1], nid)
     LINE_PATH[nid] = [_e[0]]
     nid += 1
+# 0049: 멜탄 · 멜메탈 (도감 808 · 809, 계열 440) 은 게임에서 뺌 — 계열 번호는 비워 둠 (다른 번호 · 이벤트 계열 441 · 442 는 그대로)
+REMOVED_DEX = {808, 809}
+REMOVED_LINES = sorted(l for l, p in LINE_PATH.items() if REMOVED_DEX.intersection(p))
+assert REMOVED_LINES == [440] and LINE_PATH[440] == [808, 809], ('멜탄 계열', REMOVED_LINES)
+for _l in REMOVED_LINES:
+    del LINE_PATH[_l]
 SPECIES_OF_DEX = {}       # 도감 번호 → (line, stage)
 for l, p in LINE_PATH.items():
     for i, s in enumerate(p):
@@ -835,7 +841,7 @@ def main():
     out = os.path.join(ROOT, 'supabase', 'seed_pokemon.sql')
     open(out, 'w', encoding='utf-8', newline='\n').write('\n'.join(S) + '\n')
     # 그림 올리기용 표 (tools/upload_pokemon_sprites.mjs): species.id → 전국도감 번호 · 영어 이름
-    ident = {int(r['id']): r['identifier'] for r in rd('pokemon_species') if int(r['id']) <= MAXDEX}
+    ident = {int(r['id']): r['identifier'] for r in rd('pokemon_species') if int(r['id']) <= MAXDEX and int(r['id']) not in REMOVED_DEX}
     forms = {}                                   # 이벤트 포켓몬 (0044): 도감 번호 → smogon gen5 그림 이름 (s<이름>.png, 색이 다른 것 s<이름>-s.png)
     for e in EVENT:
         ident[e[0]] = POKE[e[0]]['identifier']
@@ -846,7 +852,7 @@ def main():
     print(f'갈래 종 {len(BRANCHES)}: ' + ', '.join(f"{NAME[b[3]]}({b[0]}, 계열 {b[1]} {b[2]}단계, {'돌' if b[6] else 'Lv.' + str(b[5])})" for b in BRANCHES))
     print(f'{out}: lines {len(lines_sql)} (wild {sum(1 for x in lines_sql if x[4])}), species {len(species_rows)}, '
           f'moves {len(MOVES)}, learn {len(learn_rows)}, items {len(items)} (TM {len(TMS)})')
-    for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, 440] + [e[1] for e in EVENT]:
+    for l in list(range(1, 6)) + [20, 35, 36, 41, 42, 77, 79, 83, 84, 439] + [e[1] for e in EVENT]:
         print(' ', l, [NAME[s] for s in LINE_PATH[l]], evo_levels(LINE_PATH[l]), lines_sql[line_ids.index(l)][2:4])
 
 

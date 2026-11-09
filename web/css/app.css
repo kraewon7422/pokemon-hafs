@@ -548,11 +548,18 @@ details.box[open] > summary::after { content: ' ▴'; }
 .bt-spr.me.atk { animation: bt-atk-me .32s steps(3); }
 .bt-spr.foe.atk { animation: bt-atk-foe .32s steps(3); }
 .bt-spr.hit { animation: bt-hit .5s steps(2) 1; }
+.bt-spr.hit1 { animation: bt-hit1 .22s steps(2) 1; }   /* ui8: 여러 번 맞는 기술의 한 번 (짧게 → 번마다 따로 보임) */
+.bt-dmg { position: absolute; left: 50%; top: 18%; z-index: 4; pointer-events: none; translate: -50% 0; white-space: nowrap; line-height: 1;
+  font-size: var(--fs-m, 16px); color: #fff; text-shadow: 2px 0 #283048, -2px 0 #283048, 0 2px #283048, 0 -2px #283048;
+  animation: bt-dmg .8s steps(8) forwards; }
+@keyframes bt-dmg { 0% { transform: translate(calc(var(--k, 1) * 6px), 0); opacity: 1; } 70% { opacity: 1; } 100% { transform: translate(calc(var(--k, 1) * 14px), -28px); opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .bt-dmg { animation: none; } }
 .bt-spr.faint { animation: bt-faint .55s steps(5) forwards; }
 @keyframes bt-pop { from { transform: scale(.15); filter: brightness(6); } to { transform: none; filter: none; } }
 @keyframes bt-atk-me { 50% { transform: translate(16%, -8%); } }
 @keyframes bt-atk-foe { 50% { transform: translate(-16%, 8%); } }
 @keyframes bt-hit { 0%, 50% { opacity: .15; } 25%, 75% { opacity: 1; } }
+@keyframes bt-hit1 { 0% { opacity: .15; } 50% { opacity: 1; } }
 @keyframes bt-faint { to { transform: translateY(45%); opacity: 0; } }
 
 /* 능력 변화 (0039): 가는 줄무늬가 원뿔 모양으로 — 올라가면 빨강·주황이 위로 (위가 좁음), 내려가면 파랑이 아래로 (아래가 좁음).
@@ -1182,14 +1189,12 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .partner-pick small + small { font-size: 11px; color: #586890; }
 .sum-body { display: grid; gap: 6px; min-width: 0; }   /* 0036: 설명·제목이 한 줄에 붙지 않게 (320px) */
 
-/* 0037 도감 쪽 넘기기 + 지방 바로 가기 */
+/* 0037 도감 쪽 넘기기 */
 .dex-pager { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 8px; }
 .dex-pager .btn.small { min-width: 48px; min-height: 44px; }
 .dex-pager .dp-mid { display: grid; justify-items: center; text-align: center; line-height: 1.2; }
 .dex-pager .dp-mid small { font-size: var(--fs-s); color: #4a5268; white-space: nowrap; }
 .dex-event-note { margin: 0; font-size: var(--fs-s); text-align: center; color: #4a5268; word-break: keep-all; }   /* 0044 이벤트 포켓몬 (소포로만) */
-.dex-regions .chip { word-break: keep-all; white-space: nowrap; }
-.dex-regions .chip:disabled { opacity: .45; cursor: default; }
 /* 0037 갈래 진화: 진화 길 칸 + 고르기 */
 .chain-cell { display: grid; justify-items: center; text-align: center; word-break: keep-all; }
 .chain-col { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 6px; justify-items: center; }

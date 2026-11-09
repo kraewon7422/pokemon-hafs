@@ -95,11 +95,9 @@ export const fmtTime = (iso) => new Date(iso).toLocaleTimeString('ko-KR', { hour
 const SCOPES = [['all', '전체'], ['school', '학교'], ['wild', '야생'], ['mine', '잡은 포켓몬']];
 export const TYPES = ['노말', '불꽃', '물', '풀', '전기', '얼음', '격투', '독', '땅', '비행', '에스퍼', '벌레', '바위', '고스트', '드래곤', '악', '강철', '페어리'];
 
-// 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸 + 지방으로 바로 가기. 범위 · 타입을 바꾸면 첫 쪽부터
+// 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸. 범위 · 타입을 바꾸면 첫 쪽부터 (지방 바로 가기 줄은 ui8 에서 뺌 — 실제 구성과 안 맞았음)
 export const DEX_PER_PAGE = 60;
-export const REGIONS = [['관동', 1], ['성도', 152], ['호연', 252], ['신오', 387], ['하나', 494], ['칼로스', 650], ['알로라', 722], ['이벤트', 810]];   // 이벤트 = 0044 소포 포켓몬
 export const EVENT_NOTE = '이상한 소포로만 받을 수 있어요.';
-const regionOf = (d) => REGIONS.reduce((r, x) => (d >= x[1] ? x : r), REGIONS[0])[0];
 // 같은 전국도감 번호의 종이 여럿이면 (갈래 종 · 따로 있는 야생 계열) 한 칸: 내가 가진 종 → 진화 갈래 쪽 (계열 안의 종) → 첫 종
 const monsOfKey = (k) => mons().filter((m) => dexKey(monSp(m)) === k);
 function pickRep(group) {
@@ -134,15 +132,6 @@ export function viewDex() {
     h('button.btn.small', { type: 'button', disabled: page === 0, onclick: () => go(page - 1, bottom), 'aria-label': '이전 쪽' }, '◀'),
     h('span.dp-mid', h('b', `${page + 1} / ${pages}`), shown.length ? h('small', `${dexNo(shown[0])} ~ ${dexNo(shown[shown.length - 1])}`) : null),
     h('button.btn.small', { type: 'button', disabled: page >= pages - 1, onclick: () => go(page + 1, bottom), 'aria-label': '다음 쪽' }, '▶'));
-  // 누른 지방이 이 쪽에 있으면 그것, 아니면 이 쪽 첫 칸의 지방
-  const here = new Set(shown.map((sp) => regionOf(sp.dex || 1)));
-  const cur = here.has(S.dexRegion) ? S.dexRegion : shown.length ? regionOf(shown[0].dex || 1) : null;
-  const regions = pages > 1 && h('div.filters.dex-regions', { role: 'toolbar', 'aria-label': '지방으로 가기' },
-    REGIONS.map(([n, from], i) => {
-      const to = REGIONS[i + 1]?.[1] ?? 99999;
-      const at = list.findIndex((sp) => (sp.dex || 99999) >= from && (sp.dex || 99999) < to);
-      return h('button.chip', { type: 'button', disabled: at < 0, 'aria-pressed': String(cur === n), onclick: () => { S.dexRegion = n; go(Math.floor(at / DEX_PER_PAGE)); } }, n);
-    }));
   const p = S.snap.profile;
   const evoReady = mons().filter((c) => canLevelEvolve(c)).length;
   return [
@@ -160,7 +149,6 @@ export function viewDex() {
         'aria-pressed': String(tf === t),
         onclick: () => { S.dexFilter = t; renderTab(); },
       }, t === 'all' ? '모든 타입' : t))),
-    regions,
     pager(false),
     list.length ? null : h('p.muted', { style: { textAlign: 'center' } }, '여기에 맞는 포켓몬이 없어요.'),
     h('div.dex-grid', shown.map((sp) => {
@@ -212,11 +200,11 @@ function evoInfo(c, e, p, chance) {
            reason: e.lv ? `${josa(`Lv.${e.lv}`, '이', '가')} 되면 진화해요 (진화의 돌 없음)` : '진화의 돌이 필요해요', btn: `진화의 돌로 진화 (성공 ${pct})` };
 }
 
-// 진화: 진화 레벨이 되면 진화의 돌 없이 100%, 그 전에는 진화의 돌로 (확률). 갈래가 여럿이면 고르기 (evoChooser)
+// 진화: 진화 레벨이 되면 진화의 돌 없이 100%, 그 전에는 진화의 돌로 (확률). 갈래가 여럿이면 서버가 무작위로 (evoRandom, 0049)
 function evoPanel(c, chance, p) {
   const opts = evoOpts(c);
   const off = !S.online ? '진화는 인터넷이 필요해요' : !S.snap.festival_open ? '지금은 진화할 수 없어요' : null;
-  if (opts.length > 1) return evoChooser(c, opts, chance, p, off);
+  if (opts.length > 1) return evoRandom(c, opts, chance, p, off);
   const e = opts[0];
   if (!e) return h('div.box.evo-panel', '이 포켓몬은 더 진화하지 않아요.');
   const x = evoInfo(c, e, p, chance);
@@ -243,18 +231,31 @@ function evoPanel(c, chance, p) {
       : '진화의 돌은 실패해도 다음 확률이 올라가고, 몇 번 실패하면 반드시 성공해요.'));
 }
 
-// 갈래 진화 고르기 (이브이 → 8가지 …): 그림 + 이름 + 조건. 지금 못 하는 갈래는 흐리게 + 이유
-function evoChooser(c, opts, chance, p, off) {
+// 갈래 진화 (0049): 고르지 않음 — 서버가 갈 수 있는 갈래 중 하나를 같은 확률로 고름 (결과는 진화 장면에서).
+//   진화 레벨이 된 레벨 갈래가 있으면 그중에서 돌 없이, 없으면 진화의 돌 1개로 모든 갈래 중에서 (돌 갈래 = 반드시, 레벨 갈래를 일찍 = 확률)
+function evoRandom(c, opts, chance, p, off) {
+  const lv = c.level || 1;
+  const free = opts.filter((e) => e.how === 'level' && e.lv && lv >= e.lv);
+  const pool = free.length ? free : opts;
+  const seen = seenKeys();
+  const pct = chance >= 1 ? '반드시' : `${Math.round(chance * 100)}%`;
+  const allItem = opts.every((e) => e.how === 'item');
+  const lvs = opts.filter((e) => e.how === 'level' && e.lv).map((e) => e.lv);
+  const nextLv = lvs.length ? Math.min(...lvs) : null;
+  const why = off || (!free.length && !p.evo_tickets ? '진화의 돌이 필요해요 (퀴즈·배틀·룰렛에서 가끔 받아요)' : null);
   return h('div.box.evo-panel',
-    h('div.banner', h('b', '어떤 모습으로 진화할까?'), h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
-    h('div.evo-choices', opts.map((e) => {
-      const x = evoInfo(c, e, p, chance);
-      const why = off || (!x.ok ? x.reason : null);
-      return h('button.evo-choice', { type: 'button', disabled: !!why, 'aria-label': `${x.sp?.name || '?'}: ${why || x.cond}`,
-        onclick: () => doEvolve(c, e.to_species) },
-      spriteCanvas(e.to_species, 56), h('b', x.sp?.name || '?'), h('small', why || x.cond));
+    h('div.banner', h('b', `${pool.length}가지 중 하나로 진화!`), h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
+    h('div.evo-choices', { 'aria-label': '진화할 수 있는 모습' }, pool.map((e) => {
+      const sp = speciesOf(e.to_species); const known = !!sp && seen.has(dexKey(sp));   // 도감에서 본 모습만 이름 · 색
+      return h('div.evo-choice', spriteCanvas(e.to_species, 56, known ? 'normal' : 'silhouette'), h('b', known ? sp.name : '???'),
+        h('small', e.how === 'item' ? '진화의 돌' : `Lv.${e.lv}`));
     })),
-    h('small', `지금 Lv.${c.level || 1}. 돌 진화는 진화의 돌 1개로 반드시, 레벨 진화는 그 레벨이 되면 돌 없이 반드시 진화해요.`));
+    h('button.btn.big.gold', { disabled: !!why, onclick: () => doEvolve(c) },
+      why || (free.length ? '진화시키기! (진화의 돌 없이)' : allItem ? '진화의 돌로 진화 (100%)' : '진화의 돌로 진화')),
+    h('small', free.length
+      ? `진화 레벨이 되어서 진화의 돌 없이 반드시 진화해요. 어떤 모습이 될지는 진화해 봐야 알아요 (모두 같은 확률).`
+      : `진화의 돌 1개로 ${opts.length}가지 중 하나가 같은 확률로 정해져요.${allItem ? ' 반드시 진화해요.' : ` 돌로 진화하는 모습이면 반드시, 레벨로 진화하는 모습이면 ${pct} 확률이에요.`}`
+        + (nextLv ? ` ${josa(`Lv.${nextLv}`, '이', '가')} 되면 레벨로 진화하는 모습 중 하나로 돌 없이 진화해요.` : '')));
 }
 
 export function openDetail(sp) {

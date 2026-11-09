@@ -1,5 +1,5 @@
 // 포켓몬 서핑: 내 포켓몬이 서프보드를 타고 끝없는 바다를 내려간다. 좌우 5단계로 방향을 바꿔 바위·섬·통나무를 피하고,
-// 500m 부터는 문어 포켓몬이 뒤쫓아 온다. 점수 = 내려간 거리(m). (Phaser 3. 바다·섬·문어는 이 파일에서 도트로 그리고,
+// 500m 부터는 대포무노가 뒤쫓아 온다. 점수 = 내려간 거리(m). (Phaser 3. 바다·섬·문어 다리는 이 파일에서 도트로 그리고 (대포무노 = 앱 포켓몬 그림판),
 // 바위·통나무·뗏목·통·상자·연잎·모래 무늬·조개·양동이는 CC0 도트 그림 — img/games/surf/CREDITS.txt)
 // 서버 상한: 점수 ≤ 초×40+50 → 최고 속도(부스트 포함) 26.4 m/s 로 묶음. 숨긴 탭·멈춤(mg-pause) 시간은 ms 에 안 들어감.
 import { loadPhaser } from './common.js';
@@ -25,7 +25,7 @@ const C = {
   trunk: '#a8743e', trunkL: '#cf9d5e', trunkD: '#7a4e28',
   rock: '#6c7d90', rockL: '#97a9ba', rockH: '#cad7e0', rockD: '#47566a', rockO: '#1d2838', rockW: '#365d70',
   wood: '#b07a46', woodL: '#d6a066', woodD: '#7d5230', woodO: '#3a2414', ring: '#ecc894',
-  octo: '#9b4fd2', octoL: '#c47de9', octoH: '#ebb6fa', octoD: '#6b2fa2', octoO: '#2a1146', octoP: '#ff86c8', octoS: '#fbc8ee',
+  octo: '#d8483a', octoL: '#f07a5a', octoH: '#ffb090', octoD: '#a02a28', octoO: '#3a0e10', octoP: '#ffd060', octoS: '#ffc8b0',   // 대포무노 빨강 (ui8)
   ink: '#132030', white: '#ffffff', red: '#ff5a64', redD: '#b8283c', gold: '#ffd23f', goldL: '#fff4a8', goldD: '#c97f12',
   weed: '#1f7d5c', weedL: '#3daa6c', weedH: '#7fd486', weedD: '#11524a',
 };
@@ -419,6 +419,26 @@ function octoFrames() {
     return g;
   });
 }
+// 대포무노 (ui8): 앱 포켓몬 그림판 (species 452 = 전국도감 No.224) 을 내 포켓몬처럼 2:1 로 줄여 문어 자리 (40×34, 머리 가운데 = OCTO_CY) 에.
+//   아래쪽은 물보라 띠로 반쯤 잠김, 1번 그림은 1도트 아래 (둥실). 그림판에 없으면 null → 예전 문어 그림
+const OCTILLERY = 452;
+function octilleryFrames(mg) {
+  if (!mg || mg.w < 6 || mg.w > OCTO_W || mg.h > OCTO_H) return null;
+  const top = Math.max(0, OCTO_CY + 14 - mg.h + 3);   // 몸 아래 3도트가 물보라 띠 아래로
+  return [0, 1].map((f) => {
+    const g = new G(OCTO_W, OCTO_H);
+    g.over(mg, Math.round((OCTO_W - mg.w) / 2), top + f);
+    const cx = 20, cy = OCTO_CY;
+    for (let x = -15; x <= 15; x++) {
+      const y = cy + 14 + Math.round(Math.sin(x * 0.6 + f * 2) * 0.8);
+      if (hash(x, f, 4) < 0.75) g.set(cx + x, y, C.foam);
+      if (hash(x, f, 5) < 0.35) g.set(cx + x, y + 1, C.foam2);
+      for (let yy = y + 2; yy < OCTO_H; yy++) g.set(cx + x, yy, null);   // 물 아래는 안 보임
+    }
+    [[-16, 11], [15, 10], [-12, 7], [12, 7]].forEach(([x, y], i) => { if ((i + f) % 2 === 0) g.set(cx + x, cy + y, C.foam); });
+    return g;
+  });
+}
 // 물에서 솟는 문어 다리 (장애물). 0 잔물결 1 끝만 2 반쯤 3·4 다 나옴
 const TENT_W = 14, TENT_H = 22, TENT_BY = 18;
 function tentFrames() {
@@ -556,7 +576,7 @@ export default {
     const fontsReady = (document.fonts?.load ? Promise.all([document.fonts.load('12px Galmuri11'), document.fonts.load('bold 12px Galmuri11')]).catch(() => {}) : Promise.resolve());
     const pDex = Math.max(1, Number(api.partner?.()) || 1);
     let SHEET = { url: '', frame: () => 0 };
-    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex])]).then(([Phaser, , sh]) => {
+    Promise.all([loadPhaser(), fontsReady, atlasURL([pDex, OCTILLERY])]).then(([Phaser, , sh]) => {
       SHEET = sh;   // setup() 이 씀 (예전엔 여기 안에서만 보여서 내 포켓몬 대신 대체 그림이 나왔음)
       const ATLAS_URL = SHEET.url;
       if (dead) return;
@@ -619,7 +639,9 @@ export default {
       addSheet(sc, 'weed', weedFrames([[sprite('pad3'), 5, 6], [sprite('pad2'), 24, 12], [sprite('pad2'), 13, 17]]));
       addSheet(sc, 'whirl', whirlFrames());
       addSheet(sc, 'ramp', rampFrames());
-      addSheet(sc, 'octo', octoFrames());
+      let octG = null;
+      try { octG = octilleryFrames(shrinkMon(sc.textures.get('mons').getSourceImage(), SHEET.frame(OCTILLERY))); } catch { /* 예전 문어 */ }
+      addSheet(sc, 'octo', octG || octoFrames());
       addSheet(sc, 'tent', tentFrames());
       addSheet(sc, 'board', boardFrames());
       addSheet(sc, 'coin', coinFrames());
@@ -665,7 +687,7 @@ export default {
       // 알림 글씨: 띠보다 넓으면 띄어쓰기에서만 줄을 바꿈 (단어 중간에서 안 끊김)
       const tBan = TXT(GW / 2, 208, '').setOrigin(0.5, 0.5).setDepth(1e6 + 3).setAlign('center').setWordWrapWidth(GW - 24, false);
       const tTitle = TXT(GW / 2, 24, '포켓몬 서핑').setOrigin(0.5, 0).setScale(2).setColor('#fff6b0').setShadow(1, 1, '#0a3a52', 0, false, true);
-      const tSub = TXT(GW / 2, 56, '문어를 피해 멀리멀리!', 12, false, '#d8fbf4').setOrigin(0.5, 0);
+      const tSub = TXT(GW / 2, 56, '대포무노를 피해 멀리멀리!', 12, false, '#d8fbf4').setOrigin(0.5, 0);
       const help = ['끌거나 좌우를 눌러', '방향 바꾸기', '번개 단추 = 부스트', '하트 3개를 지켜요']
         .map((s, i) => TXT(GW / 2, 178 + i * 14, s, 12, false, i === 2 ? '#fff3a0' : '#ffffff').setOrigin(0.5, 0));
       const tTap = TXT(GW / 2, 246, '탭해서 시작').setOrigin(0.5, 0);
@@ -680,7 +702,7 @@ export default {
       const P = { x: 0, y: 0, head: 2, ang: 0, spd: 0, maxY: 0, hearts: 3, bolts: 1, coins: 0, inv: 0, boost: 0, jump: 0, weed: 0, slow: 0 };
       let camOff = 128;
       const objs = []; const chunks = new Set(); const parts = []; const trail = [];
-      const O = { st: 'off', x: 0, y: 0, win: -1, tent: 3, a: 1 }; // 문어: 500+1000k m 에 와서 700+1000k m 에 떠남
+      const O = { st: 'off', x: 0, y: 0, win: -1, tent: 3, a: 1 }; // 대포무노: 500+1000k m 에 와서 700+1000k m 에 떠남
       let banner = { s: '', t: 0, col: 0 };
       const metres = () => Math.max(0, Math.floor(P.maxY / PX_PER_M));
       // 난이도는 천천히: 속도 10 m/s → 16.5 m/s (약 2900 m 에서 최고)
@@ -878,14 +900,14 @@ export default {
           if (mode !== 'play') return;
         }
 
-        // 문어: 정해진 구간에만 (500~700 m, 1500~1700 m, 2500~2700 m …)
+        // 대포무노: 정해진 구간에만 (500~700 m, 1500~1700 m, 2500~2700 m …)
         const k = Math.floor((m - 500) / 1000), inWin = m >= 500 && m - 500 - k * 1000 < 200;
         if (inWin && O.st === 'off' && O.win !== k && !O.noOcto) {
           O.st = 'enter'; O.win = k; O.y = P.y - 190; O.x = P.x; O.tent = 2.5; O.a = 1;
-          show('문어 포켓몬이 쫓아온다!', 3, 2.6); api.sfx.wrong?.();
+          show('대포무노가 쫓아온다!', 3, 2.6); api.sfx.wrong?.();
         }
         if ((O.st === 'enter' || O.st === 'chase') && !inWin) { // 구간 끝 → 물속으로 사라짐 (그 뒤로는 못 잡음)
-          O.st = 'leave'; show('문어를 따돌렸다!', 2, 2); api.sfx.correct?.();
+          O.st = 'leave'; show('대포무노를 따돌렸다!', 2, 2); api.sfx.correct?.();
         }
         if (O.st === 'leave') {
           O.y += base() * 0.4 * dt; O.a -= dt * 1.2; // 뒤로 처지며 가라앉음
@@ -988,7 +1010,7 @@ export default {
         board.setVisible(vis && !blink); mon.setVisible(vis && !blink);
         mon.setCrop(0, 0, meG.w, Math.max(0, footY - sink));
         if (P.boost > 0) mon.setTint(Math.floor(T * 12) % 2 ? 0xfff2a0 : 0xffffff); else mon.clearTint();
-        // 문어
+        // 대포무노
         if (O.st === 'enter' || O.st === 'chase' || O.st === 'leave' || (mode === 'over' && reason === 'octo')) {
           octo.setVisible(true).setFrame(Math.floor(T / 0.3) % 2).setPosition(Math.round(O.x), Math.round(O.y + Math.sin(T * 3) * 1.5)).setDepth(O.y + 16).setAlpha(O.st === 'leave' ? Math.max(0, O.a) : 1);
         } else octo.setVisible(false);
@@ -1023,13 +1045,13 @@ export default {
           hud.lineStyle(1, on ? 0xffd23f : 0x6a8aa0, 1); hud.strokeCircle(GW - 18, GH - 18, 12);
           if (P.boost > 0) { hud.lineStyle(2, 0xfff4a8, 1); hud.beginPath(); hud.arc(GW - 18, GH - 18, 14, -Math.PI / 2, -Math.PI / 2 + TAU * (P.boost / BOOST_T)); hud.strokePath(); }
           btnIcon.setAlpha(on ? 1 : 0.45);
-          // 화면 밖 문어 표시
+          // 화면 밖 대포무노 표시
           if ((O.st === 'chase' || O.st === 'enter') && O.y < cam.scrollY - 6) {
             const ix = clamp(Math.round(O.x - cam.scrollX), 8, GW - 8);
             const fl = Math.floor(T * 6) % 2;
-            hud.fillStyle(fl ? 0xff86c8 : 0x9b4fd2, 1);
+            hud.fillStyle(fl ? 0xffb090 : 0xd8483a, 1);
             hud.fillTriangle(ix - 5, 18, ix + 5, 18, ix, 24);
-            hud.fillStyle(0x2a1146, 1); hud.fillRect(ix - 1, 18, 2, 2);
+            hud.fillStyle(0x3a0e10, 1); hud.fillRect(ix - 1, 18, 2, 2);
           }
         } else {
           hud.fillStyle(0x04314a, 0.55); hud.fillRoundedRect(8, 18, GW - 16, 58, 6);
@@ -1051,7 +1073,7 @@ export default {
         if (mode === 'over' && overT > 0.35) {
           hud.fillStyle(0x04314a, 0.8); hud.fillRoundedRect(10, 176, GW - 20, 64, 8);
           hud.lineStyle(1, 0xffffff, 0.7); hud.strokeRoundedRect(10, 176, GW - 20, 64, 8);
-          tOver.setText(reason === 'octo' ? '문어에게 잡혔다!' : '파도에 휩쓸렸다!').setVisible(true).setColor(reason === 'octo' ? '#ffb0e0' : '#bdf3ec');
+          tOver.setText(reason === 'octo' ? '대포무노에게 잡혔다!' : '파도에 휩쓸렸다!').setVisible(true).setColor(reason === 'octo' ? '#ffb0a0' : '#bdf3ec');
           tOverM.setText(`${metres()}m`).setVisible(true);
           tBan.setVisible(false);
         } else { tOver.setVisible(false); tOverM.setVisible(false); }
