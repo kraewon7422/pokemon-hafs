@@ -4015,6 +4015,198 @@ console.log('\n[61] 폼 (0052): 선생님 폼 · 일반 폼 (복사본) · 이�
   }
 }
 
+console.log('\n[63] 포켓몬 교환 (0056): 배틀 QR 로 교환방 · 둘 다 확인 · 바뀌면 확인 풀림 · 그만두기 · 교환 못 하는 포켓몬 · 하루 횟수 · 끄기 · 바꾸기 직전 다시 확인 · 되돌려 받기 도감 · 두 번 눌러도 한 번 · 교환 진화');
+{
+  const keys = ['trade_open', 'trade_daily_max', 'trade_room_sec', 'wild_shiny_chance'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const sids = [], gifts = [];
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'tr5656' })).error);
+    sids.push(sid);
+    const c = client(await pwLogin(`${sid}@code.local`, 'tr5656'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    const uid = (await admin.select(`profiles?student_id=eq.${sid}&select=user_id`)).data?.[0]?.user_id;
+    return { sid, c, uid };
+  };
+  const grant = async (P, line, stage = 1) => {
+    await admin.rpc('admin_grant_monster', { p_student_id: P.sid, p_line: line, p_stage: stage });
+    return (await P.c.select(`collection?select=id&line_id=eq.${line}&released_at=is.null&order=id.desc&limit=1`)).data?.[0]?.id;
+  };
+  const row = async (id) => (await admin.select(`collection?id=eq.${id}&select=id,user_id,line_id,stage,species_id,pos,held,released_at,no_dex,ot_user,traded_at`)).data?.[0];
+  const seen = async (P) => new Set((await P.c.rpc('sync')).data?.state?.seen || []);
+  const st = async (P, id) => (await P.c.rpc('trade_state', { p_id: id })).data;
+  // 두 사람이 고르고 둘 다 확인 (opener = 방을 연 사람)
+  const swap = async (X, mx, Y, my, id) => {
+    await st(X, id); await st(Y, id);
+    await X.c.rpc('trade_offer', { p_id: id, p_mon: mx });
+    const s = (await Y.c.rpc('trade_offer', { p_id: id, p_mon: my })).data;
+    await X.c.rpc('trade_confirm', { p_id: id, p_rev: s?.rev });
+    return (await Y.c.rpc('trade_confirm', { p_id: id, p_rev: s?.rev })).data;
+  };
+  try {
+    await setS('trade_open', true); await setS('trade_daily_max', 5); await setS('trade_room_sec', 180);
+    const lines = (await admin.select('lines?select=id,form_kind,ultra,legend_src,active&order=id')).data || [];
+    const UB = lines.find((l) => l.ultra && l.form_kind === 'normal')?.id;
+    const LG = lines.find((l) => l.form_kind === 'normal' && l.legend_src === 'safari')?.id;
+    const A = await mk('교환에이'), B = await mk('교환비'), C = await mk('교환씨');
+    // A: 근육몬 (1032 st2 → 교환 진화) · 야돈 · 슈륙챙이 · 시드라 계열 · 선생님 · 이벤트 · 특별 · 울트라 · 전설. B: 폴리곤 · 으랏차. C: 피카츄 계열 · 꼬마돌
+    const a1 = await grant(A, 1032, 2), a2 = await grant(A, 1046, 1), a3 = await grant(A, 1018, 1), a4 = await grant(A, 1072, 1);
+    const aT = await grant(A, 12, 1), aE = await grant(A, 442, 1), aS = await grant(A, 35, 1), aU = await grant(A, UB, 1), aL = await grant(A, LG, 1);
+    const b1 = await grant(B, 1025, 1), b2 = await grant(B, 1076, 1);
+    const c1 = await grant(C, 1012, 1), c2 = await grant(C, 1015, 1);
+    ok([a1, a2, a3, a4, aT, aE, aS, aU, aL, b1, b2, c1, c2].every((x) => x > 0) && UB && LG, 'test Pokémon granted (normal · teacher · event · special · ultra · legend)', { UB, LG });
+    const codeA = (await A.c.rpc('battle_code')).data;
+    const codeB = (await B.c.rpc('battle_code')).data;
+    const codeC = (await C.c.rpc('battle_code')).data;
+
+    // 1) 방 열기
+    ok((await A.c.rpc('trade_open', { p_code: codeA })).error === 'BATTLE_SELF', 'my own QR → BATTLE_SELF');
+    ok((await B.c.rpc('trade_open', { p_code: 'nope1234' })).error === 'BATTLE_CODE_NOT_FOUND', 'unknown code → BATTLE_CODE_NOT_FOUND');
+    const o1 = (await B.c.rpc('trade_open', { p_code: codeA })).data;
+    const cur = (await A.c.rpc('trade_current')).data;
+    ok(o1?.status === 'open' && o1.me === 1 && cur?.id === o1.id && cur.me === 2 && !o1.mine && !o1.theirs, 'B scans A\'s battle QR → one room (B = 1, A = 2), A sees it via trade_current', [o1, cur]);
+    ok((await B.c.rpc('trade_open', { p_code: codeA })).data?.id === o1?.id, 'scanning again returns the same room');
+    ok((await C.c.rpc('trade_open', { p_code: codeA })).error === 'TRADE_FRIEND_BUSY', 'A already trading with B → TRADE_FRIEND_BUSY for C');
+    const tid = o1?.id;
+    ok((await st(A, tid))?.joined === true && (await st(B, tid))?.them_here === true, 'both seen in the room (joined · them_here)');
+
+    // 2) 교환 못 하는 포켓몬
+    const refuse = { [aT]: 'TRADE_TEACHER', [aE]: 'TRADE_EVENT', [aS]: 'TRADE_SPECIAL', [aU]: 'TRADE_ULTRA', [aL]: 'TRADE_LEGEND', [b1]: 'TRADE_NO_MON' };
+    const got = {};
+    for (const m of Object.keys(refuse)) got[m] = (await A.c.rpc('trade_offer', { p_id: tid, p_mon: Number(m) })).error;
+    ok(Object.entries(refuse).every(([m, code]) => got[m] === code), 'teacher · event · special · ultra · legend · not mine are refused with their own codes', got);
+    await A.c.rpc('set_partner', { p_mon: a4 });
+    ok((await A.c.rpc('trade_offer', { p_id: tid, p_mon: a4 })).error === 'TRADE_PARTNER', 'trainer-card Pokémon → TRADE_PARTNER');
+    await A.c.rpc('battle_set_team', { p_mons: [a3] });
+    ok((await A.c.rpc('trade_offer', { p_id: tid, p_mon: a3 })).error === 'TRADE_IN_TEAM', 'saved battle-team member → TRADE_IN_TEAM');
+    const chk = (await A.c.rpc('trade_check')).data;
+    ok(chk?.why?.[aT] === 'TRADE_TEACHER' && chk.why[aL] === 'TRADE_LEGEND' && chk.why[a3] === 'TRADE_IN_TEAM' && chk.why[a4] === 'TRADE_PARTNER' && !chk.why[a1] && !chk.why[a2]
+       && chk.today === 0 && chk.max === 5 && chk.open === true, 'trade_check lists every non-tradable Pokémon with its reason (tradable ones absent)', chk);
+
+    // 3) 둘 다 확인해야 · 바뀌면 확인 풀림
+    await admin.rpc('admin_give_item', { p_student_id: A.sid, p_item: 'lucky', p_qty: 1 });
+    await A.c.rpc('bag_set_held', { p_mon: a1, p_item: 'lucky' });
+    let s = (await A.c.rpc('trade_offer', { p_id: tid, p_mon: a1 })).data;
+    ok(s?.mine?.id === a1 && s.mine.held === 'lucky', 'A offers 근육몬 (holding an item)', s?.mine);
+    s = (await B.c.rpc('trade_offer', { p_id: tid, p_mon: b1 })).data;
+    ok(s?.theirs?.id === a1 && s.mine?.id === b1 && s.theirs.species_id === 20095 && s.theirs.level > 0, 'B sees A\'s offer (species · level …)', s?.theirs);
+    ok((await B.c.rpc('trade_confirm', { p_id: tid, p_rev: s.rev - 1 })).error === 'TRADE_CHANGED', 'confirm with an old rev → TRADE_CHANGED');
+    s = (await B.c.rpc('trade_confirm', { p_id: tid, p_rev: s.rev })).data;
+    ok(s?.status === 'open' && s.ok_me === true && s.ok_them === false && (await row(a1))?.user_id === A.uid, 'one confirm only → still open, nothing swapped', s);
+    s = (await A.c.rpc('trade_offer', { p_id: tid, p_mon: a2 })).data;
+    const sb1 = await st(B, tid);
+    ok(s?.ok_me === false && s.ok_them === false && sb1?.ok_me === false && sb1.theirs?.id === a2, 'A changes the offer → both confirmations reset', [s, sb1]);
+    s = (await A.c.rpc('trade_offer', { p_id: tid, p_mon: a1 })).data;
+
+    // 4) 교환 성공 (+ 교환 진화 · 지닌 물건 돌려받기 · 도감)
+    await B.c.rpc('trade_confirm', { p_id: tid, p_rev: s.rev });
+    const d = (await A.c.rpc('trade_confirm', { p_id: tid, p_rev: s.rev })).data;
+    const ra1 = await row(a1), rb1 = await row(b1);
+    ok(d?.status === 'done' && d.result?.got === b1 && d.result.gave === a1 && ra1?.user_id === B.uid && rb1?.user_id === A.uid && ra1.pos != null && rb1.pos != null,
+       'both confirmed → swapped in one go (owners swapped, box slots given)', [d, ra1, rb1]);
+    ok(ra1?.species_id === 20096 && ra1.stage === 3 && (await st(B, tid))?.result?.evolved_to === 20096, '근육몬 arrives at B and evolves into 괴력몬 (trade evolution)', ra1);
+    ok(ra1?.held === null && ra1.ot_user === A.uid && !!ra1.traded_at && rb1.ot_user === B.uid, 'held item cleared · original trainer + traded_at recorded', ra1);
+    const invA = (await A.c.rpc('bag_state', { p_since: 0 })).data?.items?.find((x) => x.key === 'lucky');
+    ok(invA?.qty >= 1, 'the held item went back to A\'s bag', invA);
+    const sa = await seen(A), sbb = await seen(B);
+    ok(sa.has(20095) && sa.has(20094) && sa.has(20073) && sbb.has(20096) && sbb.has(20095) && sbb.has(20094), 'A keeps 근육몬 in the dex (trade_seen) · both get the received species', [sa.has(20095), sbb.has(20096)]);
+    // 5) 두 번 눌러도 한 번
+    const d2 = (await B.c.rpc('trade_confirm', { p_id: tid, p_rev: s.rev })).data;
+    ok(d2?.status === 'done' && (await row(a1))?.user_id === B.uid && (await row(b1))?.user_id === A.uid, 'confirm again on a finished trade → same result, no second swap', d2?.status);
+    ok((await B.c.rpc('trade_offer', { p_id: tid, p_mon: b2 })).data?.status === 'done', 'offer on a finished trade just returns its state');
+
+    // 6) 그만두기
+    const o2 = (await B.c.rpc('trade_open', { p_code: codeA })).data;
+    ok(o2?.id !== tid && o2?.status === 'open', 'new room after a finished one');
+    const cx = (await A.c.rpc('trade_cancel', { p_id: o2?.id })).data;
+    const cb = await st(B, o2?.id);
+    ok(cx?.status === 'cancelled' && cx.ended_by_me === true && cb?.status === 'cancelled' && cb.ended_by_me === false, 'either side can cancel (other side sees cancelled)', [cx, cb]);
+    ok((await B.c.rpc('trade_offer', { p_id: o2?.id, p_mon: b2 })).data?.status === 'cancelled', 'offer after cancel → state only (no change)');
+
+    // 7) 되돌려 받기: B 가 받은 괴력몬 (a1) 을 A 에게 돌려줌 → A 도감에 괴력몬이 새로 안 생김
+    const o3 = (await B.c.rpc('trade_open', { p_code: codeA })).data;
+    const d3 = await swap(B, a1, A, a2, o3?.id);
+    const ra1b = await row(a1);
+    ok(d3?.status === 'done' && d3.result?.no_dex === true && ra1b?.user_id === A.uid && ra1b.no_dex === true && !(await seen(A)).has(20096),
+       'boomerang: the very Pokémon A sent comes back (evolved) → no dex credit for 괴력몬', [d3?.result, ra1b]);
+    const dB3 = (await st(B, o3?.id))?.result;
+    ok(dB3?.no_dex === false && (await seen(B)).has(20136), 'B gets normal credit for the new species (야돈)', dB3);
+    // 같은 가족을 24시간 안에 같은 친구와 주고받기 → no_dex
+    const o4 = (await A.c.rpc('trade_open', { p_code: codeB })).data;
+    const d4 = await swap(A, b1, B, a2, o4?.id);
+    ok(d4?.status === 'done' && d4.result?.no_dex === true && (await st(A, o4?.id))?.result?.no_dex === true, 'same family back to the same friend within 24 h → no_dex on both sides', d4?.result);
+    const sa4 = await seen(A);
+    ok(sa4.has(20095) && sa4.has(20136) && sa4.has(20073), 'A still has 근육몬 · 야돈 · 폴리곤 in the dex after giving them away');
+
+    // 8) 바꾸기 직전 다시 확인: 확인한 뒤 놓아준 포켓몬
+    const o5 = (await C.c.rpc('trade_open', { p_code: codeA })).data;
+    await st(A, o5?.id);
+    await A.c.rpc('battle_set_team', { p_mons: [aL] });
+    await A.c.rpc('trade_offer', { p_id: o5?.id, p_mon: a3 });
+    const s5 = (await C.c.rpc('trade_offer', { p_id: o5?.id, p_mon: c1 })).data;
+    await A.c.rpc('trade_confirm', { p_id: o5?.id, p_rev: s5?.rev });
+    const rel = (await A.c.rpc('mon_release', { p_mon: a3 })).data;
+    const d5 = (await C.c.rpc('trade_confirm', { p_id: o5?.id, p_rev: s5?.rev })).data;
+    ok(rel?.ok && d5?.status === 'open' && d5.note === 'TRADE_NO_MON' && d5.theirs === null && d5.ok_me === false && (await row(c1))?.user_id === C.uid,
+       'Pokémon released after confirming → re-check drops it, confirmations reset, nothing swapped', d5);
+    await C.c.rpc('trade_cancel', { p_id: o5?.id });
+
+    // 9) 하루 횟수 (A · B 는 오늘 3번)
+    await setS('trade_daily_max', 3);
+    ok((await C.c.rpc('trade_open', { p_code: codeA })).error === 'TRADE_FRIEND_DAILY_MAX', 'friend at the daily limit → TRADE_FRIEND_DAILY_MAX');
+    ok((await A.c.rpc('trade_open', { p_code: codeC })).error === 'TRADE_DAILY_MAX', 'me at the daily limit → TRADE_DAILY_MAX');
+    await setS('trade_daily_max', 5);
+    const o6 = (await C.c.rpc('trade_open', { p_code: codeA })).data;
+    await st(A, o6?.id);
+    await A.c.rpc('trade_offer', { p_id: o6?.id, p_mon: a2 });
+    const s6 = (await C.c.rpc('trade_offer', { p_id: o6?.id, p_mon: c2 })).data;
+    await setS('trade_daily_max', 3);   // 방이 열린 동안 한도가 바뀜 → 바꾸기 직전에 막힘
+    await A.c.rpc('trade_confirm', { p_id: o6?.id, p_rev: s6?.rev });
+    const d6 = (await C.c.rpc('trade_confirm', { p_id: o6?.id, p_rev: s6?.rev })).data;
+    ok(s6?.theirs?.id === a2 && d6?.status === 'cancelled' && d6.why === 'daily_max' && (await row(c2))?.user_id === C.uid && (await row(a2))?.user_id === A.uid,
+       'limit reached while the room was open → cancelled at swap time (daily_max), nothing swapped', d6);
+    await setS('trade_daily_max', 5);
+
+    // 10) 운영자 스위치
+    await setS('trade_open', false);
+    ok((await C.c.rpc('trade_open', { p_code: codeA })).error === 'TRADE_CLOSED' && (await C.c.rpc('trade_check')).data?.open === false, 'trade_open false → TRADE_CLOSED');
+    await setS('trade_open', true);
+
+    // 11) 반짝이는 포켓몬
+    await setS('wild_shiny_chance', 1);
+    const gcode = `trd${Math.random().toString(36).slice(2, 8)}`;
+    const g = (await admin.rpc('admin_create_gift', { p_code: gcode, p_title: '교환 반짝', p_dex: 25, p_item: null, p_qty: 1, p_starts: null, p_ends: null, p_max: null })).data;
+    if (g?.id) gifts.push(g.id);
+    const gc = (await C.c.rpc('gift_claim', { p_code: gcode })).data;
+    await setS('wild_shiny_chance', old.wild_shiny_chance ?? 0.001953125);
+    const o7 = (await C.c.rpc('trade_open', { p_code: codeA })).data;
+    ok(gc?.mon && (await C.c.rpc('trade_offer', { p_id: o7?.id, p_mon: gc.mon })).error === 'TRADE_SHINY', 'shiny Pokémon → TRADE_SHINY', gc);
+
+    // 12) 아무것도 안 하면 방이 닫힘
+    await setS('trade_room_sec', 30);
+    await wait(31500);
+    const e7 = await st(C, o7?.id);
+    ok(e7?.status === 'expired' && e7.why === 'idle', 'idle room expires after trade_room_sec', e7?.status);
+    await setS('trade_room_sec', 180);
+
+    // 13) 운영자 목록 · 기록
+    const at = (await admin.rpc('admin_trades', { p_limit: 50 })).data;
+    ok(at?.today >= 3 && (at.rows || []).some((x) => x.id === tid && x.status === 'done' && x.sp1 === 20073 && x.sp2 === 20095 && x.evo2 === 20096 && x.a_sid === B.sid),
+       'admin_trades lists recent trades (who · what · trade evolution)', (at?.rows || []).find((x) => x.id === tid));
+    ok(!!(await A.c.rpc('admin_trades', { p_limit: 5 })).error, 'students cannot call admin_trades');
+    const ev = (await admin.select(`events?kind=eq.trade&user_id=eq.${A.uid}&select=data`)).data || [];
+    ok(ev.filter((e) => e.data?.act === 'done').length === 3 && ev.some((e) => e.data?.act === 'cancel'), 'every trade / cancel is in events (kind trade)', ev.length);
+    const direct = await A.c.select('trades?select=id');
+    ok(!!direct.error || (direct.data || []).length === 0, 'students cannot read the trades table directly');
+  } finally {
+    for (const id of gifts) await admin.rpc('admin_delete_gift', { p_id: id });
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    if (sids.length) await admin.rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '삭제' });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);

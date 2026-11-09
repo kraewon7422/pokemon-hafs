@@ -11,6 +11,7 @@ import { openDetail, typeOf, typeChips, STAT_KEYS, CAT_LABEL, KIND_LABEL, TYPES,
 import { moveOf } from './battle.js';
 import { eggPocket, loadEggs, TIER } from './eggs.js';
 import { CHARM_SVG } from './legends.js';
+import { tradeMenu } from './trade.js';
 
 // 아이콘 순서 = tools/build_item_icons.py ORDER (web/img/items.png, 32px 칸, 실제 포켓몬 물건 그림)
 const ICONS = [...Array.from({ length: 18 }, (_, i) => `boost${String(i + 1).padStart(2, '0')}`),
@@ -95,7 +96,7 @@ export async function openBagScreen(pocket = 'box', selected = null) {
     panel.hidden = cur === 'box' || cur === 'key' || cur === 'egg' || !sel;
   };
   const ov = overlay(h('div.bag-screen',
-    h('div.bag-head', h('b', pix('bag'), ' 가방'), h('button.btn.small', { onclick: () => closeOverlay() }, '닫기')),
+    h('div.bag-head', h('b', pix('bag'), ' 가방'), h('span.bag-head-btns', h('button.btn.small', { onclick: () => tradeMenu() }, '교환'), h('button.btn.small', { onclick: () => closeOverlay() }, '닫기'))),
     tabs, list, panel), 'full');
   ov.classList.add('bag-overlay');
   ov.redraw = draw;

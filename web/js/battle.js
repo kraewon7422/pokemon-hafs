@@ -9,6 +9,7 @@ import { closeOverlay, eggTap, openScanner, overlay, renderTab, say, sheet, sync
 import { typeChips, typeMult, TYPES } from './dex.js';
 import { curSpecies } from './raid.js';
 import { itemIcon, itemOf, loadBag } from './bag.js';
+import { openTradeByCode, tradeBox, watchTradeWhile, loadToday as loadTradeToday, pollTrade } from './trade.js';
 
 // ───────── 배틀 (0015·0016): 계산은 전부 서버. 폰은 고른 것만 보내고, 서버 기록(log)을 3세대 느낌으로 재생한다 ─────────
 // 자리(slot) u = 쪽×2 + 자리 번호. 1 대 1 은 자리 0·2 만, 2 대 2 는 0~3 모두.
@@ -166,7 +167,7 @@ export function typeTable() {
 }
 
 export function viewBattle() {
-  if (S.online && (!S.btTodayAt || Date.now() - S.btTodayAt > 15000)) { loadBattleToday(); pollInbox(true); }
+  if (S.online && (!S.btTodayAt || Date.now() - S.btTodayAt > 15000)) { loadBattleToday(); pollInbox(true); loadTradeToday(); pollTrade(true); }
   S.btFmt ||= 'single';
   const team = myTeam();
   const short = team.length < FMT[S.btFmt].min;
@@ -204,6 +205,7 @@ export function viewBattle() {
         h('span', h('b', r.name), h('small', ` ${FMT[r.format]?.label || ''} · ${r.won ? '이김' : '짐'}`)),
         h('button.btn.small.primary', { disabled: !!pvp, onclick: () => { S.btPeekFmt = r.format; startBattle('pvp', r.code); } }, '실시간 신청'),
         h('button.btn.small', { disabled: !!pvp, onclick: () => { S.btPeekFmt = r.format; startBattle('team', r.code); } }, 'AI 팀과')))),
+    tradeBox(),   // 0056 교환
     h('details.box.stack', h('summary', h('b', '타입 상성표')), typeTable()),
   ];
 }
@@ -281,12 +283,14 @@ export function teamPicker() {
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
 }
 
-export async function showBattleQr() {
+// mode 'trade' = 교환 QR (같은 QR, 설명만 교환용). 어느 쪽이든 QR 이 보이는 동안 친구가 연 교환방을 1.5초마다 확인 (0056)
+export async function showBattleQr(mode = 'battle') {
   sfx.select();
+  const trade = mode === 'trade';
   let code = S.btToday?.code; let fmt = S.btToday?.format || 'single'; let fair = !!S.btToday?.fair;
   try { if (!code) code = await rpc('battle_code', {}, { retries: 0 }); } catch (e) { return say(errorText(e.message), true); }
   if (S.btToday) S.btToday.code = code;
-  const canvas = h('canvas', { 'aria-label': '내 배틀 QR' });
+  const canvas = h('canvas', { 'aria-label': trade ? '내 교환 QR' : '내 배틀 QR' });
   drawQR(canvas, `BTL.${code.toUpperCase()}`, { cell: 6, margin: 4, ecc: 'L' });
   const segBox = h('div'); const teamBox = h('div');
   const draw = () => {
@@ -303,11 +307,19 @@ export async function showBattleQr() {
       myTeam().length < FMT[fmt].min ? h('small.warn-txt', DOUBLE_SHORT) : h('small.muted', `친구 팀과 적은 쪽 마릿수만큼 (최대 ${myTeam().length}마리) 싸워요.`));
   };
   draw();
-  sheet(h('div.stack',
-    h('div.bagqr', h('b', '내 배틀 QR'), canvas, h('small', '친구가 이 QR을 찍으면 나와 배틀할 수 있어요.')),
-    h('b', '어떤 배틀을 할까? (친구는 이 형식으로 싸워요)'), segBox,
-    h('b', '내 배틀 팀'), teamBox,
-    h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
+  if (trade) {
+    sheet(h('div.stack',
+      h('div.bagqr', h('b', '내 교환 QR'), canvas, h('small', '친구가 이 QR을 찍고 [포켓몬 교환하기]를 누르면 두 폰에 교환방이 열려요.')),
+      h('small.muted', '이 화면을 켜 둔 채로 기다려요. 배틀 QR과 같은 QR이에요.'),
+      h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
+  } else {
+    sheet(h('div.stack',
+      h('div.bagqr', h('b', '내 배틀 QR'), canvas, h('small', '친구가 이 QR을 찍으면 나와 배틀하거나 포켓몬을 교환할 수 있어요.')),
+      h('b', '어떤 배틀을 할까? (친구는 이 형식으로 싸워요)'), segBox,
+      h('b', '내 배틀 팀'), teamBox,
+      h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
+  }
+  watchTradeWhile(canvas);
 }
 
 export async function friendBattleSheet(code) {
@@ -329,6 +341,7 @@ export async function friendBattleSheet(code) {
     h('button.btn.big.primary', { disabled: !!why, onclick: () => startBattle('pvp', code) }, '실시간 배틀 신청 (친구가 수락하면 시작)'),
     h('button.btn.big', { disabled: !!why, onclick: () => startBattle('team', code) }, '친구 팀과 AI 배틀 (바로 시작)'),
     h('small.muted', '이기면 진화의 돌 1개 (하루 3번 · 같은 친구는 하루 1번)'),
+    h('button.btn.big.trade-go', { onclick: () => openTradeByCode(code) }, '포켓몬 교환하기 (1마리씩)'),
     h('button.btn', { onclick: () => closeOverlay() }, '닫기')));
   S.btPeekFmt = pk.format;
 }

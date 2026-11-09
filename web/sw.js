@@ -12,7 +12,7 @@ const CORE = [
   './', 's/', 'manifest.webmanifest',   // not index.html: Cloudflare Pages redirects it, and a redirected response can't answer a navigation
   'css/pixel.css', 'css/types.css', 'css/app.css',
   'js/app.js', 'js/state.js', 'js/dex.js', 'js/raid.js', 'js/battle.js', 'js/login.js', 'js/bag.js', 'js/games/hub.js', 'js/games/common.js',
-  'js/eggs.js', 'js/legends.js', 'js/config.js', 'js/sb.js', 'js/db.js', 'js/qrfmt.js', 'js/scanner.js', 'js/sprites.js', 'js/gif.js', 'js/sfx.js', 'js/ui.js', 'js/auth.js',
+  'js/eggs.js', 'js/trade.js', 'js/legends.js', 'js/config.js', 'js/sb.js', 'js/db.js', 'js/qrfmt.js', 'js/scanner.js', 'js/sprites.js', 'js/gif.js', 'js/sfx.js', 'js/ui.js', 'js/auth.js',
   'vendor/supabase.js', 'vendor/qrcode.js',
   'fonts/Galmuri11.woff', 'fonts/Galmuri11-Bold.woff',
   'sprites/atlas.png', 'sprites/pk-index.js', 'img/clubs/watson.png', 'img/clubs/decfi.png', 'img/title/sky.png', 'img/title/grass.png', 'img/items.png',

@@ -2515,6 +2515,8 @@ const DEFAULTS = {
     { from: '18:30', to: '23:00', name: '야간 자율학습', env: 'misty' },
   ],
   ability_hidden_chance: 0.05,
+  // 0056_trade.sql
+  trade_open: true, trade_daily_max: 5, trade_room_sec: 180,
   // 0021_battle_end.sql · 0022_open_raids.sql · 0023_minigames.sql · 0025_minigame_admin.sql
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
   // 0027_eggs_class_achievements.sql
@@ -2737,6 +2739,16 @@ const GROUPS = {
       P('roulette_daily_max', '룰렛: 하루에 돌리는 횟수', 'int', { unit: '번', min: 0, max: 100 }),
       P('quiz_ticket_daily_cap', '퀴즈로 받는 진화의 돌 (하루 최대)', 'int', { unit: '개', min: 0, max: 500 }),
       P('battle_daily_max', '배틀 승리 보상 (하루 최대)', 'int', { unit: '번', min: 0, max: 999, help: '999 = 제한 없음. 같은 친구에게는 하루 한 번만 보상.' }),
+    ],
+  },
+  // 0056 교환
+  trade: {
+    tab: '성장·보상', title: '포켓몬 교환',
+    intro: '학생 둘이 배틀 QR로 만나 포켓몬을 1마리씩 바꿔요. 일반 폼만 (반짝이 · 선생님 · 전설 · 이벤트 · 울트라비스트 · 배틀 팀 · 카드 포켓몬은 안 됨).',
+    fields: [
+      P('trade_open', '교환 켜기', 'bool', { help: '끄면 새 교환방을 열 수 없고, 열려 있던 교환도 바꾸기 직전에 멈춰요.' }),
+      P('trade_daily_max', '한 학생의 하루 교환 수', 'int', { unit: '번', min: 0, max: 100, help: '기본 5. 두 사람 모두 남아 있어야 교환돼요.' }),
+      P('trade_room_sec', '교환방이 닫히는 시간 (아무것도 안 할 때)', 'int', { unit: '초', min: 30, max: 1800, help: '기본 180초 (3분).' }),
     ],
   },
 };
@@ -3270,7 +3282,36 @@ async function tabGrow() {
     h('div.cols', h('div', settingsGroup(GROUPS.eggs, set), settingsGroup(GROUPS.shiny, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
     h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
       h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),
+    h('div.cols', h('div', settingsGroup(GROUPS.trade, set)), h('div', tradeCard())),   // 0056
   ];
+}
+
+// 0056: 최근 교환 (누가 · 무엇을 · 언제)
+const TRADE_ST = { done: '교환함', open: '진행 중', cancelled: '그만둠', expired: '시간 지남' };
+function tradeCard() {
+  const body = h('div', h('p.small-txt.muted', '불러오는 중…'));
+  const reload = h('button.btn', '새로 고침');
+  const load = async () => {
+    if (!S.species?.length) { try { await loadCatalog(); } catch { /* 이름 없이 */ } }
+    let r;
+    try { r = await rpc('admin_trades', { p_limit: 40 }); } catch (e) { body.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
+    const nm = (id) => (id == null ? '—' : S.spById?.get(id)?.name || `#${id}`);
+    const rows = r.rows || [];
+    body.replaceChildren(
+      h('p.small-txt', `오늘 교환 ${r.today}번 · 지금 열린 교환방 ${r.open}개`),
+      rows.length ? h('div.tbl-wrap', h('table.tbl',
+        h('thead', h('tr', h('th', '언제'), h('th', '학생 A → B'), h('th', 'A가 보냄'), h('th', 'B가 보냄'), h('th', '상태'))),
+        h('tbody', rows.map((x) => h('tr',
+          h('td', timeAgo(x.at)),
+          h('td', `${x.a_name} (${x.a_sid || '-'}) ↔ ${x.b_name} (${x.b_sid || '-'})`),
+          h('td', nm(x.sp1), x.evo1 ? ` → ${nm(x.evo1)}` : ''),
+          h('td', nm(x.sp2), x.evo2 ? ` → ${nm(x.evo2)}` : ''),
+          h('td', TRADE_ST[x.status] || x.status)))))) : h('p.small-txt.muted', '아직 교환이 없어요.'));
+  };
+  reload.onclick = load;
+  load();
+  return h('div.box.stack', h('div.row', h('b', '최근 교환'), h('span', { style: { flex: 1 } }), reload), body,
+    h('p.small-txt.muted', '교환 기록은 events 표 (kind = trade) 에도 남아요.'));
 }
 
 // ───────────────────────── 전설 · 이상한 소포 (0038) ─────────────────────────
