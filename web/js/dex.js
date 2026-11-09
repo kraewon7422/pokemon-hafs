@@ -4,8 +4,8 @@ import { kv } from './db.js';
 import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isEvent, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, vibrate } from './state.js';
-import { closeOverlay, eggTap, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
+import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isEvent, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, stage2, unlockInfo, vibrate } from './state.js';
+import { closeOverlay, eggTap, go, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
 import { rumourBox } from './legends.js';
 
 // ───────────────────────── 지도 ─────────────────────────
@@ -19,10 +19,38 @@ export function viewMap() {
     h('button', { 'aria-pressed': String(mode === 'qr'), onclick: () => setMode('qr') }, 'QR 지도'),
     h('button', { 'aria-pressed': String(mode === 'safari'), onclick: () => setMode('safari') }, '사파리존'));
   if (mode === 'qr') return [bar, ...viewQrMap()];
+  if (!stage2() && !unlockInfo().safari_pending) return [bar, safariLocked()];   // 0051: 학교 포켓몬을 더 모아야 열림 (하던 잡기가 있으면 끝내게 열어 둠)
   if (safariMod) return [bar, safariMod.viewSafari()];
   import('./safari.js').then((m) => { safariMod = m; if (S.tab === 'map' && S.mapMode === 'safari') renderTab(); })
     .catch(() => toast('사파리존을 불러오지 못했어요. 인터넷을 확인해 주세요.', { kind: 'error' }));
   return [bar, h('div.box', '사파리존을 불러오는 중…')];
+}
+
+// ── 해금 단계 (0051) ──
+const spOfDex = (d) => S.catalog?.species.find((sp) => sp.dex === d)?.id || 1;
+// 2단계까지의 진행 막대: 학교 포켓몬 got / need
+export function unlockBar() {
+  const u = unlockInfo();
+  const need = Math.max(1, u.need || 0);
+  return h('div.ul-progress', { role: 'progressbar', 'aria-valuemin': 0, 'aria-valuemax': need, 'aria-valuenow': Math.min(u.got, need), 'aria-label': '학교 포켓몬 모은 수' },
+    h('div.banner', h('span', '학교 포켓몬'), h('b', `${Math.min(u.got, need)} / ${need}`)),
+    h('div.bar', h('i', { style: { width: `${Math.min(1, u.got / need) * 100}%` } })));
+}
+export const UNLOCK_PERKS = [['사파리존', '지도 탭에서 걸어 다니며 포켓몬 잡기'], ['야생 포켓몬', '장소 QR을 찍으면 야생 포켓몬도 나와요'], ['전체 도감', '전국의 모든 포켓몬 칸이 보여요']];
+const perkList = () => h('ul.ul-perks', UNLOCK_PERKS.map(([t, d]) => h('li', h('b', t), h('small', d))));
+// 지도 탭 · 사파리존 (2단계 전): 잠긴 문 + 진행 상황
+function safariLocked() {
+  const u = unlockInfo();
+  const left = Math.max(0, (u.need || 0) - (u.got || 0));
+  return h('div.box.ul-locked',
+    h('div.ul-gate', { 'aria-hidden': 'true' }, spriteCanvas(spOfDex(115), 96, 'silhouette'), h('span.ul-lock')),
+    h('b.ul-title', '사파리존은 아직 잠겨 있어요'),
+    h('p', `학교 포켓몬 (선생님 포켓몬 · 숨은 포켓몬) 을 ${u.need}마리 모으면 열려요!`),
+    unlockBar(),
+    h('p.ul-left', left ? `앞으로 ${left}마리! 장소 QR · 퀴즈 · 레이드로 모아 보세요.` : '거의 다 왔어요! 잠시 뒤에 다시 열어 보세요.'),
+    h('div.ul-perk-head', '열리면 함께 생기는 것'),
+    perkList(),
+    h('button.btn.big.primary', { onclick: () => { sfx.select(); S.dexScope = 'school'; go('dex'); } }, pix('book'), '도감에서 학교 포켓몬 보기'));
 }
 
 function viewQrMap() {
@@ -110,7 +138,8 @@ export function viewDex() {
   const seen = seenKeys();
   const reached = (sp) => seen.has(dexKey(sp));
   const D = dexStats();
-  const scope = S.dexScope || 'all';
+  const open = stage2();                      // 0051: 2단계 전엔 학교 탭만 (범위 버튼 · 전국 도감 줄 없음)
+  const scope = open ? S.dexScope || 'all' : 'school';
   const tf = TYPES.includes(S.dexFilter) ? S.dexFilter : 'all';
   const ok = (sp) => (!isSecret(sp.line_id) || (scope === 'all' && tf === 'all') || owned(sp.line_id))
     && (!isMythic(sp.line_id) || owned(sp.line_id))                                   // 환상 = 잡기 전엔 도감에 없음
@@ -139,10 +168,11 @@ export function viewDex() {
       h('div.banner', h('b', '포켓몬 도감'), h('span', `학교 ${D.found} / ${D.total}`)),
       h('div.bar', h('i', { style: { width: `${(D.found / Math.max(1, D.total)) * 100}%` } })),
       h('div.banner', { style: { fontSize: '13px' } },
-        h('span', `전국 도감 ${D.allFound} / ${D.allTotal}`),
+        open ? h('span', `전국 도감 ${D.allFound} / ${D.allTotal}`) : h('span', '선생님 포켓몬 · 숨은 포켓몬'),
         h('span', h('i.ticket-icon'), ` 진화의 돌 × ${p.evo_tickets}`)),
+      !open && h('small.ul-dex-note', pix('school'), ` 학교 포켓몬을 ${unlockInfo().need}마리 모으면 (지금 ${unlockInfo().got}마리) 사파리존과 전체 도감이 열려요!`),
       evoReady ? h('small.evo-ready', pix('spark'), ` 진화할 수 있는 포켓몬이 ${evoReady}마리 있어요!`) : null),
-    h('div.filters', { role: 'toolbar', 'aria-label': '범위' },
+    open && h('div.filters', { role: 'toolbar', 'aria-label': '범위' },
       SCOPES.map(([k, t]) => h('button.chip', { 'aria-pressed': String(scope === k), onclick: () => { S.dexScope = k; renderTab(); } }, t))),
     h('div.filters.type-filters', { role: 'toolbar', 'aria-label': '타입' },
       ['all', ...TYPES].map((t) => h(`button.chip${t === 'all' ? '' : '.t-' + t}`, {

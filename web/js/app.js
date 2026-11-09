@@ -9,8 +9,8 @@ import { spriteCanvas, paint, monSprite, aliasSprites, ensureSprites } from './s
 import { sfx, unlockAudio, isSfxOn, setSfxOn, isBgmOn, setBgmOn, bgmScene } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
-import { S, app, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, titlesOf, vibrate } from './state.js';
-import { fmtTime, openDetail, viewDex, viewMap } from './dex.js';
+import { S, app, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, stage2, titlesOf, unlockInfo, vibrate } from './state.js';
+import { fmtTime, openDetail, unlockBar, UNLOCK_PERKS, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
 import { loadBag, openBagScreen } from './bag.js';
@@ -265,6 +265,7 @@ export function sync(opts = {}) {
       S.syncing = null;
       if ($('nav.tabs')) { renderStatus(); if (!S.overlay) renderTab(); }
       if ($('nav.tabs') && S.snap?.notices?.length) setTimeout(() => playNotices().catch(() => {}), 400);   // 0038: 특별한 보상 알림 (전체 화면 연출, 안 본 것만)
+      if ($('nav.tabs') && S.snap?.unlock?.unlocked) setTimeout(() => maybeUnlockFanfare().catch(() => {}), 1500);   // 0051: 2단계가 처음 열림
     }
   })();
   return S.syncing;
@@ -458,6 +459,7 @@ export function viewHome() {
     minsLeft != null && minsLeft > 0 && minsLeft < 120 && h('div.box.warn-box', pix('clock'), `마감까지 ${minsLeft}분! 티켓은 마감 전에 부스에서 써 주세요.`),
 
     h(`button.btn.big.${kind}.next-action`, { onclick: () => { sfx.select(); act(); } }, h('span', icon), label),
+    unlockHomeBox(),
 
     h(`section.trainer${D.complete ? '.gold-card' : ''}`, { 'aria-label': '트레이너 카드' },
       h('div.idno', h('span', 'TRAINER CARD'), h('span', p.student_id.startsWith('g:') ? 'GUEST' : `ID No. ${p.student_id}`)),
@@ -493,6 +495,45 @@ export function viewHome() {
 
     hint && h('section.box.hint', h('b', pix(hint.egg ? 'gift' : 'bulb'), hint.egg ? '수수께끼  ' : '힌트  '), hint.hint),
   ];
+}
+
+// 해금 단계 (0051): 2단계 전엔 홈에 진행 상황 (학교 포켓몬 got/need → 사파리존 · 야생 포켓몬 · 전체 도감)
+function unlockHomeBox() {
+  if (stage2()) return null;
+  const u = unlockInfo();
+  return h('section.box.ul-home', { 'aria-label': '해금 단계' },
+    h('div.ul-home-head', pix('spark'), h('b', '다음 해금: 사파리존')),
+    unlockBar(),
+    h('p.ul-home-txt', `학교 포켓몬 ${u.got}/${u.need} — ${u.need}마리 모으면 사파리존이 열려요!`),
+    h('small.muted', '함께 열림: 장소 QR의 야생 포켓몬 · 전체 도감'),
+    h('button.btn.small', { onclick: () => { sfx.select(); S.dexScope = 'school'; go('dex'); } }, pix('book'), '학교 포켓몬 보기'));
+}
+// 2단계가 처음 열렸을 때 한 번 (기기 · 학생마다): "사파리존이 열렸다!" 축하 화면
+let unlockBusy = false;
+async function maybeUnlockFanfare() {
+  const u = S.snap?.unlock;
+  if (!u?.unlocked || unlockBusy || S.overlay || S.bagOpen || !$('nav.tabs')) return;
+  const key = `unlock2:${S.snap?.profile?.student_id || ''}`;
+  if (await kv.get(key)) return;
+  unlockBusy = true;
+  try {
+    await kv.set(key, true);
+    const kanga = S.catalog?.species.find((sp) => sp.dex === 115)?.id || dexOf(35, 1);
+    const text = h('div.box.textbox');
+    const btns = h('div.ul-fan-btns');
+    const ov = overlay(h('div.stage.ul-fanfare', h('div.scene.golden', h('div.rays'), h('span.spr', spriteCanvas(kanga, 160))), h('div', text, btns)), 'full');
+    try { sfx.fanfare(); } catch { /* */ }
+    vibrate([80, 60, 80, 60, 200]);
+    const head = u.by === 'all' ? '운영진이 모두에게 문을 열었어요!' : `학교 포켓몬을 ${u.got}마리 모았어요!`;
+    await typeText(text, [head, '사파리존이 열렸다!', ...UNLOCK_PERKS.slice(1).map(([t, d]) => `· ${t}: ${d}`)].join('\n'));
+    const choice = await new Promise((res) => {
+      btns.replaceChildren(
+        h('button.btn.big.primary', { onclick: () => res('go') }, '사파리존 가 보기'),
+        h('button.btn.big', { onclick: () => res('close') }, '닫기'));
+    });
+    if (S.overlay === ov) closeOverlay();
+    if (choice === 'go') { S.mapMode = 'safari'; go('map'); } else renderTab();
+  } finally { unlockBusy = false; }
 }
 
 // install banner on home: until installed or closed (closing only hides it on this device)

@@ -1290,3 +1290,27 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .status { word-break: keep-all; overflow-wrap: normal; min-width: 0; }
 /* 0042: 사파리 글 상자 줄 수 재기 (보이지 않음) */
 .sf-probe { position: absolute; left: 0; top: 0; visibility: hidden; pointer-events: none; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; }
+/* 0051 해금 단계: 홈 진행 상자 · 지도 탭 잠긴 사파리존 · 도감 안내 · 처음 열림 축하 */
+.ul-progress { display: grid; gap: 4px; }
+.ul-progress .banner b { white-space: nowrap; }
+.ul-home { display: grid; gap: 6px; background: #fff8dc; border-color: #b08a28; }
+.ul-home-head { display: flex; align-items: center; gap: 6px; }
+.ul-home-txt { margin: 0; word-break: keep-all; overflow-wrap: break-word; }
+.ul-home small { word-break: keep-all; overflow-wrap: break-word; }
+.ul-home .btn.small { justify-self: start; }
+.ul-locked { display: grid; gap: 10px; text-align: center; justify-items: stretch; word-break: keep-all; overflow-wrap: break-word; }
+.ul-locked p { margin: 0; }
+.ul-gate { position: relative; justify-self: center; width: 128px; height: 128px; display: grid; place-items: center; border-radius: 50%;
+  background: radial-gradient(circle, #d8e8c0 0 55%, #a8c088 56% 100%); border: 3px solid var(--ink); }
+.ul-lock { position: absolute; right: 4px; bottom: 6px; width: 34px; height: 36px; image-rendering: pixelated; background:
+  linear-gradient(#e8b030, #e8b030) 3px 15px / 28px 19px no-repeat,
+  radial-gradient(circle at 17px 15px, transparent 7px, #384050 7px 10px, transparent 10px) 0 0 / 34px 30px no-repeat; }
+.ul-title { font-size: var(--fs-l); }
+.ul-left { font-size: var(--fs-s); }
+.ul-perk-head { font-weight: bold; text-align: left; margin-top: 4px; }
+.ul-perks { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; text-align: left; }
+.ul-perks li { display: grid; gap: 2px; padding: 6px 8px; border: 2px dashed #8890a0; border-radius: 6px; background: #f2f4f8; }
+.ul-perks small { font-size: var(--fs-s); }
+.ul-dex-note { display: block; margin-top: 4px; color: #6a4a08; font-weight: 700; word-break: keep-all; overflow-wrap: break-word; }
+.ul-fanfare .ul-fan-btns { display: flex; gap: 8px; margin-top: 8px; }
+.ul-fanfare .ul-fan-btns .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; }

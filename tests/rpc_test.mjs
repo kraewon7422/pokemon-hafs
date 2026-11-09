@@ -79,6 +79,9 @@ await patchSetting('battle_fields', []);
 // 0042: 새로 잡는 포켓몬이 1/512 로 반짝 — 예전 시험 (SHINY_LOCKED 등) 이 흔들리지 않게 시험 동안 0 (끝에서 되돌림)
 const WSHINY0 = (await admin.select('settings?key=eq.wild_shiny_chance')).data?.[0]?.value ?? 0.001953125;
 await patchSetting('wild_shiny_chance', 0);
+// 0051: 2단계 해금 (사파리존 · 장소 QR 야생) — 예전 시험은 새 학생이 바로 사파리 · QR 야생을 쓰므로 시험 동안 모두에게 열기 ([60] 은 직접 끄고 봄, 끝에서 되돌림)
+const UNLOCK0 = (await admin.select('settings?key=eq.unlock_all')).data?.[0]?.value ?? false;
+await patchSetting('unlock_all', true);
 const booth = client(await login('booth1@staff.test'));
 const S = [];
 // 테스트 학생 번호는 각 기수의 900번대 (실제 학생은 001~400) — 실제 학생 번호와 절대 겹치지 않게. 없으면 만든다
@@ -3667,12 +3670,115 @@ console.log('\n[58] 핵심 고침 (0049): 울트라비스트는 울트라 스페
   }
 }
 
+console.log('\n[60] 해금 단계 (0051): 학교 도감 50% → 사파리존 · 장소 QR 야생 · 전체 도감 · 한 번 열리면 계속 · 모두에게 열기 · 사파리존 닫힘 · 하던 잡기는 끝냄');
+{
+  const keys = ['unlock_all', 'unlock_safari_pct', 'safari_open', 'wild_chance', 'safari_min_steps', 'safari_encounter_rate', 'safari_steps_per_sec', 'safari_balls_daily'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+  const mk = async (name) => {
+    let sid; do { sid = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: sid, p_password: 'ul5151' })).error);
+    const c = client(await pwLogin(`${sid}@code.local`, 'ul5151'));
+    await c.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: name });
+    return { sid, c };
+  };
+  const sids = [];
+  const st = async (c) => (await c.rpc('sync')).data.state;
+  const walk = async (c) => {
+    for (const t0 = Date.now(); Date.now() - t0 < 10000;) {
+      const r = await c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 });
+      if (r.error) return { error: r.error };
+      if (r.data?.encounter || r.data?.reason) return r.data;
+      await wait(400);
+    }
+    return null;
+  };
+  const wildSet = new Set(((await admin.select(`lines?subject=eq.${encodeURIComponent('야생')}&select=id`)).data || []).map((x) => x.id));
+  const places = Object.keys(T).filter((k) => /^A\d\d$/.test(k)).sort();
+  const scanRedeem = async (who, qs) => {
+    const ns = qs.map(() => nonce());
+    const ack = (await who.c.rpc('sync', { p_scans: qs.map((q, i) => ({ n: ns[i], q, t: T[q].token })) })).data?.acks || [];
+    const res = (await booth.rpc('booth_redeem', { p_payload: who.sid })).data?.results || [];
+    return { ack, res: res.filter((x) => ns.includes(x.nonce)) };
+  };
+  try {
+    await setS('unlock_all', false); await setS('unlock_safari_pct', 50); await setS('safari_open', true);
+    await setS('safari_min_steps', 0); await setS('safari_encounter_rate', 1); await setS('safari_steps_per_sec', 20); await setS('safari_balls_daily', 20);
+    const V = await mk('해금시험'); sids.push(V.sid);
+    const s0 = await st(V.c);
+    const u0 = s0.unlock, total = (s0.rules.school_keys || []).length;
+    ok(u0 && u0.unlocked === false && u0.got === 0 && u0.total === total && total > 10 && u0.need === Math.ceil(total / 2) && u0.pct === 50 && u0.by == null && u0.all === false,
+       'fresh student: stage 2 locked, sync unlock = 0 / ceil(school total / 2)', u0);
+    const ss0 = (await V.c.rpc('safari_state')).data;
+    ok(ss0?.unlocked === false && ss0.locked === false && ss0.unlock?.need === u0.need, 'safari_state: unlocked false + progress (global lock off)', ss0 && { unlocked: ss0.unlocked, locked: ss0.locked, unlock: ss0.unlock });
+    ok((await V.c.rpc('safari_encounter', { p_steps: 5, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).error === 'SAFARI_LOCKED_STUDENT', 'below 50%: safari_encounter → SAFARI_LOCKED_STUDENT');
+    ok((await V.c.rpc('safari_visit', { p_area: 'beach' })).error === 'SAFARI_LOCKED_STUDENT', 'below 50%: safari_visit → SAFARI_LOCKED_STUDENT');
+    await setS('wild_chance', 1);
+    const r1 = await scanRedeem(V, places.slice(0, Math.min(4, Number(s0.rules.bag_max) || 4)));
+    ok(r1.res.length >= 3 && r1.res.every((x) => x.line_id && !wildSet.has(x.line_id)), `below 50% with wild_chance 100%: place QRs never give a wild Pokémon (${r1.res.length} redeemed)`, { lines: r1.res.map((x) => x.line_id), ack: r1.ack });
+    // 학교 계열을 줘서 50% 넘기기 (단계마다)
+    const school = ((await admin.select(`lines?subject=neq.${encodeURIComponent('야생')}&active=eq.true&withdrawn=eq.false&secret=eq.false&mythic=eq.false&bonus=eq.false&select=id,max_stage&order=id`)).data || []);
+    let u1 = null;
+    for (let i = 0; i < school.length; i++) {
+      for (let g = 1; g <= (school[i].max_stage || 1); g++) await admin.rpc('admin_grant_monster', { p_student_id: V.sid, p_line: school[i].id, p_stage: g });
+      if (i % 4 === 3 || i === school.length - 1) { u1 = (await st(V.c)).unlock; if (u1.unlocked) break; }
+    }
+    ok(u1?.unlocked === true && u1.by === 'progress' && !!u1.at && u1.got >= u1.need, 'reaching 50% of the school dex → unlocked (by progress, unlocked_at stored)', u1);
+    const ss1 = (await V.c.rpc('safari_state')).data;
+    ok(ss1?.unlocked === true, 'safari_state.unlocked true');
+    const e1 = await walk(V.c);
+    ok(e1?.encounter?.id, 'unlocked: safari_encounter gives an encounter', e1);
+    if (e1?.encounter?.id) await V.c.rpc('safari_result', { p_id: e1.encounter.id, p_throws: 1, p_caught: false });
+    ok(!(await V.c.rpc('safari_visit', { p_area: 'beach' })).error, 'unlocked: safari_visit works');
+    const r2 = await scanRedeem(V, places.slice(4, 7));
+    ok(r2.res.length >= 2 && r2.res.every((x) => wildSet.has(x.line_id)), `unlocked with wild_chance 100%: place QRs give wild Pokémon (${r2.res.length})`, { lines: r2.res.map((x) => x.line_id), ack: r2.ack });
+    await setS('wild_chance', 0);
+    // 한 번 열리면 계속: 필요한 % 를 100 으로 (= 학교 도감 칸이 늘어난 것과 같음)
+    await setS('unlock_safari_pct', 100);
+    const u2 = (await st(V.c)).unlock;
+    ok(u2?.unlocked === true && u2.need === u2.total && u2.got < u2.need && u2.by === 'progress', 'once unlocked stays unlocked after the requirement grows (need = total)', u2);
+    ok((await walk(V.c))?.encounter?.id, 'still can walk in the safari');
+    { const p = (await V.c.rpc('safari_state')).data?.pending; if (p?.id) await V.c.rpc('safari_result', { p_id: p.id, p_throws: 1, p_caught: false }); }
+    // 모두에게 열기 → 새 학생도
+    const W = await mk('해금모두'); sids.push(W.sid);
+    ok((await st(W.c)).unlock?.unlocked === false, 'second fresh student: locked');
+    await setS('unlock_all', true);
+    const uw = (await st(W.c)).unlock;
+    ok(uw?.unlocked === true && uw.by === 'all' && uw.all === true && !uw.at, 'unlock_all → a fresh student is unlocked (by all, nothing stored)', uw);
+    const ew = await walk(W.c);
+    ok(ew?.encounter?.id, 'unlock_all: fresh student can walk in the safari', ew);
+    // 하던 잡기는 잠겨도 끝냄
+    await setS('unlock_all', false);
+    const ew2 = await W.c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 });
+    ok(!ew2.error && ew2.data?.reason === 'pending' && ew2.data?.encounter?.id === ew?.encounter?.id, 'locked again with an in-progress encounter → safari_encounter returns it (no error)', ew2.error || ew2.data?.reason);
+    ok((await st(W.c)).unlock?.safari_pending === true, 'sync unlock.safari_pending true while it is open');
+    const fin = (await W.c.rpc('safari_result', { p_id: ew?.encounter?.id, p_throws: 1, p_caught: true })).data;
+    ok(fin?.caught === true, 'the in-progress encounter can still finish (caught)', fin);
+    ok((await W.c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).error === 'SAFARI_LOCKED_STUDENT', 'after it is done: locked again (SAFARI_LOCKED_STUDENT)');
+    // 사파리존 닫힘이 먼저
+    await setS('safari_open', false);
+    ok((await V.c.rpc('safari_encounter', { p_steps: 3, p_zone: 'grass', p_area: 'safari', p_dist: 0 })).error === 'SAFARI_CLOSED', 'safari_open false still blocks an unlocked student (SAFARI_CLOSED)');
+    await setS('unlock_all', true);
+    ok((await W.c.rpc('safari_visit', { p_area: 'beach' })).error === 'SAFARI_CLOSED', 'safari_open false blocks even with unlock_all');
+    ok((await V.c.rpc('safari_state')).data?.locked === true, 'safari_state.locked true');
+    await setS('safari_open', true); await setS('unlock_all', false);
+    // 운영자 통계
+    const as = (await admin.rpc('admin_unlock_stats')).data;
+    ok(as && as.unlocked >= 1 && as.students >= as.unlocked && as.pct === 100 && as.total === total && as.all === false, 'admin_unlock_stats', as);
+    ok((await V.c.rpc('admin_unlock_stats')).error === 'NOT_ADMIN', 'students cannot read admin_unlock_stats');
+  } finally {
+    for (const k of keys) if (k in old) await setS(k, old[k]);
+    if (sids.length) await admin.rpc('admin_delete_students', { p_student_ids: sids, p_confirm: '삭제' });
+  }
+}
+
 await admin.rpc('admin_delete_students', { p_student_ids: [`g:${GUEST}`], p_confirm: '삭제' });   // [13] 손님 계정 정리
 await patchSetting('wild_chance', WILD0);   // 시험 전 값으로
 await patchSetting('ditto_disguise_chance', DITTO0);
 await patchSetting('roam_chance', ROAM0);
 await patchSetting('battle_fields', BF_ORIG);
 await patchSetting('wild_shiny_chance', WSHINY0);
+await patchSetting('unlock_all', UNLOCK0);
 await patchSetting('quiz_stone_chance', STONE0.quiz_stone_chance ?? 0.35); await patchSetting('battle_stone_chance', STONE0.battle_stone_chance ?? 0.5);
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

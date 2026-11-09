@@ -122,3 +122,7 @@ export function dexStats() {
 }
 export const titlesOf = (p, d = dexStats()) => [...(p.titles || []), d.complete && '도감 마스터', d.secret && '비밀 탐험가'].filter(Boolean);
 export const vibrate = (p) => { try { navigator.vibrate?.(p); } catch { /* iOS: none */ } };
+// 해금 단계 (0051): sync 의 unlock = { unlocked, by, got, need, total, pct, minigame, at, all, safari_pending }.
+//   2단계 (학교 도감 pct% 또는 운영자 '모두에게 열기') = 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감. 예전 서버 (unlock 없음) = 열림
+export const unlockInfo = () => S.snap?.unlock || { unlocked: true, got: 0, need: 0, total: 0, pct: 0, old: true };
+export const stage2 = () => unlockInfo().unlocked !== false;

@@ -99,6 +99,8 @@ const SETTING_HELP = {
   egg_incubators: '부화기 칸 수 (1~3칸, 기본 3)',
   egg_legend: '보라 알에서 전설이 나올 확률 (0~1, 기본 0.1 = 10%)',
   safari_open: '사파리존 열기 ON/OFF (false = 학생 앱에 "아직 닫혀 있어요")',
+  unlock_safari_pct: '2단계 해금: 학교 도감을 몇 % 모으면 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감이 열리나 (0~100, 기본 50)',
+  unlock_all: '2단계 해금을 모두에게 열기 ON/OFF (true = 모은 수와 상관없이 모두 열림, 기본 false) — [축제 운영] 탭의 스위치',
   safari_balls_daily: '사파리존: 충전 주기마다 한 사람이 받는 사파리볼 (개, 기본 20)',
   safari_reset_hours: '사파리존: 사파리볼 충전 주기 (시간, 0.25~24, 기본 0.5 = 30분)',
   safari_encounter_rate: '사파리존: 풀숲 한 걸음마다 포켓몬을 만날 확률 (0~1, 기본 0.12)',
@@ -2414,6 +2416,7 @@ const DEFAULTS = {
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
   safari_open: true,   // 0048 사파리존 잠금
+  unlock_safari_pct: 50, unlock_all: false,   // 0051 해금 단계
   safari_balls_daily: 20, safari_reset_hours: 0.5, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_flee: 0.25, safari_steps_per_sec: 10,   // 0040: 30분 충전 · 만남 상한 없음 · 걸음 10/초
   safari_flee_level: 0.1,
   safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
@@ -2501,6 +2504,14 @@ async function saveSetting(key, value) {
 const P = (key, label, kind, extra = {}) => ({ key, label, kind, ...extra });
 const EGG_PARTS = [['green', '초록 알'], ['yellow', '노랑 알'], ['purple', '보라 알']];
 const GROUPS = {
+  // 0051 해금 단계 (축제 운영 탭의 '해금 단계' 카드 안)
+  unlock: {
+    tab: '축제 운영', title: '해금 단계 숫자',
+    fields: [
+      P('minigame_unlock', '1단계: 미니게임이 열리는 포켓몬 수', 'int', { unit: '종류', min: 0, max: 500, help: '포켓몬을 이만큼 (종류 수) 모으면 홈의 미니게임 버튼이 열려요. 기본 10. [미니게임] 탭의 숫자와 같은 설정이에요.' }),
+      P('unlock_safari_pct', '2단계: 학교 도감을 몇 % 모으면 열리나', 'int', { unit: '%', min: 0, max: 100, help: '학교 도감 = 앱 도감의 "학교" 탭 (선생님 포켓몬 · 숨은 포켓몬). 기본 50% = 절반. 한 번 열린 학생은 숫자를 올려도 계속 열려 있어요.' }),
+    ],
+  },
   // 축제 운영
   opsCatch: {
     tab: '축제 운영', title: '부스 포켓몬 잡기 · 레이드 보상',
@@ -2659,13 +2670,13 @@ const SPEC_BY_KEY = {};
 for (const g of Object.values(GROUPS)) for (const f of g.fields) if (!SPEC_BY_KEY[f.key]) SPEC_BY_KEY[f.key] = f;
 // 다른 탭에 전용 칸이 있는 설정 → 그 탭 이름 (고급 설정 표에서 기본으로 숨김)
 const KEY_HOME = {
-  festival_open: '축제 운영', self_redeem: '축제 운영', notice: '축제 운영', prize_note: '축제 운영', festival_close_at: '축제 운영', dup_bonus_every: '축제 운영',
+  festival_open: '축제 운영', self_redeem: '축제 운영', unlock_all: '축제 운영', notice: '축제 운영', prize_note: '축제 운영', festival_close_at: '축제 운영', dup_bonus_every: '축제 운영',
   raid_slots: '레이드', battle_fields: '성장·보상', minigame_unlock: '미니게임', minigame_off: '미니게임', admin_emails: '운영진', booth_emails: '운영진',
 };
 for (const g of Object.values(GROUPS)) for (const f of g.fields) KEY_HOME[f.key] = KEY_HOME[f.key] || g.tab;
 // 더 이상 서버가 읽지 않는 설정 (지우지 않고 표시만)
 const UNUSED_KEYS = ['battle_stage_mult', 'rotating_accept_minutes'];   // 0031 이 battle_stage_mult 를 지움 (예전 서버에만 남아 있을 수 있음)
-const KEY_TITLE = { battle_fields: '배틀 시간표 (날씨 · 필드)', notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 포켓몬 수', minigame_off: '꺼 둔 미니게임' };
+const KEY_TITLE = { unlock_all: '2단계 해금을 모두에게 열기', battle_fields: '배틀 시간표 (날씨 · 필드)', notice: '공지', prize_note: '상품 안내', festival_close_at: '축제 종료 시각', dup_bonus_every: '중복 보너스', raid_slots: '시간대 전설', minigame_unlock: '미니게임이 열리는 포켓몬 수', minigame_off: '꺼 둔 미니게임' };
 const keyTitle = (key) => SPEC_BY_KEY[key]?.label || KEY_TITLE[key] || key;
 
 const pctTxt = (v) => `${+(Number(v) * 100).toFixed(2)}%`;
@@ -2885,10 +2896,39 @@ async function tabOps() {
     h('p.small-txt.muted', sr ? `마지막 변경: ${fmtTime(sr.updated_at)}` : 'self_redeem 설정이 없어요 (마이그레이션 0003 필요).'));
 
   return [h('div.cols', kill, selfCard),
+    await unlockCard(set),
     h('div.cols',
       h('div', textSettingCard(set.notice, 'notice', '공지 (notice)', '모든 폰 상단에 1분 안에 표시돼요. 예: "13:00 본관 앞 전설 출현!" 비우면 공지가 사라져요.', 2),
         textSettingCard(set.prize_note, 'prize_note', '상품 안내 (prize_note)', '축제가 끝난 뒤 학생 폰의 "축제 종료" 화면에 보여요. 예: 상품 받는 곳·시간.', 3)),
       h('div', closeAtCard(set.festival_close_at), dupBonusCard(set.dup_bonus_every), settingsGroup(GROUPS.opsCatch, set), settingsGroup(GROUPS.wild, set)))];
+}
+
+// 0051 해금 단계: 1단계 (미니게임) · 2단계 (학교 도감 % → 사파리존 · 장소 QR 야생 · 전체 도감) · 모두에게 열기 스위치 · 몇 명이 열었나
+async function unlockCard(set) {
+  const ua = set.unlock_all;
+  if (!ua || !set.unlock_safari_pct) return missingCard('unlock_all', '해금 단계 (마이그레이션 0051 필요)');
+  const allOn = isOn(ua.value);
+  const st = await rpc('admin_unlock_stats').catch(() => null);
+  const allBtn = h('button.btn' + (allOn ? '.primary' : '.gold'), allOn ? '모두에게 열기 끄기' : '모두에게 열기');
+  allBtn.onclick = async () => {
+    const ok = await confirmBox(allOn ? '모두에게 열기를 끌까요?' : '2단계를 모두에게 열까요?', allOn
+      ? ['끄면 학교 도감을 아직 덜 모은 학생은 다시 잠겨요 (사파리존 · 장소 QR 야생 포켓몬 · 전체 도감).', '이미 스스로 모아서 연 학생은 그대로 열려 있어요.', '하던 사파리 잡기는 끝낼 수 있어요.']
+      : ['모은 수와 상관없이 모든 학생에게 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감이 열려요 (앱이 다음에 동기화할 때, 1분 안에).', '예: 오후부터 모두 즐기게 할 때.', '사파리존 열기 (야생 포켓몬 카드) 가 꺼져 있으면 사파리존은 여전히 닫혀 있어요.'],
+    { ok: allOn ? '끄기' : '모두에게 열기', danger: false });
+    if (!ok) return;
+    busy(allBtn, async () => { await saveSetting('unlock_all', !allOn); toast(allOn ? '모두에게 열기를 껐어요.' : '2단계를 모두에게 열었어요.'); rerender(); });
+  };
+  const nums = settingsGroup(GROUPS.unlock, set);
+  return h('div.box.stack' + (allOn ? '.self-on' : ''),
+    h('h2', '해금 단계'),
+    h('ul.small-txt',
+      h('li', h('b', '늘 열림: '), 'QR 찍기 · 선생님 포켓몬 · 퀴즈 · 레이드 · 배틀 · 룰렛 · 부스'),
+      h('li', h('b', '1단계: '), `포켓몬 ${st?.minigame ?? '?'}종류를 모으면 미니게임`),
+      h('li', h('b', '2단계: '), `학교 도감의 ${st?.pct ?? '?'}% (${st?.need ?? '?'} / ${st?.total ?? '?'}칸) 를 모으면 사파리존 · 장소 QR에서 야생 포켓몬 · 전체 도감. 그 전에는 장소 QR이 선생님 포켓몬만 줘요.`)),
+    st ? h('p', chip(`2단계를 연 학생 ${st.unlocked} / ${st.students}명`, 'blue'), allOn ? ' ' : null, allOn ? chip('지금은 모두에게 열림', 'hot') : null) : h('p.small-txt.warn-txt', '통계를 불러오지 못했어요.'),
+    h('div.kill', h('div.state', { class: allOn ? 'warn-txt' : 'muted' }, allOn ? '● 모두에게 열림' : '○ 모은 학생만 열림'), allBtn),
+    h('p.small-txt.muted', '모두에게 열기를 켜도 [야생 포켓몬] 카드의 "사파리존 열기" 가 꺼져 있으면 아무도 사파리존에 못 들어가요. ', changedTxt(ua)),
+    nums);
 }
 
 const missingCard = (key, title) => h('div.box.stack', h('h2', title), h('p.warn-txt', `${key} 설정이 없어요 (마이그레이션 0005 필요).`));

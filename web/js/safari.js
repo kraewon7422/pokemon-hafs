@@ -22,7 +22,7 @@ import { rpc, errorText } from './sb.js';
 import { sfx, bgmPush, bgmPreload, encounterCue } from './sfx.js';
 import { h, josa } from './ui.js';
 import { S } from './state.js';
-import { catchEncounter } from './app.js';
+import { catchEncounter, sync } from './app.js';
 import { monCell, spriteCanvas } from './sprites.js';
 import TI from '../img/safari-tiles.js';
 import { MAPS, SOLID, ENC, LEGEND_HINTS, ZONE_HINTS, ULTRA_BEASTS, DRAGON_ISLE } from './safari-maps.js';
@@ -573,7 +573,7 @@ function build() {
       st = { ...st, visited: r.visited, dragon: r.dragon };
       applyDragon();
       if (r.opened) dragonOpened();
-    }).catch((e) => { if (e?.message === 'SAFARI_CLOSED') refresh(); }).finally(() => visiting.delete(a));
+    }).catch((e) => { if (e?.message === 'SAFARI_CLOSED' || e?.message === 'SAFARI_LOCKED_STUDENT') refresh(); }).finally(() => visiting.delete(a));
   }
   // 열리면 사파리존 호수에 섬 + 다리 가운데 계단 (Z → 용의 굴). 열리기 전엔 없음.
   const BASE_ROWS = MAPS.safari.rows;
@@ -632,7 +632,7 @@ function build() {
   window.addEventListener('online', () => { if (root.isConnected) refresh(); });
   // 0040: 덮개는 사파리볼을 다 썼을 때만 (만남 상한 없음)
   let lockedHint = (() => { try { return localStorage.getItem('sfLocked') === '1'; } catch { return false; } })();   // 0048: 지난번에 닫혀 있었으면 상태를 받기 전에도 덮개
-  const closed = () => (st?.pending ? null : (st ? st.locked : lockedHint) ? 'locked' : !st ? null : st.balls_left <= 0 ? 'balls' : null);
+  const closed = () => (st?.pending ? null : (st ? st.locked : lockedHint) ? 'locked' : !st ? null : st.unlocked === false ? 'student' : st.balls_left <= 0 ? 'balls' : null);   // 0051: 'student' = 학교 포켓몬을 더 모아야 열림
   function paintInfo() {
     ballsEl.textContent = st ? `${st.balls_left}/${st.balls_daily}` : '-';
     ballsEl.nextElementSibling?.remove(); if (st?.next_reset_at) ballsEl.after(h('small.sf-reset', `다음 충전 ${new Date(st.next_reset_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Seoul' })}`));   // 0037 (branch-evo): 사파리볼 충전 시각
@@ -642,6 +642,8 @@ function build() {
     if (st) lockedHint = !!st.locked;
     if (why === 'locked') {   // 0048: 운영자가 사파리존을 닫음
       cover.replaceChildren(h('b', '사파리존은 아직 닫혀 있어요'), h('span', '지금은 학교 곳곳의 QR을 찾아보세요!'));
+    } else if (why === 'student') {   // 0051: 2단계 전 (보통은 지도 탭의 잠긴 화면이 먼저 보임)
+      cover.replaceChildren(h('b', '사파리존은 아직 잠겨 있어요'), h('span', `학교 포켓몬 ${st.unlock?.got ?? '?'} / ${st.unlock?.need ?? '?'} — 다 모으면 열려요!`));
     } else if (why) {   // 0037: 충전 주기(1~24시간)마다 다시 채워짐 → 다음 충전 시각을 알려 줌
       const at = st?.next_reset_at ? new Date(st.next_reset_at) : null;
       const hm = at ? at.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit', hour12: false }) : '';
@@ -717,7 +719,7 @@ function build() {
     if (inflight || pend.n <= 0 || !S.online || !st || closed() || busy) return;
     const n = Math.min(pend.n, 1000), zone = pend.zone, area = pend.area || mapId; pend.n -= n; inflight = true;
     let r = null;
-    try { r = await reportSteps(n, zone, area, areaDist()); } catch (e) { if (e.message === 'SAFARI_CLOSED') { inflight = false; pend.n = 0; refresh(); return; } if (!e.offline) say(errorText(e.message)); }
+    try { r = await reportSteps(n, zone, area, areaDist()); } catch (e) { if (e.message === 'SAFARI_CLOSED' || e.message === 'SAFARI_LOCKED_STUDENT') { inflight = false; pend.n = 0; refresh(); sync({ force: true }).catch(() => {}); return; } if (!e.offline) say(errorText(e.message)); }
     inflight = false;
     if (!r) return;
     st = { ...st, ...r };
