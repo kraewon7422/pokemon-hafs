@@ -1,4 +1,4 @@
--- 0050: 아직 얻을 길이 없던 전설 · 환상 포켓몬을 사파리존 특별한 곳에서 + 계열 복제 (선생님 포켓몬을 따로 넣기)
+-- 0050: 아직 얻을 길이 없던 전설 · 환상 포켓몬을 사파리존 특별한 곳에서
 --  A. 사파리존 전설 33마리 (lines.legend_src = 'safari', 보통 야생 · QR · 걸음 · 사파리 풀숲에서는 빠짐 — 0038 그대로)
 --     예전 전설 퀘스트와 같은 방식: settings.legend_quests 에 reward 'map' 한 줄씩 → 조건을 채우면 '깨어났다' 알림,
 --     사파리존 그 자리 (web/js/safari-maps.js LEGEND_HINTS · MAPS[].legends) 에서 legend_encounter → GO 방식 잡기 → legend_result (계정마다 한 번).
@@ -15,103 +15,10 @@
 --     이상한 소포 (gift_codes) 는 그대로 쓸 수 있음 (운영자가 도감 번호로 고름 — legend_src 와 상관없음).
 --  B. 새 퀘스트 종류 zone_catch {zone, n}: 사파리존 그 구역 (raid_encounters.zone) 에서 잡은 포켓몬 수 (용의 굴 · 울트라 스페이스 · 사막 · 발전소 · 용암 지대).
 --     _quest_cur · _quest_text · _quest_done_text · _legend_where 를 0038/0042 마지막 정의 + 새 줄로 다시 만듦.
---  C. 계열 복제 (운영자): admin_clone_line(p_line) → 새 계열 번호.
---     · 새 계열 번호 = 2001~3333 중 빈 번호 (보통 계열 1~2000 과 겹치지 않게), 종 번호 = (계열-1)*3+단계 (앱 · 운영자 화면이 쓰는 규칙 그대로 → 6001~9999).
---     · 복사: 계열 줄 (희귀도 · 타입 · 능력치 · 단계 수 …) · 종 (이름 · 도감 번호 · 능력치 · 타입 · 그림 경로 · 특성 · 진화 레벨) · 기본 기술 (species_moves) ·
---       배우는 기술 (learnset) · 진화 길 (evolutions). to_jsonb/jsonb_populate_record 로 복사 → 나중에 생긴 열도 따라옴.
---     · 복제본 = 야생 · 꺼짐 (active false → 어디서도 안 나옴, 도감 칸 수는 전국도감 번호로 세므로 그대로), legend_src · ultra 없음, lines.clone_of = 원래 계열.
---     · 선생님 배정 (admin_assign_teacher · '새 선생님 포켓몬으로') 으로 과목이 생기면 저절로 켜지고, 다시 야생이 되면 저절로 꺼짐 (트리거 lines_clone_active).
---       반대로 (원래 계열을 선생님에게 · 복제본을 야생으로) 쓰려면 운영자가 복제본의 '활성' 을 켬.
---     · 안 되는 계열: 학교 특별 계열 (bonus · secret · mythic · 35~42 · 77~82) = SPECIAL_LINE, 갈래 진화 계열 = BRANCH_LINE (선생님 계열이 될 수 없음).
---     · admin_delete_clone(p_line): 복제본만 (NOT_CLONE), 선생님이 있으면 CLONE_IS_TEACHER, 누가 가졌거나 티켓 · 만남 · 레이드 · 소포가 그 종을 가리키면 IN_USE.
 
--- ── 1. 계열 복제 열 · 트리거 ──────────────────────────────────────────────────────────────────────────────
-alter table public.lines add column if not exists clone_of int references public.lines (id) on delete set null;
-create index if not exists lines_clone_of on public.lines (clone_of) where clone_of is not null;
-
-create or replace function public._clone_active() returns trigger
-language plpgsql security definer set search_path = '' as $$
-begin
-  if new.clone_of is not null and new.subject is distinct from old.subject then
-    new.active := coalesce(new.subject, '야생') <> '야생';    -- 선생님이 생기면 켬 · 야생으로 돌아가면 끔 (원래 계열과 두 번 나오지 않게)
-  end if;
-  return new;
-end $$;
-drop trigger if exists lines_clone_active on public.lines;
-create trigger lines_clone_active before update of subject on public.lines
-  for each row execute function public._clone_active();
-
--- 갈래 진화 계열인가 (갈래 종 10000+ 이 있거나, 한 종에서 진화 길이 둘 이상)
-create or replace function public._line_branches(p_line int) returns boolean
-language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from public.species where line_id = p_line and id >= 10000)
-      or exists (select 1 from public.evolutions e join public.species s on s.id = e.from_species
-                  where s.line_id = p_line group by e.from_species having count(*) > 1)
-$$;
-
-create or replace function public.admin_clone_line(p_line int) returns int
-language plpgsql security definer set search_path = '' as $$
-declare a public.lines; nid int; root int;
-begin
-  perform public._assert_admin();
-  select * into a from public.lines where id = p_line for update;
-  if not found then raise exception 'NOT_FOUND'; end if;
-  if a.bonus or a.secret or a.mythic or a.id between 35 and 42 or a.id between 77 and 82 then raise exception 'SPECIAL_LINE'; end if;
-  if public._line_branches(a.id) then raise exception 'BRANCH_LINE'; end if;
-  if not exists (select 1 from public.species where line_id = a.id and id < 10000) then raise exception 'NO_SPECIES'; end if;
-  perform pg_advisory_xact_lock(hashtext('admin_clone_line'));
-  select min(g) into nid from generate_series(2001, 3333) g
-   where not exists (select 1 from public.lines where id = g)
-     and not exists (select 1 from public.species where id between (g - 1) * 3 + 1 and (g - 1) * 3 + 3);
-  if nid is null then raise exception 'NO_CLONE_ID'; end if;
-  root := coalesce(a.clone_of, a.id);
-  insert into public.lines
-  select (jsonb_populate_record(null::public.lines, to_jsonb(a) || jsonb_build_object(
-           'id', nid, 'teacher', '야생 포켓몬', 'subject', '야생', 'active', false, 'withdrawn', false,
-           'legend_src', null, 'ultra', false, 'clone_of', root))).*;
-  insert into public.species
-  select (jsonb_populate_record(null::public.species, to_jsonb(s) || jsonb_build_object('id', (nid - 1) * 3 + s.stage, 'line_id', nid))).*
-    from public.species s where s.line_id = a.id and s.id < 10000;
-  insert into public.species_moves (species_id, slot, move_id)
-  select (nid - 1) * 3 + s.stage, m.slot, m.move_id
-    from public.species_moves m join public.species s on s.id = m.species_id where s.line_id = a.id and s.id < 10000;
-  insert into public.learnset (line_id, move_id, lv, how)
-  select nid, l.move_id, l.lv, l.how from public.learnset l where l.line_id = a.id;
-  insert into public.evolutions (from_species, to_species, how, lv, sort)
-  select (nid - 1) * 3 + f.stage, (nid - 1) * 3 + t.stage, e.how, e.lv, e.sort
-    from public.evolutions e join public.species f on f.id = e.from_species join public.species t on t.id = e.to_species
-   where f.line_id = a.id and t.line_id = a.id and f.id < 10000 and t.id < 10000;
-  insert into public.events (user_id, kind, data) values (auth.uid(), 'admin', jsonb_build_object('clone_line', a.id, 'to', nid));
-  return nid;
-end $$;
-
-create or replace function public.admin_delete_clone(p_line int) returns jsonb
-language plpgsql security definer set search_path = '' as $$
-declare a public.lines; sps int[];
-begin
-  perform public._assert_admin();
-  select * into a from public.lines where id = p_line for update;
-  if not found then raise exception 'NOT_FOUND'; end if;
-  if a.clone_of is null then raise exception 'NOT_CLONE'; end if;
-  if a.subject <> '야생' then raise exception 'CLONE_IS_TEACHER'; end if;
-  select coalesce(array_agg(id), '{}') into sps from public.species where line_id = a.id;
-  if exists (select 1 from public.collection where line_id = a.id)
-     or exists (select 1 from public.raid_players where line_id = a.id)
-     or exists (select 1 from public.tickets where fixed_species = any (sps) or result_species = any (sps) or disguised_as = any (sps))
-     or exists (select 1 from public.raid_encounters where species_id = any (sps))
-     or exists (select 1 from public.raids where species_id = any (sps))
-     or exists (select 1 from public.gift_codes where species_id = any (sps)) then
-    raise exception 'IN_USE';
-  end if;
-  delete from public.notices where species_id = any (sps);
-  delete from public.lines where id = a.id;     -- 종 · 기본 기술 · 진화 길 · 배우는 기술 · QR 보상 · 퀴즈도 함께 (cascade)
-  insert into public.events (user_id, kind, data) values (auth.uid(), 'admin', jsonb_build_object('delete_clone', a.id, 'of', a.clone_of));
-  return jsonb_build_object('ok', true, 'line', a.id);
-end $$;
-
--- ── 2. 사파리존 전설 33마리 ───────────────────────────────────────────────────────────────────────────────
+-- ── 1. 사파리존 전설 33마리 ───────────────────────────────────────────────────────────────────────────────
 update public.lines l set legend_src = 'safari'
- where l.subject = '야생' and not l.bonus and not l.secret and not l.mythic and not l.ultra and l.clone_of is null
+ where l.subject = '야생' and not l.bonus and not l.secret and not l.mythic and not l.ultra
    and exists (select 1 from public.species s where s.line_id = l.id and s.stage = 1 and s.id < 10000 and s.dex = any (array[
                  380, 381, 488, 491, 489, 785, 786, 787, 788,   -- 꿈의 섬
                  638, 639, 640, 647, 492,                       -- 성검의 숲
@@ -159,7 +66,7 @@ update public.settings s set value = s.value || coalesce((
    where not exists (select 1 from jsonb_array_elements(s.value) y where (y ->> 'dex')::int = (x ->> 'dex')::int)), '[]'::jsonb)
  where s.key = 'legend_quests' and jsonb_typeof(s.value) = 'array';
 
--- ── 3. 퀘스트 셈 · 글 (0038 / 0042 + zone_catch) ─────────────────────────────────────────────────────────
+-- ── 2. 퀘스트 셈 · 글 (0038 / 0042 + zone_catch) ─────────────────────────────────────────────────────────
 create or replace function public._quest_cur(uid uuid, q jsonb) returns int
 language sql stable security definer set search_path = '' as $$
   select case q ->> 'kind'
@@ -248,8 +155,7 @@ language sql immutable set search_path = '' as $$
     else '깊은 곳' end
 $$;
 
--- rule (0006): every migration that creates functions ends with this block (0048 list + admin_clone_line · admin_delete_clone;
---   _clone_active · _line_branches are internal, not granted)
+-- rule (0006): every migration that creates functions ends with this block (0048 list 그대로 — 새 공개 함수 없음)
 revoke execute on all functions in schema public from public, anon, authenticated;
 grant execute on function
   public.create_code_account(text), public.create_number_account(text, text), public.request_password_reset(text, text, text, text),
@@ -300,8 +206,6 @@ grant execute on function
   -- 0041
   public.set_nickname(text), public.admin_clear_nickname(text),
   -- 0048
-  public.safari_visit(text),
-  -- 0050
-  public.admin_clone_line(int), public.admin_delete_clone(int)
+  public.safari_visit(text)
 to authenticated;
 notify pgrst, 'reload schema';

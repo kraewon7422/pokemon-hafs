@@ -173,14 +173,6 @@ const ADMIN_ERR = {
   ACCOUNT_IN_USE: '그 로그인에는 이미 게임 기록(도감·티켓)이 있어요. 옮길 수 없어요.',
   NO_LINE: '없는 포켓몬 계열이에요.',
   TOO_MANY: '한 번에 너무 많이 보냈어요.',
-  // 0050 계열 복제
-  SPECIAL_LINE: '학교 특별 전설 계열은 복제할 수 없어요.',
-  BRANCH_LINE: '갈래로 진화하는 계열은 선생님 포켓몬이 될 수 없어서 복제하지 않아요.',
-  NO_SPECIES: '포켓몬이 없는 계열이에요.',
-  NO_CLONE_ID: '복제본 번호가 모두 찼어요 (2001~3333). 안 쓰는 복제본을 지워 주세요.',
-  NOT_CLONE: '복제본만 지울 수 있어요.',
-  CLONE_IS_TEACHER: '선생님이 배정된 복제본이에요. 먼저 선생님을 다른 계열로 옮긴 뒤 지워 주세요.',
-  IN_USE: '이미 누군가 이 복제본을 가지고 있거나 (티켓 · 만남 · 레이드 · 소포 포함) 쓰고 있어서 지울 수 없어요.',
 };
 function fail(e) { console.warn('[admin]', e); toast(msgOf(e), 4000); }
 
@@ -993,7 +985,7 @@ async function tabMon() {
     scopeBar.replaceChildren(...SCOPES.map(([k, t]) => h('button.chip.btnchip', { type: 'button', 'aria-pressed': String((S.monScope || 'all') === k),
       onclick: () => { S.monScope = k; drawItems(); } }, `${t} ${S.lines.filter((l) => k === 'all' || (k === 'teacher' ? isTeacherLine(l) : k === 'wild' ? isWildLine(l) : isSpecialLine(l))).length}`)));
     const names = (l) => [1, 2, 3].map((st) => S.spById.get((l.id - 1) * 3 + st)?.name);
-    const shown = S.lines.filter((l) => inScope(l) && (!f || [l.teacher, l.subject, lineType(l), firstSp(l)?.btype, ...names(l), '#' + l.id, l.clone_of ? '복제본' : '']
+    const shown = S.lines.filter((l) => inScope(l) && (!f || [l.teacher, l.subject, lineType(l), firstSp(l)?.btype, ...names(l), '#' + l.id]
       .some((x) => String(x || '').toLowerCase().includes(f))));
     listEl.replaceChildren(...byType(shown).map(([t, ls]) => h('div.line-group',
       h('div.line-group-h', typeChip(t), ` ${ls.length}`),
@@ -1003,7 +995,6 @@ async function tabMon() {
       }, sprite((l.id - 1) * 3 + 1, 48), h('div.meta',
         h('b', `#${l.id} ${chainName(l)}`),
         h('span', isTeacherLine(l) ? [chip(l.subject, 'blue'), ' ', l.teacher] : isWildLine(l) ? chip('야생', 'off') : chip(`전설 · ${l.teacher}`, 'warn')),
-        l.clone_of ? h('span', chip(`복제본 · #${l.clone_of}`, 'blue')) : null,
         h('span', RARITY[l.rarity] || l.rarity, ` · ${maxStage(l)}단계`, l.active ? '' : ' · 비활성',
           l.withdrawn ? ' ' : '', l.withdrawn ? chip('동의 철회', 'hot') : null)))))));
     if (!shown.length) listEl.replaceChildren(h('p.muted', '찾는 계열이 없어요.'));
@@ -1225,7 +1216,7 @@ async function lineEditor(lineId, redraw) {
     l.withdrawn ? h('p.notice.red', '이 계열은 선생님 동의 철회로 숨겨져 있어요.') : null,
     grid,
     h('div.row.end', save));
-  return [teacherBox(l, redraw), cloneBox(l, redraw), editor, isWildLine(l) || isSpecialLine(l) ? null : await quizSection(l)].filter(Boolean);
+  return [teacherBox(l, redraw), editor, isWildLine(l) || isSpecialLine(l) ? null : await quizSection(l)].filter(Boolean);
 }
 
 // 선생님 배정 (0032): 선생님을 다른 포켓몬 계열로 옮기기 (이름·과목·퀴즈·장소 QR·동의 철회 표시가 함께 옮겨짐), 야생 계열을 새 선생님 포켓몬으로
@@ -1276,54 +1267,6 @@ function teacherBox(l, redraw) {
     h('div.fields', field('또는 새 선생님 이름', tname), field('과목', tsub), h('div.fld', h('span', '\u00a0'), make)));
 }
 
-// 계열 복제 (0050): 같은 포켓몬 계열을 하나 더 (도감 번호 · 능력치 · 타입 · 그림 · 특성 · 기술 · 진화 그대로) → 원래 계열은 그대로 두고 복제본을 선생님 포켓몬으로
-//   서버 admin_clone_line(p_line) → 새 계열 번호 (2001~). 복제본은 꺼진 야생 계열로 생기고, 선생님을 배정하면 저절로 켜짐 (다시 야생이 되면 꺼짐).
-//   admin_delete_clone(p_line): 아무도 안 가진 복제본만 지움.
-const isBranchLine = (l) => S.species.some((x) => x.line_id === l.id && x.id >= 10000);
-function cloneBox(l, redraw) {
-  if (isSpecialLine(l)) return null;
-  const root = l.clone_of ?? l.id;
-  const fam = S.lines.filter((x) => x.id !== l.id && (x.id === root || x.clone_of === root));
-  const famList = fam.length ? h('ul.small-txt.tight', fam.map((x) => h('li',
-    h('button.btn.small', { type: 'button', onclick: () => { S.selLine = x.id; redraw(); } }, `#${x.id} ${chainName(x)}`),
-    ` — ${x.clone_of ? '복제본' : '원래 계열'} · ${lineWho(x)}${x.active ? '' : ' · 꺼짐'}`))) : null;
-  const make = h('button.btn', { type: 'button' }, '계열 복제');
-  const branch = isBranchLine(l);
-  if (branch) make.disabled = true;
-  make.onclick = () => busy(make, async () => {
-    if (!await confirmBox('계열 복제', [
-      `#${l.id} ${chainName(l)}과 똑같은 계열을 하나 더 만들어요 (같은 도감 번호 · 능력치 · 타입 · 그림 · 특성 · 기술 · 진화).`,
-      `원래 계열 #${l.id}는 그대로예요 (${isWildLine(l) ? '야생 · 사파리존에 그대로 나와요' : `${l.teacher}의 포켓몬 그대로`}).`,
-      '복제본은 꺼진 야생 계열로 만들어져요 (어디서도 나오지 않음). 복제본의 "선생님 배정"에서 선생님을 옮겨 오면 저절로 켜져요.',
-      '반대로 원래 계열을 선생님에게 주고 복제본을 야생으로 쓰려면, 복제본의 "활성"을 켜 주세요.',
-      '도감은 전국도감 번호로 세서 두 번 세지 않아요. 학생이 잡은 포켓몬은 잡은 계열 그대로예요.',
-    ], { ok: '복제하기' })) return;
-    const nid = await rpc('admin_clone_line', { p_line: l.id });
-    toast(`#${nid} 복제본을 만들었어요. 이제 "선생님 배정"에서 선생님을 옮겨 오세요.`, 6000);
-    S.selLine = Number(nid);
-    await redraw();
-  });
-  let del = null;
-  if (l.clone_of) {
-    del = h('button.btn.danger', { type: 'button' }, '복제본 지우기');
-    if (!isWildLine(l)) del.disabled = true;
-    del.onclick = () => busy(del, async () => {
-      if (!await confirmBox('복제본 지우기', [`#${l.id} ${chainName(l)} 복제본을 지워요. 원래 계열 #${l.clone_of}는 그대로예요.`,
-        '누군가 이 복제본을 가지고 있으면 지울 수 없어요.'], { ok: '지우기', danger: true })) return;
-      await rpc('admin_delete_clone', { p_line: l.id });
-      toast(`#${l.id} 복제본을 지웠어요.`);
-      S.selLine = l.clone_of;
-      await redraw();
-    });
-  }
-  return h('div.box.stack', h('h2', '계열 복제'),
-    l.clone_of ? h('p', chip('복제본', 'blue'), ` #${l.clone_of} ${chainName(S.lineById.get(l.clone_of) || l)}의 복제본이에요.`, l.active ? '' : ' 지금은 꺼져 있어요 (선생님을 배정하면 켜져요).') : null,
-    h('p.small-txt.muted', '같은 포켓몬을 야생 (사파리존) 에도 두고 선생님 포켓몬으로도 쓰고 싶을 때: 계열을 복제한 뒤 복제본에 선생님을 배정하세요.'),
-    branch ? h('p.small-txt.warn-txt', '갈래로 진화하는 계열은 선생님 포켓몬이 될 수 없어서 복제하지 않아요.') : null,
-    famList ? h('div', h('b.small-txt', '같은 포켓몬 계열'), famList) : null,
-    h('div.row.end', del, make));
-}
-
 // 1/2/3 단계 select (lines.max_stage). Legendaries are 1 stage.
 function stageSelect(value = 3) {
   return h('select.inp', [1, 2, 3].map((n) => h('option', { value: n, selected: n === value },
@@ -1331,7 +1274,7 @@ function stageSelect(value = 3) {
 }
 
 async function addLine(redraw) {
-  const nextId = Math.max(0, ...S.lines.filter((l) => l.id <= 2000).map((l) => l.id)) + 1;   // 0050: 2001~ = 계열 복제본 번호
+  const nextId = Math.max(0, ...S.lines.map((l) => l.id)) + 1;
   const teacher = h('input.inp', { placeholder: '예: 물리 선생님' });
   const subject = h('input.inp', { list: 'subjects-new', placeholder: '예: 물리' });
   const rarity = h('select.inp', Object.entries(RARITY).map(([k, v]) => h('option', { value: k }, v)));
@@ -2480,7 +2423,7 @@ const DEFAULTS = {
     { dex: 249, kind: 'type_catch', types: ['물'], n: 20, reward: 'map' }, { dex: 250, kind: 'type_catch', types: ['불꽃', '비행'], n: 20, reward: 'map' },
     { dex: 382, kind: 'safari_catches', n: 15, reward: 'map' }, { dex: 383, kind: 'type_catch', types: ['땅'], n: 15, reward: 'map' },
     { dex: 384, kind: 'caught_all', of: [382, 383], reward: 'map' },
-    // 0050_legends_clone.sql
+    // 0050_legends.sql
     { dex: 380, kind: 'type_catch', types: ['에스퍼'], n: 6, reward: 'map' }, { dex: 381, kind: 'type_catch', types: ['드래곤'], n: 3, reward: 'map' },
     { dex: 488, kind: 'type_catch', types: ['페어리'], n: 6, reward: 'map' }, { dex: 491, kind: 'caught_all', of: [488], reward: 'map' },
     { dex: 489, kind: 'type_catch', types: ['물'], n: 10, reward: 'map' }, { dex: 785, kind: 'type_catch', types: ['전기'], n: 6, reward: 'map' },
