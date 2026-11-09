@@ -2250,10 +2250,10 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
     // ── B. 퀘스트 ──
     const row = (s, dex) => s.legends.find((x) => x.dex === dex);
     s1 = await st();
-    ok(s1.legends.length === 47 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/8' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
-       'quest rows in sync: 유크시 quiz streak 0/8 (0050b)', row(s1, 480));
-    ok(row(s1, 481)?.prog === '배틀 승리 0/6' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
-       'battle wins 0/6 · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
+    ok(s1.legends.length === 47 && row(s1, 480)?.prog === '퀴즈 연속 정답 0/10' && row(s1, 480).ok === false && row(s1, 480).reward === 'ticket',
+       'quest rows in sync: 유크시 quiz streak 0/10', row(s1, 480));
+    ok(row(s1, 481)?.prog === '배틀 승리 0/10' && row(s1, 483)?.prog === '참가한 시간대 0/3' && row(s1, 484)?.need >= 20 && row(s1, 484).cur === 0,
+       'battle wins 0/10 · raid time slots 0/3 · every visible QR spot (0/N)', [row(s1, 481), row(s1, 483), row(s1, 484)]);
     const spots = (await admin.select('qr_points?select=id&kind=eq.static&visible_on_map=eq.true&active=eq.true&order=id')).data.map((x) => x.id);
     await L.c.rpc('sync', { p_scans: [{ n: nonce(), q: spots[0], t: T[spots[0]].token }] });
     ok(row(await st(), 484)?.cur === 1, 'a scanned QR spot counts toward 펄기아');
@@ -2275,7 +2275,7 @@ console.log('\n[45] 전설 (0038): 알림 · 퀘스트 · 방랑 전설 · 이�
     ok(row(await st(), 482)?.ok === true, 'a finished quest stays finished even if the number goes up later');
     const water = (await admin.select(`lines?select=id&subject=eq.${encodeURIComponent('야생')}&rarity=eq.common&ultra=eq.false&legend_src=is.null&btype=eq.${encodeURIComponent('물')}&order=id&limit=1`)).data?.[0]?.id;
     await admin.rpc('admin_grant_monster', { p_student_id: L.sid, p_line: water, p_stage: 1 });
-    ok(row(await st(), 249)?.prog === '물 타입 1/15', 'type quest counts caught water types (루기아 1/15, 0050b)', row(await st(), 249));
+    ok(row(await st(), 249)?.prog === '물 타입 1/20', 'type quest counts caught water types (루기아 1/20)', row(await st(), 249));
     const regiLines = (await admin.select('species?select=line_id,dex&dex=in.(377,378,379)&stage=eq.1')).data.map((x) => x.line_id);
     s1 = await st();
     ok(row(s1, 486)?.ok === false && row(s1, 486).cond.includes('레지락·레지아이스·레지스틸을 모두'), '레지기가스: not ready, condition text names the trio', row(s1, 486));
@@ -3719,8 +3719,8 @@ console.log('\n[59] 전설의 특별한 곳 (0050): 사파리존 전설 33마리
     const cr = (await V.rpc('safari_result', { p_id: enc?.id, p_throws: 1, p_caught: true })).data;
     ok(enc?.zone === 'ultra' && cr?.caught === true, 'caught one Pokémon in the Ultra Space (zone ultra)', [enc?.zone, cr?.caught]);
     let s1 = await st();
-    ok(row(s1, 789)?.ok === true && row(s1, 789).prog === '울트라 스페이스에서 잡은 포켓몬 1/1' && row(s1, 386)?.prog === '울트라 스페이스에서 잡은 포켓몬 1/3',
-       'zone_catch counts Ultra Space catches (코스모그 1/1 ready · 테오키스 1/3)', [row(s1, 789), row(s1, 386)?.prog]);
+    ok(row(s1, 789)?.ok === true && row(s1, 789).prog === '울트라 스페이스에서 잡은 포켓몬 1/1' && row(s1, 386)?.prog === '울트라 스페이스에서 잡은 포켓몬 1/4',
+       'zone_catch counts Ultra Space catches (코스모그 1/1 ready · 테오키스 1/4)', [row(s1, 789), row(s1, 386)?.prog]);
     const nr = s1.notices.find((n) => n.kind === 'legend_ready' && n.data?.dex === 789);
     ok(nr?.body.startsWith('울트라 스페이스에서 포켓몬을 1마리 잡았어요!') && nr.body.includes('별의 제단'), "'깨어났다' notice: zone_catch reason + 별의 제단", nr?.body);
     const le = (await V.rpc('legend_encounter', { p_dex: 789 })).data;
