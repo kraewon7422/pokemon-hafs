@@ -502,6 +502,10 @@ details.box > summary::after { content: ' ▾'; }
 details.box[open] > summary::after { content: ' ▴'; }
 
 .battle-overlay { background: #182030; }
+/* 0055 전설 배틀: 열 때 하얗게 세 번 번쩍 (GBA 전설 만남) */
+.legend-battle .bt-stage { animation: lgFlash .9s steps(1, end) 1; }
+@keyframes lgFlash { 0%, 34%, 68% { filter: brightness(3) saturate(0); } 17%, 51%, 85% { filter: none; } }
+@media (prefers-reduced-motion: reduce) { .legend-battle .bt-stage { animation: none; } }
 /* 배틀 화면: 글자를 길게 누르거나 빨리 눌러도 파랗게 선택되지 않게 (HP 숫자 등) */
 .battle-overlay .bt-stage { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .bt-stage { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 480px; margin: 0 auto; padding: 8px 10px calc(10px + env(safe-area-inset-bottom)); box-sizing: border-box; }
@@ -1323,3 +1327,48 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .ul-fanfare .ul-fan-btns { display: flex; gap: 8px; margin-top: 8px; }
 .ul-fanfare .ul-fan-btns .btn { flex: 1 1 0; min-width: 0; white-space: nowrap; }
 .ul-fanfare .ul-fan-btns .btn.primary { flex: 2 1 0; padding-left: 8px; padding-right: 8px; }
+
+/* ── 0056 포켓몬 교환 ── */
+.bag-head-btns { display: flex; gap: 6px; }
+.trade-room { box-sizing: border-box; position: absolute; inset: 0; display: flex; flex-direction: column; gap: 10px; padding: 12px 12px calc(12px + env(safe-area-inset-bottom)); background: #f0ead8; overflow-y: auto; max-width: 760px; margin: 0 auto; }
+.trade-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.trade-head b { font-size: 20px; }
+.trade-head .chip { min-width: 0; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.trade-sides { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: stretch; }
+.trade-arrow { align-self: center; font-size: 22px; font-weight: 700; color: #384050; }
+.trade-card { container-type: inline-size; display: flex; flex-direction: column; align-items: center; gap: 3px; min-width: 0; padding: 8px 6px; border: 3px solid var(--ink); border-radius: 10px; background: #fff; text-align: center; }
+.trade-card.empty { background: #f8f4e8; border-style: dashed; color: #5a6070; }
+.trade-card.ok { border-color: #2f9e44; box-shadow: 0 0 0 3px #b2f2bb inset; }
+.trade-who { font-size: 12px; color: #5a6070; line-height: 1.3; }
+.trade-pic { display: grid; place-items: center; height: 80px; }
+.trade-pic canvas { image-rendering: pixelated; }
+.trade-wait svg { width: 40px; height: 40px; opacity: .45; }
+.trade-name { font-size: clamp(12px, calc(100cqi / (var(--len, 5) + 1)), 17px); line-height: 1.25; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.trade-card .types { display: flex; flex-wrap: wrap; justify-content: center; gap: 2px; }
+.trade-card .type { font-size: 11px; padding: 0 4px; line-height: 16px; border-width: 1px; }
+.trade-ab, .trade-moves { font-size: 12px; line-height: 1.35; color: #384050; }
+.trade-ok { white-space: nowrap; margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: #2f9e44; color: #fff; font-size: 12px; line-height: 1.6; }
+.trade-status { margin: 0; padding: 8px 10px; border: 3px solid var(--ink); border-radius: 8px; background: #fffbe8; font-weight: 700; line-height: 1.4; }
+.trade-btns { display: flex; flex-direction: column; gap: 8px; }
+.trade-pick { overflow-y: auto; }
+.box-cell.trade-no { opacity: .45; background: #e8e8e8; }
+.box-cell.on { outline: 3px solid #2f9e44; }
+.trade-go { border-color: #2f9e44; }
+.trade-anim { position: relative; height: 200px; border: 3px solid var(--ink); border-radius: 10px; background: linear-gradient(#a8d8f8, #e8f4ff 60%, #c8e8a8 60%); overflow: hidden; }
+.trade-fly { position: absolute; top: 40px; transition: opacity .3s, transform .3s; }
+.trade-fly.l { left: 8%; }
+.trade-fly.r { right: 8%; opacity: 0; }
+.trade-fly canvas { width: 96px; height: 96px; image-rendering: pixelated; }
+.trade-ball { position: absolute; top: 80px; width: 32px; height: 32px; opacity: 0; transition: left 1.2s ease-in-out, right 1.2s ease-in-out, opacity .2s; }
+.trade-ball svg { width: 32px; height: 32px; }
+.trade-ball.l { left: calc(8% + 32px); }
+.trade-ball.r { right: calc(8% + 32px); }
+.trade-anim.in .trade-fly.l { opacity: 0; transform: scale(.3); }
+.trade-anim.in .trade-ball { opacity: 1; }
+.trade-anim.go .trade-ball.l { left: calc(92% - 64px); top: 50px; }
+.trade-anim.go .trade-ball.r { right: calc(92% - 64px); top: 110px; }
+.trade-anim.out .trade-ball { opacity: 0; }
+.trade-anim.out .trade-fly.r { opacity: 1; right: auto; left: 8%; }
+.trade-result { text-align: center; justify-items: center; }
+.trade-result .trade-pic { height: 104px; }
+@media (prefers-reduced-motion: reduce) { .trade-ball, .trade-fly { transition: none; } }

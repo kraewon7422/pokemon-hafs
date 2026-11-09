@@ -169,6 +169,9 @@ function dashed(g, x, y, w, hh, col) {
   for (let j = 2 * U; j < hh - 2 * U; j += 5 * U) { const l = Math.min(3 * U, hh - 2 * U - j); g.fillRect(x, y + j, U, l); g.fillRect(x + w - U, y + j, U, l); }
 }
 
+// 이름 숨기기 (공유용): 켜면 진짜 이름 대신 별명만 (없으면 '트레이너'). 기기에 기억
+const HIDE_KEY = 'hafs.cardHideName';
+const hideName = () => { try { return localStorage.getItem(HIDE_KEY) === '1'; } catch { return false; } };
 export async function drawCard() {
   await fontsReady();
   const p = S.snap.profile;
@@ -211,14 +214,16 @@ export async function drawCard() {
   if (partner) await drawMon(g, partner, PX + PS / 2, PY + PS - 6 * U, 4, { w: PS - 10 * U, h: PS - 12 * U });
   else text(g, '?', PX + PS / 2, PY + PS / 2 + 18 * U, { size: 160, bold: true, col: '#ead39a', align: 'center' });
   const NX = IX + 4 * U, NW = PX - 8 * U - NX;                      // 이름 칸 너비 ≈ 620px
-  const nick0 = String(p.nickname || '').trim();
+  const hide = hideName();
+  const nick = String(p.nickname || '').trim();
+  // 이름 숨기기면 별명이 큰 이름 자리로 (없으면 '트레이너'), 아래 작은 줄은 없음
+  const real = hide ? (nick || '트레이너') : (String(p.name || '').trim() || '트레이너');   // 내 카드 = 내 진짜 이름 (서버가 가린 display 말고)
+  const second = !hide && nick && nick !== real;
   // 이름 덩어리를 액자 높이 가운데쯤에 (별명 · 칭호가 없으면 그만큼 아래로)
-  let ny = PY + 26 * U + Math.round(((nick0 && nick0 !== String(p.name || '').trim() ? 0 : 16) + (titles.length ? 0 : 20)) / 2) * U;
-  const real = String(p.name || '').trim() || '트레이너';            // 내 카드 = 내 진짜 이름 (서버가 가린 display 말고)
+  let ny = PY + 26 * U + Math.round(((second ? 0 : 16) + (titles.length ? 0 : 20)) / 2) * U;
   const nm = fit(g, real, NW, 96, 60);
   text(g, nm.s, NX, ny, { size: nm.size, bold: true, shadow: '#fff8d8' });
-  const nick = String(p.nickname || '').trim();
-  if (nick && nick !== real) {
+  if (second) {
     ny += 16 * U;
     const nk = fit(g, nick, NW, 44, 30);   // 별명은 이름 아래 작은 줄로만 (따로 '별명' 표시 없음)
     text(g, nk.s, NX, ny, { size: nk.size, bold: true, col: '#1c3e8c', shadow: '#fff8d8' });
@@ -310,9 +315,23 @@ export async function openCardShare() {
   sfx.select();
   const panel = exportPanel('hafs-trainer-card.png', 'HAFS 몬스터 트레이너 카드');
   const p = S.snap.profile;
+  const hint = h('small.share-hint', { style: { whiteSpace: 'pre-line' } });
+  const setHint = () => { hint.textContent = hideName()
+    ? `카드에는 이름 대신 ${p.nickname ? '별명' : "'트레이너'"}만 나와요.\n고유번호 · 이메일은 나오지 않아요.`
+    : (p.nickname ? '카드에는 내 이름과 별명이 나와요.\n고유번호 · 이메일은 나오지 않아요.' : '카드에는 내 이름이 나와요.\n설정에서 별명을 정하면 이름 아래에 같이 나와요.\n고유번호 · 이메일은 나오지 않아요.'); };
+  setHint();
+  const hideRow = (pn) => {
+    const cb = h('input', { type: 'checkbox', checked: hideName() });
+    cb.onchange = async () => {
+      try { localStorage.setItem(HIDE_KEY, cb.checked ? '1' : '0'); } catch { /* 기억 못 해도 이번엔 적용 */ }
+      setHint();
+      try { await pn.set(await drawCard()); } catch (e) { console.warn(e); }
+    };
+    return h('label.chk.share-hide', cb, h('span', h('b', '이름 숨기기'), ' — 인스타 등에 올릴 때 진짜 이름 대신 별명만'));
+  };
   const ov = sheet([h('div.grab'), h('h2', { style: { margin: '0 4px' } }, '트레이너 카드 공유'),
     h('section.box.stack.share-box', ...panel.el,
-      h('small.share-hint', { style: { whiteSpace: 'pre-line' } }, p.nickname ? '카드에는 내 이름과 별명이 나와요.\n고유번호 · 이메일은 나오지 않아요.' : '카드에는 내 이름이 나와요.\n설정에서 별명을 정하면 이름 아래에 같이 나와요.\n고유번호 · 이메일은 나오지 않아요.')),
+      hideRow(panel), hint),
     h('button.btn', { type: 'button', onclick: () => closeOverlay() }, '닫기')]);
   ov.classList.add('share-overlay');
   ov.onclose = panel.done;

@@ -99,7 +99,7 @@ const SETTING_HELP = {
   egg_incubators: '부화기 칸 수 (1~3칸, 기본 3)',
   egg_legend: '보라 알에서 전설이 나올 확률 (0~1, 기본 0.1 = 10%)',
   safari_open: '사파리존 열기 ON/OFF (false = 학생 앱에 "아직 닫혀 있어요")',
-  unlock_safari_pct: '2단계 해금: 학교 도감을 몇 % 모으면 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감이 열리나 (0~100, 기본 50)',
+  unlock_safari_pct: '2단계 해금: 학교 도감을 몇 % 모으면 사파리존 · 장소 QR 야생 포켓몬 · 전체 도감이 열리나 (0~100, 기본 30)',
   unlock_all: '2단계 해금을 모두에게 열기 ON/OFF (true = 모은 수와 상관없이 모두 열림, 기본 false) — [축제 운영] 탭의 스위치',
   safari_balls_daily: '사파리존: 충전 주기마다 한 사람이 받는 사파리볼 (개, 기본 20)',
   safari_reset_hours: '사파리존: 사파리볼 충전 주기 (시간, 0.25~24, 기본 0.5 = 30분)',
@@ -2472,7 +2472,7 @@ const DEFAULTS = {
   wild_chance: 0.4, wild_weights: { common: 100, rare: 10, legendary: 1 }, wild_steps: 1500, wild_daily: 5, wild_balls: 5,
   // 0033 사파리존
   safari_open: true,   // 0048 사파리존 잠금
-  unlock_safari_pct: 50, unlock_all: false,   // 0051 해금 단계
+  unlock_safari_pct: 30, unlock_all: false,   // 0051 해금 단계
   safari_balls_daily: 20, safari_reset_hours: 0.5, safari_min_steps: 8, safari_encounter_rate: 0.12, safari_flee: 0.25, safari_steps_per_sec: 10,   // 0040: 30분 충전 · 만남 상한 없음 · 걸음 10/초
   safari_flee_level: 0.1,
   safari_flee_step: 0.05, safari_flee_legend: 0.15, safari_flee_max: 0.9,   // 0037 도망 (3세대 사파리처럼)
@@ -2515,6 +2515,8 @@ const DEFAULTS = {
     { from: '18:30', to: '23:00', name: '야간 자율학습', env: 'misty' },
   ],
   ability_hidden_chance: 0.05,
+  // 0056_trade.sql
+  trade_open: true, trade_daily_max: 5, trade_room_sec: 180,
   // 0021_battle_end.sql · 0022_open_raids.sql · 0023_minigames.sql · 0025_minigame_admin.sql
   practice_exp_daily: 10, raid_slot_open: false, minigame_unlock: 10, minigame_off: [],
   // 0027_eggs_class_achievements.sql
@@ -2528,32 +2530,35 @@ const DEFAULTS = {
   catch_flee: 0.05, raid_reward_mode: 'ticket', raid_catch_balls: 10, raid_catch_flee: true,
   // 0038_legends.sql
   ditto_disguise_chance: 0.005, roam_chance: 0.3, roam_balls: 8, legend_balls: 10, legend_daily_tries: 3, gift_fail_limit: 8, safari_cave_type_mult: 4,
+  // 0055_legend_battle.sql
+  legend_battle_on: true, legend_boss_level: 55, legend_boss_level_plus: 8, legend_boss_level_max: 80, legend_boss_hp_mult: 2.5, legend_boss_stage: 2, legend_win_catch_bonus: 1.5,
+  catch_rate_tier: { green: 0.7, yellow: 0.5, orange: 0.33, red: 0.18 }, catch_rate_max: { green: 0.95, yellow: 0.8, orange: 0.6, red: 0.45 },
   legend_quests: [
-    { dex: 480, kind: 'quiz_streak', n: 10, reward: 'ticket' }, { dex: 481, kind: 'battle_wins', n: 10, reward: 'ticket' },
+    { dex: 480, kind: 'quiz_streak', n: 10, reward: 'ticket' }, { dex: 481, kind: 'battle_wins', n: 20, reward: 'ticket' },
     { dex: 482, kind: 'catches', n: 30, reward: 'ticket' }, { dex: 483, kind: 'raid_slots', n: 3, reward: 'ticket' }, { dex: 484, kind: 'qr_all', reward: 'ticket' },
-    { dex: 377, kind: 'type_catch', types: ['바위'], n: 8, reward: 'map' }, { dex: 378, kind: 'type_catch', types: ['얼음'], n: 5, reward: 'map' },
+    { dex: 377, kind: 'type_catch', types: ['바위'], n: 8, reward: 'map' }, { dex: 378, kind: 'type_catch', types: ['얼음'], n: 10, reward: 'map' },
     { dex: 379, kind: 'type_catch', types: ['강철'], n: 8, reward: 'map' }, { dex: 486, kind: 'caught_all', of: [377, 378, 379], reward: 'map' },
     { dex: 249, kind: 'type_catch', types: ['물'], n: 20, reward: 'map' }, { dex: 250, kind: 'type_catch', types: ['불꽃', '비행'], n: 20, reward: 'map' },
     { dex: 382, kind: 'safari_catches', n: 15, reward: 'map' }, { dex: 383, kind: 'type_catch', types: ['땅'], n: 15, reward: 'map' },
     { dex: 384, kind: 'caught_all', of: [382, 383], reward: 'map' },
-    // 0050_legends.sql
-    { dex: 380, kind: 'type_catch', types: ['에스퍼'], n: 6, reward: 'map' }, { dex: 381, kind: 'type_catch', types: ['드래곤'], n: 3, reward: 'map' },
-    { dex: 488, kind: 'type_catch', types: ['페어리'], n: 6, reward: 'map' }, { dex: 491, kind: 'caught_all', of: [488], reward: 'map' },
-    { dex: 489, kind: 'type_catch', types: ['물'], n: 10, reward: 'map' }, { dex: 785, kind: 'type_catch', types: ['전기'], n: 6, reward: 'map' },
-    { dex: 786, kind: 'battle_wins', n: 5, reward: 'map' }, { dex: 787, kind: 'type_catch', types: ['풀'], n: 8, reward: 'map' },
-    { dex: 788, kind: 'safari_catches', n: 25, reward: 'map' }, { dex: 638, kind: 'type_catch', types: ['강철'], n: 5, reward: 'map' },
-    { dex: 639, kind: 'type_catch', types: ['바위'], n: 5, reward: 'map' }, { dex: 640, kind: 'type_catch', types: ['격투'], n: 5, reward: 'map' },
+    // 0050_legends.sql (0054_legend_maps.sql: 쉬운 전설 조건을 올림)
+    { dex: 380, kind: 'type_catch', types: ['에스퍼'], n: 10, reward: 'map' }, { dex: 381, kind: 'type_catch', types: ['드래곤'], n: 6, reward: 'map' },
+    { dex: 488, kind: 'type_catch', types: ['페어리'], n: 10, reward: 'map' }, { dex: 491, kind: 'caught_all', of: [488], reward: 'map' },
+    { dex: 489, kind: 'type_catch', types: ['물'], n: 20, reward: 'map' }, { dex: 785, kind: 'type_catch', types: ['전기'], n: 10, reward: 'map' },
+    { dex: 786, kind: 'battle_wins', n: 15, reward: 'map' }, { dex: 787, kind: 'type_catch', types: ['풀'], n: 12, reward: 'map' },
+    { dex: 788, kind: 'safari_catches', n: 25, reward: 'map' }, { dex: 638, kind: 'type_catch', types: ['강철'], n: 10, reward: 'map' },
+    { dex: 639, kind: 'type_catch', types: ['바위'], n: 10, reward: 'map' }, { dex: 640, kind: 'type_catch', types: ['격투'], n: 10, reward: 'map' },
     { dex: 647, kind: 'caught_all', of: [638, 639, 640], reward: 'map' }, { dex: 492, kind: 'type_catch', types: ['풀', '벌레'], n: 15, reward: 'map' },
     { dex: 641, kind: 'type_catch', types: ['비행'], n: 10, reward: 'map' }, { dex: 642, kind: 'type_catch', types: ['전기'], n: 10, reward: 'map' },
-    { dex: 645, kind: 'caught_all', of: [641, 642], reward: 'map' }, { dex: 643, kind: 'zone_catch', zone: 'dragon', n: 3, reward: 'map' },
-    { dex: 644, kind: 'zone_catch', zone: 'dragon', n: 5, reward: 'map' }, { dex: 646, kind: 'caught_all', of: [643, 644], reward: 'map' },
-    { dex: 789, kind: 'zone_catch', zone: 'ultra', n: 2, reward: 'map' }, { dex: 800, kind: 'caught_all', of: [789], reward: 'map' },
-    { dex: 385, kind: 'quiz_streak', n: 7, reward: 'map' }, { dex: 386, kind: 'zone_catch', zone: 'ultra', n: 4, reward: 'map' },
-    { dex: 720, kind: 'raid_slots', n: 2, reward: 'map' }, { dex: 494, kind: 'battle_wins', n: 3, reward: 'map' },
-    { dex: 649, kind: 'type_catch', types: ['벌레'], n: 10, reward: 'map' }, { dex: 719, kind: 'zone_catch', zone: 'desert', n: 8, reward: 'map' },
-    { dex: 802, kind: 'type_catch', types: ['고스트'], n: 8, reward: 'map' }, { dex: 807, kind: 'zone_catch', zone: 'plant', n: 5, reward: 'map' },
+    { dex: 645, kind: 'caught_all', of: [641, 642], reward: 'map' }, { dex: 643, kind: 'zone_catch', zone: 'dragon', n: 6, reward: 'map' },
+    { dex: 644, kind: 'zone_catch', zone: 'dragon', n: 10, reward: 'map' }, { dex: 646, kind: 'caught_all', of: [643, 644], reward: 'map' },
+    { dex: 789, kind: 'zone_catch', zone: 'ultra', n: 5, reward: 'map' }, { dex: 800, kind: 'caught_all', of: [789], reward: 'map' },
+    { dex: 385, kind: 'quiz_streak', n: 7, reward: 'map' }, { dex: 386, kind: 'zone_catch', zone: 'ultra', n: 8, reward: 'map' },
+    { dex: 720, kind: 'raid_slots', n: 3, reward: 'map' }, { dex: 494, kind: 'battle_wins', n: 10, reward: 'map' },
+    { dex: 649, kind: 'type_catch', types: ['벌레'], n: 10, reward: 'map' }, { dex: 719, kind: 'zone_catch', zone: 'desert', n: 12, reward: 'map' },
+    { dex: 802, kind: 'type_catch', types: ['고스트'], n: 8, reward: 'map' }, { dex: 807, kind: 'zone_catch', zone: 'plant', n: 12, reward: 'map' },
     { dex: 801, kind: 'type_catch', types: ['강철', '페어리'], n: 12, reward: 'map' }, { dex: 772, kind: 'catches', n: 40, reward: 'map' },
-    { dex: 485, kind: 'zone_catch', zone: 'lava', n: 6, reward: 'map' }],
+    { dex: 485, kind: 'zone_catch', zone: 'lava', n: 10, reward: 'map' }],
 };
 const hasDefault = (key) => Object.prototype.hasOwnProperty.call(DEFAULTS, key);
 const sortKeys = (v) => (Array.isArray(v) ? v.map(sortKeys)
@@ -2577,6 +2582,7 @@ async function saveSetting(key, value) {
 // ── 칸 정의: kind = int(정수) · num(소수) · pct(0~1 을 %로) · bool(켜짐/꺼짐) · choice(고르기) · obj(여러 칸 묶음) ──
 const P = (key, label, kind, extra = {}) => ({ key, label, kind, ...extra });
 const EGG_PARTS = [['green', '초록 알'], ['yellow', '노랑 알'], ['purple', '보라 알']];
+const CATCH_TIERS = [['green', '초록'], ['yellow', '노랑'], ['orange', '주황'], ['red', '빨강']];
 const GROUPS = {
   // 0051 해금 단계 (축제 운영 탭의 '해금 단계' 카드 안)
   unlock: {
@@ -2593,6 +2599,17 @@ const GROUPS = {
     fields: [
       P('catch_flee', '볼 3개가 다 빗나가면 도망칠 확률', 'pct', { max: 100, help: '0% = 언제나 잡혀요 (예전처럼). 도망가면 그 티켓으로 받은 포켓몬·점수가 없던 일이 돼요. 너무 높으면 학생이 속상해요 (추천 5% 이하).' }),
       P('raid_reward_mode', '레이드 이긴 학생 보상', 'choice', { options: [['ticket', '특별 티켓 (부스에서 바꾸기)'], ['catch', '앱에서 바로 잡기 (HAFS 볼)']] }),
+    ],
+  },
+  // 0055 잡기 확률 (원 색깔별) — 축제 운영 탭 catchRatesCard (아래 미리보기 표)
+  catchRates: {
+    tab: '축제 운영', title: '잡기 확률 (원 색깔별)',
+    intro: '잡기 장면에서 포켓몬 둘레의 안쪽 원 색깔 = 어려운 정도 (초록 쉬움 → 빨강 어려움). 레벨이 높거나 희귀할수록 빨간 쪽, 전설은 언제나 빨강. 공을 맞혔을 때 이 확률로 잡히고, 나머지는 공에서 튕겨 나와요 (튕겨냄 = 100% − 잡힘). 학생 폰이 다음에 잡기를 열 때 바로 바뀌어요.',
+    fields: [
+      P('catch_rate_tier', '원 색깔별 기본 잡힘 확률 (그냥 맞혔을 때)', 'obj', { parts: CATCH_TIERS, partKind: 'pct',
+        help: '기본 초록 70% · 노랑 50% · 주황 33% · 빨강 18%. 나이스 ×1.2 · 그레이트 ×1.5 · 엑설런트 ×2 · 커브볼 ×1.3 을 곱해요.' }),
+      P('catch_rate_max', '원 색깔별 최대 잡힘 확률 (아무리 잘 던져도)', 'obj', { parts: CATCH_TIERS, partKind: 'pct',
+        help: '기본 초록 95% · 노랑 80% · 주황 60% · 빨강 45%. 엑설런트 커브볼이어도 이보다 높아지지 않아요 (기본 확률보다 낮게 넣으면 기본 확률이 최대).' }),
     ],
   },
   // 야생 포켓몬 (0032): 선생님이 없는 포켓몬을 만나는 길
@@ -2631,6 +2648,20 @@ const GROUPS = {
       P('legend_daily_tries', '사파리존 전설: 하루 도전 횟수', 'int', { unit: '번', min: 1, max: 20, help: '같은 전설에게 하루에 도전할 수 있는 횟수 (한 사람마다).' }),
       P('safari_cave_type_mult', '사파리존 동굴 · 깊은 곳: 바위 · 땅 · 고스트 · 악 · 강철 · 물 타입 배수', 'num', { min: 1, max: 20, help: '기본 4 = 동굴 · 깊은 곳에서는 이 타입들이 4배 자주 나와요. 울트라 스페이스에서는 울트라비스트만 나와요 (다른 곳에서는 절대 안 나옴).' }),
       P('gift_fail_limit', '이상한 소포: 10분에 틀릴 수 있는 횟수', 'int', { unit: '번', min: 1, max: 100, help: '코드를 이만큼 틀리면 10분 동안 소포를 열 수 없어요 (코드 맞히기 장난 막기).' }),
+    ],
+  },
+  // 0055 전설 배틀 (잡기 전에 배틀로 지치게 하기)
+  legendBattle: {
+    tab: '전설·소포', title: '전설 배틀 강하기 (잡기 전에 쓰러트리기)',
+    intro: '사파리존 전설 · 방랑 전설은 먼저 학생의 배틀 팀 (최대 6마리) 과 배틀해요. 전설은 혼자지만 보스처럼 강해요. 이기면 "지쳤다! 지금이야!" → 잡기 장면, 지거나 도망치면 그 도전은 끝 (사파리존 전설은 하루 도전 횟수 1번을 써요, 전설은 자리에 그대로).',
+    fields: [
+      P('legend_battle_on', '전설 배틀 먼저 하기', 'bool', { help: '꺼짐 = 예전처럼 바로 잡기. 바꾸면 그다음에 만나는 전설부터 적용돼요.' }),
+      P('legend_boss_level', '전설 레벨 (가장 낮을 때)', 'int', { unit: 'Lv', min: 1, max: 100, help: '기본 Lv.55. 학생 팀이 약해도 전설은 이 레벨보다 낮아지지 않아요.' }),
+      P('legend_boss_level_plus', '학생 팀 최고 레벨보다 몇 레벨 높게', 'int', { unit: '레벨', min: 0, max: 50, help: '기본 +8. 예: 팀에서 가장 높은 포켓몬이 Lv.60 → 전설 Lv.68.' }),
+      P('legend_boss_level_max', '전설 레벨 (가장 높을 때)', 'int', { unit: 'Lv', min: 1, max: 100, help: '기본 Lv.80. 아무리 강한 팀이어도 이보다 높아지지 않아요.' }),
+      P('legend_boss_hp_mult', '전설 체력 배수', 'num', { unit: '배', min: 1, max: 10, help: '기본 2.5배. 클수록 오래 버텨요. (AI 끼리 시험: Lv.45 팀 6마리가 10판 중 4판쯤 이김)' }),
+      P('legend_boss_stage', '전설 능력 올리기 (공격·방어·특공·특방 랭크)', 'int', { unit: '랭크', min: 0, max: 3, help: '기본 +2 (2배). 0 = 올리지 않음, +1 = 1.5배. 스피드는 그대로라 빠른 포켓몬이 먼저 칠 수 있어요.' }),
+      P('legend_win_catch_bonus', '배틀을 이기면 잡힘 확률 배수', 'num', { unit: '배', min: 1, max: 5, help: '기본 1.5배 (빨강 18% → 27%). "원 색깔별 최대 잡힘 확률" 은 넘지 않아요.' }),
     ],
   },
   // 레이드
@@ -2737,6 +2768,16 @@ const GROUPS = {
       P('roulette_daily_max', '룰렛: 하루에 돌리는 횟수', 'int', { unit: '번', min: 0, max: 100 }),
       P('quiz_ticket_daily_cap', '퀴즈로 받는 진화의 돌 (하루 최대)', 'int', { unit: '개', min: 0, max: 500 }),
       P('battle_daily_max', '배틀 승리 보상 (하루 최대)', 'int', { unit: '번', min: 0, max: 999, help: '999 = 제한 없음. 같은 친구에게는 하루 한 번만 보상.' }),
+    ],
+  },
+  // 0056 교환
+  trade: {
+    tab: '성장·보상', title: '포켓몬 교환',
+    intro: '학생 둘이 배틀 QR로 만나 포켓몬을 1마리씩 바꿔요. 일반 폼만 (반짝이 · 선생님 · 전설 · 이벤트 · 울트라비스트 · 배틀 팀 · 카드 포켓몬은 안 됨).',
+    fields: [
+      P('trade_open', '교환 켜기', 'bool', { help: '끄면 새 교환방을 열 수 없고, 열려 있던 교환도 바꾸기 직전에 멈춰요.' }),
+      P('trade_daily_max', '한 학생의 하루 교환 수', 'int', { unit: '번', min: 0, max: 100, help: '기본 5. 두 사람 모두 남아 있어야 교환돼요.' }),
+      P('trade_room_sec', '교환방이 닫히는 시간 (아무것도 안 할 때)', 'int', { unit: '초', min: 30, max: 1800, help: '기본 180초 (3분).' }),
     ],
   },
 };
@@ -2974,8 +3015,60 @@ async function tabOps() {
     h('div.cols',
       h('div', textSettingCard(set.notice, 'notice', '공지 (notice)', '모든 폰 상단에 1분 안에 표시돼요. 예: "13:00 본관 앞 전설 출현!" 비우면 공지가 사라져요.', 2),
         textSettingCard(set.prize_note, 'prize_note', '상품 안내 (prize_note)', '축제가 끝난 뒤 학생 폰의 "축제 종료" 화면에 보여요. 예: 상품 받는 곳·시간.', 3)),
-      h('div', closeAtCard(set.festival_close_at), dupBonusCard(set.dup_bonus_every), settingsGroup(GROUPS.opsCatch, set), settingsGroup(GROUPS.wild, set)))];
+      h('div', closeAtCard(set.festival_close_at), dupBonusCard(set.dup_bonus_every), settingsGroup(GROUPS.opsCatch, set), catchRatesCard(set), settingsGroup(GROUPS.wild, set)))];
 }
+
+// 0055 잡기 확률 (원 색깔별) + 미리보기 표 (입력을 바꾸면 바로 다시 셈): 등급 배수 · 최대 · 튕겨냄
+const GRADE_COLS = [['그냥', 1], ['나이스', 1.2], ['그레이트', 1.5], ['엑설런트', 2], ['엑설런트+커브', 2.6]];
+function catchRatesCard(set) {
+  if (!set.catch_rate_tier || !set.catch_rate_max) return missingCard('catch_rate_tier', '잡기 확률 (원 색깔별) (마이그레이션 0055 필요)');
+  const g = settingsGroup(GROUPS.catchRates, set);
+  const L = (key) => SPEC_BY_KEY[key].label;
+  const val = (key, k, i) => {
+    const inp = g.querySelector(`input[aria-label="${L(key)} ${CATCH_TIERS[i][1]}"]`);
+    const n = Number(inp?.value); return inp && inp.value !== '' && Number.isFinite(n) ? n / 100 : Number(set[key]?.value?.[k]) || 0;
+  };
+  const bonus = Number(set.legend_win_catch_bonus?.value) || 1.5;
+  const body = h('tbody');
+  const pc = (v) => `${Math.round(v * 100)}%`;
+  const draw = () => {
+    body.replaceChildren(...CATCH_TIERS.map(([k, l], i) => {
+      const b = Math.min(1, Math.max(0, val('catch_rate_tier', k, i))); const mx = Math.max(b, Math.min(1, val('catch_rate_max', k, i)));
+      return h('tr', h('th', h(`span.tier-dot.t-${k}`), l),
+        ...GRADE_COLS.map(([, m]) => h('td', pc(Math.min(mx, b * m)))), h('td.muted', pc(1 - b)),
+        i === 3 ? h('td', pc(Math.min(mx, b * bonus))) : h('td.muted', '—'));
+    }));
+  };
+  draw();
+  g.addEventListener('input', draw);
+  const table = h('div.table-scroll', h('table.tbl.rate-preview', h('thead', h('tr', h('th', '원'), ...GRADE_COLS.map(([t]) => h('th', t)), h('th', '튕겨냄'), h('th', '전설 배틀 이긴 뒤'))), body));
+  g.insertBefore(h('div.stack', h('b', '미리보기: 한 번 맞혔을 때 잡힐 확률'), table,
+    h('p.small-txt.muted', `튕겨냄 = 그냥 맞혔을 때 공에서 튕겨 나올 확률. 전설 배틀을 이기면 빨강 원에 ×${bonus} (전설·소포 탭). 저장 전에도 숫자를 바꾸면 표가 바로 바뀌어요.`)), g.lastChild);
+  return g;
+}
+
+// 0055 전설 배틀 강하기 + AI 끼리 시험 (운영자가 숫자를 바꾼 뒤 얼마나 어려운지 보기)
+function legendBattleCard(set) {
+  if (!set.legend_boss_level) return missingCard('legend_boss_level', '전설 배틀 강하기 (마이그레이션 0055 필요)');
+  const g = settingsGroup(GROUPS.legendBattle, set);
+  const dex = h('input.inp.w-num', { type: 'number', min: 1, max: 1000, value: 150, 'aria-label': '시험할 전설 전국도감 번호' });
+  const lv = h('input.inp.w-num', { type: 'number', min: 1, max: 100, value: 45, 'aria-label': '시험 팀 레벨' });
+  const out = h('p.small-txt', '');
+  const run = h('button.btn.small', { type: 'button' }, 'AI 끼리 10판 시험');
+  run.onclick = () => busy(run, async () => {
+    out.textContent = '시험 중… (10초쯤)';
+    // 시험 팀: 흔한 3단계 포켓몬 6마리 (리자몽 · 거북왕 · 이상해꽃 · 피죤투 · 괴력몬 · 후딘) — 저장한 숫자로
+    const team = LB_TEAM.map((d) => ({ sp: spByDex(d)?.id ?? d, lv: Math.max(1, Math.min(100, Number(lv.value) || 45)) }));
+    try {
+      const r = await rpc('admin_legend_sim', { p_dex: Number(dex.value) || 150, p_team: team, p_n: 10 });
+      out.textContent = `${r.boss?.name || '전설'} Lv.${r.boss?.lv} · 체력 ${r.boss?.max} → 팀 Lv.${lv.value} 6마리가 ${r.n}판 중 ${r.wins}판 이김 (평균 ${r.turns}턴). 학생은 AI 보다 기술을 잘 골라서 실제로는 조금 더 잘 이겨요.`;
+    } catch (e) { out.textContent = errorText(e.message); }
+  });
+  g.insertBefore(h('div.stack', h('b', '얼마나 어려운지 시험 (저장한 숫자로)'),
+    h('div.row.wrap', h('label', '전설 도감 번호 ', dex), h('label', '팀 레벨 ', lv), run), out), g.lastChild);
+  return g;
+}
+const LB_TEAM = [6, 9, 3, 18, 68, 65];   // 전국도감 번호 → 일반 폼 (spByDex)
 
 // 0051 해금 단계: 1단계 (미니게임) · 2단계 (학교 도감 % → 사파리존 · 장소 QR 야생 · 전체 도감) · 모두에게 열기 스위치 · 몇 명이 열었나
 async function unlockCard(set) {
@@ -3270,7 +3363,36 @@ async function tabGrow() {
     h('div.cols', h('div', settingsGroup(GROUPS.eggs, set), settingsGroup(GROUPS.shiny, set)), h('div', settingsGroup(GROUPS.catchExp, set), settingsGroup(GROUPS.tickets, set))),
     h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
       h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),
+    h('div.cols', h('div', settingsGroup(GROUPS.trade, set)), h('div', tradeCard())),   // 0056
   ];
+}
+
+// 0056: 최근 교환 (누가 · 무엇을 · 언제)
+const TRADE_ST = { done: '교환함', open: '진행 중', cancelled: '그만둠', expired: '시간 지남' };
+function tradeCard() {
+  const body = h('div', h('p.small-txt.muted', '불러오는 중…'));
+  const reload = h('button.btn', '새로 고침');
+  const load = async () => {
+    if (!S.species?.length) { try { await loadCatalog(); } catch { /* 이름 없이 */ } }
+    let r;
+    try { r = await rpc('admin_trades', { p_limit: 40 }); } catch (e) { body.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
+    const nm = (id) => (id == null ? '—' : S.spById?.get(id)?.name || `#${id}`);
+    const rows = r.rows || [];
+    body.replaceChildren(
+      h('p.small-txt', `오늘 교환 ${r.today}번 · 지금 열린 교환방 ${r.open}개`),
+      rows.length ? h('div.tbl-wrap', h('table.tbl',
+        h('thead', h('tr', h('th', '언제'), h('th', '학생 A → B'), h('th', 'A가 보냄'), h('th', 'B가 보냄'), h('th', '상태'))),
+        h('tbody', rows.map((x) => h('tr',
+          h('td', timeAgo(x.at)),
+          h('td', `${x.a_name} (${x.a_sid || '-'}) ↔ ${x.b_name} (${x.b_sid || '-'})`),
+          h('td', nm(x.sp1), x.evo1 ? ` → ${nm(x.evo1)}` : ''),
+          h('td', nm(x.sp2), x.evo2 ? ` → ${nm(x.evo2)}` : ''),
+          h('td', TRADE_ST[x.status] || x.status)))))) : h('p.small-txt.muted', '아직 교환이 없어요.'));
+  };
+  reload.onclick = load;
+  load();
+  return h('div.box.stack', h('div.row', h('b', '최근 교환'), h('span', { style: { flex: 1 } }), reload), body,
+    h('p.small-txt.muted', '교환 기록은 events 표 (kind = trade) 에도 남아요.'));
 }
 
 // ───────────────────────── 전설 · 이상한 소포 (0038) ─────────────────────────
@@ -3289,7 +3411,7 @@ async function tabLegend() {
   let items = [];
   try { items = await tq(sb.from('items').select('key,name,sort,pocket,move_id,moves(name)').order('sort')); }
   catch { try { items = await tq(sb.from('items').select('key,name,sort').order('sort')); } catch { /* 물건 목록 없이 */ } }
-  return [h('div.cols', h('div', giftCard(items), roamCard()), h('div', questCard(set), settingsGroup(GROUPS.legends, set)))];
+  return [h('div.cols', h('div', giftCard(items), roamCard()), h('div', questCard(set), legendBattleCard(set), settingsGroup(GROUPS.legends, set)))];
 }
 
 function giftCard(items) {
@@ -3300,10 +3422,17 @@ function giftCard(items) {
   const dex = h('input.inp.w-num', { type: 'number', min: 1, max: Math.max(809, ...S.species.map((x) => x.dex || 0)), placeholder: '번호', 'aria-label': '포켓몬 도감 번호' });
   const dexName = h('span.small-txt.muted');
   let pickedSp = null;   // 0052: 이벤트 폼 단추 = 종을 바로 (p_species). 번호만 넣으면 그 번호의 일반 폼
-  dex.oninput = () => { pickedSp = null; const sp = spByDex(dex.value); dexName.textContent = sp ? `${sp.name} (일반)` : dex.value ? '없는 번호' : ''; };
+  // 0055: 반짝이는 (이로치) 포켓몬 소포 + 그림 미리보기 (체크하면 반짝이는 색)
+  const giftPic = h('span.gift-pic');
+  const shinyGift = h('input', { type: 'checkbox', onchange: () => showGiftPic() });
+  const showGiftPic = () => {
+    const sp = pickedSp ? S.species.find((x) => x.id === pickedSp) : spByDex(dex.value);
+    giftPic.replaceChildren(...(sp ? [spriteCanvas(sp.id, 64, shinyGift.checked ? 'shiny' : 'normal')] : []));
+  };
+  dex.oninput = () => { pickedSp = null; const sp = spByDex(dex.value); dexName.textContent = sp ? `${sp.name} (일반)` : dex.value ? '없는 번호' : ''; showGiftPic(); };
   // 0044 이벤트 포켓몬 (소포로만 받음: 지우개굴닌자 · 지우의 피카츄 …) → 눌러서 고르기
   const evSp = S.species.filter((x) => x.stage === 1 && x.dex && formKindOf(S.lineById?.get(x.line_id)) === 'event');
-  const evRow = evSp.length ? h('div.row.small-txt', '이벤트 포켓몬:', evSp.map((x) => h('button.btn.small', { type: 'button', onclick: () => { dex.value = x.dex; dex.oninput(); pickedSp = x.id; dexName.textContent = `${x.name} (이벤트 폼)`; } },
+  const evRow = evSp.length ? h('div.row.small-txt', '이벤트 포켓몬:', evSp.map((x) => h('button.btn.small', { type: 'button', onclick: () => { dex.value = x.dex; dex.oninput(); pickedSp = x.id; dexName.textContent = `${x.name} (이벤트 폼)`; showGiftPic(); } },
     `${x.name} (No.${x.dex})`))) : null;
   // 물건: 주머니별로 묶고 기술머신은 기술 이름까지 (예: 기술머신30 (몸통박치기)). 많아서 찾기 칸으로 거름
   const itemLabel = (it) => (it.pocket === 'tm' && it.moves?.name ? `${it.name} (${it.moves.name})` : it.name);
@@ -3331,7 +3460,8 @@ function giftCard(items) {
   const starts = h('input.inp', { type: 'datetime-local', 'aria-label': '시작 시각' });
   const ends = h('input.inp', { type: 'datetime-local', 'aria-label': '끝 시각' });
   const max = h('input.inp.w-num', { type: 'number', min: 0, placeholder: '0', 'aria-label': '최대 받는 사람 수' });
-  const monRow = h('div.stack', h('div.row', h('label', '도감 번호 ', dex), dexName), evRow);
+  const monRow = h('div.stack', h('div.row', h('label', '도감 번호 ', dex), dexName, giftPic), evRow,
+    h('label.chk.chk-top', shinyGift, h('span', h('b', '✦ 반짝이는 (이로치) 포켓몬'), ' — 받는 포켓몬이 반드시 반짝이는 색이에요')));
   const itemRow = h('div.stack', h('label.stack', '물건 찾기', itemFind), h('label', '물건 ', item));
   itemRow.style.display = 'none';
   kind.onchange = () => { monRow.style.display = kind.value === 'mon' ? '' : 'none'; itemRow.style.display = kind.value === 'mon' ? 'none' : ''; };
@@ -3342,12 +3472,12 @@ function giftCard(items) {
     try {
       await rpc('admin_create_gift', {
         p_code: code.value, p_title: title.value || null, p_dex: mon && !pickedSp ? Number(dex.value) || null : null, p_species: mon ? pickedSp : null, p_item: mon ? null : item.value,
-        p_qty: Number(qty.value) || 1, p_starts: starts.value ? new Date(starts.value).toISOString() : null,
+        p_shiny: mon && shinyGift.checked, p_qty: Number(qty.value) || 1, p_starts: starts.value ? new Date(starts.value).toISOString() : null,
         p_ends: ends.value ? new Date(ends.value).toISOString() : null, p_max: Number(max.value) || null,
       });
     } catch (e) { toast(errorText(e.message), 5000); return; }
     toast('소포를 만들었어요. 코드를 학생들에게 알려 주세요!');
-    code.value = ''; title.value = '';
+    code.value = ''; title.value = ''; shinyGift.checked = false; showGiftPic();
     load();
   });
   async function load() {
@@ -3355,7 +3485,7 @@ function giftCard(items) {
     try { rows = await rpc('admin_list_gifts', {}); } catch (e) { list.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
     if (!rows.length) { list.replaceChildren(h('p.small-txt.muted', '아직 만든 소포가 없어요.')); return; }
     list.replaceChildren(...rows.map((g) => {
-      const what = g.species_id ? `${g.species_name} (No.${g.dex})${g.qty > 1 ? ` ×${g.qty}` : ''}` : `${(() => { const it = items.find((x) => x.key === g.item); return it ? itemLabel(it) : g.item_name || g.item; })()} ×${g.qty}`;
+      const what = g.species_id ? `${g.shiny ? '✦ 반짝이는 ' : ''}${g.species_name} (No.${g.dex})${g.qty > 1 ? ` ×${g.qty}` : ''}` : `${(() => { const it = items.find((x) => x.key === g.item); return it ? itemLabel(it) : g.item_name || g.item; })()} ×${g.qty}`;
       const when = [g.starts_at && `${new Date(g.starts_at).toLocaleString('ko-KR')}부터`, g.ends_at && `${new Date(g.ends_at).toLocaleString('ko-KR')}까지`]
         .filter(Boolean).join(' · ') || '기간 제한 없음';
       const tog = h('button.btn.small', g.active ? '끄기' : '켜기');
