@@ -159,6 +159,7 @@ function customPath(dex, shiny) {
   return isPack(m.n) ? null : m.n;
 }
 export const hasCustomSprite = (dex) => !!customPath(Number(dex), false);
+export const hasArt = (d) => !!customPath(Number(d), false) || !!IDX.n[artId(Number(d))];   // 0052: 그림이 있나 (폼 종은 같은 번호의 그림판 칸)
 
 // ── 받은 올린 그림 (LRU, 96칸에 맞춘 것) ──
 const REC = lru(48);
@@ -180,19 +181,28 @@ function loadPath(path) {
   return p;
 }
 
-// 갈래 종 (0037, species.id 10000+): 그림판에는 같은 전국도감 번호의 종 (따로 있는 계열) 그림을 씀. 운영자가 그 갈래 종에 그림을 올렸으면 그것
+// 갈래 종 (0037, species.id 10000+) · 폼 종 (0052: 일반 폼 복사본 20000+, 운영자가 만든 선생님 폼 40000+): 그림판에는 같은 전국도감 번호의
+//   가장 작은 종 번호 그림 (그림판 칸이 있는 것) 을 씀. 그 종에 올린 그림 (예: 선생님 얼굴) 은 따라가지 않음 → 폼마다 따로.
+//   운영자가 그 종 자체에 그림을 올렸으면 그것 (customPath 를 먼저 봄)
 const ALIAS = new Map();
 export function aliasSprites(species = []) {
   const base = new Map();
-  for (const s of species) if (s.id < 10000 && s.dex && !base.has(s.dex)) base.set(s.dex, s.id);
+  for (const s of species) if (s.id < 10000 && s.dex && IDX.n[s.id] && !(base.get(s.dex) < s.id)) base.set(s.dex, s.id);
   for (const s of species) if (s.id >= 10000 && base.has(s.dex)) ALIAS.set(s.id, base.get(s.dex));
 }
-const realId = (d) => (d >= 10000 && !MAP.has(d) ? ALIAS.get(d) ?? d : d);
+// 그림판 칸의 종 번호 (목록을 아직 못 받았으면: 일반 폼 복사본 20000+ = 원래 번호 − 20000)
+const artId = (d) => {
+  let a = d;
+  for (let i = 0; i < 3 && a >= 10000 && !IDX.n[a]; i++) a = ALIAS.get(a) ?? (a >= 20000 && a < 40000 ? a - 20000 : a);
+  return a;
+};
+const realId = (d) => (customPath(d, false) ? d : artId(d));
 
 // 이 포켓몬 그림을 받아 둠 (미니게임·잡기 장면이 시작 전에 부름)
-export const ensureSprites = (list, shiny = false) => Promise.all([...new Set(list.map(Number).map(realId))].map((d) => {
+export const ensureSprites = (list, shiny = false) => Promise.all([...new Set(list.map(Number))].map((d) => {
   const cp = customPath(d, shiny);
   if (cp) return loadPath(cp);
+  d = artId(d);
   const ent = (shiny && IDX.s[d]) || IDX.n[d];
   return ent ? sheet(ent[0]).p : atlasLoaded;
 }));
@@ -221,7 +231,6 @@ export const spritesReady = Promise.race([firstSync, timeout(3000)]);
 //    fx = 덧입힐 효과 (normal · silhouette · white · shiny = 색 돌리기)
 function sourceOf(dex, mode, preview) {
   const shiny = mode === 'shiny';
-  dex = realId(dex);
   if (preview) {
     const n = normRec(preview);
     return { img: n.cv, sx: 0, sy: 0, w: n.w, h: n.h, key: (preview._k ||= `pv${Math.random()}`), fx: mode };
@@ -233,6 +242,7 @@ function sourceOf(dex, mode, preview) {
     const real = shiny && cp === MAP.get(dex).s;
     return { img: n.cv, sx: 0, sy: 0, w: n.w, h: n.h, key: cp, fx: real ? 'normal' : mode };
   }
+  dex = artId(dex);
   const ent = (shiny && IDX.s[dex]) || IDX.n[dex];
   if (ent) {
     const s = sheet(ent[0]);

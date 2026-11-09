@@ -79,6 +79,8 @@ EVENT = [
      ['10만볼트', '전광석화', '아이언테일', '일렉트릭볼'], 'pikachu-ooriginal'),
 ]
 EVENT_DEX = {e[0]: e for e in EVENT}
+# 0052 폼: 이벤트 포켓몬은 그 가족의 도감 번호로 (지우개굴닌자 = 658 개굴닌자, 지우의 피카츄 = 25 피카츄). 안에서는 810 · 811 을 열쇠로 그대로 씀 (그림 · 자료)
+EVENT_REAL_DEX = {810: 658, 811: 25}
 EVENT_LINE = {e[1]: e for e in EVENT}
 for _r in rd('pokemon'):
     for _e in EVENT:
@@ -790,14 +792,14 @@ def main():
              ' btype = excluded.btype, bonus = true, mythic = false, secret = false, ultra = false, legend_src = excluded.legend_src;')
     S.append("-- 예전 데이터의 '비밀 몬스터' (계열 37 = 뮤) → 포켓몬 이름으로 (도감 상세 '정체' 칸에 보임)")
     S.append("update public.lines set teacher = '비밀 포켓몬' where id = 37 and teacher = '비밀 몬스터';")
-    S.append(f'delete from public.lines where id > {max(line_ids)};')
+    S.append(f'delete from public.lines where id > {max(line_ids)} and id < 1000;   -- 0052: 1000+ = 폼 계열 (일반 폼 복사본 · 운영자가 만든 선생님 폼) 은 남김')
     abr = ability_rows([r[10] for r in species_rows])
     S.append('-- 특성 (0039): 7세대 기준 한국어 이름 · 설명 (PokeAPI)')
     S.append('insert into public.abilities (key, name, description) values ' + ',\n'.join(f'({q(k)}, {q(n)}, {q(d)})' for k, n, d in abr)
              + ' on conflict (key) do update set name = excluded.name, description = excluded.description;')
     S.append('insert into public.species (id, line_id, stage, name, category, flavor, height, weight, btype, hp, atk, def, spa, spd, spe, dex, evo_lv, evo_item, '
              'abilities, hidden_ability) values')
-    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {dex}, {ev if ev else 'null'}, "
+    S.append(',\n'.join(f" ({i}, {l}, {st}, {q(nm)}, {q(cat)}, {q(fl)}, {q(h)}, {q(w)}, {q(bt)}, {', '.join(map(str, v))}, {EVENT_REAL_DEX.get(dex, dex)}, {ev if ev else 'null'}, "
                         f"{'true' if it else 'false'}, array[{', '.join(q(x) for x in ab[0])}]::text[], {q(ab[1])})"
                         for i, l, st, nm, cat, fl, h, w, bt, v, dex, ev, it, ab in species_rows))
     S.append('on conflict (id) do update set line_id = excluded.line_id, stage = excluded.stage, name = excluded.name, category = excluded.category, '
@@ -837,6 +839,8 @@ def main():
         f'({q(a)}, {q(d)}, {m:g})' for (a, d), m in sorted(CHART.items()) if m != 1) + ';')
     S.append('-- 특성 (0039): 종의 특성 목록이 바뀌었을 수 있음 → 포켓몬마다 다시 맞춤 (트리거 _col_ability, 자리 ability_slot 은 그대로)')
     S.append('update public.collection set ability = null where true;')
+    S.append('-- 0052 폼: 선생님 계열의 일반 폼 복사본 (1000+) · 가족 · 이벤트 폼을 다시 맞춤 (0052 를 넣은 뒤에만 — 함수가 없으면 건너뜀)')
+    S.append("do $$ begin if to_regproc('public._forms_build') is not null then perform public._forms_build(); end if; end $$;")
     S.append('commit;')
     out = os.path.join(ROOT, 'supabase', 'seed_pokemon.sql')
     open(out, 'w', encoding='utf-8', newline='\n').write('\n'.join(S) + '\n')

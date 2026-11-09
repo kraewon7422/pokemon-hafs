@@ -9,7 +9,7 @@ import { spriteCanvas, paint, monSprite, aliasSprites, ensureSprites } from './s
 import { sfx, unlockAudio, isSfxOn, setSfxOn, isBgmOn, setBgmOn, bgmScene } from './sfx.js';
 import { h, $, josa, toast, typeText, timeAgo, sleep, reducedMotion, pixelFontScale, ICON, pix } from './ui.js';
 import { inAppBrowser, isIOS, signOut } from './auth.js';
-import { S, app, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, stage2, titlesOf, unlockInfo, vibrate } from './state.js';
+import { S, app, applyFormNames, spIdOfLine, bag, boxFull, boxMax, collection, dexOf, spIdOf, dexStats, evolvable, isSecret, isWithdrawn, lineOf, mons, monSp, normalBag, owned, partnerMon, rules, sortDex, speciesOf, stage2, titlesOf, unlockInfo, vibrate } from './state.js';
 import { fmtTime, openDetail, unlockBar, UNLOCK_PERKS, viewDex, viewMap } from './dex.js';
 import { isRaidQr, joinRaid, viewRaid } from './raid.js';
 import { friendBattleSheet, inviteSheet, isBattleQr, viewBattle } from './battle.js';
@@ -88,7 +88,7 @@ export async function boot() {
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
   S.snap ||= null;   // 이 기기에 저장된 기록이 없으면 undefined 로 옴 → 늘 null (= 아직 첫 동기화 전)
   if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog))) S.catalog = null;   // 0032·0034·0037·0039 전 목록은 버리고 새로 받음
-  if (S.catalog?.lines) { sortDex(S.catalog); aliasSprites(S.catalog.species); }
+  if (S.catalog?.lines) { sortDex(S.catalog); applyFormNames(S.catalog); aliasSprites(S.catalog.species); }
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
 
@@ -174,8 +174,8 @@ export function renderRetry(msg) {
 
 export async function loadCatalog() {
   const [lines, species, qrs, moves, speciesMoves, typeChart, items, evolutions, abilities] = await Promise.all([
-    selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic', (q) => q.order('id')),
-    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item,abilities,hidden_ability', (q) => q.order('id')),
+    selectAll('lines', 'id,teacher,subject,btype,rarity,active,max_stage,withdrawn,secret,bonus,mythic,family_id,form_kind,form_label', (q) => q.order('id')),   // 0052 폼
+    selectAll('species', 'id,line_id,stage,name,category,flavor,height,weight,hp,atk,def,spa,spd,spe,btype,dex,evo_lv,evo_item,abilities,hidden_ability,form_of', (q) => q.order('id')),
     sb.from('qr_points').select('id,name,hint,map_x,map_y,daily_cap').order('id'),
     sb.from('moves').select('id,name,type,category,kind,power,accuracy,pp,priority,effect,description').order('id'),
     selectAll('species_moves', 'species_id,slot,move_id', (q) => q.order('species_id').order('slot')),
@@ -193,6 +193,7 @@ export async function loadCatalog() {
                 evolutions: evolutions.error ? null : evolutions.data || [],   // null = 예전 서버 (계열의 다음 단계로 진화)
                 abilities: abilities.error ? [] : abilities.data || [] };
   sortDex(S.catalog);
+  applyFormNames(S.catalog);   // 0052: 선생님 폼 = "물리 쌤의 피카츄" (sp.base_name = 원래 이름)
   aliasSprites(S.catalog.species);
   await kv.set('catalog', S.catalog);
 }
@@ -324,7 +325,7 @@ export function logoTap() {
   logoTaps = [];
   const mine = collection().filter((c) => !isWithdrawn(c.line_id));
   const pick = mine.length ? mine[Math.floor(Math.random() * mine.length)] : null;
-  const dex = pick ? dexOf(pick.line_id, pick.stage) : S.catalog.species[Math.floor(Math.random() * S.catalog.species.length)].id;
+  const dex = pick ? spIdOfLine(pick.line_id, pick.stage) : S.catalog.species[Math.floor(Math.random() * S.catalog.species.length)].id;
   const runner = h('div.parade', { 'aria-hidden': 'true' }, spriteCanvas(dex, 96, pick ? 'normal' : 'silhouette'));
   document.body.append(runner);
   sfx.catch(); vibrate([30, 40, 30, 40, 30]);
@@ -1406,7 +1407,7 @@ export async function catchEncounter(enc) {
 export function openQuiz() {
   const q = S.snap.quizzes?.[0];
   if (!q) return;
-  const sp = speciesOf(dexOf(q.line_id, 1));
+  const sp = speciesOf(spIdOfLine(q.line_id, 1));
   let picked = -1;
   const decide = h('button.btn.big.primary', { disabled: true }, '결정');
   const result = h('div');

@@ -6,7 +6,7 @@ import { sb, rpc, errorText, selectAll } from './sb.js';
 import { h, $, toast, timeAgo, josa } from './ui.js';
 import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
-import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady, aliasSprites, spriteBlob } from './sprites.js';
+import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady, aliasSprites, spriteBlob, hasArt } from './sprites.js';
 
 const SUBJECTS = ['국어', '수학', '영어', '과학', '사회', '외국어', '정보', '한국사', '음악', '체육', '전설'];
 const RARITY = { common: '일반', rare: '희귀', legendary: '전설' };
@@ -145,10 +145,10 @@ const GUIDES = {
   place: ['학교 곳곳에 붙이는 장소 QR을 만들고, 이름·지도 위치·나오는 포켓몬을 정해요.',
     'QR이 유출(사진 공유)됐으면 [토큰 교체]로 새 QR을 만들고 다시 인쇄해서 붙여요.',
     '[QR 인쇄]에서 A4에 2장씩 인쇄하거나 PNG로 저장해요.'],
-  mon: ['선생님 포켓몬(계열)의 이름·설명·진화 단계를 고쳐요.',
-    '계열마다 퀴즈를 넣어요. 퀴즈를 맞히면 진화의 돌을 받아요.',
-    '선생님이 동의를 철회하면 [선생님 동의 철회]를 켜서 숨겨요.',
-    '갈래 진화 계열 (이브이 · 랄토스 · 배루키 · 코스모그 …) 은 진화할 때 모습이 무작위로 정해져서 선생님 포켓몬으로 옮길 수 없어요. 지금 선생님이 그런 계열에 있으면 [선생님 배정]에서 다른 야생 포켓몬으로 옮겨 주세요.'],
+  mon: ['포켓몬은 가족 (진화로 이어지는 묶음, 갈래 진화 포함) 마다 한 줄이에요. 한 가족에 모습 (폼) 이 여러 개 있어요: 일반 (야생) · 선생님 (예: "물리 쌤의 피카츄") · 이벤트.',
+    '선생님 붙이기 = 가족을 고르고 [+ 선생님 폼 만들기]. 선생님 폼은 장소 QR · 퀴즈로만 나오고, 잡으면 학교 도감 칸이 채워져요. 일반 폼은 그대로 야생 · 사파리존에서 나와요.',
+    '선생님 빼기 = 그 선생님 폼에서 [선생님 폼 끄기]. 학생이 잡은 포켓몬은 그대로 남아요. 다른 포켓몬으로 바꾸려면 [다른 포켓몬으로 옮기기] (퀴즈 · 장소 QR 이 함께 옮겨짐).',
+    '[선생님 찾기] = 선생님 → 과목 → 포켓몬 표. 선생님 얼굴 그림은 그 선생님 폼에서 올리면 그 폼에만 쓰여요. 동의를 철회하면 [선생님 동의 철회]를 켜서 숨겨요.'],
   raid: ['레이드 = 모두가 함께 보스를 탭해서 쓰러뜨리는 이벤트예요.',
     '[레이드 열기]로 아무 포켓몬이나 지금 바로 열 수 있어요 (TV 화면 또는 인쇄 QR).',
     '[시간대 전설]은 정해 둔 시간에 TV 화면이 저절로 여는 레이드예요. TV 화면이 켜져 있어야 해요.',
@@ -256,14 +256,25 @@ function typeChip(subject) {
 const chip = (text, cls = '') => h('span.chip' + (cls ? '.' + cls : ''), text);
 // ── 포켓몬 계열 (0032): 실제 포켓몬 1~3단계. 선생님 계열 / 야생 계열 / 특별 전설 계열 ──
 const TYPES18 = ['노말', '불꽃', '물', '풀', '전기', '얼음', '격투', '독', '땅', '비행', '에스퍼', '벌레', '바위', '고스트', '드래곤', '악', '강철', '페어리'];
-const firstSp = (l) => S.spById.get((l.id - 1) * 3 + 1);
-const lastSp = (l) => S.spById.get((l.id - 1) * 3 + maxStage(l)) || firstSp(l);
+// 0052 폼: form_kind = normal (야생 · 보통) | teacher (선생님 폼) | event (이상한 소포) | special (학교 특별 전설), family_id = 가족 대표 (일반 계열)
+const formKindOf = (l) => !l ? 'normal' : l.form_kind || (l.subject === '야생' ? (l.bonus ? 'event' : 'normal')
+  : (l.bonus || l.secret || l.mythic || (l.id >= 35 && l.id <= 42) || (l.id >= 77 && l.id <= 82) ? 'special' : 'teacher'));
+const famOf = (l) => l?.family_id || l?.id;
+const spOfLine = (l) => (S.spByLine?.get(l?.id) || []);
+const firstSp = (l) => spOfLine(l).find((x) => x.stage === 1) || spOfLine(l)[0];
+const lastSp = (l) => [...spOfLine(l)].reverse()[0] || firstSp(l);
 const lineType = (l) => String(firstSp(l)?.btype || l.btype || '노말').split('/')[0];
 const isWildLine = (l) => l?.subject === '야생';
-const isSpecialLine = (l) => !!l && (l.bonus || l.secret || l.mythic || (l.id >= 35 && l.id <= 42) || (l.id >= 77 && l.id <= 82));
-const isTeacherLine = (l) => !!l && !isWildLine(l) && !isSpecialLine(l);
-const lineWho = (l) => (isWildLine(l) ? '야생' : isSpecialLine(l) ? `${l.teacher} · 전설` : `${l.teacher} · ${l.subject}`);
-const chainName = (l) => { const a = firstSp(l)?.name || '?', b = lastSp(l)?.name; return b && b !== a ? `${a}→${b}` : a; };
+const isSpecialLine = (l) => !!l && formKindOf(l) === 'special';
+const isTeacherLine = (l) => !!l && formKindOf(l) === 'teacher';
+const isEventLine = (l) => !!l && formKindOf(l) === 'event';
+const teacherLabel = (l) => l?.form_label || String(l?.teacher || '').replace(/\s*선생님\s*(\d+)$/, ' $1 쌤').replace(/\s*선생님$/, ' 쌤');
+const lineWho = (l) => (isEventLine(l) ? '이벤트 폼' : isWildLine(l) ? '야생 (일반 폼)' : isSpecialLine(l) ? `${l.teacher} · 전설` : `${teacherLabel(l)} · ${l.subject}${l.active ? '' : ' · 꺼짐'}`);
+// 진화 이름: 단계마다 (갈래는 ·) — 이브이 → 샤미드·쥬피썬더·…
+const chainName = (l) => {
+  const by = [1, 2, 3].map((st) => [...new Set(spOfLine(l).filter((x) => x.stage === st).map((x) => x.name))]).filter((x) => x.length);
+  return by.map((x) => (x.length > 3 ? `${x.slice(0, 2).join('·')} 외 ${x.length - 2}` : x.join('·'))).join('→') || '?';
+};
 const lineName = (id) => {
   const l = S.lineById.get(id);
   return l ? `#${id} ${chainName(l)} (${lineWho(l)})` : `#${id}`;
@@ -285,7 +296,7 @@ function lineSelect(lines, selected = null) {
     ls.map((l) => h('option', { value: l.id, selected: l.id === selected },
       lineName(l.id) + (l.active ? '' : ' [비활성]') + (l.withdrawn ? ' [동의 철회]' : ''))))));
 }
-const hasPic = (dex) => dex <= ATLAS_CAP || !!S.spById.get(dex)?.sprite;
+const hasPic = (dex) => hasArt(dex) || (dex < 10000 && dex <= ATLAS_CAP) || !!S.spById.get(dex)?.sprite;   // 0052: 폼 종 = 같은 번호의 그림판 칸
 function sprite(dex, size = 64) {
   if (!hasPic(dex)) return h('div.nopic', '그림 없음', h('br'), '(그림 올리기 필요)');
   return spriteCanvas(dex, size);
@@ -351,6 +362,8 @@ async function loadCatalog() {
   S.lines = lines; S.species = species;
   S.lineById = new Map(lines.map((l) => [l.id, l]));
   S.spById = new Map(species.map((s) => [s.id, s]));
+  S.spByLine = new Map();
+  for (const x of [...species].sort((a, b) => a.stage - b.stage || a.id - b.id)) { if (!S.spByLine.has(x.line_id)) S.spByLine.set(x.line_id, []); S.spByLine.get(x.line_id).push(x); }
   aliasSprites(species);   // 0037 갈래 종 (10000+) 그림
   const set = Object.fromEntries(sets.map((r) => [r.key, r.value]));
   if (set.token_grace_minutes != null) S.grace = Number(set.token_grace_minutes) || 30;
@@ -1025,50 +1038,271 @@ function savePng(q, sec, url) {
 
 // ───────────────────────── 4. 포켓몬·퀴즈 ─────────────────────────
 
+// 0052: 포켓몬 탭 = 가족 (진화 계열 + 갈래) 마다 한 줄, 가족 안에 폼 (일반 · 선생님 · 이벤트 · 특별 전설). '선생님 찾기' = 선생님 → 포켓몬 표.
+//   선생님 배정 = 가족에 '선생님 폼 만들기' (admin_create_teacher_form), 빼기 = '선생님 폼 끄기' (admin_set_form_active), 이름 = admin_rename_teacher.
+//   예전 판 (계열마다 한 줄 + 계열을 통째로 바꾸던 admin_assign_teacher): git 기록 (0051 까지의 admin.js)
+const FORM_KO = { normal: '일반', teacher: '선생님', event: '이벤트', special: '특별 전설' };
+const MON_SCOPES = [['all', '전체'], ['teacher', '선생님 있음'], ['none', '선생님 없음'], ['special', '특별 전설'], ['event', '이벤트']];
+
+// 가족 목록: [{ id, root, lines, normals, teachers, events, specials, names }]
+function buildFamilies() {
+  const fam = new Map();
+  for (const l of S.lines) {
+    const id = famOf(l);
+    if (!fam.has(id)) fam.set(id, { id, lines: [] });
+    fam.get(id).lines.push(l);
+  }
+  const out = [];
+  for (const f of fam.values()) {
+    f.root = S.lineById.get(f.id) || f.lines[0];
+    const by = (k) => f.lines.filter((l) => formKindOf(l) === k);
+    f.normals = by('normal').sort((a, b) => (a.id === f.id ? -1 : b.id === f.id ? 1 : a.id - b.id));
+    f.teachers = by('teacher').sort((a, b) => Number(b.active) - Number(a.active) || a.id - b.id);
+    f.events = by('event'); f.specials = by('special');
+    f.names = [...new Set(f.lines.flatMap((l) => spOfLine(l).map((x) => x.name)))];
+    f.dexes = [...new Set(spOfLine(f.root).map((x) => x.dex).filter(Boolean))].sort((a, b) => a - b);
+    out.push(f);
+  }
+  return out;
+}
+const famLabel = (f) => chainName(f.root);
+const dexRange = (f) => (f.dexes.length ? `No.${String(f.dexes[0]).padStart(3, '0')}${f.dexes.length > 1 ? ` 외 ${f.dexes.length - 1}` : ''}` : '');
+const activeTeacher = (f) => f.teachers.find((l) => l.active);
+const famBadges = (f) => [
+  f.normals.length ? chip('일반', 'off') : null,
+  ...f.teachers.map((l) => chip(`${teacherLabel(l)} · ${l.subject}${l.active ? '' : ' (꺼짐)'}`, l.active ? 'blue' : 'off')),
+  ...f.events.map((l) => chip(`이벤트 · ${l.form_label || '소포'}`, 'warn')),
+  ...f.specials.map((l) => chip(`전설 · ${l.teacher}`, 'warn')),
+].filter(Boolean);
+const famMatch = (f, q) => !q || [...f.names, ...f.lines.flatMap((l) => [l.teacher, l.subject, l.form_label, `#${l.id}`]), ...f.dexes.map(String)]
+  .some((x) => String(x || '').toLowerCase().includes(q));
+
 async function tabMon() {
   await Promise.all([loadCatalog(), atlasCap, spritesReady, refreshSprites().catch(() => {})]);
-  if (!S.selLine || !S.lineById.has(S.selLine)) S.selLine = S.lines[0]?.id ?? null;
-  const listBox = h('div.box.stack');
-  const editBox = h('div');
-  const filter = h('input.inp', { type: 'search', placeholder: '포켓몬 이름·선생님·과목·타입으로 찾기', 'aria-label': '계열 찾기' });
+  const qz = await tq(selectAll('quizzes', 'line_id', (q) => q.order('line_id')));
+  S.quizCount = new Map();
+  for (const z of qz) S.quizCount.set(z.line_id, (S.quizCount.get(z.line_id) || 0) + 1);
+  const fams = buildFamilies();
+  S.famById = new Map(fams.map((f) => [f.id, f]));
+  if (!S.selFam || !S.famById.has(S.selFam)) S.selFam = fams.find((f) => f.teachers.length)?.id ?? fams[0]?.id;
+  const view = S.monView === 'teacher' ? 'teacher' : 'family';
+  const listBox = h('div.box.stack.mon-list');
+  const editBox = h('div.stack');
+  const filter = h('input.inp', { type: 'search', value: S.monQuery || '', placeholder: view === 'teacher' ? '선생님 이름 · 과목 · 포켓몬으로 찾기' : '포켓몬 이름 · 선생님 이름 · 과목 · 도감 번호로 찾기', 'aria-label': '찾기' });
   const listEl = h('div.line-list');
-  const SCOPES = [['all', '전체'], ['teacher', '선생님'], ['wild', '야생'], ['special', '특별 전설']];
   const scopeBar = h('div.chips');
-  const inScope = (l) => { const sc = S.monScope || 'all'; return sc === 'all' || (sc === 'teacher' ? isTeacherLine(l) : sc === 'wild' ? isWildLine(l) : isSpecialLine(l)); };
+  const setView = (v) => { S.monView = v; S.monQuery = ''; rerender(); };
+  const viewBar = h('div.seg-ctl.mon-view', { role: 'group', 'aria-label': '보기' },
+    h('button.btn.seg-btn', { type: 'button', 'aria-pressed': String(view === 'family'), onclick: () => setView('family') }, '포켓몬 가족별'),
+    h('button.btn.seg-btn', { type: 'button', 'aria-pressed': String(view === 'teacher'), onclick: () => setView('teacher') }, `선생님 찾기 (${S.lines.filter(isTeacherLine).length})`));
+  const open = (famId, formLine) => { S.selFam = famId; S.selForm = formLine ?? null; drawItems(); drawEdit(); if (window.innerWidth < 900) editBox.scrollIntoView({ block: 'start' }); };
+  const inScope = (f) => {
+    const sc = S.monScope || 'all';
+    return sc === 'all' || (sc === 'teacher' ? !!activeTeacher(f) : sc === 'none' ? !activeTeacher(f) && f.normals.length > 0 && !f.specials.length
+      : sc === 'special' ? f.specials.length > 0 : f.events.length > 0);
+  };
   const drawItems = () => {
-    const f = filter.value.trim().toLowerCase();
-    scopeBar.replaceChildren(...SCOPES.map(([k, t]) => h('button.chip.btnchip', { type: 'button', 'aria-pressed': String((S.monScope || 'all') === k),
-      onclick: () => { S.monScope = k; drawItems(); } }, `${t} ${S.lines.filter((l) => k === 'all' || (k === 'teacher' ? isTeacherLine(l) : k === 'wild' ? isWildLine(l) : isSpecialLine(l))).length}`)));
-    const names = (l) => [1, 2, 3].map((st) => S.spById.get((l.id - 1) * 3 + st)?.name);
-    const shown = S.lines.filter((l) => inScope(l) && (!f || [l.teacher, l.subject, lineType(l), firstSp(l)?.btype, ...names(l), '#' + l.id]
-      .some((x) => String(x || '').toLowerCase().includes(f))));
-    listEl.replaceChildren(...byType(shown).map(([t, ls]) => h('div.line-group',
-      h('div.line-group-h', typeChip(t), ` ${ls.length}`),
-      ls.map((l) => h('button.line-item', {
-        type: 'button', 'aria-pressed': String(l.id === S.selLine),
-        onclick: () => { S.selLine = l.id; drawItems(); drawEdit(); },
-      }, sprite((l.id - 1) * 3 + 1, 48), h('div.meta',
-        h('b', `#${l.id} ${chainName(l)}`),
-        h('span', isTeacherLine(l) ? [chip(l.subject, 'blue'), ' ', l.teacher] : isWildLine(l) ? chip('야생', 'off') : chip(`전설 · ${l.teacher}`, 'warn')),
-        h('span', RARITY[l.rarity] || l.rarity, ` · ${maxStage(l)}단계`, l.active ? '' : ' · 비활성',
-          l.withdrawn ? ' ' : '', l.withdrawn ? chip('동의 철회', 'hot') : null)))))));
-    if (!shown.length) listEl.replaceChildren(h('p.muted', '찾는 계열이 없어요.'));
+    const q = filter.value.trim().toLowerCase();
+    S.monQuery = filter.value;
+    if (view === 'teacher') {
+      scopeBar.replaceChildren();
+      const rows = S.lines.filter(isTeacherLine)
+        .map((l) => ({ l, f: S.famById.get(famOf(l)) }))
+        .filter(({ l, f }) => !q || [l.teacher, l.subject, teacherLabel(l), ...(f?.names || [])].some((x) => String(x || '').toLowerCase().includes(q)))
+        .sort((a, b) => Number(b.l.active) - Number(a.l.active) || a.l.subject.localeCompare(b.l.subject, 'ko') || a.l.teacher.localeCompare(b.l.teacher, 'ko', { numeric: true }));
+      listEl.replaceChildren(rows.length ? h('div.tbl-wrap', h('table.tbl.teacher-tbl',
+        h('thead', h('tr', h('th', '선생님 · 과목'), h('th', '포켓몬'), h('th', '상태'))),
+        h('tbody', rows.map(({ l }) => h(`tr.click${famOf(l) === S.selFam && S.selForm === l.id ? '.sel' : ''}`, { tabindex: 0, onclick: () => open(famOf(l), l.id), onkeydown: (e) => { if (e.key === 'Enter') open(famOf(l), l.id); } },
+          h('td', h('b', l.teacher), h('br'), h('small.muted', `${l.subject} · 퀴즈 ${S.quizCount.get(l.id) || 0}`)),
+          h('td', h('span.tt-mon', sprite(firstSp(l)?.id, 32), h('span', chainName(l)))),
+          h('td', l.active ? chip('켜짐', 'ok') : chip('꺼짐', 'off'), l.withdrawn ? chip('동의 철회', 'hot') : null)))))) : h('p.muted', '찾는 선생님이 없어요.'));
+      return;
+    }
+    scopeBar.replaceChildren(...MON_SCOPES.map(([k, t]) => h('button.chip.btnchip', { type: 'button', 'aria-pressed': String((S.monScope || 'all') === k),
+      onclick: () => { S.monScope = k; drawItems(); } }, `${t} ${fams.filter((f) => { const o = S.monScope; S.monScope = k; const r = inScope(f); S.monScope = o; return r; }).length}`)));
+    const shown = fams.filter((f) => inScope(f) && famMatch(f, q));
+    const groups = byType(shown.map((f) => f.root));
+    listEl.replaceChildren(...(shown.length ? groups.map(([t, roots]) => h('div.line-group',
+      h('div.line-group-h', typeChip(t), ` ${roots.length}`),
+      roots.map((r) => { const f = S.famById.get(famOf(r)) || shown.find((x) => x.root === r);
+        return h('button.line-item', { type: 'button', 'aria-pressed': String(f.id === S.selFam), onclick: () => open(f.id) },
+          sprite(firstSp(f.root)?.id, 48), h('div.meta',
+            h('b', famLabel(f)), h('span.small-txt.muted', dexRange(f)),
+            h('span.fam-badges', famBadges(f)))); }))) : [h('p.muted', '찾는 포켓몬이 없어요.')]));
   };
   filter.addEventListener('input', drawItems);
-  const drawList = () => {
-    listBox.replaceChildren(
-      h('div.row', h('h2', `포켓몬 계열 (${S.lines.length})`), h('span', { style: { flex: 1 } }),
-        h('button.btn.small.go', { onclick: () => addLine(redraw) }, '+ 새 계열')),
-      scopeBar, filter, listEl);
-    drawItems();
-  };
   const drawEdit = () => {
     editBox.replaceChildren(h('p.loading', '불러오는 중…'));
-    lineEditor(S.selLine, redraw).then((n) => editBox.replaceChildren(...n), (e) => editBox.replaceChildren(h('div.box', h('p.warn-txt', msgOf(e)))));
+    familyEditor(S.selFam, rerender).then((n) => editBox.replaceChildren(...n), (e) => editBox.replaceChildren(h('div.box', h('p.warn-txt', msgOf(e)))));
   };
-  const redraw = async () => { await loadCatalog(); drawList(); drawEdit(); };
-  drawList(); drawEdit();
+  listBox.replaceChildren(viewBar,
+    h('p.small-txt.muted', view === 'teacher'
+      ? '선생님을 누르면 오른쪽에 그 선생님 포켓몬 (폼) 이 열려요. 꺼진 폼은 학생이 이미 잡은 것만 남아 있어요.'
+      : '가족 = 진화로 이어지는 포켓몬 묶음 (갈래 진화 포함). 한 가족에 일반 모습과 선생님 모습 (예: 물리 쌤의 피카츄) 이 함께 있어요.'),
+    scopeBar, filter, listEl);
+  drawItems(); drawEdit();
   return h('div.cols.wide-right', listBox, editBox);
+}
+
+// 오른쪽: 가족 하나 — 폼 단추 · 폼 내용
+async function familyEditor(famId, redraw) {
+  const f = S.famById.get(famId);
+  if (!f) return [h('div.box', h('p.muted', '왼쪽에서 포켓몬 가족을 고르세요.'))];
+  const forms = [...f.normals.slice(0, 1), ...f.teachers, ...f.events, ...f.specials];
+  let cur = S.lineById.get(S.selForm);
+  if (!cur || famOf(cur) !== f.id || (formKindOf(cur) === 'normal' && cur.id !== forms[0]?.id)) cur = f.teachers.find((l) => l.active) || forms[0];
+  const formBtn = (l) => {
+    const k = formKindOf(l);
+    const label = k === 'normal' ? '일반' : k === 'teacher' ? `${teacherLabel(l)}` : k === 'event' ? `이벤트 · ${l.form_label || ''}` : `전설 · ${l.teacher}`;
+    return h('button.form-pick', { type: 'button', 'aria-pressed': String(l.id === cur.id), onclick: () => { S.selForm = l.id; redraw(); } },
+      sprite(firstSp(l)?.id, 32), h('span', h('b', label), h('small', k === 'teacher' ? `${l.subject}${l.active ? '' : ' · 꺼짐'}` : FORM_KO[k])));
+  };
+  const canTeach = formKindOf(f.root) === 'normal' && !f.specials.length;
+  const add = canTeach ? h('button.btn.go', { type: 'button', onclick: () => createTeacherForm(f, redraw).catch(fail) }, activeTeacher(f) ? '선생님 바꾸기' : '+ 선생님 폼 만들기') : null;
+  const head = h('div.box.stack',
+    h('div.row', h('h2', famLabel(f)), h('span', { style: { flex: 1 } }), add),
+    h('p.small-txt.muted', `${dexRange(f)} · 폼 ${forms.length}개 — 모든 폼이 도감 번호 · 타입 · 능력치 · 기술 · 진화를 함께 써요. 그림 · 이름 앞말 · 얻는 방법만 달라요.`),
+    h('div.form-picks', { role: 'group', 'aria-label': '폼' }, forms.map(formBtn)),
+    canTeach && !f.teachers.length ? h('p.notice', '이 가족에는 선생님 폼이 없어요. "+ 선생님 폼 만들기" 로 선생님을 붙일 수 있어요 (일반 폼은 그대로 야생에서 나와요).') : null);
+  return [head, ...(await formPanel(cur, f, redraw))];
+}
+
+function spCards(l, redraw) {
+  const k = formKindOf(l);
+  return h('div.sp-grid', spOfLine(l).map((sp) => h('div.sp-card',
+    h('div.pic', sprite(sp.id, 64)),
+    h('b', `${k === 'teacher' ? `${teacherLabel(l)}의 ` : ''}${sp.name}`),
+    h('span.small-txt.muted', `${sp.stage}단계 · No.${String(sp.dex || 0).padStart(3, '0')} · 종 #${sp.id}`),
+    sp.btype ? h('div.chips', String(sp.btype).split('/').map((t) => typeChip(t))) : null,
+    picTools(sp.id, redraw, k === 'teacher'))));
+}
+
+async function formPanel(l, f, redraw) {
+  const k = formKindOf(l);
+  const out = [];
+  if (k === 'normal') {
+    const rarity = h('select.inp', Object.entries(RARITY).map(([v, t]) => h('option', { value: v, selected: l.rarity === v }, t)));
+    const act = checkbox('나옴 (끄면 야생 · 사파리 · 알에서 안 나옴)', l.active);
+    const save = h('button.btn.go', '저장');
+    save.onclick = () => busy(save, async () => {
+      await tq(sb.from('lines').update({ rarity: rarity.value, active: act.input.checked }).eq('id', l.id));
+      toast('저장했어요.'); await redraw();
+    });
+    out.push(h('div.box.stack', h('h2', '일반 폼 (야생)'),
+      h('p.small-txt.muted', '보통 포켓몬이에요. 장소 QR 의 야생 · 걷기 · 사파리존 (구역 타입에 맞게) · 알 · 연습 배틀 상대로 나와요. 학교 도감 칸은 채우지 않아요.'),
+      h('div.fields', field('희귀도 (나오는 비율)', rarity), h('div.fld', h('span', ' '), act.el)), h('div.row.end', save),
+      f.normals.length > 1 ? h('p.small-txt', '이 가족에서 따로 잡히는 계열: ',
+        f.normals.slice(1).map((x) => chip(`#${x.id} ${chainName(x)}`, 'off'))) : null));
+    out.push(h('div.box.stack', h('h2', '그림'), h('p.small-txt.muted', '일반 폼 그림을 바꾸면 이 모습에만 쓰여요 (선생님 폼 그림은 따로).'), spCards(l, redraw)));
+    return out;
+  }
+  if (k === 'teacher') {
+    const tname = h('input.inp', { value: l.teacher, maxlength: 40 });
+    const tsub = h('input.inp', { value: l.subject, list: 'subjects-t', maxlength: 20 });
+    const preview = h('span.small-txt');
+    const upd = () => { const t = tname.value.trim(); preview.textContent = t ? `학생 앱 이름: "${teacherLabel({ teacher: t })}의 ${firstSp(l)?.name || ''}"` : ''; };
+    tname.oninput = upd; upd();
+    const save = h('button.btn.go', '이름 · 과목 저장');
+    save.onclick = () => busy(save, async () => {
+      await rpc('admin_rename_teacher', { p_line: l.id, p_teacher: tname.value, p_subject: tsub.value });
+      toast('저장했어요.'); await redraw();
+    });
+    const onoff = h(`button.btn${l.active ? '.primary' : '.go'}`, { type: 'button' }, l.active ? '선생님 폼 끄기' : '다시 켜기');
+    onoff.onclick = () => busy(onoff, () => toggleTeacherForm(l, f, redraw));
+    const wd = checkbox('선생님 동의 철회 (이름 · 그림 숨김)', l.withdrawn);
+    wd.input.onchange = () => tq(sb.from('lines').update({ withdrawn: wd.input.checked }).eq('id', l.id)).then(() => { toast('저장했어요.'); redraw(); }, fail);
+    const move = h('button.btn', { type: 'button', onclick: () => moveTeacher(l, redraw).catch(fail) }, '다른 포켓몬으로 옮기기');
+    out.push(h('div.box.stack',
+      h('div.row', h('h2', `선생님 폼 · ${l.teacher}`), h('span', { style: { flex: 1 } }), l.active ? chip('켜짐', 'ok') : chip('꺼짐', 'off')),
+      h('p.small-txt.muted', `이 폼은 장소 QR · 퀴즈로만 나와요 (야생 · 사파리 · 알에는 안 나옴). 잡으면 학교 도감 칸이 채워져요. 퀴즈 ${S.quizCount.get(l.id) || 0}개.`),
+      !l.active ? h('p.notice', '꺼진 폼이에요: QR · 퀴즈에서 안 나오고 학교 도감 칸에서도 빠졌어요. 학생이 이미 잡은 포켓몬은 그대로 있어요.') : null,
+      h('datalist#subjects-t', SUBJECTS.filter((x) => x !== '전설').map((x) => h('option', { value: x }))),
+      h('div.fields', field('선생님', tname), field('과목', tsub), h('div.fld', h('span', ' '), save)), preview,
+      h('div.row', onoff, move, wd.el)));
+    out.push(h('div.box.stack', h('h2', '선생님 얼굴 그림'),
+      h('p.small-txt.muted', '여기 올린 그림은 이 선생님 폼에만 쓰여요. 같은 포켓몬의 일반 모습 (야생) 은 원래 그림 그대로예요.'), spCards(l, redraw)));
+    out.push(await quizSection(l));
+    return out;
+  }
+  out.push(h('div.box.stack', h('h2', k === 'event' ? `이벤트 폼 · ${spOfLine(l)[0]?.name || ''}` : `특별 전설 · ${l.teacher}`),
+    h('p.small-txt.muted', k === 'event'
+      ? '이상한 소포로만 받는 모습이에요 (전설 · 소포 탭 → 소포 만들기 → 이벤트 포켓몬 단추). 도감 수에는 안 세요.'
+      : '학교 특별 전설 자리예요 (교장/교감 · 탐구 활동 · 야자 · 비밀 · 환상). 선생님 폼을 붙이지 않아요.'),
+    spCards(l, redraw)));
+  return out;
+}
+
+// 학교 도감에서 빠질 칸 수 (이 폼만 가진 도감 번호)
+function schoolLoss(l) {
+  const others = new Set(S.lines.filter((x) => x.id !== l.id && x.active && !x.withdrawn && !isWildLine(x) && !x.secret && !x.mythic).flatMap((x) => spOfLine(x).map((s) => s.dex)));
+  return new Set(spOfLine(l).map((s) => s.dex).filter((d) => d && !others.has(d))).size;
+}
+
+async function toggleTeacherForm(l, f, redraw) {
+  if (l.active) {
+    const n = schoolLoss(l);
+    if (!await confirmBox(`${l.teacher} 폼 끄기`, [
+      `"${teacherLabel(l)}의 ${firstSp(l)?.name}" 폼을 꺼요.`,
+      h('ul.tight', h('li', '장소 QR · 퀴즈에서 이 선생님 포켓몬이 더 이상 안 나와요.'),
+        h('li', `학교 도감 칸이 ${n}칸 줄어요 (해금 · 도감 보상 기준도 그만큼 바뀌어요). 이미 잡은 학생은 그 칸이 계속 채워진 채로 남아요.`),
+        h('li', '학생이 잡은 포켓몬은 지워지지 않아요. 퀴즈 · 장소 QR 보상은 이 폼에 남아 있어서 다시 켜면 그대로 나와요.')),
+    ], { ok: '끄기', danger: true })) return;
+  } else if (activeTeacher(f)) {
+    toast(`이 가족에는 이미 켜진 선생님 폼 (${activeTeacher(f).teacher}) 이 있어요. 먼저 그것을 꺼 주세요.`, 5000); return;
+  }
+  const r = await rpc('admin_set_form_active', { p_line: l.id, p_active: !l.active });
+  toast(`${r.active ? '켰어요' : '껐어요'}. 학교 도감 = ${r.school_total}칸`, 4000);
+  S.selForm = l.id;
+  await redraw();
+}
+
+// 가족에 선생님 폼 만들기 (이미 켜진 선생님 폼이 있으면: 이름만 고치기 / 새 선생님으로 바꾸기)
+async function createTeacherForm(f, redraw) {
+  const old = activeTeacher(f);
+  const tname = h('input.inp', { placeholder: '예: 물리 선생님', maxlength: 40 });
+  const tsub = h('input.inp', { list: 'subjects-new', placeholder: '예: 과학', maxlength: 20 });
+  const pv = h('p.small-txt');
+  tname.oninput = () => { const t = tname.value.trim(); pv.textContent = t ? `학생 앱 이름: "${teacherLabel({ teacher: t })}의 ${firstSp(f.root)?.name}"` : ''; };
+  const body = h('div.stack',
+    h('p', `${famLabel(f)} 가족에 선생님 폼을 만들어요. 같은 포켓몬이지만 이름 앞에 선생님이 붙고, 장소 QR · 퀴즈로만 나와요.`),
+    old ? h('p.notice', `지금 이 가족에는 ${old.teacher} (${old.subject}) 폼이 켜져 있어요. 오타만 고치려면 그 폼에서 "이름 · 과목 저장" 을 쓰세요. 여기서 만들면 ${old.teacher} 폼은 꺼져요 (잡은 학생 것은 그대로, 퀴즈는 ${old.teacher} 폼에 남음).`) : null,
+    h('datalist#subjects-new', SUBJECTS.filter((x) => x !== '전설').map((x) => h('option', { value: x }))),
+    h('div.fields', field('선생님 이름', tname), field('과목', tsub)), pv,
+    h('p.small-txt.muted', '갈래 진화 가족 (이브이 등) 도 돼요 — 진화하면 그 선생님 폼 안의 갈래 중 하나가 무작위로 나와요.'),
+    h('p.notice.red', '쌤 외모·사생활은 금지! 과목·학교 관련 내용만 쓰세요.'));
+  const r = await modal(old ? '새 선생님으로 바꾸기' : '선생님 폼 만들기', body, [
+    { label: '취소', value: null },
+    { label: old ? `${old.teacher} 폼 끄고 만들기` : '만들기', cls: 'go', onClick: async () => {
+      if (!tname.value.trim() || !tsub.value.trim()) { toast('선생님 이름과 과목을 넣어 주세요.'); return false; }
+      return rpc('admin_create_teacher_form', { p_family: f.id, p_teacher: tname.value, p_subject: tsub.value, p_replace: !!old });
+    } },
+  ]);
+  if (!r) return;
+  toast(`${r.label}의 ${firstSp(f.root)?.name} 폼을 만들었어요. 퀴즈를 넣고, 원하면 선생님 얼굴 그림을 올려 주세요.`, 6000);
+  S.selFam = f.id; S.selForm = r.line;
+  await redraw();
+}
+
+// 선생님을 다른 가족으로 옮기기: 새 가족에 같은 이름의 선생님 폼 + 퀴즈 · 장소 QR 보상이 따라감, 원래 폼은 꺼짐
+async function moveTeacher(l, redraw) {
+  const fams = buildFamilies().filter((f) => f.id !== famOf(l) && formKindOf(f.root) === 'normal' && !f.specials.length);
+  const sel = h('select.inp', byType(fams.map((f) => f.root)).map(([t, roots]) => h('optgroup', { label: t },
+    roots.map((r) => { const f = fams.find((x) => x.root === r); const at = activeTeacher(f);
+      return h('option', { value: f.id }, `${famLabel(f)}${at ? ` — 지금 ${at.teacher}` : ''}`); }))));
+  const body = h('div.stack',
+    h('p', `${l.teacher} (${l.subject}) 를 다른 포켓몬으로 옮겨요.`),
+    h('ul.small-txt.tight', h('li', '새 포켓몬 가족에 같은 이름의 선생님 폼이 생기고, 퀴즈 · 장소 QR 보상이 함께 옮겨져요.'),
+      h('li', `지금 폼 (${chainName(l)}) 은 꺼져요. 학생이 이미 잡은 것은 그대로 남아요.`),
+      h('li', '옮길 가족에 이미 켜진 선생님 폼이 있으면 그 폼도 꺼져요.')),
+    field('옮길 포켓몬 가족', sel));
+  const r = await modal('다른 포켓몬으로 옮기기', body, [
+    { label: '취소', value: null },
+    { label: '옮기기', cls: 'go', onClick: () => rpc('admin_create_teacher_form', { p_family: Number(sel.value), p_teacher: l.teacher, p_subject: l.subject, p_move_from: l.id, p_replace: true }) },
+  ]);
+  if (!r) return;
+  toast(`${l.teacher} → ${famLabel(S.famById.get(r.family) || { root: S.lineById.get(r.family) })} (퀴즈 ${r.quizzes}개 · QR ${r.qr_rewards}곳 옮김)`, 6000);
+  S.selFam = r.family; S.selForm = r.line;
+  await redraw();
 }
 
 // ── 포켓몬 그림 올리기 (0031): Storage 'sprites' + species.sprite. 올리면 모든 학생 앱에 바로 쓰임 ──
@@ -1080,15 +1314,15 @@ const packPic = (sp) => { const ext = (sp?.dex || 0) <= 649 ? 'gif' : 'png'; ret
 const hasPack = (sp) => !!sp?.dex;
 const ready = (msg) => Object.assign(new Error(msg), { ready: true });
 
-function picTools(dex, redraw) {
+function picTools(dex, redraw, face = false) {
   const sp = S.spById.get(dex);
   const custom = sp?.sprite && !isPackPic(sp.sprite);          // 운영자가 직접 올린 그림
-  const up = h('button.btn.small.go', { type: 'button', onclick: () => uploadPic(dex, redraw).catch(fail) }, sp?.sprite ? '그림 바꾸기' : '그림 올리기');
+  const up = h('button.btn.small.go', { type: 'button', onclick: () => uploadPic(dex, redraw).catch(fail) }, face ? (sp?.sprite && !isPackPic(sp.sprite) ? '선생님 얼굴 그림 바꾸기' : '선생님 얼굴 그림 올리기') : sp?.sprite && !isPackPic(sp.sprite) ? '그림 바꾸기' : '그림 올리기');
   const back = custom ? h('button.btn.small', { type: 'button' }, hasPack(sp) || dex <= ATLAS_CAP ? '원래 그림으로' : '그림 지우기') : null;
   if (back) back.onclick = () => busy(back, () => resetPic(dex, redraw));
   const dl = h('button.btn.small', { type: 'button', title: '보통 그림과 반짝이(색이 다른) 그림을 PNG 로 저장' }, '그림 내려받기');
   dl.onclick = () => busy(dl, () => downloadPics(dex));
-  return h('div.pic-tools', custom ? chip('올린 그림', 'ok') : h('span.small-txt.muted', sp?.sprite ? '공식 그림' : dex <= ATLAS_CAP ? '기본 그림' : '그림 없음'), up, back, dl);
+  return h('div.pic-tools', custom ? chip('올린 그림', 'ok') : h('span.small-txt.muted', sp?.sprite ? '공식 그림' : dex <= ATLAS_CAP || hasArt(dex) ? '원래 그림' : '그림 없음'), up, back, dl);
 }
 
 // 그림 내려받기: 0493-아르세우스.png + 0493-아르세우스-shiny.png (번호 = 전국도감 번호, 없으면 종 번호)
@@ -1161,7 +1395,7 @@ async function uploadPic(dex, redraw) {
     } catch (e) { info.textContent = msgOf(e); info.className = 'small-txt warn-txt'; }
   };
   const body = h('div.stack',
-    h('p', `${sp?.name || `#${dex}`}의 그림을 바꿔요. 올리면 학생 앱 · 부스 · 대형 화면 · 미니게임에 모두 쓰여요.`),
+    h('p', `${sp?.name || `#${dex}`} (종 #${dex}) 의 그림을 바꿔요. 이 모습 (폼) 에만 쓰이고, 같은 포켓몬의 다른 모습은 그대로예요. 학생 앱 · 부스 · 대형 화면 · 미니게임에 모두 쓰여요.`),
     h('ul.small-txt.muted.tight',
       h('li', 'PNG · WebP · GIF (첫 장면만), 1MB · 한 변 256픽셀까지. 공식 그림과 같은 96×96 칸에 맞춰 도트로 정리돼요'),
       h('li', '배경은 투명하게, 포켓몬 발이 그림 아래쪽에 닿게 (원래 그림처럼 정사각형 + 둘레에 조금 여백)'),
@@ -1199,189 +1433,11 @@ async function resetPic(dex, redraw) {
   if (!await confirmBox(keep ? '원래 그림으로 되돌리기' : '그림 지우기',
     [keep ? '올린 그림을 지우고 원래(공식) 그림으로 돌아가요.' : '올린 그림을 지워요. 이 포켓몬은 기본 그림이 없어서 빈칸으로 보여요.'],
     { ok: keep ? '되돌리기' : '지우기', danger: !keep })) return;
-  await tq(sb.from('species').update(hasPack(sp) ? packPic(sp) : { sprite: null, sprite_shiny: null }).eq('id', dex));
+  await tq(sb.from('species').update(hasPack(sp) && dex < 10000 ? packPic(sp) : { sprite: null, sprite_shiny: null }).eq('id', dex));   // 0052: 폼 종 (10000+) = 같은 번호 그림판 칸으로
   await sb.storage.from('sprites').remove([old]);
   await refreshSprites().catch(() => {});
   toast(keep ? '원래 그림으로 돌렸어요.' : '그림을 지웠어요.');
   await redraw();
-}
-
-async function lineEditor(lineId, redraw) {
-  const l = S.lineById.get(lineId);
-  if (!l) return [h('div.box', h('p.muted', '계열을 고르세요.'))];
-  const locked = isWildLine(l) || isSpecialLine(l);   // 선생님·과목은 위의 '선생님 배정' 에서
-  const teacher = h('input.inp', { value: l.teacher, disabled: locked });
-  const subject = h('input.inp', { value: l.subject, list: 'subjects', disabled: locked });
-  const rarity = h('select.inp', Object.entries(RARITY).map(([k, v]) => h('option', { value: k, selected: l.rarity === k }, v)));
-  const act = checkbox('활성 (끄면 뽑기에서 안 나옴)', l.active);
-  const wd = checkbox('선생님 동의 철회(숨김)', l.withdrawn);
-  const stageSel = stageSelect(maxStage(l));
-  const sp = [1, 2, 3].map((stage) => {
-    const id = (l.id - 1) * 3 + stage;
-    const s = S.spById.get(id) || { id, name: '', category: '', flavor: '', height: '', weight: '' };
-    return {
-      id, stage,
-      name: h('input.inp', { value: s.name }), category: h('input.inp', { value: s.category }),
-      flavor: h('textarea.inp', s.flavor), height: h('input.inp', { value: s.height }), weight: h('input.inp', { value: s.weight }),
-    };
-  });
-  const cards = sp.map((s) => h('div.sp-card',
-    h('div.pic', sprite(s.id, 64)),
-    h('b', `${s.stage}단계 · 전국도감 No.${String(S.spById.get(s.id)?.dex || 0).padStart(3, '0')}`),
-    S.spById.get(s.id)?.btype ? h('div.chips', String(S.spById.get(s.id).btype).split('/').map((t) => typeChip(t))) : null,
-    picTools(s.id, redraw),
-    field('이름', s.name), field('분류', s.category), field('설명', s.flavor),
-    h('div.row', field('키', s.height), field('몸무게', s.weight))));
-  const grid = h('div.sp-grid');
-  const stageNote = h('p.small-txt.muted');
-  // only stages <= max_stage are shown and saved; higher-stage rows are kept in the DB, just hidden
-  const showStages = () => {
-    const m = Number(stageSel.value);
-    grid.replaceChildren(...cards.slice(0, m));
-    stageNote.textContent = m < 3
-      ? `${m}단계에서 더 진화하지 않아요. ${m + 1}단계 이상 포켓몬은 숨겨져요 (지우지는 않아요).`
-      : '1 → 2 → 3단계로 진화해요.';
-  };
-  stageSel.addEventListener('change', showStages);
-  showStages();
-  const save = h('button.btn.go', '계열·포켓몬 저장');
-  save.onclick = () => busy(save, async () => {
-    const m = Number(stageSel.value);
-    const used = sp.slice(0, m);
-    if (!teacher.value.trim() || !subject.value.trim()) throw Object.assign(new Error('선생님과 과목을 입력하세요.'), { ready: true });
-    if (used.some((s) => !s.name.value.trim())) throw Object.assign(new Error(`포켓몬 이름 ${m}개를 모두 입력하세요.`), { ready: true });
-    await tq(sb.from('lines').update({ teacher: teacher.value.trim(), subject: subject.value.trim(), rarity: rarity.value, active: act.input.checked, max_stage: m, withdrawn: wd.input.checked }).eq('id', l.id));
-    await tq(sb.from('species').upsert(used.map((s) => ({
-      id: s.id, line_id: l.id, stage: s.stage, name: s.name.value.trim(), category: s.category.value.trim(),
-      flavor: s.flavor.value.trim(), height: s.height.value.trim(), weight: s.weight.value.trim(),
-    }))));
-    toast(`#${l.id} 저장했어요.`);
-    await redraw();
-  });
-  const noPic = sp.slice(0, maxStage(l)).some((s) => !hasPic(s.id));
-  const editor = h('div.box.stack',
-    h('h2', `#${l.id} 계열 편집`),
-    noPic ? h('p.notice', '그림이 없는 포켓몬이 있어요. 아래 포켓몬 카드의 "그림 올리기"로 넣어 주세요. (그 전까지 앱에서는 빈칸으로 보여요)') : null,
-    h('datalist#subjects', SUBJECTS.map((s) => h('option', { value: s }))),
-    h('div.fields', field('선생님 (잡은 뒤에만 보임)', teacher), field('과목 (퀴즈·도감 묶음)', subject), field('희귀도', rarity),
-      field('진화 단계 수', stageSel), h('div.fld', h('span', '\u00a0'), act.el)),
-    stageNote,
-    h('div.stack', wd.el,
-      h('p.small-txt.muted', '켜면: 이 계열은 더 이상 뽑기에서 나오지 않고, 학생 앱과 대형 화면에서 선생님 이름과 그림이 가려져요.')),
-    l.withdrawn ? h('p.notice.red', '이 계열은 선생님 동의 철회로 숨겨져 있어요.') : null,
-    grid,
-    h('div.row.end', save));
-  return [teacherBox(l, redraw), editor, isWildLine(l) || isSpecialLine(l) ? null : await quizSection(l)].filter(Boolean);
-}
-
-// 선생님 배정 (0032): 선생님을 다른 포켓몬 계열로 옮기기 (이름·과목·퀴즈·장소 QR·동의 철회 표시가 함께 옮겨짐), 야생 계열을 새 선생님 포켓몬으로
-function teacherBox(l, redraw) {
-  const intro = h('p.small-txt.muted', '선생님 1명 = 포켓몬 계열 1개. 잡으면 그 선생님 퀴즈가 나오고, 장소 QR 에서도 그 포켓몬이 나와요. 학생이 이미 잡은 포켓몬은 바뀌지 않아요.'
-    + ' 갈래 진화 계열 (이브이 · 랄토스 · 배루키 · 코스모그처럼 진화 모습이 여러 가지 = 진화할 때 무작위로 정해짐) 은 선생님 포켓몬으로 고를 수 없어요 (0049).');
-  if (isSpecialLine(l)) {
-    return h('div.box.stack', h('h2', '선생님 배정'), h('p', `특별 전설 자리예요 (${l.teacher}). 선생님을 배정하지 않아요.`));
-  }
-  const wild = S.lines.filter((x) => isWildLine(x) && x.id !== l.id);
-  const teachers = S.lines.filter((x) => isTeacherLine(x) && x.id !== l.id);
-  const move = async (from, to) => {
-    const a = S.lineById.get(from), b = S.lineById.get(to);
-    if (!await confirmBox('선생님 포켓몬 바꾸기', [
-      `${a.teacher} (${a.subject})의 포켓몬을 ${chainName(a)}에서 ${josa(chainName(b), '으로', '로')} 바꿔요.`,
-      `퀴즈와 장소 QR에서 나오는 포켓몬도 ${josa(chainName(b), '으로', '로')} 옮겨지고, ${josa(chainName(a), '은', '는')} 야생 포켓몬이 돼요.`,
-    ], { ok: '바꾸기' })) return;
-    await rpc('admin_assign_teacher', { p_from: from, p_to: to });
-    toast(`${a.teacher} → ${chainName(b)}`);
-    S.selLine = to;
-    await redraw();
-  };
-  if (isTeacherLine(l)) {
-    const sel = lineSelect(wild);
-    const go = h('button.btn.go', '이 포켓몬으로 옮기기');
-    go.onclick = () => busy(go, () => move(l.id, Number(sel.value)));
-    return h('div.box.stack', h('h2', '선생님 배정'), intro,
-      h('p', h('b', l.teacher), ` (${l.subject})의 포켓몬 = `, h('b', chainName(l))),
-      h('div.row', h('div', { style: { flex: '1 1 260px' } }, field('다른 포켓몬(야생)으로 바꾸기', sel)), go));
-  }
-  // 야생 계열: 선생님을 여기로 옮기거나, 새 선생님 포켓몬으로
-  const tsel = lineSelect(teachers);
-  const bring = h('button.btn.go', '이 선생님을 여기로');
-  bring.onclick = () => busy(bring, () => move(Number(tsel.value), l.id));
-  const tname = h('input.inp', { placeholder: '예: 물리 선생님 5' });
-  const tsub = h('input.inp', { list: 'subjects-t', placeholder: '예: 과학' });
-  const make = h('button.btn', '새 선생님 포켓몬으로');
-  make.onclick = () => busy(make, async () => {
-    if (!tname.value.trim() || !tsub.value.trim()) throw Object.assign(new Error('선생님 이름과 과목을 넣어 주세요.'), { ready: true });
-    if (tsub.value.trim() === '야생') throw Object.assign(new Error('과목에 "야생"은 쓸 수 없어요.'), { ready: true });
-    await tq(sb.from('lines').update({ teacher: tname.value.trim(), subject: tsub.value.trim() }).eq('id', l.id));
-    toast(`${chainName(l)} = ${tname.value.trim()}의 포켓몬`);
-    await redraw();
-  });
-  return h('div.box.stack', h('h2', '선생님 배정'), intro,
-    h('p', h('b', josa(chainName(l), '은', '는')), ' 지금 야생 포켓몬이에요.'),
-    h('div.row', h('div', { style: { flex: '1 1 260px' } }, field('있는 선생님을 이 포켓몬으로 옮기기', tsel)), bring),
-    h('datalist#subjects-t', SUBJECTS.filter((x) => x !== '전설').map((x) => h('option', { value: x }))),
-    h('div.fields', field('또는 새 선생님 이름', tname), field('과목', tsub), h('div.fld', h('span', '\u00a0'), make)));
-}
-
-// 1/2/3 단계 select (lines.max_stage). Legendaries are 1 stage.
-function stageSelect(value = 3) {
-  return h('select.inp', [1, 2, 3].map((n) => h('option', { value: n, selected: n === value },
-    n === 1 ? '1단계 (진화 없음 · 전설)' : n === 2 ? '2단계 (1번 진화)' : '3단계 (2번 진화)')));
-}
-
-async function addLine(redraw) {
-  const nextId = Math.max(0, ...S.lines.map((l) => l.id)) + 1;
-  const teacher = h('input.inp', { placeholder: '예: 물리 선생님' });
-  const subject = h('input.inp', { list: 'subjects-new', placeholder: '예: 물리' });
-  const rarity = h('select.inp', Object.entries(RARITY).map(([k, v]) => h('option', { value: k }, v)));
-  const stageSel = stageSelect(3);
-  const names = [1, 2, 3].map((s) => h('input.inp', { placeholder: `${s}단계 이름` }));
-  const nameFields = names.map((n, i) => field(`${i + 1}단계 포켓몬 이름`, n));
-  const nameBox = h('div.fields');
-  const range = h('p');
-  const showStages = () => {
-    const m = Number(stageSel.value);
-    nameBox.replaceChildren(...nameFields.slice(0, m));
-    const first = (nextId - 1) * 3 + 1;
-    range.textContent = `새 계열 번호: #${nextId} (도감 ${m === 1 ? first : `${first}~${first + m - 1}`}번)`;
-  };
-  stageSel.addEventListener('change', showStages);
-  rarity.addEventListener('change', () => {          // legendaries are 1 stage
-    if (rarity.value === 'legendary') { stageSel.value = '1'; showStages(); }
-  });
-  showStages();
-  const body = h('div.stack',
-    range,
-    h('datalist#subjects-new', SUBJECTS.map((s) => h('option', { value: s }))),
-    h('div.fields', field('선생님', teacher), field('과목 (퀴즈·도감 묶음)', subject), field('희귀도', rarity), field('진화 단계 수', stageSel)),
-    h('p.small-txt.muted', '전설 포켓몬은 보통 1단계(진화 없음)예요.'),
-    nameBox,
-    h('p.notice', '그림은 만든 뒤 포켓몬 카드의 "그림 올리기"로 넣어요 (PNG·GIF·WebP). 그 전까지는 "그림 없음"으로 보여요.'),
-    h('p.notice.red', '쌤 외모·사생활은 금지! 과목·학교 관련 내용만 쓰세요.'));
-  const created = await modal('새 포켓몬 계열', body, [
-    { label: '취소', value: null },
-    {
-      label: '만들기', cls: 'go',
-      onClick: async () => {
-        const m = Number(stageSel.value);
-        const used = names.slice(0, m);
-        if (!teacher.value.trim() || !subject.value.trim() || used.some((n) => !n.value.trim())) { toast('빈 칸을 모두 채워 주세요.'); return false; }
-        await tq(sb.from('lines').insert({ id: nextId, teacher: teacher.value.trim(), subject: subject.value.trim(), rarity: rarity.value, active: true, max_stage: m }));
-        try {
-          await tq(sb.from('species').insert(used.map((n, i) => ({ id: (nextId - 1) * 3 + i + 1, line_id: nextId, stage: i + 1, name: n.value.trim() }))));
-        } catch (e) {
-          await sb.from('lines').delete().eq('id', nextId);   // undo the half-made line
-          throw e;
-        }
-        return nextId;
-      },
-    },
-  ]);
-  if (created) {
-    toast(`#${created} 계열을 만들었어요. 이제 포켓몬 카드마다 "그림 올리기"로 그림을 넣어 주세요.`, 6000);
-    S.selLine = created;
-    await redraw();
-  }
 }
 
 async function quizSection(l) {
@@ -1661,7 +1717,7 @@ async function studentDetail(sid, reload) {
   const stageSel = h('select.inp', { style: { width: 'auto' }, 'aria-label': '단계' });
   const fillStages = () => {
     const l = S.lineById.get(Number(lineSel.value));
-    stageSel.replaceChildren(...Array.from({ length: maxStage(l) }, (_, i) => h('option', { value: i + 1 }, `${i + 1}단계 · ${S.spById.get((Number(lineSel.value) - 1) * 3 + i + 1)?.name || '?'}`)));
+    stageSel.replaceChildren(...Array.from({ length: maxStage(l) }, (_, i) => h('option', { value: i + 1 }, `${i + 1}단계 · ${spOfLine(S.lineById.get(Number(lineSel.value))).find((x) => x.stage === i + 1)?.name || '?'}`)));
   };
   lineSel.addEventListener('change', fillStages);
   fillStages();
@@ -1669,7 +1725,7 @@ async function studentDetail(sid, reload) {
   grantBtn.onclick = async () => {
     const line = Number(lineSel.value), stage = Number(stageSel.value);
     if (!line) return;
-    const dex = (line - 1) * 3 + stage;
+    const dex = (spOfLine(S.lineById.get(line)).filter((x) => x.stage === stage)[0] || {}).id ?? (line - 1) * 3 + stage;   // 0052: 폼 계열
     const ok = await confirmBox('포켓몬 직접 지급', [
       `${sid}에게 ${S.spById.get(dex)?.name || `#${dex}`} (${lineName(line)}, ${stage}단계)을(를) 줄까요?`,
       '같은 포켓몬을 이미 가지고 있어도 박스에 새로 한 마리가 더 생겨요 (박스가 꽉 차면 안 돼요). 기록에 남아요.',
@@ -3023,7 +3079,7 @@ function dupBonusCard(r) {
 // ───────────────────────── 레이드: 보상 방식 · 시간대 전설 편집 ─────────────────────────
 
 const legendLines = () => S.lines.filter((l) => l.rarity === 'legendary' && !l.secret);
-const legendDex = (line) => (Number(line) - 1) * 3 + 1;
+const legendDex = (line) => firstSp(S.lineById.get(Number(line)))?.id ?? (Number(line) - 1) * 3 + 1;
 const legendName = (line) => S.spById.get(legendDex(line))?.name || `#${line}`;
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const kstNowHHMM = () => new Date(Date.now() + KST).toISOString().slice(11, 16);
@@ -3224,7 +3280,8 @@ const QUEST_KIND = {
   zone_catch: ['사파리존 그 구역에서 잡기', '마리'],   // 0050
 };
 const ZONE_KO = { dragon: '용의 굴', ultra: '울트라 스페이스', desert: '사막', plant: '발전소', lava: '용암 지대', snow: '설원', beach: '해변', cave: '동굴', deep: '깊은 동굴' };
-const spByDex = (d) => S.species.find((x) => x.dex === Number(d));
+const spByDex = (d) => { const all = S.species.filter((x) => x.dex === Number(d)); const L = (x) => S.lineById.get(x.line_id);   // 0052: 일반 폼 (가족 대표) 먼저 = 서버 _dex_sp
+  return all.find((x) => formKindOf(L(x)) === 'normal' && famOf(L(x)) === x.line_id) || all.find((x) => formKindOf(L(x)) === 'normal') || all[0]; };
 
 async function tabLegend() {
   if (!S.species?.length) await loadCatalog();
@@ -3242,10 +3299,11 @@ function giftCard(items) {
   const kind = h('select.inp.w-sel', { 'aria-label': '선물 종류' }, h('option', { value: 'mon' }, '포켓몬'), h('option', { value: 'item' }, '물건'));
   const dex = h('input.inp.w-num', { type: 'number', min: 1, max: Math.max(809, ...S.species.map((x) => x.dex || 0)), placeholder: '번호', 'aria-label': '포켓몬 도감 번호' });
   const dexName = h('span.small-txt.muted');
-  dex.oninput = () => { const sp = spByDex(dex.value); dexName.textContent = sp ? sp.name : dex.value ? '없는 번호' : ''; };
+  let pickedSp = null;   // 0052: 이벤트 폼 단추 = 종을 바로 (p_species). 번호만 넣으면 그 번호의 일반 폼
+  dex.oninput = () => { pickedSp = null; const sp = spByDex(dex.value); dexName.textContent = sp ? `${sp.name} (일반)` : dex.value ? '없는 번호' : ''; };
   // 0044 이벤트 포켓몬 (소포로만 받음: 지우개굴닌자 · 지우의 피카츄 …) → 눌러서 고르기
-  const evSp = S.species.filter((x) => x.stage === 1 && x.dex && S.lineById?.get(x.line_id)?.bonus && S.lineById.get(x.line_id).legend_src === 'gift');
-  const evRow = evSp.length ? h('div.row.small-txt', '이벤트 포켓몬:', evSp.map((x) => h('button.btn.small', { type: 'button', onclick: () => { dex.value = x.dex; dex.oninput(); } },
+  const evSp = S.species.filter((x) => x.stage === 1 && x.dex && formKindOf(S.lineById?.get(x.line_id)) === 'event');
+  const evRow = evSp.length ? h('div.row.small-txt', '이벤트 포켓몬:', evSp.map((x) => h('button.btn.small', { type: 'button', onclick: () => { dex.value = x.dex; dex.oninput(); pickedSp = x.id; dexName.textContent = `${x.name} (이벤트 폼)`; } },
     `${x.name} (No.${x.dex})`))) : null;
   // 물건: 주머니별로 묶고 기술머신은 기술 이름까지 (예: 기술머신30 (몸통박치기)). 많아서 찾기 칸으로 거름
   const itemLabel = (it) => (it.pocket === 'tm' && it.moves?.name ? `${it.name} (${it.moves.name})` : it.name);
@@ -3283,7 +3341,7 @@ function giftCard(items) {
     if (!mon && !item.value) { toast('줄 물건을 고르세요.'); return; }
     try {
       await rpc('admin_create_gift', {
-        p_code: code.value, p_title: title.value || null, p_dex: mon ? Number(dex.value) || null : null, p_item: mon ? null : item.value,
+        p_code: code.value, p_title: title.value || null, p_dex: mon && !pickedSp ? Number(dex.value) || null : null, p_species: mon ? pickedSp : null, p_item: mon ? null : item.value,
         p_qty: Number(qty.value) || 1, p_starts: starts.value ? new Date(starts.value).toISOString() : null,
         p_ends: ends.value ? new Date(ends.value).toISOString() : null, p_max: Number(max.value) || null,
       });

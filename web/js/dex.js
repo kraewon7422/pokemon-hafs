@@ -4,7 +4,7 @@ import { kv } from './db.js';
 import { spriteCanvas, paint, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
-import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, isEvent, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenKeys, speciesOf, spIdOf, spPath, stage2, unlockInfo, vibrate } from './state.js';
+import { S, abilityOf, bag, dexKey, dexNo, dexStats, evosFrom, familyOf, formKind, formsOfDex, isEvent, isMythic, isSecret, isWild, isWithdrawn, lineOf, maxStage, mons, monSp, owned, rules, seenIds, seenKeys, speciesOf, spIdOf, spPath, stage2, unlockInfo, vibrate } from './state.js';
 import { closeOverlay, eggTap, go, loadCatalog, maybeDexComplete, overlay, renderTab, sheet, sync, tapToContinue } from './app.js';
 import { rumourBox } from './legends.js';
 
@@ -126,28 +126,40 @@ export const TYPES = ['노말', '불꽃', '물', '풀', '전기', '얼음', '격
 // 도감 쪽 (0037): 전국도감 번호 순으로 한 쪽에 60칸. 범위 · 타입을 바꾸면 첫 쪽부터 (지방 바로 가기 줄은 ui8 에서 뺌 — 실제 구성과 안 맞았음)
 export const DEX_PER_PAGE = 60;
 export const EVENT_NOTE = '이상한 소포로만 받을 수 있어요.';
-// 같은 전국도감 번호의 종이 여럿이면 (갈래 종 · 따로 있는 야생 계열) 한 칸: 내가 가진 종 → 진화 갈래 쪽 (계열 안의 종) → 첫 종
+// 같은 전국도감 번호의 종이 여럿이면 (폼 0052 · 갈래 종 · 따로 있는 야생 계열) 한 칸: 내가 가진 종 → 본 종 → 일반 폼 (가족 대표 계열) → 진화 갈래 쪽 → 첫 종
 const monsOfKey = (k) => mons().filter((m) => dexKey(monSp(m)) === k);
-function pickRep(group) {
+function pickRep(group, seen) {
   const mine = new Set(mons().map(spIdOf));
-  return group.find((sp) => mine.has(sp.id)) || group.find((sp) => sp.id >= 10000) || group[0];
+  return group.find((sp) => mine.has(sp.id)) || group.find((sp) => seen.has(sp.id))
+    || group.find((sp) => formKind(sp.line_id) === 'normal' && familyOf(sp.line_id) === sp.line_id)
+    || group.find((sp) => sp.id >= 10000) || group[0];
 }
+const baseName = (sp) => sp?.base_name ?? sp?.name ?? '';
+// 폼 (0052) 의 얻는 방법
+const formHow = (sp) => {
+  const k = formKind(sp.line_id); const l = lineOf(sp.line_id);
+  if (k === 'event') return EVENT_NOTE;
+  if (k === 'teacher') return `${l?.teacher || '선생님'} (${l?.subject || ''}) · 장소 QR · 퀴즈`;
+  if (k === 'special') return l?.teacher || '특별한 방법';
+  return '야생 (QR · 걷기 · 알 · 사파리존)';
+};
 
 export function viewDex() {
   const { species } = S.catalog;
-  const seen = seenKeys();
-  const reached = (sp) => seen.has(dexKey(sp));
+  const seenId = seenIds();
+  const reached = (sp) => seenId.has(sp.id);   // 0052: 폼마다 (학교 칸 = 선생님 폼을 잡아야 채워짐)
   const D = dexStats();
   const open = stage2();                      // 0051: 2단계 전엔 학교 탭만 (범위 버튼 · 전국 도감 줄 없음)
   const scope = open ? S.dexScope || 'all' : 'school';
   const tf = TYPES.includes(S.dexFilter) ? S.dexFilter : 'all';
   const ok = (sp) => (!isSecret(sp.line_id) || (scope === 'all' && tf === 'all') || owned(sp.line_id))
     && (!isMythic(sp.line_id) || owned(sp.line_id))                                   // 환상 = 잡기 전엔 도감에 없음
-    && (scope === 'all' || (scope === 'school' ? !isWild(sp.line_id) : scope === 'wild' ? isWild(sp.line_id) : reached(sp)))
+    && (formKind(sp.line_id) !== 'teacher' || lineOf(sp.line_id)?.active !== false || reached(sp))   // 꺼진 선생님 폼 = 잡은 학생만
+    && (scope === 'all' || (scope === 'school' ? !isWild(sp.line_id) : scope === 'wild' ? isWild(sp.line_id) && !isEvent(sp.line_id) : reached(sp)))
     && (tf === 'all' || typesOf(sp).includes(tf));
   const groups = new Map();      // 전국도감 번호 → 종들 (species 는 이미 번호 순)
   for (const sp of species) if (ok(sp)) { const k = dexKey(sp); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(sp); }
-  const list = [...groups.values()].map(pickRep);
+  const list = [...groups.values()].map((g) => { const r = pickRep(g, seenId); r.__got = g.some(reached); return r; });
   const pages = Math.max(1, Math.ceil(list.length / DEX_PER_PAGE));
   const fkey = `${scope}|${tf}`;
   if (S.dexPageKey !== fkey) { S.dexPageKey = fkey; S.dexPage = 0; }
@@ -183,7 +195,7 @@ export function viewDex() {
     list.length ? null : h('p.muted', { style: { textAlign: 'center' } }, '여기에 맞는 포켓몬이 없어요.'),
     h('div.dex-grid', shown.map((sp) => {
       if (isWithdrawn(sp.line_id)) return h('div.dex-cell.unknown.withdrawn', h('span.no', dexNo(sp)), spriteCanvas(sp.id, 72, 'silhouette'), h('span.nm', '비공개'));
-      const got = reached(sp);
+      const got = sp.__got;
       // 0036: 같은 종을 여러 마리 가질 수 있음 → 그중 한 마리라도 진화할 수 있으면 '진화'
       const canEvo = got && monsOfKey(dexKey(sp)).some((m) => evoOpts(m).length > 0 && (canLevelEvolve(m) || p.evo_tickets > 0));
       return h(`button.dex-cell${got ? '.caught' : '.unknown'}`, {
@@ -194,10 +206,9 @@ export function viewDex() {
       },
       h('span.no', dexNo(sp)),
       spriteCanvas(sp.id, 72, got ? 'normal' : 'silhouette'),
-      h('span.nm', got ? sp.name : '???'),
+      h('span.nm', got ? baseName(sp) : '???'),
       canEvo && h('span.evo-dot', '진화'));
     })),
-    shown.some((sp) => isEvent(sp.line_id)) && h('p.dex-event-note', pix('gift'), ` 이벤트 포켓몬 (${dexNo(shown.find((sp) => isEvent(sp.line_id)))}~): ${EVENT_NOTE}`),
     pager(true),
   ];
 }
@@ -315,19 +326,34 @@ export function openDetail(sp) {
     return i ? [h('span.arrow', '▶'), col] : [col];
   });
   // 0036: 이 종을 지금 몇 마리 가졌는지 + 한 마리씩 (누르면 박스의 그 포켓몬 요약 → 진화 · 놓아주기 …). 0037: 같은 전국도감 번호면 같은 칸
-  const mine = monsOfKey(dexKey(sp)).sort((a, b) => b.level - a.level || a.pos - b.pos);
+  // 0052: 폼마다 따로 (일반 폼끼리는 한 칸 — 이브이 갈래 · 따로 있는 계열)
+  const kind = formKind(sp.line_id);
+  const mine = monsOfKey(dexKey(sp)).filter((m) => formKind(m.line_id) === kind && (kind === 'normal' || m.line_id === sp.line_id))
+    .sort((a, b) => b.level - a.level || a.pos - b.pos);
+  const forms = sp.dex ? formsOfDex(sp.dex) : [];
+  const formBar = forms.length > 1 && h('div.form-tabs', { role: 'group', 'aria-label': '모습 (폼)' }, forms.map((f) => {
+    const on = f.kind === 'normal' ? kind === 'normal' : f.sp.line_id === sp.line_id;
+    return h('button.form-tab', { type: 'button', 'aria-pressed': String(on),
+      onclick: () => {
+        if (on) return;
+        if (!f.caught) { sfx.blip(); toast(`${f.label} 모습은 아직 못 잡았어요. ${formHow(f.sp)}`, 3500); return; }
+        closeOverlay({ replacing: true }); openDetail(f.sp);
+      } },
+    spriteCanvas(f.sp.id, 32, f.caught ? 'normal' : 'silhouette'), h('span.ft-label', f.label), f.caught ? h('i.ft-caught', { 'aria-label': '잡음' }, '✓') : null);
+  }));
   sheet([
     h('div.grab'),
     h(`div.habitat.t-${typesOf(sp)[0]}`, c ? monSprite(sp.id, 176, c) : spriteCanvas(sp.id, 176),
       // 잡은 포켓몬만: 가방(상태·레벨·기술)으로 바로 가기 — 가방의 '도감' 탭과 짝
       mine.length > 0 && h('button.habitat-bag', { type: 'button', onclick: () => toBag(mine[0].id) }, h('span.hb-arrow', '◀'), pix('bag'), '박스')),
+    formBar,
     h('div.box',
       h('div.banner', h('b', `${dexNo(sp)} ${sp.name}`), h('span.types', typeChips(sp))),
       h('div.kv',
         h('span', '분류'), h('span', sp.category),
         h('span', '키 / 몸무게'), h('span', `${sp.height} / ${sp.weight}`),
-        isWild(sp.line_id) ? h('span', '만나는 곳') : h('span', '정체'),
-        h('span', isEvent(sp.line_id) ? EVENT_NOTE : isWild(sp.line_id) ? '야생 (QR · 걷기 · 알 · 레이드)' : line.teacher),
+        h('span', kind === 'teacher' || kind === 'special' ? '정체' : '만나는 곳'),
+        h('span', formHow(sp)),
         h('span', '잡은 횟수'), h('span', `${c?.catch_count || 0}번`),
         h('span', '가진 수'), h('span', `${mine.length}마리`))),
     mine.length > 0 && h('div.box.my-mons', h('b', `내 ${sp.name} ${mine.length}마리`),
