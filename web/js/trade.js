@@ -220,9 +220,9 @@ async function pickView(r) {
   const back = () => { sfx.blip(); r.view = 'room'; draw(r, true); };
   r.root.replaceChildren(
     h('div.trade-head', h('b', '보낼 포켓몬 고르기'), h('button.btn.small', { onclick: back }, '뒤로')),
-    h('small', '반짝이 · 선생님 · 전설 · 이벤트 · 울트라비스트, 배틀 팀 · 카드 포켓몬은 교환할 수 없어요. 회색 칸을 누르면 이유가 보여요.'),
+    h('small', '반짝이, 선생님, 전설, 이벤트, 울트라비스트, 배틀 팀, 카드 포켓몬은 교환할 수 없어요. 회색 칸을 누르면 이유가 보여요.'),
     grid, err,
-    r.t.mine ? h('button.btn', { onclick: () => offer(r, null, err) }, '고른 포켓몬 내려놓기') : null,
+    ...(r.t.mine ? [h('button.btn', { onclick: () => offer(r, null, err) }, '고른 포켓몬 내려놓기')] : []),
     h('button.btn', { onclick: back }, '뒤로'));
   try {
     const [chk] = await Promise.all([rpc('trade_check', {}, { retries: 0 }), loadBag({ notify: false })]);

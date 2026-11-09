@@ -528,8 +528,9 @@ let NA, NB;
   const again = client(await pwLogin(`${sidA}@code.local`, 'pw1234'));
   ok((await again.rpc('ensure_profile')).data?.name === '번호학생', 'same game account (name kept)');
 
-  const G2 = await fakeGoogle('new' + nonce() + '@gmail.com');
-  do { sidB = '021' + rnd3(); r = await G2.rpc('link_number', { p_student_id: sidB, p_password: 'pwpwpw', p_name: '새학생' }); } while (r.data?.error === 'WRONG_PASSWORD');
+  // 예전 시험이 남긴 로그인(같은 비밀번호)과 겹치면 'linked' 가 됨 → 새 구글 계정으로 다른 번호를 다시 고름
+  let G2;
+  do { G2 = await fakeGoogle('new' + nonce() + '@gmail.com'); sidB = '021' + rnd3(); r = await G2.rpc('link_number', { p_student_id: sidB, p_password: 'pwpwpw', p_name: '새학생' }); } while (r.data?.error === 'WRONG_PASSWORD' || r.data?.mode === 'linked');
   ok(r.data?.mode === 'new', 'google + unused number → new number account', r.data);
   const g2p = (await G2.rpc('ensure_profile')).data;
   ok(g2p?.student_id === sidB && g2p.name === '새학생', 'google session continues as that student', g2p);
@@ -4046,7 +4047,7 @@ console.log('\n[62] 전설 지도 (0054): 쉬운 전설 조건을 올림 · 새 
   } finally { await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' }); }
 }
 
-console.log('\n[62] 포켓몬 교환 (0056): 배틀 QR 로 교환방 · 둘 다 확인 · 바뀌면 확인 풀림 · 그만두기 · 교환 못 하는 포켓몬 · 하루 횟수 · 끄기 · 바꾸기 직전 다시 확인 · 되돌려 받기 도감 · 두 번 눌러도 한 번 · 교환 진화');
+console.log('\n[63] 포켓몬 교환 (0056): 배틀 QR 로 교환방 · 둘 다 확인 · 바뀌면 확인 풀림 · 그만두기 · 교환 못 하는 포켓몬 · 하루 횟수 · 끄기 · 바꾸기 직전 다시 확인 · 되돌려 받기 도감 · 두 번 눌러도 한 번 · 교환 진화');
 {
   const keys = ['trade_open', 'trade_daily_max', 'trade_room_sec', 'wild_shiny_chance'];
   const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));

@@ -1370,4 +1370,5 @@ nav.tabs .badge.star { background: var(--gold, #e8b030); color: #182030; }
 .trade-anim.out .trade-ball { opacity: 0; }
 .trade-anim.out .trade-fly.r { opacity: 1; right: auto; left: 8%; }
 .trade-result { text-align: center; justify-items: center; }
+.trade-result .trade-pic { height: 104px; }
 @media (prefers-reduced-motion: reduce) { .trade-ball, .trade-fly { transition: none; } }
