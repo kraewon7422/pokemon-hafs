@@ -15,7 +15,7 @@ const TSTATUS = { pending: ['대기', 'warn'], redeemed: ['사용', 'ok'], expir
 const SETTING_HELP = {
   festival_open: '게임 동작 ON/OFF (비상 스위치)',
   email_domains: '학교 구글 계정의 도메인 (예: ["hafs.hs.kr"]). 로그인은 아무 구글 계정이나 되지만, 이 도메인 계정이면 메일 속 고유번호를 알아봐서 학생이 직접 비밀번호를 초기화할 수 있어요. 축제 뒤 개인정보 삭제 때도 써요',
-  battle_daily_max: '배틀: 하루에 보상(진화의 돌)을 받는 승리 수 (기본 3)', battle_turn_sec: '실시간 대전: 한 턴 제한 시간(초). 지나면 AI가 대신 골라요 (기본 30)',
+  battle_daily_max: '배틀: 하루에 보상(진화의 돌 기회)을 받는 승리 수. 999 = 제한 없음 (기본 999). 배틀 자체는 언제나 제한 없음', battle_turn_sec: '실시간 대전: 한 턴 제한 시간(초). 지나면 AI가 대신 골라요 (기본 30)',
   battle_invite_sec: '실시간 대전 신청: 이 시간(초) 안에 수락해야 시작 (기본 60)',
   email_regex: '학교 구글 메일에서 고유번호를 찾는 규칙 (email_domains 와 함께 씀)',
   admin_emails: '운영자 이메일 목록 (그 구글 계정으로 첫 로그인할 때 운영자가 됨)',
@@ -2442,7 +2442,7 @@ const DEFAULTS = {
   ],
   raid_slot_minutes: 10, raid_slot_hp: 20000, raid_cooldown_min: 5, raid_tap_cap: 8, raid_min_taps: 10, dex_rewards: { 50: 41, 100: 42 },
   // 0015_battles.sql (battle_turn_sec 45 → 0020_growth.sql 에서 30)
-  battle_daily_max: 3, battle_turn_sec: 30, battle_invite_sec: 60,
+  battle_daily_max: 999, battle_turn_sec: 30, battle_invite_sec: 60,
   // 0020_growth.sql
   lv_from_battle: true, lv_from_raid: true, lv_from_places: true, lv_from_catch: true, lv_places_n: 3, raid_levels: 1,
   exp_need_mul: 8, exp_battle_mul: 4, exp_practice: 0.5, exp_lose: 0.4,
@@ -2680,7 +2680,7 @@ const GROUPS = {
       P('roulette_every_min', '룰렛: 다음 판까지 기다리는 시간', 'int', { unit: '분', min: 1, max: 240 }),
       P('roulette_daily_max', '룰렛: 하루에 돌리는 횟수', 'int', { unit: '번', min: 0, max: 100 }),
       P('quiz_ticket_daily_cap', '퀴즈로 받는 진화의 돌 (하루 최대)', 'int', { unit: '개', min: 0, max: 500 }),
-      P('battle_daily_max', '배틀 승리 보상 (하루 최대)', 'int', { unit: '번', min: 0, max: 50 }),
+      P('battle_daily_max', '배틀 승리 보상 (하루 최대)', 'int', { unit: '번', min: 0, max: 999, help: '999 = 제한 없음. 같은 친구에게는 하루 한 번만 보상.' }),
     ],
   },
 };

@@ -176,7 +176,7 @@ export function viewBattle() {
   const invites = S.btInbox?.invites || [];
   return [
     h('div.box.stack',
-      h('div.banner', h('b', pix('spark'), ' 배틀'), today ? h('span.chip', `오늘 보상 ${today.wins}/${today.max}`) : null),
+      h('div.banner', h('b', pix('spark'), ' 배틀'), today ? h('span.chip', today.max >= 999 ? `오늘 이긴 배틀 ${today.wins}` : `오늘 보상 ${today.wins}/${today.max}`) : null),
       h('p', { style: { margin: 0 } }, '내 포켓몬으로 겨뤄요. 친구를 이기면 진화의 돌 1개! (하루 3번 · 같은 친구는 하루 1번)'),
       act && h('button.btn.big.gold', { onclick: () => resumeBattle(act.id) }, pix('spark'),
         act.status === 'invite' ? '보낸 배틀 신청 보기' : pvp ? '하던 실시간 배틀 이어 하기' : '하던 배틀 이어 하기'),
