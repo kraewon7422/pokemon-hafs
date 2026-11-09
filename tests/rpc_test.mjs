@@ -3,6 +3,19 @@
 // Resets the test students (admin_unlink) at the start, so it is repeatable.
 import { readFileSync } from 'node:fs';
 
+// 네트워크가 잠깐 끊겨 (ECONNRESET · ECONNABORTED · fetch failed) 시험 전체가 중간에 멈추면 설정이 시험 값으로 남음 →
+// 연결 오류일 때만 잠깐 쉬고 3번까지 다시 보냄 (HTTP 오류 응답은 그대로 돌려줌)
+const rawFetch = globalThis.fetch;
+globalThis.fetch = async (...args) => {
+  for (let i = 0; ; i++) {
+    try { return await rawFetch(...args); } catch (e) {
+      const code = e?.cause?.code || e?.code || '';
+      if (i >= 3 || !/ECONNRESET|ECONNABORTED|ETIMEDOUT|EPIPE|ENOTFOUND|EAI_AGAIN|UND_ERR/.test(code + ' ' + (e?.message || ''))) throw e;
+      await new Promise((r) => setTimeout(r, 800 * (i + 1)));
+    }
+  }
+};
+
 const env = Object.fromEntries(readFileSync(new URL('./.env', import.meta.url), 'utf8')
   .split(/\r?\n/).filter(Boolean).map(l => l.split(/=(.*)/s).slice(0, 2)));
 const URL_ = env.SUPABASE_URL;
