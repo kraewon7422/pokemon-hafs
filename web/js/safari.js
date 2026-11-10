@@ -308,7 +308,7 @@ function prerender(sheet, f, m) {
           if (c === 'p') put('plpipeB', X, Y); else if (c === 'q') put('plpipeG', X, Y);
           continue;
         }
-        if (c === 'U' || c === 'V') { put('plstairs', X, Y); continue; }
+        if (c === 'U' || c === 'V') { put(c === 'U' ? 'plstairU' : 'plstairD', X, Y); continue; }   // stairs13: 올라가는 · 내려가는 입체 계단
         if (c === 'E') { put('plexit', X, Y); continue; }
         put(c === 'o' ? 'plswitch' : `plfloor${(x + y) % 7 === 0 ? 1 : 0}`, X, Y);
         if (same(x, y - 1, isPlW, false)) put('plshadow', X, Y);
