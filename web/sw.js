@@ -16,8 +16,8 @@ const CORE = [
   'vendor/supabase.js', 'vendor/qrcode.js',
   'fonts/Galmuri11.woff', 'fonts/Galmuri11-Bold.woff',
   'sprites/atlas.png', 'sprites/pk-index.js', 'img/clubs/watson.png', 'img/clubs/decfi.png', 'img/title/sky.png', 'img/title/grass.png', 'img/items.png',
-  'icons/hafs-flame-192.png', 'icons/hafs-flame-512.png', 'icons/hafs-flame-maskable-512.png', 'icons/hafs-flame-apple-180.png',
-  'icons/hafs-flame-16.png', 'icons/hafs-flame-32.png', 'icons/hafs-flame-48.png', 'icons/hafs-flame.ico',
+  'icons/hafs-flame2-192.png', 'icons/hafs-flame2-512.png', 'icons/hafs-flame2-maskable-512.png', 'icons/hafs-flame2-apple-180.png',
+  'icons/hafs-flame2-16.png', 'icons/hafs-flame2-32.png', 'icons/hafs-flame2-48.png', 'icons/hafs-flame2.ico',
 ];
 // 첫 화면이 뜬 뒤 뒤에서 받는 것 (QR 카메라·지도·배틀·미니게임) — 다 받으면 미니게임까지 인터넷 없이 됨
 const EXTRA = [
