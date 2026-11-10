@@ -1212,7 +1212,7 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .chain-cell { display: grid; justify-items: center; text-align: center; word-break: keep-all; }
 .chain-col { display: grid; grid-template-columns: auto; gap: 4px; justify-items: center; }
 .chain-col.many { grid-template-columns: repeat(2, auto); gap: 4px 8px; }
-.chain-col small, .chain-cell small { font-size: 11px; white-space: nowrap; }
+.chain-col small, .chain-cell small { font-size: 11px; line-height: 1.25; white-space: normal; word-break: keep-all; overflow-wrap: normal; }   /* 선생님 폼 이름 ("국어 1 쌤의 케이시") 은 띄어쓰기에서만 줄 바꿈 */
 .evo-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
 .evo-choice { appearance: none; border: 3px solid #384868; border-radius: 10px; background: var(--paper); padding: 6px 4px 8px; display: grid; justify-items: center; align-content: start; gap: 2px; cursor: pointer; color: inherit; font: inherit; min-height: 44px; text-align: center; }
 .evo-choice b { font-size: var(--fs-s); white-space: nowrap; }

@@ -3375,7 +3375,7 @@ function branchCard() {
   const save = h('button.btn.go', { disabled: true }, '저장');
   let rows = [];   // { f, b, inp, pct }
   const howText = (b) => (b.how === 'item' ? '진화의 돌' : `Lv.${b.lv}`);
-  const famCond = (f) => (f.from.item_only ? '진화의 돌로만 진화' : `Lv.${f.from.min_lv}이 되면 진화 (그 전엔 진화의 돌)`);
+  const famCond = (f) => (f.from.item_only ? [h('small.muted', '진화의 돌로만')] : [h('small.muted', `Lv.${f.from.min_lv}에 진화`), h('small.muted', '그 전엔 진화의 돌')]);
   const okW = (v) => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100;
   const dirty = () => { save.disabled = !rows.some((x) => okW(x.inp.value) && Number(x.inp.value) !== Number(x.b.weight)); };
   const recalc = (f) => {
@@ -3396,8 +3396,8 @@ function branchCard() {
     try { tree = await rpc('admin_branch_tree'); } catch (e) { body.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
     rows = [];
     body.replaceChildren(...(tree || []).map((f) => h('div.br-fam',
-      h('div.br-from', spriteImg(f.from.sp, 48), h('b', f.from.name), h('small.muted', famCond(f)),
-        f.from.legend ? h('small.muted', '전설: 이미 가진 모습은 빼고 뽑아요') : null),
+      h('div.br-from', spriteImg(f.from.sp, 48), h('b', f.from.name), ...famCond(f),
+        f.from.legend ? h('small.muted', '전설: 가진 모습은 빼고') : null),
       h('span.br-arrow', { 'aria-hidden': 'true' }, '▶'),
       h('div.br-list', f.branches.map((b) => {
         const inp = h('input.inp.br-w', { type: 'number', min: 0, max: 100, step: 'any', inputmode: 'decimal', value: b.weight, 'aria-label': `${f.from.name} → ${b.name} 숫자` });
