@@ -31,6 +31,7 @@
   (0048) 설원 sn*/swall* · 용암 lv*/lwall*/lava* · 발전소 pl* · 용의 굴 e*/ewall* · 다리 계단 bstair — 이름표는 아래 '0048' 부분
   (0050) 전설의 특별한 곳 moon* grac* eladderD ustar dstairs · swordst 16×24 — 이름표는 아래 '0050' 부분 (tapu 는 0054 에서 뺌)
   (0054) 퍼즐 칸 plbtn* plgate* lvstone lvsink* bbar bwet bwete* fbed* gstairs gstairD — 그림판 맨 아래 줄, 이름표는 아래 '0054' 부분
+  (stairs13) 발전소 계단 plstairU plstairD — 같은 줄 맨 뒤 (plstairs 는 그대로, 안 씀)
 주인공 safari-hero.png · 사육사 safari-keeper.png: 16×24 칸, 줄 = 아래·위·왼쪽·오른쪽, 칸 = 서기·걸음1·걸음2.
 """
 import json
@@ -2783,6 +2784,72 @@ def puzzle_tiles():
     return out
 
 
+# ─────────── stairs13: 발전소 계단 입체 (plstairs 는 그대로 두고 새 칸 2장 — U = plstairU · V = plstairD) ───────────
+#   계단은 늘 방 위쪽 벽 바로 아래 → 위(북쪽)로 올라가거나 내려감. 빛은 왼쪽 위.
+def plstair_up():
+    """발전소 올라가는 쇠 계단: 디딤판 넷 (위로 갈수록 밝게) · 디딤판 앞 턱은 밝게 · 어두운 챌판 (아래로 갈수록 진하게) ·
+    맨 아래 턱만 노랑·검정 안전 줄 · 양옆 쇠 난간 (진한 테두리 + 왼쪽 난간 그늘) · 맨 아래 진한 선으로 바닥과 갈림."""
+    t = Tile()
+    K = PL['rk']
+    tread = [hx('#e8ecf2'), hx('#d6dae2'), hx('#c4c8d2'), hx('#b2b6c2')]   # 위 → 아래 (위로 갈수록 밝게)
+    nose = [hx('#fafcff'), hx('#eef0f6'), hx('#dfe2ea'), None]               # 디딤판 앞 턱 빛 (맨 아래는 노랑·검정 안전 턱)
+    riser = [hx('#9098a8'), hx('#7e8698'), hx('#6c7486'), hx('#5a6476')]
+    rfoot = [hx('#737b8c'), hx('#626a7c'), hx('#50586a'), K]
+    for i in range(4):
+        y0 = i * 4
+        for x in range(3, 13):
+            sh = x == 3                                  # 왼쪽 난간 그늘
+            n = nose[i] if nose[i] is not None else (PL['ly'] if (x // 2) % 2 == 0 else PL['bd'])
+            t.px(x, y0, riser[i] if sh else tread[i])
+            t.px(x, y0 + 1, tread[i] if sh else n)
+            t.px(x, y0 + 2, rfoot[i] if sh else riser[i])
+            t.px(x, y0 + 3, rfoot[i])
+    for y in range(16):                                  # 난간 (위가 밝음)
+        up = y < 8
+        t.px(0, y, K); t.px(15, y, K)
+        t.px(1, y, PL['r1'] if up else PL['r0']); t.px(2, y, PL['r0'] if up else PL['r2'])
+        t.px(13, y, PL['r0'] if up else PL['r2']); t.px(14, y, PL['r2'] if up else PL['rs'])
+        if y % 4 == 1:                                   # 난간 기둥 (디딤판마다)
+            t.px(2, y, K); t.px(13, y, K)
+    for x in range(16):
+        t.px(x, 15, K)
+    t.px(1, 15, PL['r2']); t.px(14, 15, PL['rs'])
+    return t
+
+
+def plstair_down():
+    """발전소 내려가는 쇠 계단 (바닥에 뚫린 구멍): 노랑·검정 안전 테두리 · 위(북쪽)로 갈수록 좁고 어두운 디딤판 ·
+    구멍 양옆 벽 (깊을수록 진하게) · 맨 위는 캄캄한 아래층 입구."""
+    t = Tile()
+    K = PL['rk']
+    for y in range(16):                                  # 안전 테두리 (빗금)
+        for x in (1, 2, 13, 14):
+            t.px(x, y, PL['ly'] if (x + y) % 4 < 2 else PL['bd'])
+        t.px(0, y, K); t.px(15, y, K); t.px(3, y, K); t.px(12, y, K)
+    steps = [(12, PL['r1'], PL['r0'], hx('#8a8e9a')), (8, PL['r0'], PL['r2'], hx('#5e6272')),
+             (4, PL['r2'], PL['rs'], hx('#30364a')), (0, hx('#3c4252'), hx('#1c2030'), PL['void'])]   # 아래(가까움·높음) → 위(멀고 깊음)
+    wall = [hx('#4c5466'), hx('#363c4c'), hx('#24283a'), PL['void']]
+    for i, (y0, lip, face, low) in enumerate(steps):
+        x0, x1 = 4 + i, 11 - i
+        for y in range(y0, y0 + 4):
+            for x in range(4, 12):
+                if x < x0 or x > x1:                     # 구멍 옆 벽 (왼쪽 벽은 그늘, 오른쪽 벽은 조금 밝게)
+                    c = wall[i] if x < x0 else (wall[i - 1] if x == x1 + 1 and 0 < i < 3 else wall[i])
+                else:
+                    c = lip if y == y0 else low if y == y0 + 3 else face
+                t.px(x, y, c)
+    for x in range(4, 12):                               # 맨 위: 캄캄한 입구
+        t.px(x, 0, PL['void'])
+    for x in range(16):                                  # 맨 아래 앞 턱 (바닥 높이, 노란 줄)
+        if 3 < x < 12:
+            t.px(x, 15, PL['x2'])
+    return t
+
+
+def plstair_tiles():
+    return [('plstairU', plstair_up()), ('plstairD', plstair_down())]
+
+
 # ─────────── 주인공: HAFS 교복 (남색 재킷 + 금색 테두리) · 사육사 ───────────
 # v3 (2026-11-05): 참고 그림 (3세대 FRLG 남자아이 3×4 · 16장 시트) 처럼 큰 머리 (키의 절반쯤) · 짧은 몸,
 #   눈 = 1칸 폭 × 2칸 높이, 둘 사이 2칸 (코 위 가운데), 모자 챙 바로 아래 · 양옆 머리카락.
@@ -3035,7 +3102,7 @@ def build():
         sheet.paste(t.im, (x, y))
         idx[name] = [x, y, TS, TS]
     # 0054: 퍼즐 칸 = 그림판 아래 새 줄 (앞 그림 자리 · 픽셀 그대로)
-    extra = puzzle_tiles()
+    extra = puzzle_tiles() + plstair_tiles()      # stairs13: 발전소 계단 2장은 맨 뒤 (같은 줄 빈 칸)
     y3 = sheet.height
     big = Image.new('RGBA', (sheet.width, y3 + ((len(extra) + 15) // 16) * TS), CLEAR)
     big.paste(sheet, (0, 0))

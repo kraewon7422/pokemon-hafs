@@ -163,6 +163,7 @@ const GUIDES = {
     '전설 퀘스트의 숫자 (예: 퀴즈 10번 연속 정답) 와 사파리존 전설 · 방랑 전설 · 메타몽 변신 확률을 정해요.',
     '방랑 전설 (라이코 · 앤테이 · 스이쿤) 이 지금 어느 장소 QR에 있는지도 여기서 볼 수 있어요 (학생에게는 소문만 보여요).'],
   grow: ['알 부화 걸음 수, 반짝이 확률, 잡기 경험치, 레벨이 오르는 방법, 물건이 나올 확률 등을 정해요.',
+    '[진화 갈래]: 이브이처럼 진화 모습이 여러 가지인 포켓몬이 어느 모습으로 잘 진화할지 정해요 (기본 = 모두 같은 확률).',
     '숫자 칸 옆에 단위와 설명이 있어요. 묶음마다 [저장]을 눌러야 반영돼요.',
     '잘못된 숫자(범위 밖)는 저장 전에 빨갛게 표시돼요.'],
   staff: ['운영자·부스 스태프 계정을 만들거나 지워요.',
@@ -2531,7 +2532,7 @@ const DEFAULTS = {
   // 0038_legends.sql
   ditto_disguise_chance: 0.005, roam_chance: 0.3, roam_balls: 8, legend_balls: 10, legend_daily_tries: 3, gift_fail_limit: 8, safari_cave_type_mult: 4,
   // 0055_legend_battle.sql
-  legend_battle_on: true, legend_boss_level: 55, legend_boss_level_plus: 8, legend_boss_level_max: 80, legend_boss_hp_mult: 2.5, legend_boss_stage: 2, legend_win_catch_bonus: 1.5,
+  legend_battle_on: true, legend_boss_level: 55, legend_boss_level_plus: 8, legend_boss_level_max: 80, legend_boss_hp_mult: 1.5, legend_boss_stage: 2, legend_win_catch_bonus: 1.5,
   catch_rate_tier: { green: 0.7, yellow: 0.5, orange: 0.33, red: 0.18 }, catch_rate_max: { green: 0.95, yellow: 0.8, orange: 0.6, red: 0.45 },
   legend_quests: [
     { dex: 480, kind: 'quiz_streak', n: 10, reward: 'ticket' }, { dex: 481, kind: 'battle_wins', n: 20, reward: 'ticket' },
@@ -2552,7 +2553,7 @@ const DEFAULTS = {
     { dex: 641, kind: 'type_catch', types: ['비행'], n: 10, reward: 'map' }, { dex: 642, kind: 'type_catch', types: ['전기'], n: 10, reward: 'map' },
     { dex: 645, kind: 'caught_all', of: [641, 642], reward: 'map' }, { dex: 643, kind: 'zone_catch', zone: 'dragon', n: 6, reward: 'map' },
     { dex: 644, kind: 'zone_catch', zone: 'dragon', n: 10, reward: 'map' }, { dex: 646, kind: 'caught_all', of: [643, 644], reward: 'map' },
-    { dex: 789, kind: 'zone_catch', zone: 'ultra', n: 5, reward: 'map' }, { dex: 800, kind: 'caught_all', of: [789], reward: 'map' },
+    { dex: 789, kind: 'zone_catch', zone: 'ultra', n: 5, reward: 'map', max: 2 }, { dex: 800, kind: 'caught_all', of: [789], reward: 'map' },
     { dex: 385, kind: 'quiz_streak', n: 7, reward: 'map' }, { dex: 386, kind: 'zone_catch', zone: 'ultra', n: 8, reward: 'map' },
     { dex: 720, kind: 'raid_slots', n: 3, reward: 'map' }, { dex: 494, kind: 'battle_wins', n: 10, reward: 'map' },
     { dex: 649, kind: 'type_catch', types: ['벌레'], n: 10, reward: 'map' }, { dex: 719, kind: 'zone_catch', zone: 'desert', n: 12, reward: 'map' },
@@ -2659,7 +2660,7 @@ const GROUPS = {
       P('legend_boss_level', '전설 레벨 (가장 낮을 때)', 'int', { unit: 'Lv', min: 1, max: 100, help: '기본 Lv.55. 학생 팀이 약해도 전설은 이 레벨보다 낮아지지 않아요.' }),
       P('legend_boss_level_plus', '학생 팀 최고 레벨보다 몇 레벨 높게', 'int', { unit: '레벨', min: 0, max: 50, help: '기본 +8. 예: 팀에서 가장 높은 포켓몬이 Lv.60 → 전설 Lv.68.' }),
       P('legend_boss_level_max', '전설 레벨 (가장 높을 때)', 'int', { unit: 'Lv', min: 1, max: 100, help: '기본 Lv.80. 아무리 강한 팀이어도 이보다 높아지지 않아요.' }),
-      P('legend_boss_hp_mult', '전설 체력 배수', 'num', { unit: '배', min: 1, max: 10, help: '기본 2.5배. 클수록 오래 버텨요. (AI 끼리 시험: Lv.45 팀 6마리가 10판 중 4판쯤 이김)' }),
+      P('legend_boss_hp_mult', '전설 체력 배수', 'num', { unit: '배', min: 1, max: 10, help: '기본 1.5배 (0058, 예전 2.5배). 클수록 오래 버텨요. 바꾼 뒤 아래 "AI 끼리 10판 시험"으로 이기는 판 수를 확인하세요.' }),
       P('legend_boss_stage', '전설 능력 올리기 (공격·방어·특공·특방 랭크)', 'int', { unit: '랭크', min: 0, max: 3, help: '기본 +2 (2배). 0 = 올리지 않음, +1 = 1.5배. 스피드는 그대로라 빠른 포켓몬이 먼저 칠 수 있어요.' }),
       P('legend_win_catch_bonus', '배틀을 이기면 잡힘 확률 배수', 'num', { unit: '배', min: 1, max: 5, help: '기본 1.5배 (빨강 18% → 27%). "원 색깔별 최대 잡힘 확률" 은 넘지 않아요.' }),
     ],
@@ -3364,7 +3365,65 @@ async function tabGrow() {
     h('div.cols', h('div', settingsGroup(GROUPS.level, set)), h('div', settingsGroup(GROUPS.drops, set),
       h('div.box.small-txt.muted', '진화 확률·점수·룰렛 칸 확률 같은 나머지 숫자는 [고급 설정] 탭에 있어요.'))),
     h('div.cols', h('div', settingsGroup(GROUPS.trade, set)), h('div', tradeCard())),   // 0056
+    branchCard(),   // 0058
   ];
+}
+
+// 0058: 진화 갈래 — 갈래 가족마다 나무 (진화 전 ▶ 갈래들), 갈래마다 무게 칸 · 지금 확률. 무게는 같은 진화의 모든 폼 (선생님 · 일반) 에 함께 적용
+function branchCard() {
+  const body = h('div.br-tree', h('p.small-txt.muted', '불러오는 중…'));
+  const save = h('button.btn.go', { disabled: true }, '저장');
+  let rows = [];   // { f, b, inp, pct }
+  const howText = (b) => (b.how === 'item' ? '진화의 돌' : `Lv.${b.lv}`);
+  const famCond = (f) => (f.from.item_only ? [h('small.muted', '진화의 돌로만')] : [h('small.muted', `Lv.${f.from.min_lv}에 진화`), h('small.muted', '그 전엔 진화의 돌')]);
+  const okW = (v) => v !== '' && Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 100;
+  const dirty = () => { save.disabled = !rows.some((x) => okW(x.inp.value) && Number(x.inp.value) !== Number(x.b.weight)); };
+  const recalc = (f) => {
+    const mine = rows.filter((x) => x.f === f);
+    const good = mine.every((x) => okW(x.inp.value));
+    const tot = good ? mine.reduce((a, x) => a + Number(x.inp.value), 0) : 0;
+    for (const x of mine) {
+      x.inp.classList.toggle('bad', !okW(x.inp.value));
+      const v = !good ? null : tot > 0 ? Number(x.inp.value) / tot * 100 : 100 / mine.length;
+      x.pct.textContent = v == null ? '—' : `${Math.round(v * 10) / 10}%`;
+      x.pct.classList.toggle('zero', v === 0);
+    }
+    dirty();
+  };
+  const load = async () => {
+    try { await Promise.all([S.species?.length ? null : loadCatalog(), spritesReady]); } catch { /* 이름 · 그림 없이 */ }
+    let tree;
+    try { tree = await rpc('admin_branch_tree'); } catch (e) { body.replaceChildren(h('p.warn-txt', errorText(e.message))); return; }
+    rows = [];
+    body.replaceChildren(...(tree || []).map((f) => h('div.br-fam',
+      h('div.br-from', spriteImg(f.from.sp, 48), h('b', f.from.name), ...famCond(f),
+        f.from.legend ? h('small.muted', '전설: 가진 모습은 빼고') : null),
+      h('span.br-arrow', { 'aria-hidden': 'true' }, '▶'),
+      h('div.br-list', f.branches.map((b) => {
+        const inp = h('input.inp.br-w', { type: 'number', min: 0, max: 100, step: 'any', inputmode: 'decimal', value: b.weight, 'aria-label': `${f.from.name} → ${b.name} 숫자` });
+        const pct = h('b.br-pct');
+        rows.push({ f, b, inp, pct });
+        inp.addEventListener('input', () => recalc(f));
+        return h('div.br-row', spriteImg(b.sp, 40), h('span.br-name', h('b', b.name), h('small.muted', howText(b))), inp, pct);
+      })))));
+    for (const f of tree || []) recalc(f);
+    save.disabled = true;
+  };
+  save.onclick = () => {
+    const bad = rows.find((x) => !okW(x.inp.value));
+    if (bad) { toast('숫자는 0~100 사이로 넣어 주세요.'); bad.inp.focus(); return; }
+    const ch = rows.filter((x) => Number(x.inp.value) !== Number(x.b.weight));
+    busy(save, async () => {
+      for (const x of ch) await rpc('admin_set_branch_weight', { p_from: x.f.from.sp, p_to: x.b.sp, p_weight: Number(x.inp.value) });
+      toast(`진화 갈래 ${ch.length}개를 저장했어요.`);
+      await load();
+    });
+  };
+  load();
+  return h('div.box.stack.setgroup.br-card', h('h2', '진화 갈래'),
+    h('p.small-txt', '숫자가 클수록 그 진화형이 잘 나와요. 0 = 안 나옴. 모두 같으면 같은 확률'),
+    h('p.small-txt.muted', '진화 레벨이 되면 (가장 낮은 레벨 조건) 진화의 돌 없이, 그 전에는 진화의 돌로 진화해요. 어느 쪽이든 모든 갈래 중에서 이 숫자대로 뽑아요. 선생님 폼도 같은 숫자를 써요.'),
+    body, h('div.row.end', save));
 }
 
 // 0056: 최근 교환 (누가 · 무엇을 · 언제)
@@ -3539,7 +3598,7 @@ function questCard(set) {
     const inp = unit ? h('input.inp.w-num', { type: 'number', min: 0, max: 1000, value: q.n ?? 0, 'aria-label': `${sp?.name || q.dex} 조건 숫자` }) : null;
     if (inp) ins.push([q, inp]);
     return h('div.setrow',
-      h('div.setlbl', h('b', sp?.name || `No.${q.dex}`), h('div.small-txt.muted', `${detail} · ${q.reward === 'map' ? '사파리존 지도 자리에서 만남' : '특별 티켓 (부스에서 받기)'}`)),
+      h('div.setlbl', h('b', sp?.name || `No.${q.dex}`), h('div.small-txt.muted', `${detail} · ${q.reward === 'map' ? '사파리존 지도 자리에서 만남' : '특별 티켓 (부스에서 받기)'}${q.max > 1 ? ` · ${q.max}번 만날 수 있어요` : ''}`)),
       h('div.setctl', inp ? h('span.part-in', inp, h('span.unit', unit)) : h('span.small-txt.muted', '숫자 없음')));
   });
   const save = h('button.btn.go', '저장');

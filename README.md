@@ -12,7 +12,7 @@
 3. 포켓몬 10종류를 모으면 **미니게임**, 학교 도감의 30%를 채우면 **사파리존**과 야생 포켓몬이 열립니다.
 4. 배틀 · 레이드 · 알 부화로 포켓몬을 키우고, 도감과 점수로 **랭킹**에 오릅니다.
 
-> 지금 상태: 테스트 서버에서 게임 전체를 할 수 있습니다. 서버 규칙 자동 시험의 마지막 전체 실행은 **1257개 통과, 2개 실패**입니다 (실패 2개는 테스트 서버가 바빠 8초 시간 제한에 걸린 해금 시험 하나와 그 뒤 시험 — 같은 시험이 그 전 실행들에서는 통과). 남은 일(실제 퀴즈 내용 · 학교 구글 로그인 · 실전 서버)은 [진행 상황 문서 PROGRESS.md](PROGRESS.md) 에 있습니다.
+> 지금 상태: 테스트 서버에서 게임 전체를 할 수 있습니다. 서버 규칙 자동 시험의 마지막 전체 실행은 **1287개 통과, 0개 실패**입니다 (2026-11-10, 0058 포함). 남은 일(실제 퀴즈 내용 · 학교 구글 로그인 · 실전 서버)은 [진행 상황 문서 PROGRESS.md](PROGRESS.md) 에 있습니다.
 >
 > 비공식 팬 게임 · 무료 학교 축제용입니다. Nintendo · Game Freak · The Pokémon Company 와 관련이 없고 승인 · 후원을 받지 않았습니다. 포켓몬 이름 · 그림의 권리는 원저작권자에게 있습니다.
 
@@ -157,7 +157,10 @@
 <img src="docs/screens/roulette.webp" width="300" alt="진화의 돌 룰렛 상자: 꽝 · 1개 · 3개 칸과 노란 '룰렛 돌리기!' 단추, '오늘 15/15번 남음' 글자">
 
 - 포켓몬은 레벨이 오르면 진화합니다.
-- **여러 갈래로 진화하는 포켓몬**(이브이 등)은 고를 수 없습니다. 서버가 같은 확률로 정합니다 (진화 레벨이 된 갈래가 있으면 그중에서, 진화의 돌을 쓰면 모든 갈래 중에서).
+- **여러 갈래로 진화하는 포켓몬**(이브이 · 슈륙챙이 · 랄토스 등 12가족)은 고를 수 없습니다. 서버가 **모든 갈래 중에서** 정합니다 — 기본은 모두 같은 확률이고, 운영자가 [성장 · 보상 → 진화 갈래]에서 확률을 바꿀 수 있습니다 (0 = 안 나옴).
+  - 갈래 중 가장 낮은 진화 레벨이 되면 진화의 돌 없이 진화합니다 (이브이는 Lv.25 에 8갈래 중 하나, 돌로 진화하는 샤미드 · 쥬피썬더도 나옴). 그 전에는 진화의 돌로 일찍 진화할 수 있습니다.
+  - 갈래가 모두 돌 진화인 냄새꼬는 지금처럼 진화의 돌이 있어야 합니다.
+  - 전설 갈래 (코스모움 → 솔가레오 / 루나아라) 는 이미 가진 모습을 빼고 정해집니다. 그래서 코스모그를 두 번 잡아 키우면 둘 다 얻을 수 있습니다.
 - **진화의 돌**: 레벨이 모자란 포켓몬을 일찍 진화시키거나, 돌로 진화하는 포켓몬(라이츄 · 윈디 …)에 씁니다.
 - **진화의 돌 룰렛**: 정해진 간격마다 한 번, 하루 횟수 제한이 있습니다. 결과는 서버가 정하고 확률 · 간격 · 횟수는 운영자가 바꿉니다.
 - 멜탄 · 멜메탈은 게임에서 빠졌습니다.
@@ -210,14 +213,14 @@
 
 사파리 입구의 **사육사**에게 말을 걸면 아직 못 만난 전설 포켓몬이 어디에 있고, 어떤 조건을 채워야 깨어나는지 알려 줍니다.
 
-- **사파리존의 특별한 곳** (0054: 한곳에 몰리지 않게 나누고, 가는 길을 작은 던전처럼): 꿈의 섬 · 성검의 숲 · 고대 유적 지하 1 · 2층 (미로) · 해변 바닷길 · 꽃의 섬 · 발전소 2 · 3층 (스위치 퍼즐) · 설원 얼음 미끄럼 길 · 용암 호수 가라앉는 돌 다리 · 하늘 언덕 · 용의 굴 깊은 곳 · 울트라 스페이스 · 별의 제단 · 사막. 조건(예: 그 구역에서 몇 마리 잡기)을 채우면 '깨어났다' 알림이 오고, 그 자리에서 말을 걸어 잡습니다 (한 사람에 한 번).
+- **사파리존의 특별한 곳** (0054: 한곳에 몰리지 않게 나누고, 가는 길을 작은 던전처럼): 꿈의 섬 · 성검의 숲 · 고대 유적 지하 1 · 2층 (미로) · 해변 바닷길 · 꽃의 섬 · 발전소 2 · 3층 (스위치 퍼즐) · 설원 얼음 미끄럼 길 · 용암 호수 가라앉는 돌 다리 · 하늘 언덕 · 용의 굴 깊은 곳 · 울트라 스페이스 · 별의 제단 · 사막. 조건(예: 그 구역에서 몇 마리 잡기)을 채우면 '깨어났다' 알림이 오고, 그 자리에서 말을 걸어 잡습니다 (한 사람에 한 번, **코스모그만 두 번** — 솔가레오 · 루나아라를 모두 얻을 수 있게. 한 마리를 잡으면 사육사가 "2번 만날 수 있어요" 라고 알려 줍니다).
 - **전설 퀘스트**: 퀴즈 연속 정답 · 배틀 승리 수 · 특정 타입 잡기 같은 조건을 채우면 전설을 받거나 사파리존에서 만납니다 (예: 레지 셋 → 레지기가스).
 - **방랑 전설**: 라이코 · 앤테이 · 스이쿤이 한 시간마다 다른 장소 QR 에 숨어 있습니다. 지도에 소문이 뜹니다.
 - **시간대 레이드 전설**: 아침 · 점심 · 저녁 · 야자 시간마다 TV 화면이 정해진 전설 레이드를 엽니다.
 
 **전설과 먼저 배틀** (0055): 사파리존 · 방랑 전설은 잡기 전에 내 배틀 팀으로 그 전설을 이겨야 합니다.
 
-- 전설은 내 팀에서 가장 높은 레벨 + 8 (Lv.55 ~ 80), 체력 2.5배, 공격 · 방어 · 특수 능력 +2 단계로 나옵니다. 쉽게 이기지 못하도록 맞춘 값이고 운영자가 바꿉니다.
+- 전설은 내 팀에서 가장 높은 레벨 + 8 (Lv.55 ~ 80), 체력 1.5배 (0058, 예전 2.5배), 공격 · 방어 · 특수 능력 +2 단계로 나옵니다. 쉽게 이기지 못하도록 맞춘 값이고 운영자가 바꿉니다.
 - 이기면 "○○이 지쳤다! 지금이야!" 와 함께 잡기 장면이 열리고, 잡힐 확률이 1.5배가 됩니다 (고리 색의 최대 확률은 넘지 않음).
 - 지거나 도망치면 오늘 도전 1번을 쓴 것이고, 전설은 그 자리에 남아 다시 도전할 수 있습니다. 배틀 중에 나가면 다시 말을 걸 때 이어집니다.
 
@@ -337,7 +340,7 @@
 - **레이드**: 레이드 열기 · 보상 방식
 - **학생 · 계정**: 비밀번호 초기화 요청 · 문의함 · 물건 · 알 주기 · 별명 지우기
 - **미니게임**: 게임 켜고 끄기, 기록 관리
-- **성장 · 보상**: 배틀 시간표(날씨 · 필드), 알 걸음, 반짝이 확률, 배틀 보상, **포켓몬 교환** (켜고 끄기 · 하루 횟수 · 방 닫히는 시간 · 최근 교환 목록)
+- **성장 · 보상**: 배틀 시간표(날씨 · 필드), 알 걸음, 반짝이 확률, 배틀 보상, **포켓몬 교환** (켜고 끄기 · 하루 횟수 · 방 닫히는 시간 · 최근 교환 목록), **진화 갈래** (갈래 가족마다 진화 전 ▶ 갈래 그림 · 조건 · 숫자 칸 · 지금 확률 %, 숫자가 클수록 잘 나옴 · 0 = 안 나옴)
 - **전설 · 소포**: 소포 코드 만들기, **전설 배틀 강하기** (켜고 끄기 · 레벨 · 체력 배수 · 능력 단계 · 이긴 뒤 잡기 배수, 'AI 끼리 10판 시험' 단추로 얼마나 어려운지 확인)
 - **운영진**: 운영진 아이디 만들기 · 구글 계정 초대
 - **고급 설정**: 모든 설정에 무엇인지 · 단위 · 보통 값을 알려 주는 한 줄 설명
@@ -430,7 +433,7 @@
 | 앱 (프런트엔드) | 빌드 없는 순수 ES 모듈 (`web/js/*.js`, `<script type="module">`). 번들러 · 프레임워크 없음. `web/` 폴더를 그대로 정적 호스팅에 올리면 끝 |
 | PWA · 오프라인 | `web/sw.js`. 설치 때 첫 화면에 필요한 파일만 받고(CORE), 나머지(QR 카메라 · 지도 · 배틀 · 미니게임 · 사파리)는 뒤에서 받음(EXTRA). 캐시 3개: 앱 버전 캐시(`VERSION`, 배포마다 올림) · 운영자가 올린 포켓몬 그림 · 배경 음악(처음 틀 때 받고, 버전을 올려도 다시 안 받음). 티켓 QR 이 화면에 떠 있을 때는 새 버전으로 바꾸지 않음 |
 | 서버 | Supabase (Postgres + Auth + Storage). 앱은 "이 기술을 골랐다", "이 QR 을 찍었다" 만 보내고 결과(포획 · 진화 · 배틀 데미지 · 룰렛 · 알 부화 · 반짝이 · 해금)는 서버 함수가 정함. 함수는 `SECURITY DEFINER` + `search_path = ''`, 표는 RLS 로 막고, 함수를 만드는 마이그레이션마다 끝에 실행 권한 블록(0006 방식)을 둬서 로그인하지 않은 사람은 부를 수 없음 |
-| DB 변경 이력 | `supabase/migrations/0001 ~ 0057`. 예: 0015 배틀 엔진 · 0027 알 · 0032 실제 포켓몬 · 0033 사파리존 · 0036 PC 박스 · 0038 전설 · 소포 · 0039 특성 · 날씨 · 0042 반짝이 · 0045 배틀 팀 6마리 · 0047 기술 넓히기 · 이로치 레이드 · 0048 설원 · 용암 · 발전소 · 용의 굴 · 0049 울트라비스트 정리 · 갈래 진화 무작위 · 멜탄 빼기 · 0050 전설의 특별한 곳 · 0051 해금 단계 · 0052 폼 · 0053 배틀 보상 제한 없음 · 0054 전설 자리 나누기 · 퍼즐 지도 · 어려운 전설 조건 · 해금 30% · 0055 전설 먼저 배틀 · 고리 색별 잡기 확률 · 반짝이 소포 · 0056 포켓몬 교환 · 0057 sync 가볍게 (전설 퀘스트 확인을 바뀐 것이 있을 때만) |
+| DB 변경 이력 | `supabase/migrations/0001 ~ 0058`. 예: 0015 배틀 엔진 · 0027 알 · 0032 실제 포켓몬 · 0033 사파리존 · 0036 PC 박스 · 0038 전설 · 소포 · 0039 특성 · 날씨 · 0042 반짝이 · 0045 배틀 팀 6마리 · 0047 기술 넓히기 · 이로치 레이드 · 0048 설원 · 용암 · 발전소 · 용의 굴 · 0049 울트라비스트 정리 · 갈래 진화 무작위 · 멜탄 빼기 · 0050 전설의 특별한 곳 · 0051 해금 단계 · 0052 폼 · 0053 배틀 보상 제한 없음 · 0054 전설 자리 나누기 · 퍼즐 지도 · 어려운 전설 조건 · 해금 30% · 0055 전설 먼저 배틀 · 고리 색별 잡기 확률 · 반짝이 소포 · 0056 포켓몬 교환 · 0057 sync 가볍게 (전설 퀘스트 확인을 바뀐 것이 있을 때만) · 0058 갈래 진화 = 모든 갈래 (운영자 확률) · 코스모그 두 번 · 전설 보스 체력 1.5배 |
 | 폼 (0052) | `lines.form_kind` (normal · teacher · event · special) · `family_id` · `form_label`, `species.form_of`. 선생님 폼마다 일반 폼 복사본(계열 1000+, 종 +20000)이 야생에 나옴. 학교 칸 = `_seen_school`, 이름 = `_sp_label` / 앱 `displayName`. `_forms_build()` 가 구조를 맞춤 |
 | 해금 (0051) | `_unlock_progress` · `profiles.unlocked_at`, 설정 `minigame_unlock` · `unlock_safari_pct` · `unlock_all`, sync 의 `unlock` |
 | 화면 그리기 | 픽셀 아트 = `<canvas>` + `imageSmoothingEnabled = false` / CSS `image-rendering: pixelated`. 글꼴은 도트 글꼴 Galmuri11 |
@@ -449,7 +452,7 @@ web/            정적 사이트 (index = 학생 앱, admin · booth · screen =
   js/           ES 모듈 — app · battle · catch · safari · raid · eggs · legends · bag · dex · share · sfx …
   js/games/     미니게임 (hub · common + 게임 하나 = 파일 하나)
   vendor/       supabase.js · phaser.min.js · jsQR.js · qrcode.js
-supabase/       migrations/0001~0057 · seed_battle.sql · seed_pokemon.sql · seed.sql (데모용) · cleanup_after_festival.sql
+supabase/       migrations/0001~0058 · seed_battle.sql · seed_pokemon.sql · seed.sql (데모용) · cleanup_after_festival.sql
 tools/          그림판 · 타일 · 동굴 · 데이터 생성 스크립트 (Python), upload_pokemon_sprites.mjs (포켓몬 그림 올리기)
 tests/          rpc_test.mjs · festival_load.mjs · raid_load.mjs
 ```
@@ -469,7 +472,7 @@ python -m http.server 8124
 
 ### 테스트
 
-- `node tests/rpc_test.mjs` — 테스트 서버에 실제로 RPC 를 불러 서버 규칙을 확인합니다. 마지막 전체 실행 (2026-11-10): **1257 passed, 2 failed** — 실패 2개는 테스트 서버 시간 초과(statement timeout). 테스트 학생 기록을 지우고 다시 만들므로 **실전 서버에는 절대 돌리지 않습니다.** (`tests/.env` 필요, 연속 3번 넘게 돌리면 로그인 횟수 제한에 걸림)
+- `node tests/rpc_test.mjs` — 테스트 서버에 실제로 RPC 를 불러 서버 규칙을 확인합니다. 마지막 전체 실행 (2026-11-10, 0058 포함): **1287 passed, 0 failed**. 테스트 학생 기록을 지우고 다시 만들므로 **실전 서버에는 절대 돌리지 않습니다.** (`tests/.env` 필요, 연속 3번 넘게 돌리면 로그인 횟수 제한에 걸림)
 - `tests/festival_load.mjs` — 학생 600명 규모 요청(초당 70개)을 임시 학생 24명에게 나눠 보내는 부하 시험 (끝나면 임시 학생을 지움). `tests/raid_load.mjs` — 레이드 탭 폭주 시험.
 - **부하 시험 결과 주의 (2026-11-10)**: 테스트 서버는 가장 작은 공유 CPU 서버라, 하루 종일 시험을 돌린 뒤에는 초당 21개에서도 요청이 30초를 넘겼습니다 (두 시간 전에는 같은 부하가 문제없었음 → CPU 몫을 다 쓴 것). 그래서 실전 서버는 **공유 CPU 가 아닌 크기(Small 이상)** 로 만들고, 축제 전에 실전 서버에서 `festival_load.mjs` 를 한 번 돌려 확인하세요.
 
@@ -482,7 +485,7 @@ python -m http.server 8124
 3. `0021` → `0039` 를 번호 순서대로.
 4. `seed_pokemon.sql` — 포켓몬 · 기술 · 특성 자료. 0038 의 열(`ultra` · `legend_src`)과 0039 의 특성 표를 쓰므로 **0039 다음에만** 됩니다.
 5. 확인: `select count(*) from public.lines where ultra;` 가 0 이면, 0038 파일 위쪽의 울트라비스트 · 전설 표시 `update` 두 줄을 한 번 더 실행합니다 (0038 이 포켓몬 자료보다 먼저 돌아서 빈 표에 적용됐기 때문).
-6. `0040` → `0057` 을 번호 순서대로.
+6. `0040` → `0058` 을 번호 순서대로.
 7. `seed_pokemon.sql` 을 한 번 더 — 다시 돌려도 결과가 같고, 끝에서 `_forms_build()` 를 불러 폼 구조를 맞춥니다.
 8. `node tools/upload_pokemon_sprites.mjs` — 포켓몬 그림을 Storage 에 올립니다 (이벤트 폼 1321 · 1324 포함, 실전 서버 주소 · 공개 키 · 운영자 계정은 환경 변수로, 사용법은 파일 맨 위).
 9. 첫 운영자: `select public.bootstrap_staff('admin1', 'admin');` → 나온 비밀번호로 운영자 페이지에 로그인, 나머지 운영진은 운영진 탭에서.
@@ -494,7 +497,7 @@ python -m http.server 8124
 
 ## English summary
 
-A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), trade Pokémon face to face (both confirm, server-side atomic swap), fight legendaries before catching them, solve puzzle dungeons in the Safari Zone, join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0057); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1257 passed, 2 failed — both a staging statement timeout). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
+A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), trade Pokémon face to face (both confirm, server-side atomic swap), fight legendaries before catching them, solve puzzle dungeons in the Safari Zone, join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0058); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1287 passed, 0 failed). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
 
 ## 다른 문서
 

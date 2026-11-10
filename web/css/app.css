@@ -77,7 +77,6 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .evo-panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; }   /* 칸이 글자 폭만큼 늘어나 화면 오른쪽 밖으로 나가지 않게 */
 .evo-panel > .banner { flex-wrap: wrap; row-gap: 4px; }   /* 좁은 폰: '진화의 돌 × 3' 은 다음 줄로 */
 .evo-panel > .btn { white-space: normal; min-width: 0; }
-.chain.n2 { grid-template-columns: 1fr auto 1fr; }
 /* 로그인 화면 (0018): 학생 카드 · 비학생 카드 · 맨 아래 구글(복구용) */
 .pw-wrap { position: relative; display: block; }
 .pw-wrap input { width: 100%; padding-right: 48px; box-sizing: border-box; }
@@ -153,8 +152,10 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .habitat-bag svg { width: 16px; height: 16px; }
 .habitat-bag .hb-arrow { font-size: 10px; }
 .habitat-bag:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.25); }
-.chain { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr; align-items: center; justify-items: center; }
-.chain .arrow { font-size: var(--fs-m); color: #687088; }
+/* 진화 (0058): 한 줄 흐름 — 갈래 단계는 화살표 뒤 한 칸 안에 위아래로 쌓음 (이브이 8갈래 = 그 칸 안 2열), 좁은 폰에서도 오른쪽 밖으로 안 나감 */
+.chain { display: flex; align-items: center; justify-content: space-evenly; gap: 4px; min-width: 0; }
+.chain > * { min-width: 0; }
+.chain .arrow { flex: none; font-size: var(--fs-m); color: #687088; }
 .kv { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: var(--fs-m); }
 
 /* scanner */
@@ -1209,10 +1210,9 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .form-tab canvas { flex: none; }
 /* 0037 갈래 진화: 진화 길 칸 + 고르기 */
 .chain-cell { display: grid; justify-items: center; text-align: center; word-break: keep-all; }
-.chain-col { display: grid; grid-template-columns: repeat(2, auto); gap: 2px 6px; justify-items: center; }
-.chain-col.many { grid-template-columns: repeat(3, auto); }
-.chain:has(.chain-col.many) { grid-template-columns: auto auto 1fr; }
-.chain-col small, .chain-cell small { font-size: 11px; white-space: nowrap; }
+.chain-col { display: grid; grid-template-columns: auto; gap: 4px; justify-items: center; }
+.chain-col.many { grid-template-columns: repeat(2, auto); gap: 4px 8px; }
+.chain-col small, .chain-cell small { font-size: 11px; line-height: 1.25; white-space: normal; word-break: keep-all; overflow-wrap: normal; }   /* 선생님 폼 이름 ("국어 1 쌤의 케이시") 은 띄어쓰기에서만 줄 바꿈 */
 .evo-choices { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; }
 .evo-choice { appearance: none; border: 3px solid #384868; border-radius: 10px; background: var(--paper); padding: 6px 4px 8px; display: grid; justify-items: center; align-content: start; gap: 2px; cursor: pointer; color: inherit; font: inherit; min-height: 44px; text-align: center; }
 .evo-choice b { font-size: var(--fs-s); white-space: nowrap; }
