@@ -98,6 +98,8 @@ export function setLegendHints(list) {
     const t = hintOf(x.dex); if (!t) continue;
     if (x.ok != null) t.ok = !!x.ok;
     if (x.caught != null) t.caught = !!x.caught;
+    if (x.owned != null) t.owned = x.owned;   // 0058: 잡은 수 · 만날 수 있는 횟수 (코스모그 2)
+    if (x.max != null) t.max = x.max;
     if (x.seen != null) t.seen = !!x.seen;
     if (x.cond) t.cond = x.cond;
     if (x.where) t.where = x.where;
@@ -106,7 +108,7 @@ export function setLegendHints(list) {
 // 서버의 퀘스트 줄 (0038 _quest_rows) → 사육사 힌트 (조건 글 + 진행 "물 타입 4/20")
 export function hintsFromServer(rows) {
   setLegendHints((rows || []).filter((x) => x.reward === 'map').map((x) => ({
-    dex: x.dex, ok: x.ok, caught: x.caught, seen: x.seen || x.caught,
+    dex: x.dex, ok: x.ok, caught: x.caught, seen: x.seen || x.caught || x.owned > 0, owned: x.owned, max: x.max,
     cond: x.ok || !x.prog ? x.cond : `${x.cond} (지금 ${x.prog})`,
   })));
 }
@@ -932,7 +934,9 @@ function build() {
         await talk([
           it.seen ? `${l.name}…` : `${l.teaser}… 아직 아무도 제대로 본 적이 없다는 포켓몬이란다.`,
           `${josa(nm, '은', '는')} ${l.where}에 있다는구나.`,
-          l.caught ? '✔ 이미 잡았구나! 정말 대단해.' : legendReady(l.dex) ? '✔ 조건을 모두 채웠어! 지금이라면 만날 수 있을 거야.' : `필요한 것: ${l.cond}`,
+          l.caught ? '✔ 이미 잡았구나! 정말 대단해.'
+            : l.owned > 0 && l.max > 1 ? `✔ ${l.owned}마리 잡았구나! ${josa(nm, '은', '는')} ${l.max}번 만날 수 있어요. 한 번 더 만나 보렴.`
+            : legendReady(l.dex) ? '✔ 조건을 모두 채웠어! 지금이라면 만날 수 있을 거야.' : `필요한 것: ${l.cond}`,
         ]);
       };
       for (;;) {
@@ -1038,7 +1042,7 @@ function build() {
         bang = null;
         await talk([`${josa(t.name, '이', '가')} 이쪽을 바라보고 있다!`]);
         const r = await startLegendEncounter(l.dex, { talk, map: mapId, name: t.name });
-        if (r?.caught) t.caught = true;           // 잡으면 자리에서 사라짐. 놓치거나 도망치면 그대로 남음
+        if (r?.caught) { t.owned = (t.owned || 0) + 1; t.caught = t.owned >= (t.max || 1); }   // 잡으면 자리에서 사라짐 (0058: max 마리 잡으면 — 코스모그는 2). 놓치거나 도망치면 그대로 남음
       } else {
         await talk([`${t.name}…?`, '아직 무언가 부족한 것 같다…', `사육사의 힌트: ${t.cond}`]);
       }

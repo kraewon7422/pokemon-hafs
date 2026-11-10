@@ -2074,14 +2074,14 @@ console.log('\n[44] 갈래 진화 (0037 · 0049 무작위): 서버가 갈래를 
   const team = (await X.c.rpc('battle_set_team', { p_mons: [m1.id] }));
   ok(!team.error, 'a branch Pokémon can be in the battle team', team);
 
-  // 2) 이브이 #2: Lv.25 → 레벨 갈래 (에브이 · 블래키 · 님피아) 중 하나, 돌 없이 100%
+  // 2) 이브이 #2: Lv.25 (가장 낮은 레벨 조건) → 0058: 8갈래 모두 중 하나 (돌 갈래 포함), 돌 없이 100%
   await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
   const m2 = (await st()).mons.find((m) => m.line_id === L && m.stage === 1);
   await admin.rpc('admin_set_level', { p_student_id: X.sid, p_line: L, p_level: 25 });
   const lvIds = outs.filter((e) => e.how === 'level').map((e) => e.to_species);
   const r2 = (await X.c.rpc('evolve', { p_mon: m2.id, p_to: jolt.id })).data;
-  ok(r2?.success && r2.by_level === true && lvIds.includes(r2.species_id) && r2.evo_tickets === 1 && r2.branched,
-     'Lv.25: one of the level branches (에브이 · 블래키 · 님피아), no 진화의 돌 used, p_to (쥬피썬더) ignored', r2);
+  ok(r2?.success && r2.by_level === true && outIds.includes(r2.species_id) && r2.evo_tickets === 1 && r2.branched && lvIds.length === 3,
+     'Lv.25: one of all 8 branches (0058 — stone branches too), no 진화의 돌 used, p_to (쥬피썬더) ignored', r2);
 
   // 3) 이브이 #3: Lv.5 + 진화의 돌 = 모든 갈래 중 하나 (레벨 갈래면 확률, 시험 동안 100%)
   await admin.rpc('admin_grant_monster', { p_student_id: X.sid, p_line: L, p_stage: 1 });
@@ -3731,7 +3731,7 @@ console.log('\n[59] 전설의 특별한 곳 (0050): 사파리존 전설 33마리
     await setS('safari_flee', 0); await setS('safari_flee_step', 0); await setS('safari_flee_legend', 0); await setS('safari_flee_max', 0);
     await setS('ditto_disguise_chance', 0); await setS('wild_shiny_chance', 0); await setS('safari_encounter_rate', 1); await setS('safari_open', true);
     await setS('legend_daily_tries', 3); await setS('legend_balls', 10);
-    const Q = structuredClone(q); Q.find((x) => x.dex === 789).n = 1; await setS('legend_quests', Q);
+    const Q = structuredClone(q); Q.find((x) => x.dex === 789).n = 1; Q.find((x) => x.dex === 789).max = 1; await setS('legend_quests', Q);   // 0058: 한 번만 (두 번은 [65])
     let enc = null;
     for (const t0 = Date.now(); !enc && Date.now() - t0 < 10000;) {
       const r = await V.rpc('safari_encounter', { p_steps: 3, p_zone: 'ultra', p_area: 'ultra', p_dist: 0 });
@@ -4353,6 +4353,168 @@ console.log('\n[64] 전설 배틀 (0055): 배틀을 이겨야 잡힘 · 지면 �
   } finally {
     for (const id of gifts) await admin.rpc('admin_delete_gift', { p_id: id });
     for (const k of keys) if (k in old) await set62(k, old[k]);
+    if (sid) await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
+  }
+}
+
+console.log('\n[65] 갈래 진화 (0058): 모든 갈래 같은 확률 · 가장 낮은 레벨 조건 · 무게 (운영자) · 냄새꼬는 돌 · 전설 갈래는 가진 모습 빼고 · 코스모그 두 번 · 보스 체력 1.5배');
+{
+  const keys = ['evo_prob', 'legend_quests', 'legend_daily_tries', 'legend_battle_on', 'legend_boss_hp_mult'];
+  const old = Object.fromEntries((await admin.select(`settings?key=in.(${keys.join(',')})&select=key,value`)).data.map((x) => [x.key, x.value]));
+  const setS = (k, v) => admin.patch(`settings?key=eq.${k}`, { value: v });
+  const changed = [];   // [from, to] 무게를 바꾼 쌍 → 끝에서 1 로
+  const setW = async (f, t, w) => { const r = await admin.rpc('admin_set_branch_weight', { p_from: f, p_to: t, p_weight: w }); if (!r.error) changed.push([f, t]); return r; };
+  let sid = null;
+  try {
+    let s0; do { s0 = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: s0, p_password: 'br5858' })).error);
+    sid = s0;
+    const V = client(await pwLogin(`${sid}@code.local`, 'br5858'));
+    await V.rpc('register_profile', { p_kind: 'student', p_student_id: sid, p_name: '갈래시험' });
+    const st = async () => (await V.rpc('sync')).data.state;
+    const tickets = async (n) => { const have = (await st()).profile.evo_tickets; await admin.rpc('admin_adjust_tickets', { p_student_id: sid, p_delta: n - have }); };
+    const freshOf = async (spId) => (await st()).mons.filter((m) => m.species_id === spId).map((m) => m.id);
+    const grantN = async (line, stage, n) => { for (let i = 0; i < n; i++) await admin.rpc('admin_grant_monster', { p_student_id: sid, p_line: line, p_stage: stage }); };
+    const evolveAll = async (ids) => {
+      const cnt = {}; const errs = []; const rs = [];
+      for (const id of ids) {
+        const r = await V.rpc('evolve', { p_mon: id });
+        if (r.error) { errs.push(r.error); continue; }
+        rs.push(r.data); cnt[r.data.species_id] = (cnt[r.data.species_id] || 0) + 1;
+      }
+      return { cnt, errs, rs };
+    };
+
+    // 0) 설정 · 자료
+    ok(old.legend_boss_hp_mult === 1.5, 'legend_boss_hp_mult is 1.5 (0058, was 2.5)', old.legend_boss_hp_mult);
+    const q789 = (old.legend_quests || []).find((x) => x.dex === 789);
+    ok(q789?.max === 2 && (old.legend_quests || []).filter((x) => x.max != null).length === 1, 'legend_quests: 코스모그 (789) max 2, the others default 1', q789);
+    const tree = (await admin.rpc('admin_branch_tree')).data || [];
+    const fam = (d) => tree.find((f) => f.from.dex === d);
+    ok(tree.length === 12 && [44, 61, 79, 133, 236, 265, 281, 290, 361, 366, 412, 790].every((d) => fam(d)), 'admin_branch_tree: the 12 branching families (one row each, form copies folded)', tree.map((f) => f.from.dex));
+    ok(fam(133)?.branches.length === 8 && fam(133).branches.every((b) => b.weight === 1 && b.pct === 12.5) && fam(133).from.min_lv === 25,
+       '이브이: 8 branches, weight 1 = 12.5% each, lowest level 25', fam(133)?.branches.map((b) => b.pct));
+    ok(fam(44)?.from.item_only === true && fam(790)?.from.legend === true && fam(61)?.from.copies === 2, 'flags: 냄새꼬 item-only · 코스모움 legend · 슈륙챙이 has 2 copies (teacher + normal form)', [fam(44)?.from, fam(790)?.from.legend, fam(61)?.from.copies]);
+    ok((await V.rpc('admin_branch_tree')).error && (await V.rpc('admin_set_branch_weight', { p_from: 349, p_to: 350, p_weight: 5 })).error, 'students cannot call admin_branch_tree / admin_set_branch_weight');
+    ok((await admin.rpc('admin_set_branch_weight', { p_from: 349, p_to: 350, p_weight: 101 })).error === 'BAD_WEIGHT'
+       && (await admin.rpc('admin_set_branch_weight', { p_from: 349, p_to: 350, p_weight: -1 })).error === 'BAD_WEIGHT'
+       && (await admin.rpc('admin_set_branch_weight', { p_from: 1, p_to: 2, p_weight: 2 })).error === 'NOT_BRANCH', 'weight range 0..100, only branching rows');
+
+    const eevee = fam(133).from; const EB = fam(133).branches.map((b) => b.sp);
+    const lineOfSp = async (sp) => (await admin.select(`species?id=eq.${sp}&select=line_id`)).data?.[0]?.line_id;
+    const EL = await lineOfSp(eevee.sp);
+    // 1) 이브이 Lv.25 (가장 낮은 레벨 조건) → 8갈래 모두 (돌 갈래 포함), 진화의 돌 없이
+    await tickets(0);
+    await grantN(EL, 1, 80);
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: EL, p_level: 25 });
+    let ids = await freshOf(eevee.sp);
+    let r = await evolveAll(ids);
+    let counts = EB.map((b) => r.cnt[b] || 0);
+    ok(ids.length === 80 && r.errs.length === 0 && r.rs.every((x) => x.by_level && !x.by_item && x.branched && x.options === 8 && x.evo_tickets === 0),
+       '80 이브이 at Lv.25: all evolve by level, no 진화의 돌 (none owned), branched / options 8', { n: ids.length, errs: [...new Set(r.errs)] });
+    ok(counts.every((c) => c >= 1 && c <= 25), `Lv.25 reaches every branch incl. the 5 stone branches (expected 10 each): ${counts.join(' / ')}`, r.cnt);
+    // 2) 진화의 돌로 일찍 (Lv.5) → 8갈래 모두 (레벨 갈래면 확률 → 시험 동안 100%)
+    await setS('evo_prob', [0, 1, 1]);
+    await grantN(EL, 1, 64);
+    ids = await freshOf(eevee.sp);
+    await tickets(ids.length);
+    r = await evolveAll(ids);
+    counts = EB.map((b) => r.cnt[b] || 0);
+    ok(ids.length === 64 && r.errs.length === 0 && r.rs.every((x) => !x.by_level && x.success) && r.rs.at(-1)?.evo_tickets === 0,
+       '64 이브이 at Lv.5 with 진화의 돌: one stone each, all succeed', { n: ids.length, errs: [...new Set(r.errs)], last: r.rs.at(-1)?.evo_tickets });
+    ok(counts.every((c) => c >= 1), `stone evolution reaches every branch incl. the 3 level branches: ${counts.join(' / ')}`, r.cnt);
+    ok(r.rs.every((x) => x.by_item === (fam(133).branches.find((b) => b.sp === x.species_id)?.how === 'item')), 'by_item = the drawn branch is a stone branch');
+    await setS('evo_prob', old.evo_prob);
+
+    // 3) 무게: 쥬피썬더 0 → 안 나옴 · 에브이 9 → 9/15 = 60%
+    const jolt = fam(133).branches.find((b) => b.dex === 135).sp, espeon = fam(133).branches.find((b) => b.dex === 196).sp;
+    const w0 = await setW(eevee.sp, jolt, 0); const w9 = await setW(eevee.sp, espeon, 9);
+    ok(w0.data?.ok && w9.data?.ok, 'admin_set_branch_weight ok', [w0, w9]);
+    const t2 = (await admin.rpc('admin_branch_tree')).data.find((f) => f.from.dex === 133);
+    ok(t2?.branches.find((b) => b.sp === jolt)?.pct === 0 && t2.branches.find((b) => b.sp === espeon)?.pct === 60, 'admin_branch_tree pct: 쥬피썬더 0% · 에브이 60%', t2?.branches.map((b) => `${b.name}${b.pct}`));
+    await grantN(EL, 1, 40);
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: EL, p_level: 25 });
+    ids = await freshOf(eevee.sp);
+    r = await evolveAll(ids);
+    ok(ids.length === 40 && r.errs.length === 0 && !r.cnt[jolt], 'weight 0 → 쥬피썬더 never chosen (40 tries)', r.cnt);
+    ok((r.cnt[espeon] || 0) >= 15, `weight 9 → 에브이 ${r.cnt[espeon] || 0}/40 (expected ~24)`, r.cnt);
+    // 같은 진화의 모든 줄 (선생님 폼 · 일반 폼 복사본) 을 한꺼번에
+    const tad = fam(61); const tadTo = tad.branches.find((b) => b.dex === 62).sp;
+    const w3 = await setW(tad.from.sp, tadTo, 3);
+    const rows62 = (await admin.select('evolutions?select=from_species,to_species,weight&from_species=in.(53,20053)&limit=10')).data || [];
+    ok(w3.data?.rows === 2 && rows62.filter((x) => x.weight === 3).length === 2 && rows62.filter((x) => x.weight === 1).length === 2,
+       '슈륙챙이 → 강챙이 weight 3 applies to the teacher form and its normal-form copy (2 rows), 왕구리 stays 1', rows62);
+
+    // 4) 선생님 폼 (사회 쌤의 슈륙챙이, 계열 18) Lv.40 → 강챙이 (돌 갈래) 도 · 왕구리도, 같은 선생님 폼 안에서
+    await admin.rpc('admin_set_branch_weight', { p_from: tad.from.sp, p_to: tadTo, p_weight: 1 });
+    const t18 = (await admin.select('species?line_id=eq.18&stage=eq.2&select=id')).data?.[0]?.id;
+    await grantN(18, 2, 30);
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: 18, p_level: 40 });
+    ids = await freshOf(t18);
+    r = await evolveAll(ids);
+    const tadOut = Object.keys(r.cnt).map(Number);
+    const tadLines = new Set(((await admin.select(`species?id=in.(${tadOut.join(',') || 0})&select=line_id`)).data || []).map((x) => x.line_id));
+    ok(ids.length === 30 && r.errs.length === 0 && tadOut.length === 2 && r.rs.every((x) => x.by_level) && tadLines.size === 1 && tadLines.has(18),
+       'teacher-form 슈륙챙이 Lv.40: both 강챙이 and 왕구리, free, and they stay in the teacher form (line 18)', { cnt: r.cnt, lines: [...tadLines] });
+
+    // 5) 냄새꼬 (갈래가 모두 돌 진화): Lv.100 이어도 진화의 돌이 있어야 함
+    const glo = fam(44).from;
+    const gloLine = await lineOfSp(glo.sp);
+    await grantN(gloLine, 2, 1);
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: gloLine, p_level: 100 });
+    const gm = (await freshOf(glo.sp))[0];
+    await tickets(0);
+    ok((await V.rpc('evolve', { p_mon: gm })).error === 'NO_TICKET', '냄새꼬 Lv.100 without a 진화의 돌 → NO_TICKET (item-only branches)');
+    await tickets(1);
+    const ge = (await V.rpc('evolve', { p_mon: gm })).data;
+    ok(ge?.success && ge.by_item && !ge.by_level && ge.evo_tickets === 0 && fam(44).branches.some((b) => b.sp === ge.species_id), '냄새꼬 + 1 진화의 돌 → 라플레시아 or 아르코 (100%)', ge);
+
+    // 6) 전설 갈래: 솔가레오를 가졌으면 코스모움 → 루나아라 (솔가레오 무게 100 이어도)
+    const cos = fam(790); const sol = cos.branches.find((b) => b.dex === 791).sp, lun = cos.branches.find((b) => b.dex === 792).sp;
+    const CL = await lineOfSp(cos.from.sp);
+    await setW(cos.from.sp, sol, 100);
+    await grantN(CL, 3, 1);
+    const hasSol = (await st()).mons.find((m) => m.line_id === CL && m.stage === 3);
+    await grantN(CL, 2, 2);
+    await admin.rpc('admin_set_level', { p_student_id: sid, p_line: CL, p_level: 53 });
+    const cm = await freshOf(cos.from.sp);
+    const c1 = (await V.rpc('evolve', { p_mon: cm[0] })).data;
+    ok(hasSol?.species_id === sol && c1?.success && c1.species_id === lun && c1.pool === 1 && c1.by_level, 'owns 솔가레오 → 코스모움 Lv.53 becomes 루나아라 (owned branch excluded, pool 1)', { has: hasSol?.species_id, c1 });
+    const c2 = (await V.rpc('evolve', { p_mon: cm[1] })).data;
+    ok(c2?.success && c2.pool === 2 && [sol, lun].includes(c2.species_id), 'owns both → all branches again (pool 2)', c2);
+
+    // 7) 코스모그 두 번 (퀘스트 max 2): 잡기 → 또 만남 (전설 배틀 먼저 · 체력 1.5배) → 잡기 → 세 번째는 ALREADY_CAUGHT
+    const Q = structuredClone(old.legend_quests); Q.find((x) => x.dex === 789).n = 0; await setS('legend_quests', Q);
+    await setS('legend_daily_tries', 5);
+    // 코스모그를 안 가진 새 학생 (위 학생은 코스모그 계열을 이미 가짐)
+    let s7; do { s7 = '020' + String(500 + Math.floor(Math.random() * 500)); } while ((await anon.rpc('create_number_account', { p_student_id: s7, p_password: 'cg5858' })).error);
+    const W = client(await pwLogin(`${s7}@code.local`, 'cg5858'));
+    try {
+      await W.rpc('register_profile', { p_kind: 'student', p_student_id: s7, p_name: '코스모그시험' });
+      const row = async () => (await W.rpc('sync')).data.state.legends?.find((x) => x.dex === 789);
+      const a = (await W.rpc('legend_encounter', { p_dex: 789 })).data?.encounter;
+      const ar = (await W.rpc('legend_result', { p_id: a?.id, p_caught: true, p_grade: 'nice' })).data;
+      const r1 = await row();
+      ok(ar?.caught === true && r1?.owned === 1 && r1.max === 2 && r1.caught === false, '1st 코스모그 caught → legend row owned 1 / max 2, not "caught" yet (stays on the map)', r1);
+      await setS('legend_battle_on', true);
+      const b = (await W.rpc('legend_encounter', { p_dex: 789 })).data?.encounter;
+      ok(b?.id && b.id !== a?.id, '2nd 코스모그 encounter allowed', b);
+      const lb = (await W.rpc('legend_battle', { p_id: b?.id })).data;
+      ok(lb?.battle?.status === 'active' && lb.boss?.hp_mult === 1.5, '2nd encounter: legend pre-battle (0055) still runs, boss HP ×1.5', lb?.boss);
+      ok((await W.rpc('legend_result', { p_id: b?.id, p_caught: true })).error === 'NEED_BATTLE', 'no catch without winning that battle (NEED_BATTLE)');
+      await W.rpc('battle_forfeit', { p_id: lb?.battle?.id });
+      await W.rpc('legend_battle', { p_id: b?.id });
+      await setS('legend_battle_on', false);
+      const c = (await W.rpc('legend_encounter', { p_dex: 789 })).data?.encounter;
+      const cr = (await W.rpc('legend_result', { p_id: c?.id, p_caught: true, p_grade: 'nice' })).data;
+      const r2 = await row();
+      ok(cr?.caught === true && r2?.owned === 2 && r2.caught === true, '2nd 코스모그 caught → owned 2 = max → row caught', r2);
+      ok((await W.rpc('legend_encounter', { p_dex: 789 })).error === 'ALREADY_CAUGHT', '3rd 코스모그 → ALREADY_CAUGHT');
+    } finally {
+      await admin.rpc('admin_delete_students', { p_student_ids: [s7], p_confirm: '삭제' });
+    }
+  } finally {
+    for (const [f, t] of changed) await admin.rpc('admin_set_branch_weight', { p_from: f, p_to: t, p_weight: 1 });
+    for (const k of keys) if (k in old) await setS(k, old[k]);
     if (sid) await admin.rpc('admin_delete_students', { p_student_ids: [sid], p_confirm: '삭제' });
   }
 }

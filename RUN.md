@@ -10,7 +10,7 @@ web/                 ← 배포되는 정적 사이트 (빌드 없음)
   s/index.html       장소 QR 주소(/s#ID.TOKEN) → 앱으로 넘김
   js/  css/  vendor/  fonts/  sprites/atlas.png  img/  icons/  sw.js  manifest.webmanifest
 supabase/
-  migrations/0001~0047       DB 구조 + 보안 규칙 + 서버 함수 (번호 순서대로 실행)
+  migrations/0001~0058       DB 구조 + 보안 규칙 + 서버 함수 (번호 순서대로 실행)
   seed.sql                   데모 데이터 (임시 몬스터 34라인 + 전설·비밀·탐구 전설, QR)
   seed_battle.sql            배틀 데이터 (상성·기술·능력치·배틀 타입) — seed.sql 다음에 실행. 손으로 고치지 말고 `python tools/gen_battle_data.py` 로 다시 만들기
   (계열 목록 = tools/roster.py. 43~76 계열 SQL = `python tools/gen_roster_sql.py` → seed.sql 의 '명단에 맞춰 늘린 계열' 블록)
@@ -51,7 +51,7 @@ python tools/build_atlas.py                                                   # 
 그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → 데이터베이스 순서 (지금 파일 기준, README '실전 서버 만들기' 와 같음): `0001`→`0020` → 바로 `seed_battle.sql` → `0021`→`0039` → `seed_pokemon.sql` (0038 의 열 · 0039 의 특성 표를 쓰므로 0039 다음에만 됨) → `select count(*) from lines where ultra;` 가 0 이면 0038 의 울트라 · 전설 표시 update 두 줄을 다시 실행 → `0040`→`0054` → `seed_pokemon.sql` 한 번 더 (끝에서 `_forms_build()` 로 선생님 폼 · 일반 폼을 만듦, 여러 번 돌려도 안전) → `node tools/upload_pokemon_sprites.mjs` (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD, 103·106·1321·1324 포함) — 모두 사람이 없을 때. ⚠️ 이 순서는 파일 내용으로 맞춘 것이고 빈 데이터베이스에서 처음부터 돌려 본 적은 아직 없음 → 실전 전에 빈 프로젝트에서 한 번 돌려 볼 것. 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음).
+1. Supabase 새 프로젝트 (서울) → 데이터베이스 순서 (지금 파일 기준, README '실전 서버 만들기' 와 같음): `0001`→`0020` → 바로 `seed_battle.sql` → `0021`→`0039` → `seed_pokemon.sql` (0038 의 열 · 0039 의 특성 표를 쓰므로 0039 다음에만 됨) → `select count(*) from lines where ultra;` 가 0 이면 0038 의 울트라 · 전설 표시 update 두 줄을 다시 실행 → `0040`→`0058` → `seed_pokemon.sql` 한 번 더 (끝에서 `_forms_build()` 로 선생님 폼 · 일반 폼을 만듦, 여러 번 돌려도 안전) → `node tools/upload_pokemon_sprites.mjs` (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD, 103·106·1321·1324 포함) — 모두 사람이 없을 때. ⚠️ 이 순서는 파일 내용으로 맞춘 것이고 빈 데이터베이스에서 처음부터 돌려 본 적은 아직 없음 → 실전 전에 빈 프로젝트에서 한 번 돌려 볼 것. 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음).
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
@@ -130,6 +130,14 @@ python tools/build_atlas.py                                                   # 
 
 ## 0057 sync 가볍게
 - `0057_sync_light.sql`: 학생마다 전설 퀘스트가 보는 자료의 지문(`_quest_fp`)을 저장해, 바뀐 것이 없으면 퀘스트 47개 확인을 건너뛰고 sync 의 legends 목록도 저장해 둔 것을 씀 (sync 약 150~190ms → 27ms). raid_players(user_id) 인덱스.
+
+## 0058 갈래 진화 · 코스모그 두 번 · 전설 보스 체력 확인 (스테이징)
+- 순서: `0058_branch_evo.sql` 하나 (evolutions 에 weight 열 · 트리거 추가, 설정 legend_boss_hp_mult → 1.5, legend_quests 의 789 에 "max": 2 — 지우는 것 없음, 끝의 권한 블록 꼭 포함). MCP 로 넣을 때 한 번에 안 되면 나눠서 (스테이징은 5조각으로 넣음).
+- 규칙: 갈래가 여럿이면 가장 낮은 레벨 조건에서 돌 없이 (모두 돌 진화 = 냄새꼬는 진화의 돌), 그 전에는 진화의 돌로, 결과는 **모든 갈래** 중에서 무게대로. 전설 · 환상 갈래 (코스모움) 는 박스에 있는 모습을 뺌. 퀘스트 'max' (기본 1) 만큼 그 전설을 만날 수 있음.
+- 무게: 운영자 [성장 · 보상] → '진화 갈래' (rpc `admin_branch_tree()` · `admin_set_branch_weight(from 종, to 종, 0~100)`). 무게는 같은 진화 (전국도감 번호 쌍) 마다 하나 — 선생님 폼 · 일반 폼 복사본 줄을 한꺼번에 바꾸고, 새로 생기는 복사 줄은 트리거가 이어받음. ⚠️ `seed_pokemon.sql` 을 다시 돌리면 evolutions 를 모두 지우고 다시 넣으므로 무게가 모두 1 로 돌아감 → 운영자 화면에서 다시 넣기.
+- 갈래 목록 확인 (2026-11): PokeAPI `pokemon_species.evolves_from_species_id` (1~1025, 갈래 19가족) 와 비교 — 우리 DB 에 종이 있는 12가족 (냄새꼬 · 슈륙챙이 · 야돈 · 이브이 · 배루키 · 개무소 · 킬리아 · 토중몬 · 눈꼬마 · 진주몽 · 도롱충이 · 코스모움) 은 갈래가 모두 있음. 빠진 갈래 (863 · 900 · 980 · 903 · 867, 841/842/1011, 936/937) 는 그 종이 DB 에 없어서 더하지 않음. 지역 폼 갈래 (알로라 라이츄 등) · 폼만 다른 진화 (루가루암 · 우라오스) 는 우리 DB 에 폼 종이 없음. 전설 · 환상 갈래 가족은 코스모움 하나.
+- 서버: `node tests/rpc_test.mjs` → [65] (이브이 Lv.25 80번 = 8갈래 모두 · 진화의 돌 64번 = 8갈래 모두 · 무게 0 = 안 나옴 / 9 = 60% · 복사 줄도 같이 · 선생님 폼 슈륙챙이 Lv.40 = 두 갈래, 같은 폼 안 · 냄새꼬 NO_TICKET · 솔가레오를 가지면 루나아라 · 코스모그 두 번 (두 번째도 전설 배틀, 체력 ×1.5) · 세 번째 ALREADY_CAUGHT · 학생은 운영자 rpc 못 부름). [44] 2) · [59] 도 새 규칙에 맞춤 ([59] 는 코스모그 max 1 로 '한 번' 을 봄).
+- 화면: 도감 → 포켓몬 → '진화' 는 갈래 단계를 화살표 뒤 한 칸에 위아래로 쌓음 (이브이 8갈래 = 그 칸 안 2열), 선생님 폼 이름은 띄어쓰기에서만 줄 바꿈. Playwright 로 320 · 375 · 412 (DPR 3) · 1280 에서 슈륙챙이 · 이브이 · 냄새꼬 · 코스모그 · 3단 계열 · 선생님 폼 갈래 + 운영자 카드 (넘침 0). 화면 시험 스크립트는 저장소 밖 (개발 PC) 에 있습니다.
 
 ## 0056 포켓몬 교환 확인 (스테이징)
 - 순서: `0056_trade.sql` 하나 (표 trades · trade_seen, collection 에 열 추가 — 지우는 것 없음, 끝의 권한 블록 꼭 포함).
