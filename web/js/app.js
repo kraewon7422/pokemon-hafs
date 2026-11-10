@@ -87,7 +87,8 @@ export async function boot() {
 
   [S.catalog, S.snap, S.outbox] = await Promise.all([kv.get('catalog'), kv.get('snap'), kv.get('outbox')]);
   S.snap ||= null;   // 이 기기에 저장된 기록이 없으면 undefined 로 옴 → 늘 null (= 아직 첫 동기화 전)
-  if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog))) S.catalog = null;   // 0032·0034·0037·0039 전 목록은 버리고 새로 받음
+  if (S.catalog && (!S.catalog.species?.some((x) => x.dex) || !('evo_item' in (S.catalog.species[0] || {})) || !('evolutions' in S.catalog) || !('abilities' in S.catalog)
+      || (S.catalog.evolutions?.length && !('weight' in S.catalog.evolutions[0])))) S.catalog = null;   // 0032·0034·0037·0039·0058 전 목록은 버리고 새로 받음
   if (S.catalog?.lines) { sortDex(S.catalog); applyFormNames(S.catalog); aliasSprites(S.catalog.species); }
   S.outbox ||= [];
   S.celebrated = new Set((await kv.get('celebrated')) || []);
@@ -181,7 +182,7 @@ export async function loadCatalog() {
     selectAll('species_moves', 'species_id,slot,move_id', (q) => q.order('species_id').order('slot')),
     sb.from('type_chart').select('atk,def,mult'),
     sb.from('items').select('key,name,pocket,description,effect,move_id,sort').order('sort'),
-    selectAll('evolutions', 'from_species,to_species,how,lv,sort', (q) => q.order('from_species').order('sort')),   // 0037 갈래 진화
+    selectAll('evolutions', 'from_species,to_species,how,lv,sort,weight', (q) => q.order('from_species').order('sort')),   // 0037 갈래 진화 · 0058 무게
     selectAll('abilities', 'key,name,description', (q) => q.order('key')),   // 0039 특성
   ]);
   if (lines.error || species.error || qrs.error) {
