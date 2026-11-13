@@ -1,7 +1,7 @@
 // 배틀 (0015·0016): 계산은 전부 서버. 폰은 고른 것만 보내고, 서버 기록(log)을 3세대 느낌으로 재생한다.
 import { rpc, errorText } from './sb.js';
 import { drawQR } from './qrfmt.js';
-import { spriteCanvas, paintNow } from './sprites.js';
+import { spriteCanvas, paintNow, monSprite } from './sprites.js';
 import { sfx, unlockAudio, bgmPush } from './sfx.js';
 import { h, $, josa, toast, typeText, sleep, reducedMotion, pix } from './ui.js';
 import { S, abilityOf, isWithdrawn, monById, mons, monSp, speciesOf, vibrate } from './state.js';
@@ -120,6 +120,10 @@ export async function pollInbox(force = false) {
 }
 setInterval(pollInbox, 15000);
 
+// 배틀 칸의 포켓몬이 반짝 색인가: 서버가 shiny 를 주면 그것, 아니면 내 박스의 그 한 마리 (mon = collection id) 의 shiny_on
+const btShiny = (m) => !!(m?.shiny ?? monById(m?.mon)?.shiny_on);
+const btPic = (m, sp, size) => spriteCanvas(sp, size, btShiny(m) ? 'shiny' : 'normal');
+
 export const livePvp = () => S.btInbox?.active?.mode === 'pvp' && S.btInbox.active.status === 'active' ? S.btInbox.active : null;
 
 // 배틀 팀 칸: 3칸 × 2줄, 모두 같은 크기. 칸마다 그림 상자 (아래 맞춤) · 이름 (한 줄, 길면 글자 작게 = --len) · Lv · 타입 한 줄 (app.css .bt-team)
@@ -130,7 +134,7 @@ export function teamStrip(team, size = 56, { slots = false, onAdd = null } = {})
     if (!sp) return null;
     const name = h('b.bt-name', sp.name);
     name.style.setProperty('--len', String([...sp.name].length));
-    return h('div.bt-mon', h('div.bt-tpic', { style: { height: `${size}px` } }, spriteCanvas(sp.id, size)), name, h('small.bt-mlv', `Lv.${m.level}`), h('span.types', typeChips(sp)));
+    return h('div.bt-mon', h('div.bt-tpic', { style: { height: `${size}px` } }, monSprite(sp.id, size, m)), name, h('small.bt-mlv', `Lv.${m.level}`), h('span.types', typeChips(sp)));
   }).filter(Boolean);
   if (!cells.length && !slots) return h('p', '아직 포켓몬이 없어요. QR을 찍어 포켓몬을 먼저 모아요!');
   if (slots) {
@@ -219,14 +223,14 @@ export function teamPicker() {
   const preview = teamStrip([], 40, { slots: true });
   const slots = [...preview.children];
   const pics = new Map();
-  const picOf = (sp) => { if (!pics.has(sp.id)) pics.set(sp.id, spriteCanvas(sp.id, 40)); return pics.get(sp.id); };
+  const picOf = (sp, m) => { const k = `${sp.id}:${m?.shiny_on ? 1 : 0}`; if (!pics.has(k)) pics.set(k, monSprite(sp.id, 40, m)); return pics.get(k); };
   const paintSlot = (cell, id) => {
     if (cell.__id === id) return;
     cell.__id = id;
     const m = id != null ? monById(id) : null; const sp = m ? monSp(m) : null;
     const [pic, name, lv, types] = cell.children;
     cell.classList.toggle('bt-empty', !sp);
-    const c = sp ? picOf(sp) : null;
+    const c = sp ? picOf(sp, m) : null;
     pic.replaceChildren(c || h('span.bt-plus', '+'));
     if (c && c.width <= 1) paintNow(c);
     name.textContent = sp ? sp.name : '빈 칸';
@@ -248,7 +252,7 @@ export function teamPicker() {
           sel = n >= 0 ? sel.filter((x) => x !== c.id) : [...sel, c.id];
           draw();
         },
-      }, num, spriteCanvas(sp.id, 48), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
+      }, num, monSprite(sp.id, 48, c), h('small', sp.name), h('small.bt-lv', `Lv.${c.level}`));
       opts.set(c.id, { btn, num });
       return btn;
     }));
@@ -466,14 +470,14 @@ export function openBattle(b0, opts = {}) {
     const spId = sp ?? m.sp ?? (s === me() && m.line ? curSpecies(m.line)?.id : null);
     const picId = sp != null ? sp : (m.tsp ?? spId);   // 0039 변신: 보이는 그림 = 변신한 상대 (이름은 그대로)
     x.spr.classList.remove('faint', 'hit', 'atk', 'gone');
-    setPic(u, picId);
+    setPic(u, picId, btShiny(m));
     x.name.textContent = spName(spId, name || m.name);
     x.lv.textContent = ` Lv${lv ?? m.lv ?? 50}`;
     setHp(u, hp ?? m.hp ?? 0, max ?? m.max);
   };
-  const setPic = (u, picId) => {
-    const x = SL[u];
-    if (picId && x.bob.dataset.sp !== String(picId)) { x.bob.dataset.sp = picId; x.bob.replaceChildren(spriteCanvas(picId, 128)); }
+  const setPic = (u, picId, shiny = false) => {
+    const x = SL[u]; const key = `${picId}${shiny ? 's' : ''}`;
+    if (picId && x.bob.dataset.sp !== key) { x.bob.dataset.sp = key; x.bob.replaceChildren(spriteCanvas(picId, 128, shiny ? 'shiny' : 'normal')); }
   };
   // ── 날씨 · 필드 (0039): 위쪽 띠 + 화면 효과 ──
   const env = { wx: b.wx ?? null, ter: b.ter ?? null };
@@ -831,7 +835,7 @@ export function openBattle(b0, opts = {}) {
       el.menu.replaceChildren(h('div.bt-moves', liveFoes().map((k) => {
         const m = monAt(fo(), side(fo()).act[k]);
         return h('button.bt-move.bt-target', { onclick: () => choose({ move: menu.move, target: k }) },
-          h('span.bt-tgt', spriteCanvas(m.sp, 32), h('b', m.name)), h('small', `상대 ${k === 0 ? '왼쪽' : '오른쪽'}`),
+          h('span.bt-tgt', btPic(m, m.sp, 32), h('b', m.name)), h('small', `상대 ${k === 0 ? '왼쪽' : '오른쪽'}`),
           mv.kind === 'attack' ? effTag(effOf(mv.type, m.type)) : null);
       })), h('button.btn.small', { onclick: back }, '◀ 뒤로'));
       el.text.textContent = `${mv.name || '기술'} — 누구에게 쓸까?`;
@@ -875,7 +879,7 @@ export function openBattle(b0, opts = {}) {
   };
   const partyList = (mine, ok, pick, fainted = false) => h('div.bt-party', mine.mons.map((x, i) => h('button.bt-pmon', {
     disabled: (x.hp <= 0 && !fainted) || !ok(i), onclick: () => pick(i),
-  }, spriteCanvas(x.sp, 40), h('span', h('b', x.name), h('div.hpbar.small', h('i', { style: { width: `${(x.hp / x.max) * 100}%` }, class: x.hp / x.max < 0.2 ? 'red' : x.hp / x.max < 0.5 ? 'yellow' : '' })),
+  }, btPic(x, x.sp, 40), h('span', h('b', x.name), h('div.hpbar.small', h('i', { style: { width: `${(x.hp / x.max) * 100}%` }, class: x.hp / x.max < 0.2 ? 'red' : x.hp / x.max < 0.5 ? 'yellow' : '' })),
     h('small', x.hp > 0 ? `Lv${x.lv ?? 50} · ${x.hp}/${x.max}${stText(x) ? ' · ' + stText(x) : ''}${mine.act.includes(i) ? ' · 싸우는 중' : ''}` : '기절')))));
 
   const apply = async (nb) => {
