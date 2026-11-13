@@ -1,6 +1,6 @@
 // 레이드: 큰 보스를 다 같이 탭해서 쓰러뜨리기 (0013).
 import { rpc, errorText } from './sb.js';
-import { spriteCanvas } from './sprites.js';
+import { spriteCanvas, monSprite } from './sprites.js';
 import { sfx, unlockAudio } from './sfx.js';
 import { h, $, josa, toast, typeText, pix } from './ui.js';
 import { S, dexOf, isWithdrawn, monById, mons, monSp, owned, speciesOf, vibrate } from './state.js';
@@ -148,8 +148,8 @@ export function openRaid(r0) {
     hpFill.className = ratio < 0.2 ? 'red' : ratio < 0.5 ? 'yellow' : '';
     hpText.textContent = `HP ${hp.toLocaleString()} / ${r.hp_max.toLocaleString()}`;
     info.replaceChildren(h('span', `참가 ${r.players}명`), h('span', `내 데미지 ${((r.me?.damage || 0) + pending * per()).toLocaleString()}`), h('span', `탭당 ${per()}`));
-    const sp = monSp(monById(mon));
-    pickBtn.replaceChildren(...(sp ? [spriteCanvas(sp.id, 28), ` ${sp.name} ▾`] : ['내 포켓몬 고르기 ▾']));
+    const pm = monById(mon); const sp = monSp(pm);
+    pickBtn.replaceChildren(...(sp ? [monSprite(sp.id, 28, pm), ` ${sp.name} ▾`] : ['내 포켓몬 고르기 ▾']));
   };
   const tick = () => {
     const ms = new Date(r.ends_at) - (Date.now() + skew);
@@ -223,7 +223,7 @@ HAFS 볼 ${enc.balls || 10}개를 던져서 잡아 봐요. 나중에 홈에서 �
     picker.replaceChildren(...(opts.length ? opts.map(([id, d]) => {
       const m = monById(id); const sp = monSp(m);
       return h(`button.raid-opt${id === mon ? '.on' : ''}`, { onclick: () => { mon = id; picker.hidden = true; draw(); sfx.select(); } },
-        spriteCanvas(sp.id, 40), h('small', `${sp.name} Lv.${m.level}`), h('b', `탭당 ${d}`));
+        monSprite(sp.id, 40, m), h('small', `${sp.name} Lv.${m.level}`), h('b', `탭당 ${d}`));
     }) : [h('small', '아직 포켓몬이 없어요. 포켓몬이 없어도 탭당 3씩 공격할 수 있어요!')]));
   };
   const ov = overlay(h('div.raid-stage',

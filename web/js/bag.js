@@ -232,7 +232,7 @@ function pocketPanel(cur, sel, redraw) {
             backToBag();
           } }, '가르치기'),
           h('button.btn', { onclick: backToBag }, '취소'))),
-      }, spriteCanvas(sp.id, 40), h('small', tag));
+      }, monSprite(sp.id, 40, mons().find((x) => x.id === m.id)), h('small', tag));
     }));
   }).catch(() => strip.replaceChildren(h('small', '인터넷이 필요해요.')));
   return [h('div.bag-pi', itemIcon(it.key, 48), h('div.tm-line',
