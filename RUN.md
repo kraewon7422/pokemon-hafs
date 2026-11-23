@@ -35,7 +35,7 @@ python -m http.server 8124
 #           http://localhost:8124/screen.html (TV)
 #           http://localhost:8124/admin.html (운영자)
 ```
-개발용 테스트 로그인 (테스트 서버 전용 — `CONFIG.DEV_LOGIN = true`일 때만): **운영자 · 부스 화면**의 로그인 칸 아래 "테스트용 로그인 (스테이징 전용)" 에 테스트 계정 이메일과 비밀번호(`tests/.env` 의 `TEST_PASSWORD`)를 넣는다. 계정: 부스 `booth1@staff.test`, 운영자 `admin@staff.test`.
+개발용 테스트 로그인 (테스트 서버 전용 — `CONFIG.DEV_LOGIN = true`일 때만): **운영자 화면(admin.html)**의 로그인 칸 아래 "테스트용 로그인 (스테이징 전용)" 에 테스트 계정 이메일과 비밀번호(`tests/.env` 의 `TEST_PASSWORD`)를 넣는다 (계정 `admin@staff.test`). 부스 화면에는 테스트 칸이 없고, 운영진 아이디 + 비밀번호 (운영자 페이지 → 운영진 탭에서 만듦) 또는 구글로 로그인한다.
 학생 앱은 진짜와 같게 **고유번호 + 비밀번호**로 로그인한다. 테스트 학생은 각 기수 900번대 (`022901@test.local` ~, 실제 학생 001~400 과 안 겹치게 — 서버 테스트가 만듦) 또는 임시 번호 020500~020999 (브라우저 확인용, 확인 뒤 지우기).
 
 ## 서버 테스트
