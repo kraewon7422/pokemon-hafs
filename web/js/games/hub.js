@@ -68,7 +68,6 @@ export async function refreshMgConfig(force = false) {
 }
 const isOff = (g) => (cfg?.off || []).includes(g.id);
 export const unlockAt = () => Number(cfg?.unlock ?? 10);
-export const isUnlocked = () => collection().length >= unlockAt();
 
 // 홈 버튼: 잠겨 있으면 자물쇠
 export function minigameButton() {

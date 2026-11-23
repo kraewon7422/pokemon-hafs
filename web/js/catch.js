@@ -20,7 +20,7 @@
 import { sfx, bgmPush, bgmBeat, bgmReady } from './sfx.js';
 import { josa, reducedMotion } from './ui.js';
 import { loadPhaser } from './games/common.js';
-import { atlasURL, monAnim } from './sprites.js';
+import { atlasURL } from './sprites.js';
 
 const W = 270, H = 480;                 // 논리 화면 (배경 그림과 같음)
 const SPOT_X = 135, FEET_Y = 356;       // 포켓몬이 서는 밝은 자리 (가운데 y=352, 발은 살짝 아래)
@@ -481,17 +481,6 @@ export async function catchScene({ dex, name, rarity = 'common', level = null, t
       const bsh = sc.add.graphics().setDepth(2.5);              // 나는 공의 그림자 (포켓몬 뒤로 가면 1.5)
       const mon = sc.add.image(SPOT_X, footY, 'mons', frame).setOrigin(0.5, 1).setScale(0).setDepth(3);
       const monW = sc.add.image(SPOT_X, footY, 'monW').setOrigin(0.5, 1).setScale(0).setDepth(4).setAlpha(0);
-      // 운영자가 올린 움직이는 그림(GIF, 0031)이면 프레임을 돌려 가며 보여 줌
-      const anim = monAnim(dex);
-      if (anim) {
-        anim.frames.forEach((f, i) => { if (!sc.textures.exists(`monA${i}`)) sc.textures.addCanvas(`monA${i}`, f); });
-        let shown = -1;
-        sc.time.addEvent({ delay: 30, loop: true, callback: () => {
-          let t = performance.now() % anim.total, i = 0;
-          for (; i < anim.delays.length - 1; i++) { t -= anim.delays[i]; if (t < 0) break; }
-          if (i !== shown && mon.active) { shown = i; mon.setTexture(`monA${i}`); }
-        } });
-      }
       const rings = sc.add.graphics().setDepth(5);
       const ball = sc.add.image(HOME.x, H + 30, 'ball', 0).setOrigin(0.5, BALL_ORIGIN_Y).setScale(2).setDepth(6);   // 포켓몬 뒤로 가면 2
       // 0055: ball 은 위치 · 크기 · 각도 · 열림만 기억 (그리지 않음). 화면에는 ballV = 그 크기 · 각도에 맞는 미리 그린 도트 그림을 정수 칸에

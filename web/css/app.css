@@ -210,10 +210,7 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .rank-sub { font-size: var(--fs-s); color: #4a5268; }
 
 /* evolve list */
-.evo-row { display: grid; grid-template-columns: auto auto auto 1fr; align-items: center; gap: 6px; }
-.evo-row .info { justify-self: end; text-align: right; display: grid; gap: 4px; justify-items: end; }
 .prob { font-size: var(--fs-s); }
-.ticket-big { display: flex; align-items: center; justify-content: space-between; font-size: var(--fs-l); }
 .ticket-icon { display: inline-block; width: 28px; height: 18px; background: var(--gold); border: 3px solid var(--ink); border-radius: 4px; position: relative; vertical-align: middle; }
 .ticket-icon::after { content: ''; position: absolute; left: 7px; top: 3px; width: 8px; height: 6px; border: 2px dashed var(--ink); border-width: 0 2px; }
 
@@ -247,8 +244,6 @@ nav.tabs .scan-tab:active .capsule { transform: translateY(3px); box-shadow: 0 1
 .login-note { width: min(100%, 360px); text-align: left; font-size: var(--fs-s); }
 .gbox { min-height: 44px; display: grid; place-items: center; }
 .stack { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; text-align: left; }   /* 칸 = 상자 너비 (내용 때문에 늘어나지 않게) */
-.code-once { text-align: center; display: grid; gap: 6px; background: #fff8d8; }
-.code-big { font-size: var(--fs-xl); font-weight: bold; letter-spacing: 3px; color: var(--ink); user-select: all; }
 .install-btn { width: min(100%, 340px); }
 .install-btn[hidden] { display: none; }
 .install-box { width: auto; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; background: #e8f4ff; }
@@ -365,8 +360,6 @@ input[type='checkbox'] { width: 24px; height: 24px; flex: none; accent-color: va
 
 /* raid / battle tabs */
 .raid-preview > div { display: grid; justify-items: center; gap: 2px; }
-.type-cycle { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
-.type-cycle .arrow { font-weight: bold; color: #586890; }
 
 /* special tickets (레이드·도감 보상): gold shimmer, not counted in the bag */
 .chip.special { background: linear-gradient(110deg, #f8d040, #fff4b0 40%, #f0b820 60%, #ffe680); background-size: 250% 100%; animation: shimmer 2.4s linear infinite;
@@ -997,9 +990,6 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 /* 반 고르기 · 설정 */
 .seg.class-grade { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .seg.class-grade button + button { border-left: 3px solid var(--ink); }
-.class-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
-.class-grid button { min-height: 44px; font: inherit; font-weight: bold; background: #fff; border: 3px solid var(--ink); border-radius: 8px; cursor: pointer; }
-.class-grid button[aria-pressed="true"] { background: var(--ink); color: #fff; }
 .class-row { display: flex; align-items: center; gap: 8px; }
 .class-row > span { flex: 1; min-width: 0; }
 /* 가방 탭 6개 (알 추가): 글자 길이만큼 넓이, 320px 폰에서도 잘리지 않게 (그래도 모자라면 옆으로 밀림) */
@@ -1199,7 +1189,6 @@ canvas.sprite.shiny { filter: drop-shadow(0 0 4px rgba(255, 240, 140, .9)); }
 .dex-pager .btn.small { min-width: 48px; min-height: 44px; }
 .dex-pager .dp-mid { display: grid; justify-items: center; text-align: center; line-height: 1.2; }
 .dex-pager .dp-mid small { font-size: var(--fs-s); color: #4a5268; white-space: nowrap; }
-.dex-event-note { margin: 0; font-size: var(--fs-s); text-align: center; color: #4a5268; word-break: keep-all; }   /* 0044 이벤트 포켓몬 (소포로만) */
 /* 0052 폼 바꾸기 (도감 자세히): 일반 · 선생님 · 이벤트 모습 */
 .form-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
 .form-tab { flex: 1 1 96px; min-width: 0; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 4px 8px;

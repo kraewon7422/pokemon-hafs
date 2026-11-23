@@ -219,7 +219,6 @@ export const evoOpts = (c) => {
   const line = c.line_id ?? c.line;
   return c.stage < maxStage(line) && !isWithdrawn(line) ? evosFrom(spIdOf({ ...c, line_id: line })) : [];
 };
-export const evoLevel = (c) => { const lv = evoOpts(c).filter((e) => e.how === 'level' && e.lv).map((e) => e.lv); return lv.length ? Math.min(...lv) : null; };
 export const canLevelEvolve = (c) => evoOpts(c).some((e) => e.how === 'level' && e.lv && (c.level || 0) >= e.lv);
 
 export function evoChance(c) {

@@ -3,7 +3,7 @@
 // Reads/writes catalog tables directly (RLS admin policies) and calls admin_* RPCs (supabase/migrations/0001_init.sql, 0003_review_fixes.sql).
 import { CONFIG } from './config.js';
 import { sb, rpc, errorText, selectAll } from './sb.js';
-import { h, $, toast, timeAgo, josa } from './ui.js';
+import { h, $, toast, timeAgo } from './ui.js';
 import { devLogin, idLogin, renderGoogleButton, signOut } from './auth.js';
 import { drawQR, placeUrl } from './qrfmt.js';
 import { spriteCanvas, previewCanvas, decodeSprite, fitCell, normRec, refreshSprites, spritesReady, aliasSprites, spriteBlob, hasArt } from './sprites.js';

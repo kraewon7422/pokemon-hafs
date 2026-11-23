@@ -29,7 +29,6 @@ export function drawMon(g, dex, x, y, size = 32, flip = false) {
   else g.drawImage(cell, 0, 0, 64, 64, x, y, size, size);
   g.restore();
 }
-export const spritesLoaded = spritesReady;
 
 // 게임 루프: step(dt 초, t 초) 를 매 프레임. 탭이 숨겨지면 멈춤. 돌려주는 함수로 끔
 export function loop(step) {

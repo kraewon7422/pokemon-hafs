@@ -63,7 +63,6 @@ export const collection = () => S.snap?.collection || [];
 // 박스의 포켓몬 한 마리씩 (0036): { id, line_id, stage, level, pos, held, shiny, shiny_on, from_egg, evo_fails, caught_at }
 export const mons = () => S.snap?.mons || [];
 export const monById = (id) => (id == null ? null : mons().find((m) => m.id === id) || null);
-export const monsOf = (line) => mons().filter((m) => m.line_id === line);
 export const spIdOf = (m) => (m ? m.species_id || dexOf(m.line_id ?? m.line, m.stage) : null);
 export const monSp = (m) => (m ? speciesOf(spIdOf(m)) : null);
 export const boxMax = () => Number(S.snap?.rules?.box_max) || 900;

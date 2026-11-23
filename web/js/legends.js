@@ -8,7 +8,7 @@
 import { rpc, errorText } from './sb.js';
 import { kv } from './db.js';
 import { sfx, bgmPush } from './sfx.js';
-import { h, josa, toast, sleep, reducedMotion } from './ui.js';
+import { h, josa, sleep, reducedMotion } from './ui.js';
 import { S, speciesOf } from './state.js';
 import { spriteCanvas, ensureSprites, monCell } from './sprites.js';
 import { overlay, closeOverlay, sheet, sync, renderStatus, isBusy } from './app.js';
