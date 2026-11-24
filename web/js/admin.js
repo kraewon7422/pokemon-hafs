@@ -78,7 +78,7 @@ const SETTING_HELP = {
   raid_catch_balls: '레이드 앱에서 잡기: 받는 HAFS 볼 개수 (기본 10, raid_reward_mode "catch" 일 때만)',
   raid_catch_flee: '레이드 앱에서 잡기: 볼을 다 빗나가면 보스가 도망 ON/OFF (true/false, 기본 true)',
   catch_exp: '잡기 장면 던지기 등급별 경험치 {none, nice, great, excellent, curve} (curve = 커브볼 더하기)',
-  catch_flee: '부스 몬스터 잡기: 볼 3개가 다 빗나가면 도망칠 확률 (0~1, 기본 0.05 = 5%)',
+  catch_flee: '부스 포켓몬 잡기: 볼 3개가 다 빗나가면 도망칠 확률 (0~1, 기본 0.05 = 5%)',
   wild_chance: 'QR을 찍으면 선생님 포켓몬 대신 야생 포켓몬이 나올 확률 (0~1, 기본 0.4 = 40%)',
   wild_weights: '야생 포켓몬 희귀도 가중치 {common 흔함, rare 희귀, legendary 전설} (기본 100 · 10 · 1)',
   wild_steps: '이만큼 걸을 때마다 야생 포켓몬 1마리 (걸음, 기본 1500, 0 = 걸어서 만나기 끔)',
