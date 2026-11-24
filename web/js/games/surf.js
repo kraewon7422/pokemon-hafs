@@ -530,7 +530,6 @@ function coinFrames() {
     return g;
   });
 }
-const shine = (g, pts) => pts.forEach(([x, y]) => g.set(x, y, C.white));
 
 // ═══════════════════════════ 게임 ═══════════════════════════
 export default {

@@ -44,10 +44,8 @@ body {
 }
 button, input, select, textarea { font: inherit; color: inherit; }
 img, canvas.sprite { image-rendering: pixelated; image-rendering: crisp-edges; -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
-.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 /* GBA text shadow */
-.gba-text { text-shadow: 1px 1px 0 var(--ink-shadow); }
 
 /* Emerald textbox: rounded double frame */
 .box {

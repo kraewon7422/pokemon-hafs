@@ -350,16 +350,6 @@ export async function spriteBlob(dex, shiny = false) {
   return new Promise((r) => c.toBlob(r, 'image/png'));
 }
 
-// 움직이는 그림은 더 쓰지 않음 (잡기 장면도 멈춘 그림)
-export const monAnim = () => null;
-
-// 예전 이름 (남겨 둠): 한 변 base 를 기기 픽셀 정수 배로
-export function spriteBox(base, cssSize, dpr = window.devicePixelRatio || 1) {
-  const target = cssSize * dpr;
-  if (base <= target * 1.25) { const s = Math.max(1, Math.round(target / base)); return { px: base * s, s }; }
-  const px = Math.max(16, Math.round(target)); return { px, s: px / base };
-}
-
 // ── 96칸 그림을 px×px 캔버스에 그리기 ──
 // 배율 k = px/96 (모든 포켓몬 같음). 정수면 그대로, 1 보다 크면 정수 배로 키운 뒤 한 번 부드럽게 맞춤 (도트 크기가 고름),
 // 1 보다 작으면 도트답게 줄인 그림 (만들어 둠)
@@ -459,7 +449,3 @@ export const monSprite = (dex, cssSize, col) => {
   if (col?.shiny_on) c.classList.add('shiny');
   return c;
 };
-
-// 예전 이름 (미니게임 공용 도구가 씀)
-export const atlasImage = atlas;
-export const atlasOk = () => !!atlas.naturalWidth;

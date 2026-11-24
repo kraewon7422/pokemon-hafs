@@ -88,7 +88,6 @@ class G {
   }
   ell(cx, cy, rx, ry, fn) { for (let y = Math.floor(cy - ry); y <= Math.ceil(cy + ry); y++) for (let x = Math.floor(cx - rx); x <= Math.ceil(cx + rx); x++) { const dx = (x - cx) / rx, dy = (y - cy) / ry; if (dx * dx + dy * dy <= 1.02) { const c = typeof fn === 'function' ? fn(x, y, dx, dy) : fn; if (c) this.set(x, y, c); } } return this; }
 }
-function pmap(rows, pal) { const g = new G(rows[0].length, rows.length); rows.forEach((r, y) => [...r].forEach((ch, x) => { if (pal[ch]) g.set(x, y, pal[ch]); })); return g; }
 
 // 여러 격자를 가로로 이어 붙여 Phaser 텍스처(프레임 0..n-1)로 등록
 function addSheet(scene, key, frames) {

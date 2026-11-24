@@ -2,7 +2,7 @@
 // 포켓몬 주머니 = 3세대(에메랄드) PC 박스 (0036): ◀ BOX n ▶ · 6열 × 5줄 = 30칸 · 30박스 (같은 포켓몬도 여러 마리).
 // 포켓몬을 누르면 요약: 상태(레벨·경험치·지닌 물건) / 능력치 / 기술(잊고 배우기) / 도감 + 카드 · 진화 · 옮기기 · 놓아주기.
 import { rpc, errorText, selectAll } from './sb.js';
-import { spriteCanvas, monSprite } from './sprites.js';
+import { monSprite } from './sprites.js';
 import { sfx } from './sfx.js';
 import { h, josa, toast, pix } from './ui.js';
 import { S, mons, speciesOf, dexOf } from './state.js';

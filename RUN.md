@@ -4,19 +4,23 @@
 ```
 web/                 ← 배포되는 정적 사이트 (빌드 없음)
   index.html         학생 앱 (홈·지도·[QR 찍기]·도감·랭킹, ⚙ 설정)
-  booth.html         메인 부스 (가방 QR → 몬스터 지급)
+  booth.html         메인 부스 (가방 QR → 포켓몬 지급)
   screen.html        대형 TV (TOP 10 · 획득 피드 · 전설 QR)
-  admin.html         운영자 (현황판 · QR 관리/인쇄 · 몬스터/퀴즈 · 학생 · 로그인 코드 · 설정)
+  admin.html         운영자 (현황판 · QR 관리/인쇄 · 포켓몬/퀴즈 · 학생 · 로그인 코드 · 설정)
   s/index.html       장소 QR 주소(/s#ID.TOKEN) → 앱으로 넘김
-  js/  css/  vendor/  fonts/  sprites/atlas.png  img/  icons/  sw.js  manifest.webmanifest
+  js/  css/  vendor/  fonts/  sprites/ (pk-*.webp 포켓몬 그림판 + pk-index.js, atlas.png)  img/  icons/  sw.js  manifest.webmanifest
 supabase/
-  migrations/0001~0058       DB 구조 + 보안 규칙 + 서버 함수 (번호 순서대로 실행)
-  seed.sql                   데모 데이터 (임시 몬스터 34라인 + 전설·비밀·탐구 전설, QR)
-  seed_battle.sql            배틀 데이터 (상성·기술·능력치·배틀 타입) — seed.sql 다음에 실행. 손으로 고치지 말고 `python tools/gen_battle_data.py` 로 다시 만들기
+  migrations/0001~0059       DB 구조 + 보안 규칙 + 서버 함수 (번호 순서대로 실행)
+  seed_pokemon.sql           진짜 포켓몬 자료 (종 · 기술 · 특성 · 도구) — `python tools/gen_pokemon.py` 로 만듦. 순서는 아래 체크리스트
+  seed.sql                   예전 데모 데이터 (임시 몬스터 시절, QR) — 실전에는 쓰지 않음
+  seed_battle.sql            배틀 데이터 (상성·기술·능력치·배틀 타입) — 0020 바로 다음에 실행. 손으로 고치지 말고 `python tools/gen_battle_data.py` 로 다시 만들기
   (계열 목록 = tools/roster.py. 43~76 계열 SQL = `python tools/gen_roster_sql.py` → seed.sql 의 '명단에 맞춰 늘린 계열' 블록)
-tests/rpc_test.mjs           서버 규칙 자동 테스트 (2026-11 마지막 전체 실행 1002개)
-tools/pixelize.py            AI 그림 → 64x64 도트
-tools/build_atlas.py         art/sprites/*.png → web/sprites/atlas.png (그림 없는 칸은 코드로 그림, 77~82 야자 전설·환상 포함, --count 244). 축제 중 그림 교체는 운영자 페이지 '그림 올리기' (0031) 로 — 아틀라스를 다시 만들 필요 없음
+tests/rpc_test.mjs           서버 규칙 자동 테스트 (2026-11-10 마지막 전체 실행 1287개)
+tools/build_pokemon_sheets.py  포켓몬 그림 → web/sprites/pk-*.webp 그림판 + pk-index.js
+tools/pixelize.py            그림 → 64x64 도트 (운영자 '그림 올리기' 전에 쓸 때)
+tools/make_app_icon.py       원본 그림 → 앱 아이콘 web/icons/hafs-flame2-* (python tools/make_app_icon.py 원본.png)
+tools/ko_rename.py           글의 '몬스터' → '포켓몬' (조사까지, '몬스터볼'·'HAFS 몬스터'는 그대로). python tools/ko_rename.py 파일…
+tools/build_atlas.py         옛 임시 몬스터 도트 → web/sprites/atlas.png (그림판에 없는 번호일 때만 쓰임, --count 244). 축제 중 그림 교체는 운영자 페이지 '그림 올리기' (0031)
 web/img/map.webp             학교 지도 (숲속 캠퍼스 항공 지도 그림, 90° 회전). 건물 이름표는 dex.js MAP_LABELS, 핀은 운영자 페이지 QR 관리
 tools/draw_map.py            예전 도트 지도(v1) → tools/map_v1.png
 docs/DESIGN.md               설계 (먼저 읽기)
@@ -31,27 +35,23 @@ python -m http.server 8124
 #           http://localhost:8124/screen.html (TV)
 #           http://localhost:8124/admin.html (운영자)
 ```
-개발용 테스트 로그인 (테스트 서버 전용 — `CONFIG.DEV_LOGIN = true`이고 서버 설정 `dev_login = true`일 때만):
-로그인 화면 맨 아래 "▸ 개발용 테스트 로그인"을 펼치고 **아무 이메일**(예: `test1`)을 넣으면 계정이 만들어진다. 비밀번호는 **`1234abcd!` 고정**.
-미리 있는 계정: 학생 `022901@test.local` ~ (테스트 학생은 각 기수 900번대 — 실제 학생 001~400 과 안 겹치게, 테스트가 없으면 만듦), 부스 `booth1@staff.test`, 운영자 `admin@staff.test` (비밀번호 같음). 서버 테스트는 `tests/.env`의 `TEST_PASSWORD=1234abcd!`.
+개발용 테스트 로그인 (테스트 서버 전용 — `CONFIG.DEV_LOGIN = true`일 때만): **운영자 화면(admin.html)**의 로그인 칸 아래 "테스트용 로그인 (스테이징 전용)" 에 테스트 계정 이메일과 비밀번호(`tests/.env` 의 `TEST_PASSWORD`)를 넣는다 (계정 `admin@staff.test`). 부스 화면에는 테스트 칸이 없고, 운영진 아이디 + 비밀번호 (운영자 페이지 → 운영진 탭에서 만듦) 또는 구글로 로그인한다.
+학생 앱은 진짜와 같게 **고유번호 + 비밀번호**로 로그인한다. 테스트 학생은 각 기수 900번대 (`022901@test.local` ~, 실제 학생 001~400 과 안 겹치게 — 서버 테스트가 만듦) 또는 임시 번호 020500~020999 (브라우저 확인용, 확인 뒤 지우기).
 
 ## 서버 테스트
 ```bash
-node tests/rpc_test.mjs        # → "… passed, 0 failed" (failed 0 이어야 함, 2026-11 기준 1002 passed) (tests/.env 필요: PROGRESS.md §4)
+node tests/rpc_test.mjs        # → "… passed, 0 failed" (failed 0 이어야 함, 2026-11-10 기준 1287 passed) (tests/.env 필요: PROGRESS.md §4)
 ```
 테스트용 학생 4명(022901~022903, 021904)의 기록을 지우고 다시 만든다. 실전 프로젝트에 절대 돌리지 말 것.
 
-## 몬스터 그림 넣기
-```bash
-python tools/pixelize.py 원본.png art/sprites/12-1.png --stage 1 --preview   # 파일 이름 = 라인번호-단계
-# Piskel(https://www.piskelapp.com)에서 얼굴만 다듬기
-python tools/build_atlas.py                                                   # web/sprites/atlas.png 갱신
-```
-**그림 파일 이름 = `라인번호-단계.png`** (예: 12번 쌤 1단계 = `12-1.png`, 교장 전설(학사쟈) = `36-1.png`, 교감 전설(금관오스) = `35-1.png`, 비밀 몬스터(숨바꼬치) = `37-1.png`). 운영자 페이지 → 몬스터·퀴즈의 각 카드에 '그림 파일' 이름이 적혀 있어요. 앱에 보이는 도감 번호(No.001~)와는 다르니 그 번호로 저장하지 마세요. 선생님 원본 사진은 `art-src/`에 (git 제외).
-그림을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
+## 포켓몬 그림 바꾸기
+- 포켓몬 그림은 `web/sprites/pk-*.webp` 그림판 (보통 색 · 반짝 색) 에 들어 있음. 다시 만들 때: `python tools/build_pokemon_sheets.py` (위치표 `pk-index.js` 도 같이).
+- 축제 중에 한 마리 그림만 바꿀 때 (예: 선생님 얼굴): 운영자 페이지 → 포켓몬 → '그림 올리기' (0031, Storage `sprites`). 그림판을 다시 만들 필요 없음. 원본이 크면 먼저 `python tools/pixelize.py 원본.png 결과.png --preview` 로 도트로.
+- `web/sprites/atlas.png` (`tools/build_atlas.py`) 는 옛 임시 몬스터 그림 — 그림판에 없는 번호일 때만 쓰임.
+- 그림 파일을 바꾸면 `web/sw.js`의 `VERSION`을 올려야 학생 폰에 반영된다.
 
 ## 실전(축제) 프로젝트 만들 때 체크리스트
-1. Supabase 새 프로젝트 (서울) → 데이터베이스 순서 (지금 파일 기준, README '실전 서버 만들기' 와 같음): `0001`→`0020` → 바로 `seed_battle.sql` → `0021`→`0039` → `seed_pokemon.sql` (0038 의 열 · 0039 의 특성 표를 쓰므로 0039 다음에만 됨) → `select count(*) from lines where ultra;` 가 0 이면 0038 의 울트라 · 전설 표시 update 두 줄을 다시 실행 → `0040`→`0058` → `seed_pokemon.sql` 한 번 더 (끝에서 `_forms_build()` 로 선생님 폼 · 일반 폼을 만듦, 여러 번 돌려도 안전) → `node tools/upload_pokemon_sprites.mjs` (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD, 103·106·1321·1324 포함) — 모두 사람이 없을 때. ⚠️ 이 순서는 파일 내용으로 맞춘 것이고 빈 데이터베이스에서 처음부터 돌려 본 적은 아직 없음 → 실전 전에 빈 프로젝트에서 한 번 돌려 볼 것. 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음).
+1. Supabase 새 프로젝트 (서울) → 데이터베이스 순서 (지금 파일 기준, README '실전 서버 만들기' 와 같음): `0001`→`0020` → 바로 `seed_battle.sql` → `0021`→`0039` → `seed_pokemon.sql` (0038 의 열 · 0039 의 특성 표를 쓰므로 0039 다음에만 됨) → `select count(*) from lines where ultra;` 가 0 이면 0038 의 울트라 · 전설 표시 update 두 줄을 다시 실행 → `0040`→`0059` → `seed_pokemon.sql` 한 번 더 (끝에서 `_forms_build()` 로 선생님 폼 · 일반 폼을 만듦, 여러 번 돌려도 안전) → `node tools/upload_pokemon_sprites.mjs` (실제 서버는 SUPA_URL · SUPA_KEY · ADMIN_EMAIL · ADMIN_PASSWORD, 103·106·1321·1324 포함) — 모두 사람이 없을 때. ⚠️ 이 순서는 파일 내용으로 맞춘 것이고 빈 데이터베이스에서 처음부터 돌려 본 적은 아직 없음 → 실전 전에 빈 프로젝트에서 한 번 돌려 볼 것. 실제 몬스터/퀴즈/QR은 운영자 페이지에서 입력 (seed.sql은 쓰지 않음).
 2. **첫 운영자 아이디 만들기** (0018): Supabase → SQL Editor 에서 `select public.bootstrap_staff('admin1', 'admin');` → 나온 `password` 로 운영자 페이지의 "아이디로 로그인". 나머지 운영진·부스 아이디는 운영자 페이지 → 운영진 탭에서 만들기 (비밀번호는 한 번만 보임). 이 함수는 앱·웹에서는 실행할 수 없음
    - 구글 계정이 있는 운영진은 `settings`의 `admin_emails`, `booth_emails` 에 이메일을 넣어도 됨. **`dev_login`은 false 그대로** (0008 기본값)
 3. Authentication → Providers → Google 켜기 (Google Cloud OAuth 클라이언트 ID/Secret), Site URL/Redirect URL에 배포 주소
@@ -138,6 +138,10 @@ python tools/build_atlas.py                                                   # 
 - 갈래 목록 확인 (2026-11): PokeAPI `pokemon_species.evolves_from_species_id` (1~1025, 갈래 19가족) 와 비교 — 우리 DB 에 종이 있는 12가족 (냄새꼬 · 슈륙챙이 · 야돈 · 이브이 · 배루키 · 개무소 · 킬리아 · 토중몬 · 눈꼬마 · 진주몽 · 도롱충이 · 코스모움) 은 갈래가 모두 있음. 빠진 갈래 (863 · 900 · 980 · 903 · 867, 841/842/1011, 936/937) 는 그 종이 DB 에 없어서 더하지 않음. 지역 폼 갈래 (알로라 라이츄 등) · 폼만 다른 진화 (루가루암 · 우라오스) 는 우리 DB 에 폼 종이 없음. 전설 · 환상 갈래 가족은 코스모움 하나.
 - 서버: `node tests/rpc_test.mjs` → [65] (이브이 Lv.25 80번 = 8갈래 모두 · 진화의 돌 64번 = 8갈래 모두 · 무게 0 = 안 나옴 / 9 = 60% · 복사 줄도 같이 · 선생님 폼 슈륙챙이 Lv.40 = 두 갈래, 같은 폼 안 · 냄새꼬 NO_TICKET · 솔가레오를 가지면 루나아라 · 코스모그 두 번 (두 번째도 전설 배틀, 체력 ×1.5) · 세 번째 ALREADY_CAUGHT · 학생은 운영자 rpc 못 부름). [44] 2) · [59] 도 새 규칙에 맞춤 ([59] 는 코스모그 max 1 로 '한 번' 을 봄).
 - 화면: 도감 → 포켓몬 → '진화' 는 갈래 단계를 화살표 뒤 한 칸에 위아래로 쌓음 (이브이 8갈래 = 그 칸 안 2열), 선생님 폼 이름은 띄어쓰기에서만 줄 바꿈. Playwright 로 320 · 375 · 412 (DPR 3) · 1280 에서 슈륙챙이 · 이브이 · 냄새꼬 · 코스모그 · 3단 계열 · 선생님 폼 갈래 + 운영자 카드 (넘침 0). 화면 시험 스크립트는 저장소 밖 (개발 PC) 에 있습니다.
+
+## 0059 정리 (스테이징 · 실전)
+- 순서: `0059_tidy.sql` 하나. QR A07 힌트의 옛 문구 '희귀 몬스터' → '희귀 포켓몬' (운영자가 이미 바꿨으면 그대로) + 꺼져 있던 임시 함수 `_tmp_seed_exec` 가 남아 있으면 지움. 함수를 만들지 않으므로 권한 블록 없음.
+- 확인: `select hint from qr_points where id = 'A07';` 가 '…희귀 포켓몬?'
 
 ## 0056 포켓몬 교환 확인 (스테이징)
 - 순서: `0056_trade.sql` 하나 (표 trades · trade_seen, collection 에 열 추가 — 지우는 것 없음, 끝의 권한 블록 꼭 포함).

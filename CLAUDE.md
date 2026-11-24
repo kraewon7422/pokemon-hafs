@@ -6,10 +6,10 @@
 
 ## 폴더 구조
 - `web/` 배포되는 정적 사이트 (빌드 없음, vanilla JS 모듈): `index.html` 학생 · `booth.html` 부스 · `screen.html` TV · `admin.html` 운영자 · `js/` `css/` `vendor/` `fonts/` `sprites/` `img/` `sw.js`
-- `supabase/migrations/` DB 변경 (번호순, 이미 적용된 파일은 고치지 말고 새 번호로 추가) · `supabase/seed.sql` 데모 데이터
+- `supabase/migrations/` DB 변경 (번호순, 이미 적용된 파일은 고치지 말고 새 번호로 추가) · `supabase/seed_pokemon.sql` 포켓몬 자료 (`tools/gen_pokemon.py` 가 만듦) · `supabase/seed.sql` 예전 데모 데이터
 - `tests/rpc_test.mjs` 서버 규칙 테스트 — **DB를 바꾸면 반드시 실행해서 전부 통과**시킬 것
-- `tools/` 그림 도구 (`pixelize.py` 그림→도트, `build_atlas.py` 몬스터 아틀라스, `draw_map.py` 옛 도트 지도 v1) · `docs/DESIGN.md` 설계
-- `art/sprites/` 완성된 몬스터 도트 (`<선생님번호>-<단계>.png`, 없으면 코드가 그린 임시 그림 사용)
+- `tools/` 자료·그림 도구 (`gen_pokemon.py` 포켓몬 자료 → seed_pokemon.sql, `build_pokemon_sheets.py` 포켓몬 그림판 → `web/sprites/pk-*.webp`, `pixelize.py` 그림→도트, `draw_*.py` 배경·효과 그림) · `docs/DESIGN.md` 설계
+- 한 마리 그림만 바꿀 때 (선생님 얼굴 등): 운영자 페이지 → 포켓몬 → '그림 올리기' (Storage `sprites`, 0031)
 - `PROGRESS.md` 진행 상황·남은 일 — **작업 끝나면 같이 고친다**
 
 ## 작업 방식 (가장 중요)
@@ -30,10 +30,10 @@
 | 영역 | 담당 |
 |---|---|
 | 학생 앱 (탭: 홈·지도·도감·랭킹·진화, QR 스캔, 오프라인) | |
-| 운영자 페이지 (현황판, QR 발급·배포, 몬스터 관리) | |
+| 운영자 페이지 (현황판, QR 발급·배포, 포켓몬 관리) | |
 | Supabase (DB 구조, 보안 규칙, 서버 함수) | |
-| 교실 뽑기 (코드 입력 → 몬스터 지급) | |
-| 픽셀아트 / 몬스터·퀴즈 데이터 | |
+| 부스 (가방 QR → 포켓몬 지급) | |
+| 픽셀아트 / 포켓몬·퀴즈 데이터 | |
 
 ## 절대 규칙
 - **비밀값 커밋 금지**: Supabase `service_role` 키, 비밀번호, `.env`. (공개용 `anon` 키는 앱에 들어가도 됨 — 보안은 DB 규칙(RLS)으로 지킨다.)
@@ -43,13 +43,13 @@
 - **게임 판정(퀴즈 정답, 진화 확률, 코드 사용)은 서버 함수에서.** 앱(클라이언트) 코드에 정답·확률을 넣지 않는다 — 학생이 조작할 수 있다.
 - 오프라인에서 깨지는 기능을 만들지 않는다. 인터넷이 꼭 필요한 기능(로그인 최초 1회, 진화, 코드 사용)은 화면에 그렇게 표시한다.
 - 외부 라이브러리 추가는 팀과 먼저 상의. 추가할 땐 CDN이 아니라 파일로 저장(오프라인 때문).
-- 학생 앱 코드: `web/js/app.js` (시작·동기화·홈·스캔·가방·창), `state.js` (공용 상태), `dex.js` (지도·도감·진화), `raid.js`, `battle.js`, `login.js` (로그인·가입·처음 안내), `bag.js` (가방·몬스터 박스·기술 배우기·알 탭), `eggs.js` (걸음 세기·알·부화·도전과제), `catch.js` (부스에서 받은 몬스터 몬스터볼로 잡기 장면, app.js celebrate() 가 부름), `games/` (미니게임: `hub.js` 목록·랭킹·점수, `common.js` 공용 캔버스·`loadPhaser()`, `surf.js` `dodge.js` `maze.js` `land.js` `cross.js` = 게임 하나씩 (surf·land·cross 는 Phaser 3 = `web/vendor/phaser.min.js`, 처음 열 때만 불러옴). 새 게임 = `export default { id, title, start(stage, api) → 끝낼 함수 }` 파일 하나 + hub.js GAMES 한 줄 + admin.js MG 한 줄 + 새 migration 으로 게임 이름 목록·점수 확인 추가 (0026 처럼)). 미니게임 하나만 로그인 없이 시험: `web/.dev-mg.html?g=yacht` (gitignore). 새 js 파일을 만들면 `web/sw.js`의 목록에도 넣고 버전을 올린다 (안 넣으면 오프라인에서 깨짐).
+- 학생 앱 코드: `web/js/app.js` (시작·동기화·홈·스캔·가방·창), `state.js` (공용 상태), `dex.js` (지도·도감·진화), `raid.js`, `battle.js`, `login.js` (로그인·가입·처음 안내), `bag.js` (가방·포켓몬 박스·기술 배우기·알 탭), `eggs.js` (걸음 세기·알·부화·도전과제), `catch.js` (몬스터볼 잡기 장면 — QR · 야생 · 사파리 · 레이드 · 전설, app.js 가 부름), `safari.js` `safari-maps.js` `safari-caves.js` `safari-sync.js` (사파리존 지도·동굴·만남 결과 보내기), `legends.js` (전설 알림 · 이상한 소포), `trade.js` (교환), `share.js` (트레이너 카드 · 사진), `sprites.js` (포켓몬 그림 그리기, 반짝 색 포함), `games/` (미니게임: `hub.js` 목록·랭킹·점수, `common.js` 공용 캔버스·`loadPhaser()`, `surf.js` `dodge.js` `maze.js` `land.js` `cross.js` = 게임 하나씩 (surf·land·cross 는 Phaser 3 = `web/vendor/phaser.min.js`, 처음 열 때만 불러옴). 새 게임 = `export default { id, title, start(stage, api) → 끝낼 함수 }` 파일 하나 + hub.js GAMES 한 줄 + admin.js MG 한 줄 + 새 migration 으로 게임 이름 목록·점수 확인 추가 (0026 처럼)). 미니게임 하나만 로그인 없이 시험: `web/.dev-mg.html?g=yacht` (gitignore). 새 js 파일을 만들면 `web/sw.js`의 목록에도 넣고 버전을 올린다 (안 넣으면 오프라인에서 깨짐).
 
 ## 픽셀아트 규칙
-- 몬스터 64×64px, 투명 PNG. 화면엔 정수배(2×, 3×)로만 확대 (`image-rendering: pixelated`).
+- 운영자가 올리는 그림 (선생님 폼 등): 64×64px 안팎, 투명 PNG. 화면엔 정수배(2×, 3×)로만 확대 (`image-rendering: pixelated`).
 - 앱 아이콘은 이모지 대신 `web/js/ui.js`의 `pix()` 8×8 도트 아이콘을 쓴다 (폰마다 이모지 모양이 달라서). 새 아이콘은 거기에 추가.
 - 지도(`web/img/map.webp`)는 도트가 아니라 일러스트. 건물 이름표는 `dex.js`의 `MAP_LABELS`, QR 핀 위치는 운영자 페이지 QR 관리.
-- 몬스터 1마리당 최대 15색 + 투명. 1px 외곽선(검정 말고 몸색보다 어두운 색). 빛은 왼쪽 위, 명암 3단계.
+- 1마리당 최대 15색 + 투명. 1px 외곽선(검정 말고 몸색보다 어두운 색). 빛은 왼쪽 위, 명암 3단계.
 - 3단계 진화는 같은 색 계열 유지, 단계가 오를수록 캔버스를 더 채운다.
 
 ## 완료 기준

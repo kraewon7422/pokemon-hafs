@@ -130,7 +130,6 @@ function watchAwake(el) {
   if (!WL.timer) WL.timer = setInterval(syncAwake, 1500);              // 알 주머니가 화면에서 빠지면 (다른 주머니 · 가방 닫기) 놓기
   setTimeout(syncAwake, 0);                                              // eggPocket 이 만든 줄이 화면에 붙은 다음에
 }
-export const keepingAwake = () => !!WL.lock;
 
 // ───────────── 가방 '알' 주머니 ─────────────
 export function eggPocket(redraw) {
