@@ -454,7 +454,7 @@ web/            정적 사이트 (index = 학생 앱, admin · booth · screen =
   js/           ES 모듈 — app · battle · catch · safari · raid · eggs · legends · bag · dex · share · sfx …
   js/games/     미니게임 (hub · common + 게임 하나 = 파일 하나)
   vendor/       supabase.js · phaser.min.js · jsQR.js · qrcode.js
-supabase/       migrations/0001~0058 · seed_battle.sql · seed_pokemon.sql · seed.sql (데모용) · cleanup_after_festival.sql
+supabase/       migrations/0001~0059 · seed_battle.sql · seed_pokemon.sql · seed.sql (데모용) · cleanup_after_festival.sql
 tools/          그림판 · 타일 · 동굴 · 데이터 생성 스크립트 (Python), upload_pokemon_sprites.mjs (포켓몬 그림 올리기)
 tests/          rpc_test.mjs · festival_load.mjs · raid_load.mjs
 ```
@@ -487,7 +487,7 @@ python -m http.server 8124
 3. `0021` → `0039` 를 번호 순서대로.
 4. `seed_pokemon.sql` — 포켓몬 · 기술 · 특성 자료. 0038 의 열(`ultra` · `legend_src`)과 0039 의 특성 표를 쓰므로 **0039 다음에만** 됩니다.
 5. 확인: `select count(*) from public.lines where ultra;` 가 0 이면, 0038 파일 위쪽의 울트라비스트 · 전설 표시 `update` 두 줄을 한 번 더 실행합니다 (0038 이 포켓몬 자료보다 먼저 돌아서 빈 표에 적용됐기 때문).
-6. `0040` → `0058` 을 번호 순서대로.
+6. `0040` → `0059` 을 번호 순서대로.
 7. `seed_pokemon.sql` 을 한 번 더 — 다시 돌려도 결과가 같고, 끝에서 `_forms_build()` 를 불러 폼 구조를 맞춥니다.
 8. `node tools/upload_pokemon_sprites.mjs` — 포켓몬 그림을 Storage 에 올립니다 (이벤트 폼 1321 · 1324 포함, 실전 서버 주소 · 공개 키 · 운영자 계정은 환경 변수로, 사용법은 파일 맨 위).
 9. 첫 운영자: `select public.bootstrap_staff('admin1', 'admin');` → 나온 비밀번호로 운영자 페이지에 로그인, 나머지 운영진은 운영진 탭에서.
@@ -499,7 +499,7 @@ python -m http.server 8124
 
 ## English summary
 
-A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), trade Pokémon face to face (both confirm, server-side atomic swap), fight legendaries before catching them, solve puzzle dungeons in the Safari Zone, join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0058); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1287 passed, 0 failed). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
+A school-festival Pokémon collecting game: an installable, offline-first web app (PWA) in a GBA-era pixel-art style. Students scan QR codes around campus to collect **teacher Pokémon** (teacher forms of real Pokémon, e.g. "Physics teacher's Pikachu"). Collecting unlocks more per student: minigames at 10 species, then the walkable Safari Zone (many zones, legendary spots), wild Pokémon from QR codes and the full Pokédex at 30% of the school dex. Students also battle (teams of 1–6, 1v1 and 2v2, 397 moves, abilities, weather), trade Pokémon face to face (both confirm, server-side atomic swap), fight legendaries before catching them, solve puzzle dungeons in the Safari Zone, join raids on the big TV screen, hatch eggs by walking and redeem gift codes. Every game rule runs in Supabase Postgres functions (migrations 0001–0059); admin, booth and TV pages run the festival. No build step: serve `web/` as static files. Status: playable on staging (latest full server-rule test run: 1287 passed, 0 failed). Unofficial, non-commercial fan project, not affiliated with Nintendo, Game Freak or The Pokémon Company.
 
 ## 다른 문서
 
